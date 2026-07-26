@@ -264,6 +264,7 @@ function CategorySection({ section, player }: { section: Section; player: ClipPl
                                 duration={row.duration}
                                 state={player.stateFor(row.event)}
                                 onToggle={() => player.toggle(row)}
+                                poolIndex={player.poolIndexFor(row.event)}
                                 swap={swapContextFor(row)}
                                 targetClip={row.vsnd[0]}
                             />

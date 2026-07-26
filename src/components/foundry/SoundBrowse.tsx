@@ -412,6 +412,7 @@ function CategorySection({
                                 duration={row.duration}
                                 state={player.stateFor(row.event)}
                                 onToggle={() => player.toggle(row)}
+                                poolIndex={player.poolIndexFor(row.event)}
                                 swap={swap}
                                 targetClip={row.vsnd[0]}
                             />
@@ -547,6 +548,7 @@ function VoiceLinesSection({
                                     duration={line.duration}
                                     state={player.stateFor(line.event)}
                                     onToggle={() => player.toggle(line)}
+                                    poolIndex={player.poolIndexFor(line.event)}
                                     swap={swap}
                                     clipPaths={line.vsnd}
                                     targetClip={line.vsnd[0]}
@@ -578,6 +580,9 @@ interface SoundRowProps {
     duration: number | null;
     state: RowState;
     onToggle: () => void;
+    /** 0-based cursor into a randomizer pool: which clip the next press plays.
+     *  Ignored when `clips` is 1. */
+    poolIndex?: number;
     /** When present, the row offers an inline sound-swap. */
     swap?: SwapContext;
     /** First clip path of this row, used as the swap normalizer's volume target. */
@@ -587,10 +592,20 @@ interface SoundRowProps {
     clipPaths?: string[];
 }
 
-export function SoundRow({ label, event, clips, duration, state, onToggle, swap, targetClip, clipPaths }: SoundRowProps) {
+export function SoundRow({ label, event, clips, duration, state, onToggle, poolIndex = 0, swap, targetClip, clipPaths }: SoundRowProps) {
     const { t } = useTranslation();
     const [swapOpen, setSwapOpen] = useState(false);
     const seconds = duration && duration > 0 ? `${duration.toFixed(1)}s` : null;
+    // Randomizer pool: name which clip the next press auditions, so repeated
+    // presses read as walking the pool rather than as a stuck button.
+    const poolNote =
+        clips > 1
+            ? ` · ${t('foundry.sound.poolPosition', {
+                  defaultValue: 'clip {{n}} of {{total}}',
+                  n: (poolIndex % clips) + 1,
+                  total: clips,
+              })}`
+            : '';
     return (
         <div style={{ contentVisibility: 'auto', containIntrinsicSize: '0 44px' }}>
             <div className="flex items-center gap-3 rounded-sm border border-border bg-bg-secondary px-3 py-2">
@@ -614,7 +629,7 @@ export function SoundRow({ label, event, clips, duration, state, onToggle, swap,
                     </p>
                     <p className="truncate text-[11px] text-text-secondary" title={event}>
                         {event}
-                        {clips > 1 ? ` · ${clips} clips` : ''}
+                        {poolNote}
                     </p>
                 </div>
                 {seconds && (
