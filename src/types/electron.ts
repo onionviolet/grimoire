@@ -974,6 +974,9 @@ export interface ElectronAPI {
         heroSounds: (
             filters?: import('./foundry').HeroSoundFilters
         ) => Promise<import('./foundry').HeroSound[]>;
+        globalSounds: (
+            filters?: import('./foundry').GlobalSoundFilters
+        ) => Promise<import('./foundry').GlobalSound[]>;
         ensureThumbnails: (
             category: import('./foundry').TextureCategory
         ) => Promise<import('./foundry').TextureGridItem[]>;

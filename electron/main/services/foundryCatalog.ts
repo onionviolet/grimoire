@@ -25,6 +25,8 @@ import { runVpkmerge, runVpkmergeStdout, verifyVpkOutput } from './modMerger';
 import { getCitadelPath } from './deadlock';
 import { soundCodenameForHero } from './heroSoundCodenames';
 import type {
+    GlobalSound,
+    GlobalSoundFilters,
     HeroInfo,
     HeroSound,
     HeroSoundFilters,
@@ -158,14 +160,36 @@ export async function getHeroSounds(
     return runCatalogJson<HeroSound[]>(args);
 }
 
+/** The global (non-hero) sound index: UI, music, ambience, NPCs, shop items, and
+ *  match gameplay, read from every soundevents file outside the hero and VO
+ *  trees. No hero scoping (there is none); optionally filtered by `category` /
+ *  `source` / `search`, all AND-combined. */
+export async function getGlobalSounds(
+    deadlockPath: string,
+    filters: GlobalSoundFilters = {}
+): Promise<GlobalSound[]> {
+    const args = ['globalsounds', '--vpk', pak01Path(deadlockPath)];
+    if (filters.category) args.push('--category', filters.category);
+    if (filters.source) args.push('--source', filters.source);
+    if (filters.search) args.push('--search', filters.search);
+    if (typeof filters.limit === 'number') args.push('--limit', String(filters.limit));
+    return runCatalogJson<GlobalSound[]>(args);
+}
+
 // ----- Hero sound-swap build (drop your own audio onto a sound event) --------
 
 export type SoundSwapLoop = 'auto' | 'on' | 'off';
 
 export interface BuildHeroSoundSwapOptions {
     /** Roster codename from the Foundry hero picker (e.g. `atlas`); resolved here
-     *  to the sound-path codename the `soundevents/hero/` tree is keyed by. */
+     *  to the sound-path codename the `soundevents/hero/` tree is keyed by.
+     *  Ignored in global mode (see `soundeventsEntry`), where it may be empty. */
     heroCodename: string;
+    /** Global (non-hero) mode: the explicit `.vsndevts_c` entry carrying `event`
+     *  (a `GlobalSound.soundevents`). UI / music / ambience / NPC / item events
+     *  live outside `soundevents/hero/`, so there is no hero to resolve the file
+     *  from; passing this sends `--soundevents` instead of `--hero`. */
+    soundeventsEntry?: string;
     /** The soundevent to swap, verbatim from the catalog (a `HeroSound.event`,
      *  e.g. `Gigawatt.LightningBall.Damage`). Event mode (gameplay). Omit when
      *  using `clipPaths` (VO / single-clip mode). */
@@ -218,7 +242,11 @@ export async function buildHeroSoundSwapVpk(
     deadlockPath: string,
     opts: BuildHeroSoundSwapOptions
 ): Promise<HeroSoundSwapBuild> {
-    const soundCodename = await rosterToSoundCodename(deadlockPath, opts.heroCodename);
+    // Global swaps carry their own soundevents entry and have no hero, so the
+    // roster lookup is skipped rather than resolving an empty codename.
+    const soundCodename = opts.soundeventsEntry
+        ? ''
+        : await rosterToSoundCodename(deadlockPath, opts.heroCodename);
     const dir = join(tmpdir(), `grimoire-soundswap-${randomUUID()}`);
     await fs.mkdir(dir, { recursive: true });
     const vpkPath = join(dir, 'soundswap_dir.vpk');
@@ -264,10 +292,15 @@ export async function buildHeroSoundSwapVpk(
                 await runVpkmerge([vpkPath, ...parts]);
             }
         } else if (opts.event) {
-            // Event mode (gameplay): override every clip in the event's pool.
+            // Event mode: override every clip in the event's pool. The engine
+            // needs the soundevents file the event lives in; a hero event
+            // resolves it from the codename, a global one carries it explicitly.
+            const scope = opts.soundeventsEntry
+                ? ['--soundevents', opts.soundeventsEntry]
+                : ['--hero', soundCodename];
             await runVpkmerge([
                 'soundswap', '--from-vpk', pak01Path(deadlockPath),
-                '--event', opts.event, '--hero', soundCodename, '--pool', 'all',
+                '--event', opts.event, ...scope, '--pool', 'all',
                 ...mintArgs, '--encode-vpk', vpkPath,
             ]);
         } else {

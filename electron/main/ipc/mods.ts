@@ -1154,6 +1154,10 @@ ipcMain.handle(
 // with the user audio, so the swapped sound always plays. Tagged with lockerHero
 // so it groups under the hero in the Locker. v1 takes MP3 only (the mint path
 // parses the rate/channels from MP3 frame headers, no ffmpeg).
+//
+// Also serves non-hero sounds (UI, music, ambience, NPC, shop items): those pass
+// `soundeventsEntry` instead of a hero, land untagged, and so file under the
+// Locker's global Sounds bucket rather than a hero.
 ipcMain.handle(
     'foundry:swapSound',
     async (_, args: HeroSoundSwapRequest): Promise<WireMod[]> => {
@@ -1164,6 +1168,7 @@ ipcMain.handle(
         const {
             heroCodename,
             heroName,
+            soundeventsEntry,
             event,
             clipPaths,
             audioPath,
@@ -1176,6 +1181,10 @@ ipcMain.handle(
             gainDb,
         } = args;
         const hasClips = Array.isArray(clipPaths) && clipPaths.length > 0;
+        // Global (non-hero) swap: the caller names the soundevents file instead
+        // of a hero. Only meaningful in event mode; clip mode targets clip paths
+        // directly and never reads a soundevents file.
+        const globalEntry = !hasClips ? soundeventsEntry?.trim() : undefined;
         if (!name?.trim()) {
             throw new Error('A name is required');
         }
@@ -1194,6 +1203,7 @@ ipcMain.handle(
         //    win when both are present.
         const built = await buildHeroSoundSwapVpk(deadlockPath, {
             heroCodename,
+            soundeventsEntry: globalEntry,
             event: event?.trim(),
             clipPaths: hasClips ? clipPaths : undefined,
             audioPath,

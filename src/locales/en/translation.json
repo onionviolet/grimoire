@@ -107,6 +107,7 @@
       "heading": "Workshop",
       "library": "Library",
       "sound": "Sound",
+      "globalSound": "Global sounds",
       "texture": "Texture",
       "items": "Items",
       "recolor": "Recolor",
@@ -214,6 +215,27 @@
         "reset": "Reset",
         "matchVolume": "Match the original volume",
         "matchUnavailable": "original unavailable"
+      }
+    },
+    "globalSound": {
+      "searchPlaceholder": "Search UI, music, ambience, NPC and item sounds...",
+      "loading": "Reading sounds from your game files...",
+      "count": "{{count}} sounds",
+      "noMatch": "No sounds match your search.",
+      "empty": {
+        "title": "No global sounds",
+        "description": "Your installed game files carry no non-hero soundevents."
+      },
+      "category": {
+        "all": "All",
+        "ui": "Interface",
+        "music": "Music",
+        "item": "Shop items",
+        "gameplay": "Gameplay",
+        "npc": "NPCs",
+        "ambience": "Ambience",
+        "voice": "Voice",
+        "other": "Other"
       }
     }
   },
