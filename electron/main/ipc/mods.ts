@@ -78,11 +78,22 @@ interface UnknownCacheBulkRequest {
  * with no metadata row too (a VPK dropped straight into citadel/addons), so
  * locally added HUD / Soul Container mods get tagged like downloaded ones.
  * Persists the result + classifier version so later scans skip the re-parse.
+ *
+ * Foundry sound swaps are exempt from classification entirely. A swap's file
+ * tree is not its own: it mirrors whatever event it overrides, so path sniffing
+ * reads the *game's* layout rather than the mod's intent. An item-sound swap
+ * mints into `sounds/mods/`, which ANNOUNCER_PATTERN claims, and the resulting
+ * 'announcer' type then excludes it from the Locker's Sounds bucket (which
+ * filters on `!getEffectiveGlobalType`). That is 295 of the 1100 indexed global
+ * events, essentially the whole `item` category. The Foundry already decided
+ * placement at install time, so its decision stands; an explicit user retag
+ * (a stored positive `globalType`) still wins.
  */
 function resolveGlobalType(
     mod: Mod,
     metadata: ReturnType<typeof getModMetadata>
 ): import('../../../src/types/mod').GlobalModType | null {
+    if (metadata?.soundSwap) return metadata.globalType ?? null;
     const current = metadata?.globalType;
     const stamped = metadata?.globalTypeClassifierVersion ?? 0;
     const needsClassify =
