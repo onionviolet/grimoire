@@ -18,7 +18,9 @@
   },
   "scripts": {
     "prepare": "husky",
+    "preinstall": "node scripts/check-sibling-repos.mjs",
     "postinstall": "node scripts/fetch-vpkmerge.mjs",
+    "check-siblings": "node scripts/check-sibling-repos.mjs",
     "fetch-vpkmerge": "node scripts/fetch-vpkmerge.mjs",
     "fetch-hero-icons": "node scripts/fetch-hero-icons.mjs",
     "generate-hero-chip-icons": "node scripts/generate-hero-chip-icons.mjs",

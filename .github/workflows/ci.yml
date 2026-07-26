@@ -15,10 +15,11 @@ jobs:
         with:
           path: grimoire
 
-      # pnpm-workspace.yaml resolves @grimoire/social-types from
-      # ../grimoire-social/packages/*. Local dev works because both repos sit
-      # side-by-side; CI has to mirror that or every social import becomes an
-      # implicit-any and the build fails on the workspace dep.
+      # pnpm-lock.yaml resolves @grimoire/social-types to
+      # link:../grimoire-social/packages/social-types. Local dev works because
+      # both repos sit side-by-side; CI has to mirror that or every social
+      # import becomes an implicit-any and the build fails on the workspace dep.
+      # scripts/check-sibling-repos.mjs (preinstall) enforces the layout.
       - name: Checkout grimoire-social (sibling for shared types)
         uses: actions/checkout@v6
         with:
@@ -30,7 +31,7 @@ jobs:
         uses: pnpm/action-setup@v6
         with:
           # Match the local pnpm that generates pnpm-lock.yaml (v10). pnpm 9
-          # mis-links the out-of-root @grimoire/social-types workspace package
+          # mis-links the out-of-root @grimoire/social-types linked package
           # (../grimoire-social/packages/*), which makes tsc report it as an
           # unresolved module and every social import cascades to implicit-any.
           version: 10
