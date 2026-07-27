@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Images, Loader2, AlertCircle, Check, Upload, X, Download } from 'lucide-react';
+import { Images, Loader2, AlertCircle, Check, Upload, X, Download, Shuffle } from 'lucide-react';
 import {
   applyCustomHeroCard,
   applyHeroCard,
@@ -19,6 +19,7 @@ import { showToast } from '../../stores/toastStore';
 import { useAppStore } from '../../stores/appStore';
 import CardCropper from './CardCropper';
 import type { CustomCardSlot, HeroPortrait } from '../../types/portrait';
+import { shuffleCardKey } from '../../lib/lockerRandomizer';
 
 interface HeroCardPickerProps {
   heroName: string;
@@ -69,6 +70,8 @@ interface PortraitFileGroup {
 export default function HeroCardPicker({ heroName }: HeroCardPickerProps) {
   const { t } = useTranslation();
   const loadMods = useAppStore((s) => s.loadMods);
+  const cardShuffleIncluded = useAppStore((s) => s.cardShuffleIncluded);
+  const toggleCardShuffleIncluded = useAppStore((s) => s.toggleCardShuffleIncluded);
   // This component is remounted per hero (the parent LockerHeroView is keyed
   // by hero.id), so initial state stands in for the per-hero reset.
   const [portraits, setPortraits] = useState<HeroPortrait[]>([]);
@@ -315,45 +318,52 @@ export default function HeroCardPicker({ heroName }: HeroCardPickerProps) {
           {fileGroups.map((group) => {
             const isApplied = activeSource === group.modFileName;
             const isBusy = busySource === group.modFileName;
+            const shuffleKey = shuffleCardKey(heroName, group.modFileName);
+            const inShuffle = cardShuffleIncluded.has(shuffleKey);
             return (
-              <button
-                type="button"
+              <div
                 key={group.modFileName}
-                disabled={busySource !== null}
-                onClick={() => handlePick(group.modFileName)}
-                title={t('locker.cards.fileGroupTitle', {
-                  file: group.modFileName,
-                  count: group.variants.length,
-                })}
                 // Card tokens shared with the Skins grid / Global view so the
                 // Cards tab reads as a sibling of Skins: accent border + glow
                 // when applied, dim glass at rest. backdrop-blur on the resting
                 // state too since these sit directly over the hero portrait.
-                className={`group relative block w-full overflow-hidden rounded-[10px] border text-left backdrop-blur-sm transition-[border-color,background-color,box-shadow] duration-200 disabled:cursor-not-allowed ${
+                className={`group relative overflow-hidden rounded-[10px] border text-left backdrop-blur-sm transition-[border-color,background-color,box-shadow] duration-200 ${
                   isApplied
                     ? 'border-accent bg-accent/[0.08] shadow-[0_0_0_1px_var(--color-accent),0_0_18px_-6px_var(--color-accent)] hover:bg-accent/[0.12]'
                     : 'border-white/[0.08] bg-bg-sunken/55 hover:border-white/[0.16]'
-                } ${busySource !== null && !isBusy ? 'opacity-60' : 'cursor-pointer'}`}
+                } ${busySource !== null && !isBusy ? 'opacity-60' : ''}`}
               >
-                <div className="flex items-center justify-between gap-2 border-b border-border/50 px-3 py-2">
+                <div className="relative z-10 flex items-center justify-between gap-2 border-b border-border/50 px-3 py-2">
                   <span className="truncate text-xs font-semibold text-text-primary">
                     {group.modFileName.replace(/_dir\.vpk$/, '')}
                   </span>
-                  {isApplied ? (
-                    <span className="flex flex-shrink-0 items-center gap-1 rounded-full bg-accent px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-accent-foreground">
-                      <Check className="h-2.5 w-2.5" /> {t('locker.cards.applied')}
-                    </span>
-                  ) : (
-                    <span className="flex-shrink-0 text-[10px] uppercase tracking-wide text-text-secondary">
-                      {t('locker.cards.portraitCount', { count: group.variants.length })}
-                    </span>
-                  )}
+                  <div className="flex flex-shrink-0 items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={busySource !== null}
+                      onClick={() => toggleCardShuffleIncluded(shuffleKey)}
+                      title={inShuffle ? t('locker.randomize.removeFromShuffle', { name: group.modFileName }) : t('locker.randomize.addToShuffle', { name: group.modFileName })}
+                      aria-label={inShuffle ? t('locker.randomize.removeFromShuffle', { name: group.modFileName }) : t('locker.randomize.addToShuffle', { name: group.modFileName })}
+                      className={`rounded p-1 transition-colors ${inShuffle ? 'bg-accent text-accent-foreground' : 'text-text-secondary hover:bg-white/10 hover:text-text-primary'}`}
+                    >
+                      <Shuffle className="h-3.5 w-3.5" />
+                    </button>
+                    {isApplied ? (
+                      <span className="flex items-center gap-1 rounded-full bg-accent px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-accent-foreground">
+                        <Check className="h-2.5 w-2.5" /> {t('locker.cards.applied')}
+                      </span>
+                    ) : (
+                      <span className="text-[10px] uppercase tracking-wide text-text-secondary">
+                        {t('locker.cards.portraitCount', { count: group.variants.length })}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 {/* Uniform aspect-3/4 tiles in a fixed grid keep the strip tidy
                     regardless of each variant's native aspect. max-w/h-full
                     contains the art without ever upscaling it, so tiny minimap
                     art stays crisp instead of blurring up to a forced height. */}
-                <div className="grid grid-cols-4 gap-2 p-3">
+                <div className="relative z-10 grid grid-cols-4 gap-2 p-3">
                   {group.variants.map((p, i) => (
                     <figure key={`${p.variant}:${i}`} className="min-w-0">
                       <div className="flex aspect-[3/4] items-center justify-center overflow-hidden rounded-md border border-border/50 bg-bg-primary/40">
@@ -375,7 +385,15 @@ export default function HeroCardPicker({ heroName }: HeroCardPickerProps) {
                     <Loader2 className="h-5 w-5 animate-spin text-white" />
                   </span>
                 )}
-              </button>
+                <button
+                  type="button"
+                  disabled={busySource !== null}
+                  onClick={() => handlePick(group.modFileName)}
+                  title={t('locker.cards.fileGroupTitle', { file: group.modFileName, count: group.variants.length })}
+                  aria-label={t('locker.cards.fileGroupTitle', { file: group.modFileName, count: group.variants.length })}
+                  className="absolute inset-0 z-0 cursor-pointer disabled:cursor-not-allowed"
+                />
+              </div>
             );
           })}
         </div>

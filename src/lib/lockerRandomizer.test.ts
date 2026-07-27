@@ -3,7 +3,11 @@ import type { Mod } from '../types/mod';
 import {
   planRandomization,
   planLaunchShuffle,
+  planCardShuffle,
+  parseShuffleCardKey,
+  shuffleCardKey,
   shuffleSkinKey,
+  shuffleSoundKey,
   readStoredShuffleIncluded,
   readStoredShuffleVariants,
   type VariantChoice,
@@ -48,6 +52,31 @@ describe('shuffleSkinKey', () => {
 
   it('ignores a zero/absent gameBananaId', () => {
     expect(shuffleSkinKey(mod({ id: 'd', gameBananaId: 0, sha256: 'x' }))).toBe('sha256:x');
+  });
+});
+
+describe('shuffleSoundKey', () => {
+  it('uses a separate namespace from skins', () => {
+    expect(shuffleSoundKey(mod({ id: 'a', gameBananaId: 42 }))).toBe('sound:gamebanana:42');
+  });
+});
+
+describe('card shuffle keys and planning', () => {
+  it('round-trips hero names and folder-qualified VPK sources', () => {
+    const key = shuffleCardKey('Lady Geist', 'addons1/pak42_dir.vpk');
+    expect(parseShuffleCardKey(key)).toEqual({ heroName: 'Lady Geist', sourceFileName: 'addons1/pak42_dir.vpk' });
+  });
+
+  it('picks one opted-in full card set per hero and ignores malformed persisted entries', () => {
+    const choices = planCardShuffle(new Set([
+      shuffleCardKey('Lady Geist', 'geist_a_dir.vpk'),
+      shuffleCardKey('Lady Geist', 'geist_b_dir.vpk'),
+      shuffleCardKey('Seven', 'seven_dir.vpk'),
+      'not-a-card-key',
+    ]), fixedRng(0.99));
+    expect(choices).toContainEqual({ heroName: 'Lady Geist', sourceFileName: 'geist_b_dir.vpk' });
+    expect(choices).toContainEqual({ heroName: 'Seven', sourceFileName: 'seven_dir.vpk' });
+    expect(choices).toHaveLength(2);
   });
 });
 
@@ -421,6 +450,22 @@ describe('planLaunchShuffle', () => {
       mod({ id: 'snd', sourceSection: 'Sound', lockerHero: 'Vindicta', gameBananaId: 5, enabled: true }),
     ];
     expect(planLaunchShuffle({ mods, heroList, included: new Set(['gamebanana:5']) })).toEqual(EMPTY);
+  });
+
+  it('shuffles opted-in sound packs independently of skins', () => {
+    const mods = [
+      mod({ id: 'old', sourceSection: 'Sound', lockerHero: 'Vindicta', gameBananaId: 5, enabled: true }),
+      mod({ id: 'new', sourceSection: 'Sound', lockerHero: 'Vindicta', gameBananaId: 6 }),
+    ];
+    const plan = planLaunchShuffle({ mods, heroList, included: new Set(), soundIncluded: new Set(['sound:gamebanana:6']) });
+    expect(plan.enableIds).toContain('new');
+    expect(plan.disableIds).toContain('old');
+  });
+
+  it('can choose vanilla by disabling the selected hero skin', () => {
+    const mods = [skin({ id: 'active', gameBananaId: 1, enabled: true })];
+    const plan = planLaunchShuffle({ mods, heroList, included: new Set(['gamebanana:1']), includeVanilla: true, rng: fixedRng(0.9) });
+    expect(plan).toEqual({ enableIds: [], disableIds: ['active'], changedHeroes: [1] });
   });
 
   it('excludes global mods (e.g. announcer packs) from the shuffle', () => {

@@ -42,24 +42,33 @@ Requires Deadlock installed via Steam.
 **Mods**
 
 - Browse and install from GameBanana: download queue, automatic ZIP/7Z/RAR extraction, one-click `gb1click://` installs, and collection import by URL
-- Enable, disable, reorder, bulk-select, and delete, backed by an offline catalog with full-text search
+- Save GameBanana mods without downloading them, then organize, preview, update, import/export, and swap saved mod profiles
+- Enable, disable, reorder, bulk-select, sort, and delete, backed by an offline catalog with full-text search
 - Conflict detection for mods that overwrite the same game files
 - Merge several mods into one VPK (and pull individual sources back out)
+- Repair model-mod load order when compatibility requires one mod to win over another
 
 **Play**
 
 - Launch Modded or Launch Vanilla straight from the sidebar. Vanilla temporarily stashes your mods and auto-restores them once the game starts
+- Choose the installed game engine/build that Grimoire should manage
 
 **Locker**
 
 - Organize cosmetic skins per hero with 2D and live 3D pose previews
 - Recolor a hero's ability VFX (solid, gradient, or rainbow)
 - Per-ability sound picker, plus a Global axis for soul containers and other non-hero cosmetics
+- Build visual, hero-sound, and hero-card shuffle pools for launch, including an optional vanilla-model outcome. Card picks preserve the source pack's matching normal, low-HP, gloat, and minimap variants; locally imported and Foundry-forged assets are eligible too
 
 **Autoexec & Profiles**
 
 - Autoexec manager for console commands that run at game launch
 - Save and swap sets of enabled mods, and share them as short `mp1:` codes or `.modprofile.json` files (Grimoire-only format)
+- Advanced `gameinfo.gi` HUD controls and a ChatLane chat-wheel editor
+
+**Built-in Browser**
+
+- An in-app modding browser with privacy-oriented tracker/ad blocking, denied site permissions, and shortcuts to Deadlock community resources
 
 **Experimental** (opt in under Settings)
 
@@ -68,6 +77,12 @@ Requires Deadlock installed via Steam.
 - Crosshair designer with live preview
 
 Offline-first and no telemetry: a fresh install phones home for nothing.
+
+## Current development status
+
+This fork is under active development and includes newer features that have not yet received broad real-world testing. In particular, saved-mod workflows, engine switching, the built-in browser, Foundry/Locker sound features, launch shuffling, chat-wheel editing, and advanced HUD controls may still have rough edges or compatibility issues with particular game builds and mods.
+
+Please keep backups of important mod profiles and game configuration files, test changes with a small mod set first, and report reproducible problems through [Issues](../../issues) or [Discord](https://discord.gg/KgYGHEMq2P). The detailed release history is in [CHANGELOG.md](CHANGELOG.md).
 
 ## Screenshots
 

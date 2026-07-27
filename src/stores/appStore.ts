@@ -11,9 +11,16 @@ import { modRestoreKey, planSoloByKeys, planRestore } from '../lib/soloRestore';
 import {
   SHUFFLE_INCLUDED_KEY,
   SHUFFLE_ON_LAUNCH_KEY,
+  SHUFFLE_INCLUDE_VANILLA_KEY,
+  SOUND_SHUFFLE_INCLUDED_KEY,
+  CARD_SHUFFLE_INCLUDED_KEY,
+  planCardShuffle,
   planLaunchShuffle,
   readStoredShuffleIncluded,
   readStoredShuffleOnLaunch,
+  readStoredShuffleIncludeVanilla,
+  readStoredSoundShuffleIncluded,
+  readStoredCardShuffleIncluded,
   readStoredShuffleVariants,
   writeStoredShuffleVariants,
   type VariantChoice,
@@ -232,6 +239,10 @@ interface AppState {
   shuffleOnLaunch: boolean;
   shuffleIncluded: Set<string>;
   shuffleVariants: Map<string, VariantChoice>;
+  shuffleIncludeVanilla: boolean;
+  soundShuffleIncluded: Set<string>;
+  /** Card-source keys (hero + VPK) opted into launch shuffle. */
+  cardShuffleIncluded: Set<string>;
 
   // Browse-page UI state (preserved across page nav)
   browseUi: BrowseUiState;
@@ -313,6 +324,9 @@ interface AppState {
   /** Store an explicit per-skin variant policy, or clear it back to the unset
    *  default (keep the currently loaded files) with null. */
   setShuffleVariant: (skinKey: string, choice: VariantChoice | null) => void;
+  setShuffleIncludeVanilla: (enabled: boolean) => void;
+  toggleSoundShuffleIncluded: (soundKey: string) => void;
+  toggleCardShuffleIncluded: (cardKey: string) => void;
   runLaunchShuffle: () => Promise<{ failures: number }>;
   /** Disable every other mod and enable only `enableKeys` (one card's file(s)),
    *  snapshotting the prior enabled set for one-click restore. `applied` is
@@ -398,6 +412,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   shuffleOnLaunch: readStoredShuffleOnLaunch(),
   shuffleIncluded: readStoredShuffleIncluded(),
   shuffleVariants: readStoredShuffleVariants(),
+  shuffleIncludeVanilla: readStoredShuffleIncludeVanilla(),
+  soundShuffleIncluded: readStoredSoundShuffleIncluded(),
+  cardShuffleIncluded: readStoredCardShuffleIncluded(),
   browseUi: { ...DEFAULT_BROWSE_UI },
   browseSession: null,
   installedScrollTop: 0,
@@ -746,6 +763,25 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ shuffleVariants: next });
   },
 
+  setShuffleIncludeVanilla: (enabled: boolean) => {
+    try { localStorage.setItem(SHUFFLE_INCLUDE_VANILLA_KEY, enabled ? 'true' : 'false'); } catch { /* ignore */ }
+    set({ shuffleIncludeVanilla: enabled });
+  },
+
+  toggleSoundShuffleIncluded: (soundKey: string) => {
+    const next = new Set(get().soundShuffleIncluded);
+    if (next.has(soundKey)) next.delete(soundKey); else next.add(soundKey);
+    try { localStorage.setItem(SOUND_SHUFFLE_INCLUDED_KEY, JSON.stringify([...next])); } catch { /* ignore */ }
+    set({ soundShuffleIncluded: next });
+  },
+
+  toggleCardShuffleIncluded: (cardKey: string) => {
+    const next = new Set(get().cardShuffleIncluded);
+    if (next.has(cardKey)) next.delete(cardKey); else next.add(cardKey);
+    try { localStorage.setItem(CARD_SHUFFLE_INCLUDED_KEY, JSON.stringify([...next])); } catch { /* ignore */ }
+    set({ cardShuffleIncluded: next });
+  },
+
   // Re-roll skins for the launch. No-op unless the master switch is on and at
   // least one skin is in the pool. Groups the live mod list by hero (cached
   // categories, the same grouping the Locker shows), picks one opted-in skin per
@@ -754,8 +790,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   // the caller can warn that the shuffle only half-applied; a stuck shuffle
   // never blocks the launch (the Sidebar swallows a thrown error).
   runLaunchShuffle: async (): Promise<{ failures: number }> => {
-    const { shuffleOnLaunch, shuffleIncluded } = get();
-    if (!shuffleOnLaunch || shuffleIncluded.size === 0) return { failures: 0 };
+    const { shuffleOnLaunch, shuffleIncluded, soundShuffleIncluded, cardShuffleIncluded } = get();
+    if (!shuffleOnLaunch || (shuffleIncluded.size === 0 && soundShuffleIncluded.size === 0 && cardShuffleIncluded.size === 0)) return { failures: 0 };
     let heroList: { id: number; name: string }[] = [];
     try {
       heroList = buildHeroList(await api.getGamebananaCategories('ModCategory'));
@@ -772,18 +808,33 @@ export const useAppStore = create<AppState>((set, get) => ({
     // derived from the mods state after any in-flight manual toggle has settled,
     // not from a pre-launch snapshot that a concurrent rename could invalidate.
     return enqueueToggle(async () => {
-      const { mods, shuffleIncluded: included, shuffleVariants: variants } = get();
-      const plan = planLaunchShuffle({ mods, heroList, included, variants });
-      if (plan.enableIds.length === 0 && plan.disableIds.length === 0) return { failures: 0 };
+      const { mods, shuffleIncluded: included, shuffleVariants: variants, soundShuffleIncluded: soundIncluded, shuffleIncludeVanilla: includeVanilla, cardShuffleIncluded } = get();
+      const plan = planLaunchShuffle({ mods, heroList, included, variants, soundIncluded, includeVanilla });
+      const cardChoices = planCardShuffle(cardShuffleIncluded);
+      let failures = 0;
+      if (plan.enableIds.length === 0 && plan.disableIds.length === 0 && cardChoices.length === 0) return { failures };
       try {
-        const { mods: updated, failures } = await api.applyModToggleBatch(plan.enableIds, plan.disableIds);
-        set({ mods: updated });
-        return { failures: failures.length };
+        if (plan.enableIds.length || plan.disableIds.length) {
+          const applied = await api.applyModToggleBatch(plan.enableIds, plan.disableIds);
+          set({ mods: applied.mods });
+          failures += applied.failures.length;
+        }
+        // Card sources may be disabled: applying copies their portrait entries
+        // into the managed Locker Cards VPK, so they remain independent from
+        // the visual-skin pool and work for locally forged/imported cards too.
+        for (const choice of cardChoices) {
+          try {
+            await api.applyHeroCard(choice.heroName, choice.sourceFileName);
+          } catch {
+            failures += 1;
+          }
+        }
+        return { failures };
       } catch (err) {
         if (isEnableCapError(err)) { set({ modsNotice: ENABLE_CAP_NOTICE }); }
         else if (!isGameRunningModLockError(err)) { set({ modsError: String(err) }); }
         get().loadMods();
-        return { failures: plan.enableIds.length + plan.disableIds.length };
+        return { failures: failures + plan.enableIds.length + plan.disableIds.length + cardChoices.length };
       }
     });
   },
