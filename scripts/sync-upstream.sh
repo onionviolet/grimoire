@@ -118,7 +118,20 @@ $INTEGRATION rebuilt on upstream $(git rev-parse --short main) and verified.
 Next, for a packaged build:
     cd ../vpkmerge && git checkout local/all-features && cargo +stable-x86_64-pc-windows-msvc build --release -p vpkmerge-cli
     cd ../grimoire && pnpm use-local-vpkmerge
-    GRIMOIRE_FORK_BUILD=1 GRIMOIRE_SOCIAL_BASE_URL=https://example.invalid pnpm package:win
+    GRIMOIRE_FORK_BUILD=1 GRIMOIRE_SOCIAL_BASE_URL=https://grimoire-social.slusheliott.workers.dev pnpm package:win
+
+  Both env vars are load-bearing:
+    GRIMOIRE_FORK_BUILD=1     disables the updater, which otherwise reads
+                              upstream's feed and offers to install stock
+                              Grimoire over this build (see services/updater.ts).
+    GRIMOIRE_SOCIAL_BASE_URL  is baked into the renderer and cannot be changed
+                              after packaging. It must be the REAL Worker (the
+                              same one upstream's release.yml bakes), not a
+                              placeholder: Discover, Profiles, Stats and the
+                              Browse social calls all hit it, and a bogus URL
+                              ships a build where those pages are dead. An
+                              earlier version of this file suggested
+                              example.invalid, which did exactly that.
 EOF
 
 if [ "${1:-}" != "--no-push" ]; then
