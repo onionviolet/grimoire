@@ -1141,6 +1141,15 @@ export interface AppSettings {
   /** In-app web browser page: browse mod sites (GameBanana, Deadlock Forge,
    *  wikis) without leaving the app. Renders in an isolated `<webview>`. */
   experimentalBrowser?: boolean;
+  /** Block ad and tracker requests inside the in-app browser. Defaults ON
+   *  (`!== false`): the embedded frame has no extension support, so a user who
+   *  runs uBlock in their real browser would otherwise be unprotected here
+   *  precisely because they came in through Grimoire. */
+  browserBlockTrackers?: boolean;
+  /** Optional path to a user blocklist (hosts file or one domain per line),
+   *  merged on top of the built-in set. The escape hatch for anything the small
+   *  built-in list misses, since real filter lists are not shipped. */
+  browserBlockListPath?: string;
   /** Absolute path to a custom `vpkmerge` engine binary. Overrides the bundled
    *  one in ANY build, including packaged, which the dev-only `$VPKMERGE_BINARY`
    *  path cannot do. Empty/unset = use the bundled engine. */

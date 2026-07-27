@@ -999,6 +999,9 @@ export interface ElectronAPI {
             req: import('./foundry').HeroSoundSwapRequest
         ) => Promise<import('./mod').Mod[]>;
     };
+    browser: {
+        filterStats: () => Promise<import('./foundry').BrowserFilterStats>;
+    };
 
     // Language packs (downloaded on demand from GitHub)
     locales: {

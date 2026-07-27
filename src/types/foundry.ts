@@ -235,3 +235,13 @@ export interface EngineInfo {
     bundled: boolean;
     error: string | null;
 }
+
+/** What the in-app browser's ad/tracker filter is doing, for the Settings card.
+ *  `domains` counts blocklist entries (built-in plus any user list); `blocked`
+ *  counts requests cancelled since launch; `error` reports an unreadable user
+ *  list, which would otherwise fail silently and look like weak blocking. */
+export interface BrowserFilterStats {
+    domains: number;
+    blocked: number;
+    error: string | null;
+}

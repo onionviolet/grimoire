@@ -100,6 +100,7 @@ import './ipc/dmmMigrate';
 import { initUpdater, checkForUpdates, getInstallSource } from './services/updater';
 import { runStartupRecovery } from './ipc/launch';
 import { loadSettings, saveSettings } from './services/settings';
+import { attachBrowserFilter, configureFilter } from './services/browserContentFilter';
 import { backfillMissingMetadataHashes } from './services/metadata';
 import { backfillImprintedFlags } from './services/imprintMods';
 import { destroyDiscordRpc } from './services/discordRpc';
@@ -330,6 +331,17 @@ function createWindow(): void {
     // Popups from inside the browser go to the user's real browser rather than
     // opening an unmanaged, unhardened Electron window.
     mainWindow.webContents.on('did-attach-webview', (_event, guest) => {
+        // Ad/tracker blocking and the permission floor live on the guest's
+        // session, so they cover every page it loads (and only that partition,
+        // never the app's own session). Idempotent enough to run per attach:
+        // the handlers are setters, not listeners that stack.
+        const settings = loadSettings();
+        configureFilter({
+            enabled: settings.browserBlockTrackers !== false,
+            userListPath: settings.browserBlockListPath,
+        });
+        attachBrowserFilter(guest.session);
+
         guest.setWindowOpenHandler((details) => {
             openExternalSafe(details.url);
             return { action: 'deny' };

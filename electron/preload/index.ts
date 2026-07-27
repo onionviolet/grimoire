@@ -613,6 +613,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
             ipcRenderer.invoke('foundry:swapSound', req),
     },
 
+    // In-app browser: read-only view of the ad/tracker filter's state.
+    browser: {
+        filterStats: () => ipcRenderer.invoke('browser:filterStats'),
+    },
+
     // Language packs (downloaded on demand from GitHub)
     locales: {
         getManifest: () => ipcRenderer.invoke('locales:getManifest'),
