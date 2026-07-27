@@ -171,6 +171,11 @@
       "ult": "ULT",
       "slot": "{{n}}",
       "unsorted": "Other",
+      "annotation": {
+        "edit": "Rename or annotate",
+        "name": "Your name for this sound",
+        "note": "What this sound is, or where you found it"
+      },
       "category": {
         "ability": "Abilities",
         "weapon": "Weapon",
