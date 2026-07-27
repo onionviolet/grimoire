@@ -1,5 +1,5 @@
 import { ipcMain } from 'electron';
-import { initDatabase, getModById, getModCount, wipeDatabase, getModsNsfwStatus, updateModNsfw, getModsDownloadCounts, updateModDownloadCount } from '../services/modDatabase';
+import { initDatabase, getModById, getModCount, wipeDatabase, getModsNsfwStatus, updateModNsfw, getModsDownloadCounts, updateModDownloadCount, getFavoriteMods, setFavoriteMod, getFavoriteModIds } from '../services/modDatabase';
 import { searchMods, getCategories, getSectionStats, type SearchOptions } from '../services/searchService';
 import { syncAllSections, syncSingleSection, getSyncStatus, needsSync, isSyncInProgress } from '../services/syncService';
 
@@ -44,6 +44,16 @@ ipcMain.handle('search-local-mods', (_, options: SearchOptions) => {
 
 ipcMain.handle('get-cached-mod', (_, id: number) => {
     return getModById(id);
+});
+
+ipcMain.handle('get-favorite-mods', (_, section?: string) => getFavoriteMods(section));
+
+ipcMain.handle('set-favorite-mod', (_, modId: number, section: string, saved: boolean) => {
+    setFavoriteMod(modId, section, saved);
+});
+
+ipcMain.handle('get-favorite-mod-ids', (_, modIds: number[], section: string) => {
+    return getFavoriteModIds(modIds, section);
 });
 
 ipcMain.handle('get-local-mod-count', (_, section?: string) => {

@@ -14,6 +14,12 @@ export interface SyncState {
     pagesSynced: number;
 }
 
+export interface FavoriteMod {
+    modId: number;
+    section: string;
+    savedAt: number;
+}
+
 let db: Database.Database | null = null;
 
 const SEARCH_SCHEMA_SQL = `
@@ -119,6 +125,17 @@ export function initDatabase(): Database.Database {
                 fetched_at INTEGER NOT NULL,
                 payload TEXT NOT NULL
             );
+
+            -- User intent is separate from the downloaded/install state. A
+            -- favorite survives catalog refreshes and does not create a VPK.
+            CREATE TABLE IF NOT EXISTS favorite_mods (
+                mod_id INTEGER NOT NULL,
+                section TEXT NOT NULL,
+                saved_at INTEGER NOT NULL,
+                PRIMARY KEY (mod_id, section)
+            );
+            CREATE INDEX IF NOT EXISTS idx_favorite_mods_saved_at
+                ON favorite_mods(saved_at DESC);
 
             ${SEARCH_SCHEMA_SQL}
         `);
@@ -369,6 +386,49 @@ export function getModById(id: number): CachedMod | null {
     const row = stmt.get(id) as Record<string, unknown> | undefined;
     if (!row) return null;
     return mapRowToMod(row);
+}
+
+/** Return the user's saved GameBanana items, newest first. */
+export function getFavoriteMods(section?: string): FavoriteMod[] {
+    const database = initDatabase();
+    const rows = section
+        ? database.prepare(
+            'SELECT mod_id, section, saved_at FROM favorite_mods WHERE section = ? ORDER BY saved_at DESC'
+        ).all(section)
+        : database.prepare(
+            'SELECT mod_id, section, saved_at FROM favorite_mods ORDER BY saved_at DESC'
+        ).all();
+
+    return (rows as Array<{ mod_id: number; section: string; saved_at: number }>).map((row) => ({
+        modId: row.mod_id,
+        section: row.section,
+        savedAt: row.saved_at,
+    }));
+}
+
+/** Save or remove an item without downloading or installing it. */
+export function setFavoriteMod(modId: number, section: string, saved: boolean): void {
+    const database = initDatabase();
+    if (saved) {
+        database.prepare(`
+            INSERT INTO favorite_mods (mod_id, section, saved_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(mod_id, section) DO UPDATE SET saved_at = excluded.saved_at
+        `).run(modId, section, Date.now());
+    } else {
+        database.prepare('DELETE FROM favorite_mods WHERE mod_id = ? AND section = ?').run(modId, section);
+    }
+}
+
+/** Return saved state for a batch of items, keyed by GameBanana id. */
+export function getFavoriteModIds(modIds: number[], section: string): number[] {
+    if (modIds.length === 0) return [];
+    const database = initDatabase();
+    const placeholders = modIds.map(() => '?').join(',');
+    const rows = database.prepare(
+        `SELECT mod_id FROM favorite_mods WHERE section = ? AND mod_id IN (${placeholders})`
+    ).all(section, ...modIds) as Array<{ mod_id: number }>;
+    return rows.map((row) => row.mod_id);
 }
 
 /**

@@ -892,6 +892,9 @@ export interface ElectronAPI {
     isSyncInProgress: () => Promise<boolean>;
     searchLocalMods: (options: SearchLocalModsOptions) => Promise<LocalSearchResult>;
     getCachedMod: (id: number) => Promise<CachedMod | null>;
+    getFavoriteMods: (section?: string) => Promise<Array<{ modId: number; section: string; savedAt: number }>>;
+    setFavoriteMod: (modId: number, section: string, saved: boolean) => Promise<void>;
+    getFavoriteModIds: (modIds: number[], section: string) => Promise<number[]>;
     getLocalModCount: (section?: string) => Promise<number>;
     getLocalCategories: (section?: string) => Promise<Array<{ id: number; name: string; count: number }>>;
     getSectionStats: () => Promise<Array<{ section: string; count: number }>>;

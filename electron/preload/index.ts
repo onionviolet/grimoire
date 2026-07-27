@@ -510,6 +510,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     isSyncInProgress: () => ipcRenderer.invoke('is-sync-in-progress'),
     searchLocalMods: (options: SearchLocalModsOptions) => ipcRenderer.invoke('search-local-mods', options),
     getCachedMod: (id: number) => ipcRenderer.invoke('get-cached-mod', id),
+    getFavoriteMods: (section?: string) => ipcRenderer.invoke('get-favorite-mods', section),
+    setFavoriteMod: (modId: number, section: string, saved: boolean) =>
+        ipcRenderer.invoke('set-favorite-mod', modId, section, saved),
+    getFavoriteModIds: (modIds: number[], section: string) =>
+        ipcRenderer.invoke('get-favorite-mod-ids', modIds, section),
     getLocalModCount: (section?: string) => ipcRenderer.invoke('get-local-mod-count', section),
     getLocalCategories: (section?: string) => ipcRenderer.invoke('get-local-categories', section),
     getSectionStats: () => ipcRenderer.invoke('get-section-stats'),
