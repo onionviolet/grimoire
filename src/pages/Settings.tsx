@@ -18,6 +18,7 @@ import {
   openPerformanceConfigFile,
 } from '../lib/api';
 import { showToast } from '../stores/toastStore';
+import { useBackdropDismiss } from '../components/common/useBackdropDismiss';
 import { getActiveDeadlockPath, shouldBlurNsfw } from '../lib/appSettings';
 import { formatDateParts } from '../lib/dateFormat';
 import { Card, Badge, Toggle, Button } from '../components/common/ui';
@@ -277,6 +278,13 @@ export default function Settings() {
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [customPickerOpen, commitCustomDraft]);
+
+  // Dismiss on backdrop click, but not when the gesture merely ends there
+  // (drag-selecting the hex field and releasing outside used to commit).
+  const customPickerBackdropRef = useBackdropDismiss<HTMLDivElement>(
+    useCallback(() => void commitCustomDraft(), [commitCustomDraft]),
+    customPickerOpen
+  );
 
   const handleLockerCardsExpandedByDefaultChange = async (checked: boolean) => {
     if (settings) {
@@ -988,8 +996,8 @@ export default function Settings() {
 
                     {customPickerOpen && createPortal(
                       <div
+                        ref={customPickerBackdropRef}
                         className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in"
-                        onClick={() => void commitCustomDraft()}
                         role="presentation"
                       >
                         <div
