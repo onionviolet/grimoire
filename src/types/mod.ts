@@ -1136,6 +1136,19 @@ export interface AppSettings {
    *  own pak via the bundled vpkmerge sidecar, and (later slices) swap/forge
    *  edits into the mod list. */
   experimentalFoundry?: boolean;
+
+  // --- Local fork additions (branch feat/local-switchers-and-browser) --------
+  /** In-app web browser page: browse mod sites (GameBanana, Deadlock Forge,
+   *  wikis) without leaving the app. Renders in an isolated `<webview>`. */
+  experimentalBrowser?: boolean;
+  /** Absolute path to a custom `vpkmerge` engine binary. Overrides the bundled
+   *  one in ANY build, including packaged, which the dev-only `$VPKMERGE_BINARY`
+   *  path cannot do. Empty/unset = use the bundled engine. */
+  vpkmergeBinaryPath?: string;
+  /** Fork feature flags. Default ON: these are the patches this build exists to
+   *  carry, so the switch is for A/B-ing against stock behaviour, not opt-in. */
+  forkGlobalSounds?: boolean;
+  forkPoolCycling?: boolean;
   /** Advanced override for the relay the server browser queries. No UI: defaults
    *  to the official Deadworks registry (api.deadworks.net) and can be repointed
    *  via settings.json at any deadworks-shaped relay (e.g. a future grimoire-relay). */

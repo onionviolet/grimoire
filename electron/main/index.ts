@@ -235,6 +235,12 @@ function createWindow(): void {
             contextIsolation: true,
             nodeIntegration: false,
             sandbox: true,
+            // Enables the <webview> element used by the in-app Browser page.
+            // Turning this on means the renderer can ASK to embed arbitrary web
+            // content, so the attach handler below re-asserts the guest's
+            // security settings in the main process rather than trusting the
+            // attributes the renderer supplied.
+            webviewTag: true,
         },
     });
 
@@ -292,6 +298,48 @@ function createWindow(): void {
     mainWindow.webContents.setWindowOpenHandler((details) => {
         openExternalSafe(details.url);
         return { action: 'deny' };
+    });
+
+    // --- <webview> hardening (the Browser page) ------------------------------
+    // The renderer sets a guest's attributes, so a compromised or buggy
+    // renderer could otherwise ask for a privileged guest. This handler is the
+    // authority: it runs in the main process and overrides what was requested.
+    mainWindow.webContents.on('will-attach-webview', (_event, webPreferences, params) => {
+        // Never let a guest reach Node, and never let it borrow our preload
+        // (which exposes the whole electronAPI surface to whatever page loads).
+        delete webPreferences.preload;
+        webPreferences.nodeIntegration = false;
+        webPreferences.nodeIntegrationInSubFrames = false;
+        webPreferences.contextIsolation = true;
+        webPreferences.sandbox = true;
+        webPreferences.webSecurity = true;
+        webPreferences.allowRunningInsecureContent = false;
+        webPreferences.experimentalFeatures = false;
+
+        // Third-party pages get their own session partition, so their cookies
+        // and storage never touch the app's session (which holds the user's
+        // GameBanana login).
+        params.partition = 'persist:grimoire-browser';
+
+        // Only ever load real web pages. Blocks file:// (local file read) and
+        // the app's own custom schemes from being driven by page content.
+        const src = String(params.src ?? '');
+        if (!/^https?:\/\//i.test(src)) params.src = 'about:blank';
+    });
+
+    // Popups from inside the browser go to the user's real browser rather than
+    // opening an unmanaged, unhardened Electron window.
+    mainWindow.webContents.on('did-attach-webview', (_event, guest) => {
+        guest.setWindowOpenHandler((details) => {
+            openExternalSafe(details.url);
+            return { action: 'deny' };
+        });
+        // Downloads inside an embedded browser have no UI to manage them and
+        // would write to disk unattended, so hand them off too.
+        guest.session.on('will-download', (event, item) => {
+            event.preventDefault();
+            openExternalSafe(item.getURL());
+        });
     });
 
     // Catch in-place navigations (bare `<a href="https://...">` clicks in

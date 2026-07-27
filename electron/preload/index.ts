@@ -606,6 +606,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
             ipcRenderer.invoke('foundry:fullImage', category, entryPath),
         voiceclip: (vsndPath: string) => ipcRenderer.invoke('foundry:voiceclip', vsndPath),
         warmCache: () => ipcRenderer.invoke('foundry:warmCache'),
+        engineInfo: () => ipcRenderer.invoke('foundry:engineInfo'),
         exportHeroEffect: (req: HeroEffectExportRequest) =>
             ipcRenderer.invoke('foundry:exportHeroEffect', req),
         swapSound: (req: HeroSoundSwapRequest) =>

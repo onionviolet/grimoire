@@ -3,6 +3,7 @@ import { HashRouter, Routes, Route } from 'react-router-dom';
 import Layout from './components/Layout';
 import Installed from './pages/Installed';
 import Browse from './pages/Browse';
+import Browser from './pages/Browser';
 import Discover from './pages/Discover';
 import Servers from './pages/Servers';
 import Locker from './pages/Locker';
@@ -72,6 +73,7 @@ export default function App() {
           <Route path="/" element={<Layout />}>
             <Route index element={<Installed />} />
             <Route path="browse" element={<Browse />} />
+            <Route path="browser" element={<Browser />} />
             <Route path="discover" element={<Discover />} />
             <Route path="servers" element={<Servers />} />
             <Route path="locker/*" element={<Locker />} />

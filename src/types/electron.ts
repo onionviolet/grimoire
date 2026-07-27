@@ -991,6 +991,7 @@ export interface ElectronAPI {
         ) => Promise<string | null>;
         voiceclip: (vsndPath: string) => Promise<string | null>;
         warmCache: () => Promise<void>;
+        engineInfo: () => Promise<import('./foundry').EngineInfo>;
         exportHeroEffect: (
             req: import('./foundry').HeroEffectExportRequest
         ) => Promise<import('./foundry').VpkExportResult>;

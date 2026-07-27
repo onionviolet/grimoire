@@ -225,3 +225,13 @@ export interface HeroSoundSwapRequest {
      *  losslessly before minting. Omitted / 0 = no change. */
     gainDb?: number;
 }
+
+/** Which vpkmerge engine the app is actually running, for the Settings card.
+ *  `bundled` is false when settings.vpkmergeBinaryPath overrides it. A non-null
+ *  `error` with a non-null `path` means the binary resolved but would not run. */
+export interface EngineInfo {
+    path: string | null;
+    version: string | null;
+    bundled: boolean;
+    error: string | null;
+}

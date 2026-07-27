@@ -75,7 +75,8 @@
     "crosshair": "Crosshair",
     "autoexec": "Autoexec",
     "stats": "Stats",
-    "settings": "Settings"
+    "settings": "Settings",
+    "browser": "Browser"
   },
   "foundry": {
     "header": {
@@ -689,7 +690,8 @@
       "support": "Support",
       "maintenance": "Maintenance",
       "modDatabaseCache": "Mod Database Cache",
-      "localPreviewCache": "Local preview cache"
+      "localPreviewCache": "Local preview cache",
+      "forkBuild": "Custom build"
     },
     "language": {
       "label": "Language",
@@ -811,7 +813,8 @@
       "vpkImprint": "Imprint installed mods",
       "deadworksServers": "Deadworks Servers",
       "performanceConfig": "Performance Config",
-      "foundry": "Door Stuck"
+      "foundry": "Door Stuck",
+      "browser": "In-app browser"
     },
     "support": {
       "reportBuildFailed": "Failed to build report: {{error}}",
@@ -882,7 +885,26 @@
       "fixUnknown": "Match unknown local VPKs against GameBanana to recover names and thumbnails. May hit rate limits on large libraries.",
       "vpkImprint": "Give each newly installed mod a small identity imprint so an orphaned file can be recognized offline. Adds an Imprint installed mods button on the Installed page to imprint mods you already have.",
       "deadworks": "Add a Servers tab to browse and join Deadworks community servers. Required content downloads before connecting.",
-      "performanceConfig": "One-click fps boost using Sqooky's community preset. Mods keep working. Remove any time."
+      "performanceConfig": "One-click fps boost using Sqooky's community preset. Mods keep working. Remove any time.",
+      "browser": "Adds a Browser page for mod sites. Pages run isolated from the app, with downloads and popups handed to your real browser."
+    },
+    "forkBuild": {
+      "description": "This build carries patches that are not in the official release. Switch them off to compare against stock behaviour without rebuilding."
+    },
+    "fork": {
+      "globalSounds": "Global sounds tab",
+      "globalSoundsDetail": "Browse and swap UI, music, ambience, NPC and shop-item sounds, not just hero ones.",
+      "poolCycling": "Cycle randomizer pools",
+      "poolCyclingDetail": "Auditioning an event with several clips walks the whole pool instead of replaying the first one.",
+      "engine": "Engine (vpkmerge)",
+      "engineDetail": "The sidecar that reads your game files and builds mods. Point this at a locally built binary to test engine changes without repackaging the app.",
+      "engineChecking": "Checking engine...",
+      "engineUnknown": "Unknown version",
+      "engineBundled": "Bundled with this build",
+      "engineCustom": "Custom path (overrides the bundled engine)",
+      "engineChoose": "Choose binary",
+      "engineReset": "Use bundled",
+      "engineRecheck": "Re-check"
     }
   },
   "crosshair": {
@@ -2210,7 +2232,8 @@
       "autoexec": "Console commands that run at game launch.",
       "stats": "Match history and personal stats.",
       "conflicts": "Mods that overwrite the same game files.",
-      "profiles": "Save and swap sets of enabled mods."
+      "profiles": "Save and swap sets of enabled mods.",
+      "browser": "Browse mod sites without leaving Grimoire"
     },
     "launch": {
       "noPath": "Configure your Deadlock path in Settings first",
@@ -2636,5 +2659,21 @@
     },
     "emptyApplied": "No {{noun}} overrides applied yet.",
     "openLocker": "Open the Locker"
+  },
+  "browser": {
+    "addressPlaceholder": "Enter a web address",
+    "back": "Back",
+    "forward": "Forward",
+    "reload": "Reload",
+    "stop": "Stop",
+    "home": "Home",
+    "openExternal": "Open in your browser",
+    "openExternalLabel": "Open externally",
+    "badUrl": "That does not look like a web address. Try gamebanana.com.",
+    "loadFailed": "Page failed to load.",
+    "disabled": {
+      "title": "Browser is off",
+      "description": "Enable the in-app browser in Settings to use this page."
+    }
   }
 }

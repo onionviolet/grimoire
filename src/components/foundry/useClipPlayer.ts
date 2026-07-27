@@ -71,6 +71,8 @@ export function useClipPlayer(): ClipPlayer {
     const [playing, setPlaying] = useState<string | null>(null);
     const [loadingKey, setLoadingKey] = useState<string | null>(null);
     const soundVolume = useAppStore((s) => s.soundVolume);
+    // Fork flag: off restores stock behaviour (always audition vsnd[0]).
+    const cyclePools = useAppStore((s) => s.settings?.forkPoolCycling) !== false;
     const setPreviewAudioPlaying = useAppStore((s) => s.setPreviewAudioPlaying);
 
     // Keep the live element in sync with the sidebar's preview-volume slider.
@@ -107,7 +109,7 @@ export function useClipPlayer(): ClipPlayer {
                 return;
             }
             audio.pause();
-            if (clip.vsnd.length > 1) {
+            if (cyclePools && clip.vsnd.length > 1) {
                 setPoolIndex((m) => ({ ...m, [key]: advancePoolCursor(cursor, clip.vsnd.length) }));
             }
 
@@ -135,7 +137,7 @@ export function useClipPlayer(): ClipPlayer {
                 setPreviewAudioPlaying(false);
             }
         },
-        [playing, poolIndex, soundVolume, setPreviewAudioPlaying]
+        [playing, poolIndex, cyclePools, soundVolume, setPreviewAudioPlaying]
     );
 
     const stateFor = useCallback(

@@ -154,7 +154,11 @@ export default function Foundry() {
         <span className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-text-secondary/70">
           <Tx k="foundry.subtools.heading" fallback="Workshop" />
         </span>
-        {SUBTOOLS.map((tool) => {
+        {SUBTOOLS.filter(
+          // Fork flag: hide the Global sounds tool when switched off, so this
+          // build can be compared against stock behaviour without rebuilding.
+          (tool) => tool.id !== 'globalSound' || settings?.forkGlobalSounds !== false
+        ).map((tool) => {
           const Icon = tool.icon;
           const isActive = active === tool.id;
           return (
