@@ -982,6 +982,16 @@ export interface ElectronAPI {
         globalSounds: (
             filters?: import('./foundry').GlobalSoundFilters
         ) => Promise<import('./foundry').GlobalSound[]>;
+        listSoundAnnotations: () => Promise<import('./foundry').SoundAnnotationEntry[]>;
+        saveSoundAnnotation: (
+            key: string,
+            name: string,
+            note: string
+        ) => Promise<import('./foundry').SoundAnnotationEntry | null>;
+        exportSoundAnnotations: () => Promise<string>;
+        importSoundAnnotations: (
+            content: string
+        ) => Promise<import('./foundry').SoundAnnotationEntry[]>;
         ensureThumbnails: (
             category: import('./foundry').TextureCategory
         ) => Promise<import('./foundry').TextureGridItem[]>;

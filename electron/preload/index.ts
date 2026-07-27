@@ -600,6 +600,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
             ipcRenderer.invoke('foundry:heroSounds', filters ?? {}),
         globalSounds: (filters?: GlobalSoundFilters) =>
             ipcRenderer.invoke('foundry:globalSounds', filters ?? {}),
+        listSoundAnnotations: () => ipcRenderer.invoke('foundry:listSoundAnnotations'),
+        saveSoundAnnotation: (key: string, name: string, note: string) =>
+            ipcRenderer.invoke('foundry:saveSoundAnnotation', key, name, note),
+        exportSoundAnnotations: () => ipcRenderer.invoke('foundry:exportSoundAnnotations'),
+        importSoundAnnotations: (content: string) =>
+            ipcRenderer.invoke('foundry:importSoundAnnotations', content),
         ensureThumbnails: (category: TextureCategory) =>
             ipcRenderer.invoke('foundry:ensureThumbnails', category),
         fullImage: (category: TextureCategory, entryPath: string) =>

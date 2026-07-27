@@ -1331,6 +1331,33 @@ export async function foundryGlobalSounds(
   return window.electronAPI.foundry.globalSounds(filters);
 }
 
+export async function foundrySoundAnnotations(): Promise<import('../types/foundry').SoundAnnotationEntry[]> {
+  return window.electronAPI.foundry.listSoundAnnotations();
+}
+
+/** Stable identity for a catalog event plus the clip it plays. */
+export function foundrySoundAnnotationKey(event: string, clipPath: string): string {
+  return `${event}\u0000${clipPath}`;
+}
+
+export async function saveFoundrySoundAnnotation(
+  key: string,
+  name: string,
+  note: string
+): Promise<import('../types/foundry').SoundAnnotationEntry | null> {
+  return window.electronAPI.foundry.saveSoundAnnotation(key, name, note);
+}
+
+export async function exportFoundrySoundAnnotations(): Promise<string> {
+  return window.electronAPI.foundry.exportSoundAnnotations();
+}
+
+export async function importFoundrySoundAnnotations(
+  content: string
+): Promise<import('../types/foundry').SoundAnnotationEntry[]> {
+  return window.electronAPI.foundry.importSoundAnnotations(content);
+}
+
 export async function foundryFullImage(
   category: import('../types/foundry').TextureCategory,
   entryPath: string
