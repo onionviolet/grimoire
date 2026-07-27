@@ -4,6 +4,7 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   Boxes,
   Compass,
+  Heart,
   Globe2,
   Server,
   Vault,
@@ -477,6 +478,7 @@ export default function Sidebar() {
     const items: NavItem[] = [
       { to: '/', icon: Boxes, labelKey: 'nav.installed', label: t('nav.installed'), tooltip: t('sidebar.tooltip.installed'), badge: installedCount, badgeTone: 'muted' },
       { to: '/browse', icon: Compass, labelKey: 'nav.browse', label: t('nav.browse'), tooltip: t('sidebar.tooltip.browse') },
+      { to: '/saved', icon: Heart, labelKey: 'nav.saved', label: t('nav.saved'), tooltip: t('sidebar.tooltip.saved') },
       {
         to: '/discover',
         icon: Globe2,

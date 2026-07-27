@@ -66,6 +66,7 @@
   "nav": {
     "installed": "Installed",
     "browse": "Browse",
+    "saved": "Saved",
     "discover": "Discover",
     "servers": "Servers",
     "locker": "Locker",
@@ -77,6 +78,37 @@
     "stats": "Stats",
     "settings": "Settings",
     "browser": "Browser"
+  },
+  "saved": {
+    "title": "Saved Mods",
+    "description": "Keep mods for later without downloading or installing them.",
+    "search": "Search saved mods",
+    "sort": "Sort",
+    "sortOptions": {
+      "saved": "Saved time",
+      "name": "Name",
+      "updated": "Recently updated"
+    },
+    "sections": {
+      "all": "All",
+      "Mod": "Mods",
+      "Sound": "Sounds",
+      "Wip": "WiPs"
+    },
+    "loading": "Loading saved mods...",
+    "empty": {
+      "title": "Nothing saved yet",
+      "description": "Use Save mod for later in Browse to build a watchlist.",
+      "filtered": "No saved mods match this view",
+      "filteredDescription": "Try another section or search."
+    },
+    "unavailable": "Saved mod unavailable",
+    "unavailableDetail": "The catalog does not have a cached copy. Open Browse after the next sync.",
+    "unknownCreator": "Unknown creator",
+    "updated": "Updated {{date}}",
+    "savedAt": "Saved {{date}}",
+    "openInBrowse": "Open in Browse",
+    "remove": "Remove saved mod"
   },
   "foundry": {
     "header": {
@@ -2231,6 +2263,7 @@
     "tooltip": {
       "installed": "Mods currently in your Deadlock addons folder.",
       "browse": "Discover and download mods from GameBanana.",
+      "saved": "Mods you bookmarked to revisit later.",
       "discover": "Browse and import profiles published by other Grimoire users.",
       "discoverNew_one": "{{count}} new published profile.",
       "discoverNew_other": "{{count}} new published profiles.",
