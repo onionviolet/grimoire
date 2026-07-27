@@ -108,7 +108,12 @@
     "updated": "Updated {{date}}",
     "savedAt": "Saved {{date}}",
     "openInBrowse": "Open in Browse",
-    "remove": "Remove saved mod"
+    "remove": "Remove saved mod",
+    "editMetadata": "Edit details",
+    "notesPlaceholder": "Notes",
+    "tagsPlaceholder": "Tags, separated by commas",
+    "whySavedPlaceholder": "Why did you save this?",
+    "watchUpdates": "Watch for updates"
   },
   "foundry": {
     "header": {

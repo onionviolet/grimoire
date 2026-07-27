@@ -543,6 +543,19 @@ export interface SavedModMetadataInput {
     watchUpdates?: boolean;
 }
 
+function normalizeSavedText(value: string | undefined, maxLength: number): string | undefined {
+    if (value === undefined) return undefined;
+    return value.replace(/\s+/g, ' ').trim().slice(0, maxLength);
+}
+
+function normalizeSavedTags(value: string[] | undefined): string[] | undefined {
+    if (value === undefined) return undefined;
+    return Array.from(new Set(value
+        .filter((tag) => typeof tag === 'string')
+        .map((tag) => tag.replace(/\s+/g, ' ').trim().slice(0, 40))
+        .filter(Boolean))).slice(0, 20);
+}
+
 export function updateSavedModMetadata(input: SavedModMetadataInput): void {
     const database = initDatabase();
     database.prepare(`
@@ -553,9 +566,9 @@ export function updateSavedModMetadata(input: SavedModMetadataInput): void {
             watch_updates = COALESCE(?, watch_updates)
         WHERE mod_id = ? AND section = ? AND file_id = ?
     `).run(
-        input.notes ?? null,
-        input.tags ? JSON.stringify(input.tags) : null,
-        input.whySaved ?? null,
+        normalizeSavedText(input.notes, 4000) ?? null,
+        normalizeSavedTags(input.tags) ? JSON.stringify(normalizeSavedTags(input.tags)) : null,
+        normalizeSavedText(input.whySaved, 500) ?? null,
         input.watchUpdates === undefined ? null : input.watchUpdates ? 1 : 0,
         input.modId, input.section, input.fileId ?? 0
     );

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Heart, ExternalLink, Loader2, Search, Trash2 } from 'lucide-react';
+import { Heart, ExternalLink, Loader2, Search, Trash2, Pencil, Save as SaveIcon, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import ModThumbnail from '../components/ModThumbnail';
@@ -32,6 +32,8 @@ export default function Saved() {
   const [sort, setSort] = useState<SavedSort>('saved');
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
+  const [editingKey, setEditingKey] = useState<string | null>(null);
+  const [draft, setDraft] = useState({ notes: '', tags: '', whySaved: '', watchUpdates: false });
 
   const loadSaved = async () => {
     setLoading(true);
@@ -77,6 +79,35 @@ export default function Saved() {
   const remove = async (row: SavedRow) => {
     await window.electronAPI.removeSavedMod(row.saved.modId, row.saved.section, row.saved.fileId);
     setRows((current) => current.filter((candidate) => candidate !== row));
+  };
+
+  const rowKey = (row: SavedRow) => `${row.saved.section}:${row.saved.modId}:${row.saved.fileId ?? 'parent'}`;
+
+  const beginEdit = (row: SavedRow) => {
+    setEditingKey(rowKey(row));
+    setDraft({
+      notes: row.saved.notes,
+      tags: row.saved.tags.join(', '),
+      whySaved: row.saved.whySaved,
+      watchUpdates: row.saved.watchUpdates,
+    });
+  };
+
+  const saveMetadata = async (row: SavedRow) => {
+    const tags = draft.tags.split(',').map((tag) => tag.trim()).filter(Boolean);
+    await window.electronAPI.updateSavedModMetadata({
+      modId: row.saved.modId,
+      section: row.saved.section,
+      fileId: row.saved.fileId,
+      notes: draft.notes,
+      tags,
+      whySaved: draft.whySaved,
+      watchUpdates: draft.watchUpdates,
+    });
+    setRows((current) => current.map((candidate) => candidate === row
+      ? { ...candidate, saved: { ...candidate.saved, notes: draft.notes.trim(), tags, whySaved: draft.whySaved.trim(), watchUpdates: draft.watchUpdates } }
+      : candidate));
+    setEditingKey(null);
   };
 
   return (
@@ -134,7 +165,7 @@ export default function Saved() {
         ) : (
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {visibleRows.map((row) => (
-              <article key={`${row.saved.section}:${row.saved.modId}:${row.saved.fileId ?? 'parent'}`} className="flex min-h-[132px] gap-3 rounded-xl border border-border bg-bg-secondary p-3">
+              <article key={rowKey(row)} className="flex min-h-[132px] gap-3 rounded-xl border border-border bg-bg-secondary p-3">
                 <ModThumbnail
                   src={row.mod?.thumbnailUrl ?? undefined}
                   alt={row.mod?.name ?? `GameBanana ${row.saved.modId}`}
@@ -155,8 +186,18 @@ export default function Saved() {
                   )}
                   <div className="mt-2 flex flex-wrap gap-2">
                     <Button size="sm" variant="secondary" onClick={() => openInBrowse(row)}><ExternalLink className="mr-1.5 h-3.5 w-3.5" />{t('saved.openInBrowse')}</Button>
+                    <Button size="sm" variant="ghost" onClick={() => beginEdit(row)}><Pencil className="mr-1.5 h-3.5 w-3.5" />{t('saved.editMetadata')}</Button>
                     <span className="self-center text-[11px] text-text-secondary">{t('saved.savedAt', { date: formatDate(Math.floor(row.saved.savedAt / 1000)) })}</span>
                   </div>
+                  {editingKey === rowKey(row) && (
+                    <div className="mt-3 space-y-2 rounded-lg border border-border bg-bg-primary/40 p-3">
+                      <textarea value={draft.notes} onChange={(event) => setDraft((current) => ({ ...current, notes: event.target.value }))} placeholder={t('saved.notesPlaceholder')} rows={2} className="w-full resize-y rounded-md border border-border bg-bg-secondary px-2 py-1.5 text-xs text-text-primary outline-none" />
+                      <input value={draft.tags} onChange={(event) => setDraft((current) => ({ ...current, tags: event.target.value }))} placeholder={t('saved.tagsPlaceholder')} className="w-full rounded-md border border-border bg-bg-secondary px-2 py-1.5 text-xs text-text-primary outline-none" />
+                      <input value={draft.whySaved} onChange={(event) => setDraft((current) => ({ ...current, whySaved: event.target.value }))} placeholder={t('saved.whySavedPlaceholder')} className="w-full rounded-md border border-border bg-bg-secondary px-2 py-1.5 text-xs text-text-primary outline-none" />
+                      <label className="flex items-center gap-2 text-xs text-text-secondary"><input type="checkbox" checked={draft.watchUpdates} onChange={(event) => setDraft((current) => ({ ...current, watchUpdates: event.target.checked }))} />{t('saved.watchUpdates')}</label>
+                      <div className="flex justify-end gap-2"><Button size="sm" variant="ghost" onClick={() => setEditingKey(null)}><X className="mr-1.5 h-3.5 w-3.5" />{t('common.actions.cancel')}</Button><Button size="sm" onClick={() => void saveMetadata(row)}><SaveIcon className="mr-1.5 h-3.5 w-3.5" />{t('common.actions.save')}</Button></div>
+                    </div>
+                  )}
                 </div>
               </article>
             ))}
