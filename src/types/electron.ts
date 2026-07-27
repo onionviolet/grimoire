@@ -403,6 +403,41 @@ export interface CachedMod {
     cachedAt: number;
 }
 
+export interface SavedMod {
+    modId: number;
+    section: string;
+    fileId: number | null;
+    fileName: string | null;
+    savedAt: number;
+    titleSnapshot: string | null;
+    profileUrlSnapshot: string | null;
+    notes: string;
+    tags: string[];
+    whySaved: string;
+    watchUpdates: boolean;
+    lastCheckedAt: number | null;
+    latestFileId: number | null;
+}
+
+export interface SaveModInput {
+    modId: number;
+    section: string;
+    fileId?: number | null;
+    fileName?: string | null;
+    titleSnapshot?: string | null;
+    profileUrlSnapshot?: string | null;
+}
+
+export interface SavedModMetadataInput {
+    modId: number;
+    section: string;
+    fileId?: number | null;
+    notes?: string;
+    tags?: string[];
+    whySaved?: string;
+    watchUpdates?: boolean;
+}
+
 /**
  * Full crosshair model, matching the current in-game convar surface
  * (citadel_crosshair_*). Pip and dot outlines are (border width, gap,
@@ -895,6 +930,11 @@ export interface ElectronAPI {
     getFavoriteMods: (section?: string) => Promise<Array<{ modId: number; section: string; savedAt: number }>>;
     setFavoriteMod: (modId: number, section: string, saved: boolean) => Promise<void>;
     getFavoriteModIds: (modIds: number[], section: string) => Promise<number[]>;
+    getSavedMods: (section?: string) => Promise<SavedMod[]>;
+    saveMod: (input: SaveModInput) => Promise<void>;
+    removeSavedMod: (modId: number, section: string, fileId?: number | null) => Promise<void>;
+    updateSavedModMetadata: (input: SavedModMetadataInput) => Promise<void>;
+    updateSavedModCheck: (modId: number, section: string, fileId: number | null, lastCheckedAt: number, latestFileId: number | null) => Promise<void>;
     getLocalModCount: (section?: string) => Promise<number>;
     getLocalCategories: (section?: string) => Promise<Array<{ id: number; name: string; count: number }>>;
     getSectionStats: () => Promise<Array<{ section: string; count: number }>>;

@@ -27,6 +27,7 @@ import {
   CloudOff,
   EyeOff,
   Star,
+  Bookmark,
 } from 'lucide-react';
 import DOMPurify from 'dompurify';
 import type {
@@ -85,6 +86,8 @@ interface ModDetailsModalProps {
   /** Browse-only local bookmark. This does not imply a download or install. */
   saved?: boolean;
   onToggleSaved?: () => void;
+  savedFileIds?: Set<number>;
+  onToggleSavedFile?: (file: GameBananaFile) => void;
   /** When provided, render a toggle next to the Update/Installed badge that
    *  flips the underlying mod's ignoreUpdates flag. Only meaningful in the
    *  installed-mod path; Browse leaves both undefined. */
@@ -145,6 +148,8 @@ function ModDetailsModal({
   updateAvailable,
   saved = false,
   onToggleSaved,
+  savedFileIds = new Set(),
+  onToggleSavedFile,
   ignoreUpdates,
   onToggleIgnoreUpdates,
   onClose,
@@ -658,6 +663,14 @@ function ModDetailsModal({
               tone="danger"
               onClick={() => setDeleteCandidate({ modId: installedFileState.modId, fileName: file.fileName })}
               disabled={isBusyThis || deleteInProgress}
+            />
+          )}
+          {onToggleSavedFile && (
+            <IconButton
+              icon={Bookmark}
+              label={savedFileIds.has(file.id) ? 'Remove saved file' : 'Save this file variant'}
+              onClick={() => onToggleSavedFile(file)}
+              className={savedFileIds.has(file.id) ? 'text-yellow-300' : undefined}
             />
           )}
           <Button

@@ -51,6 +51,8 @@ import type {
     ImportSpiritUrnGlbArgs,
     PreviewSpiritUrnGlbArgs,
     SearchLocalModsOptions,
+    SaveModInput,
+    SavedModMetadataInput,
     CrosshairSettings,
     VanillaRestoreResult,
     ProfileCrosshairSettings,
@@ -515,6 +517,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
         ipcRenderer.invoke('set-favorite-mod', modId, section, saved),
     getFavoriteModIds: (modIds: number[], section: string) =>
         ipcRenderer.invoke('get-favorite-mod-ids', modIds, section),
+    getSavedMods: (section?: string) => ipcRenderer.invoke('get-saved-mods', section),
+    saveMod: (input: SaveModInput) => ipcRenderer.invoke('save-mod', input),
+    removeSavedMod: (modId: number, section: string, fileId?: number | null) =>
+        ipcRenderer.invoke('remove-saved-mod', modId, section, fileId),
+    updateSavedModMetadata: (input: SavedModMetadataInput) =>
+        ipcRenderer.invoke('update-saved-mod-metadata', input),
+    updateSavedModCheck: (modId: number, section: string, fileId: number | null, lastCheckedAt: number, latestFileId: number | null) =>
+        ipcRenderer.invoke('update-saved-mod-check', modId, section, fileId, lastCheckedAt, latestFileId),
     getLocalModCount: (section?: string) => ipcRenderer.invoke('get-local-mod-count', section),
     getLocalCategories: (section?: string) => ipcRenderer.invoke('get-local-categories', section),
     getSectionStats: () => ipcRenderer.invoke('get-section-stats'),

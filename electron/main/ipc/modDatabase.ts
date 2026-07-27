@@ -1,5 +1,5 @@
 import { ipcMain } from 'electron';
-import { initDatabase, getModById, getModCount, wipeDatabase, getModsNsfwStatus, updateModNsfw, getModsDownloadCounts, updateModDownloadCount, getFavoriteMods, setFavoriteMod, getFavoriteModIds } from '../services/modDatabase';
+import { initDatabase, getModById, getModCount, wipeDatabase, getModsNsfwStatus, updateModNsfw, getModsDownloadCounts, updateModDownloadCount, getFavoriteMods, setFavoriteMod, getFavoriteModIds, getSavedMods, saveMod, removeSavedMod, updateSavedModMetadata, updateSavedModCheck } from '../services/modDatabase';
 import { searchMods, getCategories, getSectionStats, type SearchOptions } from '../services/searchService';
 import { syncAllSections, syncSingleSection, getSyncStatus, needsSync, isSyncInProgress } from '../services/syncService';
 
@@ -47,6 +47,20 @@ ipcMain.handle('get-cached-mod', (_, id: number) => {
 });
 
 ipcMain.handle('get-favorite-mods', (_, section?: string) => getFavoriteMods(section));
+
+ipcMain.handle('get-saved-mods', (_, section?: string) => getSavedMods(section));
+
+ipcMain.handle('save-mod', (_, input) => saveMod(input));
+
+ipcMain.handle('remove-saved-mod', (_, modId: number, section: string, fileId?: number | null) => {
+    removeSavedMod(modId, section, fileId);
+});
+
+ipcMain.handle('update-saved-mod-metadata', (_, input) => updateSavedModMetadata(input));
+
+ipcMain.handle('update-saved-mod-check', (_, modId: number, section: string, fileId: number | null, lastCheckedAt: number, latestFileId: number | null) => {
+    updateSavedModCheck(modId, section, fileId, lastCheckedAt, latestFileId);
+});
 
 ipcMain.handle('set-favorite-mod', (_, modId: number, section: string, saved: boolean) => {
     setFavoriteMod(modId, section, saved);

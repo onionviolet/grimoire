@@ -1155,6 +1155,7 @@ export default function Browse() {
     () => (initialCache?.mods as GameBananaMod[] | undefined) ?? []
   );
   const [favoriteModIds, setFavoriteModIds] = useState<Set<number>>(new Set());
+  const [savedFileIds, setSavedFileIds] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(() => initialCache?.page ?? 1);
@@ -1199,6 +1200,24 @@ export default function Browse() {
       .catch((err) => console.warn('Failed to load saved mods:', err));
     return () => { cancelled = true; };
   }, [mods, section]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!selectedMod) {
+      setSavedFileIds(new Set());
+      return;
+    }
+    void window.electronAPI.getSavedMods(selectedDetailsSection)
+      .then((items) => {
+        if (!cancelled) {
+          setSavedFileIds(new Set(items
+            .filter((item) => item.modId === selectedMod.id && item.fileId !== null)
+            .map((item) => item.fileId!)));
+        }
+      })
+      .catch((err) => console.warn('Failed to load saved file variants:', err));
+    return () => { cancelled = true; };
+  }, [selectedDetailsSection, selectedMod]);
 
   // Last fetch's identity stamp. Value-comparison gate: if the next call to
   // fetchMods/searchLocal would target the same (page + filters), skip it.
@@ -2324,6 +2343,28 @@ export default function Browse() {
     }
   });
 
+  const handleToggleSavedFile = useStableCallback(async (file: GameBananaFile) => {
+    if (!selectedMod) return;
+    const saved = !savedFileIds.has(file.id);
+    if (saved) {
+      await window.electronAPI.saveMod({
+        modId: selectedMod.id,
+        section: selectedDetailsSection,
+        fileId: file.id,
+        fileName: file.fileName,
+        titleSnapshot: selectedMod.name,
+      });
+    } else {
+      await window.electronAPI.removeSavedMod(selectedMod.id, selectedDetailsSection, file.id);
+    }
+    setSavedFileIds((current) => {
+      const next = new Set(current);
+      if (saved) next.add(file.id);
+      else next.delete(file.id);
+      return next;
+    });
+  });
+
   const applyLoadedModDetails = async (
     mod: GameBananaMod,
     details: GameBananaModDetails,
@@ -2988,6 +3029,8 @@ export default function Browse() {
         hideNsfwPreviews={browseBlurNsfwPreviews}
         saved={favoriteModIds.has(selectedMod.id)}
         onToggleSaved={() => { void handleToggleSaved(selectedMod.id); }}
+        savedFileIds={savedFileIds}
+        onToggleSavedFile={(file) => { void handleToggleSavedFile(file); }}
         dateAdded={selectedModDates?.dateAdded}
         dateModified={selectedModDates?.dateModified}
         isNavigating={!!modalNavigation}

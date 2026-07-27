@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import ModThumbnail from '../components/ModThumbnail';
 import { Button, IconButton } from '../components/common/ui';
-import type { CachedMod } from '../types/electron';
+import type { CachedMod, SavedMod } from '../types/electron';
 import { formatDate } from '../types/gamebanana';
 import { useAppStore } from '../stores/appStore';
 
@@ -12,9 +12,7 @@ type SavedFilter = 'all' | 'Mod' | 'Sound' | 'Wip';
 type SavedSort = 'saved' | 'name' | 'updated';
 
 interface SavedRow {
-  modId: number;
-  section: string;
-  savedAt: number;
+  saved: SavedMod;
   mod: CachedMod | null;
 }
 
@@ -38,10 +36,10 @@ export default function Saved() {
   const loadSaved = async () => {
     setLoading(true);
     try {
-      const favorites = await window.electronAPI.getFavoriteMods();
+      const favorites = await window.electronAPI.getSavedMods();
       const loaded = await Promise.all(
         favorites.map(async (favorite) => ({
-          ...favorite,
+          saved: favorite,
           mod: await window.electronAPI.getCachedMod(favorite.modId),
         }))
       );
@@ -58,26 +56,26 @@ export default function Saved() {
   const visibleRows = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
     return rows
-      .filter((row) => filter === 'all' || row.section === filter)
+      .filter((row) => filter === 'all' || row.saved.section === filter)
       .filter((row) => {
         if (!query) return true;
-        const haystack = `${row.mod?.name ?? ''} ${row.mod?.submitterName ?? ''} ${row.mod?.categoryName ?? ''} ${row.modId}`.toLocaleLowerCase();
+        const haystack = `${row.mod?.name ?? row.saved.titleSnapshot ?? ''} ${row.mod?.submitterName ?? ''} ${row.mod?.categoryName ?? ''} ${row.saved.fileName ?? ''} ${row.saved.modId}`.toLocaleLowerCase();
         return haystack.includes(query);
       })
       .sort((left, right) => {
-        if (sort === 'name') return (left.mod?.name ?? '').localeCompare(right.mod?.name ?? '');
+        if (sort === 'name') return (left.mod?.name ?? left.saved.titleSnapshot ?? '').localeCompare(right.mod?.name ?? right.saved.titleSnapshot ?? '');
         if (sort === 'updated') return (right.mod?.dateModified ?? 0) - (left.mod?.dateModified ?? 0);
-        return right.savedAt - left.savedAt;
+        return right.saved.savedAt - left.saved.savedAt;
       });
   }, [filter, rows, search, sort]);
 
   const openInBrowse = (row: SavedRow) => {
-    setBrowseUi({ section: row.section, search: '', categoryId: 'all', heroCategoryId: 'all', submitter: undefined });
+    setBrowseUi({ section: row.saved.section, search: '', categoryId: 'all', heroCategoryId: 'all', submitter: undefined });
     navigate('/browse');
   };
 
   const remove = async (row: SavedRow) => {
-    await window.electronAPI.setFavoriteMod(row.modId, row.section, false);
+    await window.electronAPI.removeSavedMod(row.saved.modId, row.saved.section, row.saved.fileId);
     setRows((current) => current.filter((candidate) => candidate !== row));
   };
 
@@ -136,20 +134,20 @@ export default function Saved() {
         ) : (
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {visibleRows.map((row) => (
-              <article key={`${row.section}:${row.modId}`} className="flex min-h-[132px] gap-3 rounded-xl border border-border bg-bg-secondary p-3">
+              <article key={`${row.saved.section}:${row.saved.modId}:${row.saved.fileId ?? 'parent'}`} className="flex min-h-[132px] gap-3 rounded-xl border border-border bg-bg-secondary p-3">
                 <ModThumbnail
                   src={row.mod?.thumbnailUrl ?? undefined}
-                  alt={row.mod?.name ?? `GameBanana ${row.modId}`}
+                  alt={row.mod?.name ?? `GameBanana ${row.saved.modId}`}
                   nsfw={row.mod?.isNsfw}
                   hideNsfw={false}
                   className="h-24 w-24 shrink-0 rounded-lg bg-bg-tertiary"
                 />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-start justify-between gap-2">
-                    <h2 className="line-clamp-2 font-medium text-text-primary">{row.mod?.name ?? t('saved.unavailable')}</h2>
+                    <h2 className="line-clamp-2 font-medium text-text-primary">{row.mod?.name ?? row.saved.titleSnapshot ?? t('saved.unavailable')}</h2>
                     <IconButton icon={Trash2} label={t('saved.remove')} onClick={() => void remove(row)} className="shrink-0" />
                   </div>
-                  <p className="mt-1 text-xs uppercase tracking-wider text-accent">{t(`saved.sections.${row.section}`, row.section)}</p>
+                  <p className="mt-1 text-xs uppercase tracking-wider text-accent">{t(`saved.sections.${row.saved.section}`, row.saved.section)}{row.saved.fileName ? ` · ${row.saved.fileName}` : ''}</p>
                   {row.mod ? (
                     <p className="mt-1 text-xs text-text-secondary">{row.mod.submitterName ?? t('saved.unknownCreator')} · {t('saved.updated', { date: formatDate(row.mod.dateModified) })}</p>
                   ) : (
@@ -157,7 +155,7 @@ export default function Saved() {
                   )}
                   <div className="mt-2 flex flex-wrap gap-2">
                     <Button size="sm" variant="secondary" onClick={() => openInBrowse(row)}><ExternalLink className="mr-1.5 h-3.5 w-3.5" />{t('saved.openInBrowse')}</Button>
-                    <span className="self-center text-[11px] text-text-secondary">{t('saved.savedAt', { date: formatDate(Math.floor(row.savedAt / 1000)) })}</span>
+                    <span className="self-center text-[11px] text-text-secondary">{t('saved.savedAt', { date: formatDate(Math.floor(row.saved.savedAt / 1000)) })}</span>
                   </div>
                 </div>
               </article>

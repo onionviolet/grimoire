@@ -20,6 +20,22 @@ export interface FavoriteMod {
     savedAt: number;
 }
 
+export interface SavedMod {
+    modId: number;
+    section: string;
+    fileId: number | null;
+    fileName: string | null;
+    savedAt: number;
+    titleSnapshot: string | null;
+    profileUrlSnapshot: string | null;
+    notes: string;
+    tags: string[];
+    whySaved: string;
+    watchUpdates: boolean;
+    lastCheckedAt: number | null;
+    latestFileId: number | null;
+}
+
 let db: Database.Database | null = null;
 
 const SEARCH_SCHEMA_SQL = `
@@ -137,6 +153,29 @@ export function initDatabase(): Database.Database {
             CREATE INDEX IF NOT EXISTS idx_favorite_mods_saved_at
                 ON favorite_mods(saved_at DESC);
 
+            -- Saved state is separate from the legacy favorite table so a
+            -- parent bookmark and multiple exact file bookmarks can coexist.
+            CREATE TABLE IF NOT EXISTS saved_mods (
+                mod_id INTEGER NOT NULL,
+                section TEXT NOT NULL,
+                file_id INTEGER NOT NULL DEFAULT 0,
+                file_name TEXT,
+                saved_at INTEGER NOT NULL,
+                title_snapshot TEXT,
+                profile_url_snapshot TEXT,
+                notes TEXT NOT NULL DEFAULT '',
+                tags TEXT NOT NULL DEFAULT '[]',
+                why_saved TEXT NOT NULL DEFAULT '',
+                watch_updates INTEGER NOT NULL DEFAULT 0,
+                last_checked_at INTEGER,
+                latest_file_id INTEGER,
+                PRIMARY KEY (mod_id, section, file_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_saved_mods_saved_at
+                ON saved_mods(saved_at DESC);
+            INSERT OR IGNORE INTO saved_mods (mod_id, section, file_id, saved_at)
+                SELECT mod_id, section, 0, saved_at FROM favorite_mods;
+
             ${SEARCH_SCHEMA_SQL}
         `);
 
@@ -201,7 +240,7 @@ export function wipeDatabase(): void {
     // Favorites are user intent, not disposable catalog cache. Snapshot them
     // before replacing the database so "refresh local cache" cannot erase a
     // reading list the user deliberately saved.
-    const favorites = getFavoriteMods();
+    const saved = getSavedMods();
     closeDatabase();
 
     const filesToRemove = [dbPath, `${dbPath}-wal`, `${dbPath}-shm`];
@@ -213,13 +252,31 @@ export function wipeDatabase(): void {
 
     const database = initDatabase();
     const restore = database.prepare(`
-        INSERT INTO favorite_mods (mod_id, section, saved_at)
-        VALUES (?, ?, ?)
-        ON CONFLICT(mod_id, section) DO UPDATE SET saved_at = excluded.saved_at
+        INSERT INTO saved_mods (
+            mod_id, section, file_id, file_name, saved_at, title_snapshot,
+            profile_url_snapshot, notes, tags, why_saved, watch_updates,
+            last_checked_at, latest_file_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(mod_id, section, file_id) DO UPDATE SET
+            file_name = excluded.file_name,
+            saved_at = excluded.saved_at,
+            title_snapshot = excluded.title_snapshot,
+            profile_url_snapshot = excluded.profile_url_snapshot,
+            notes = excluded.notes,
+            tags = excluded.tags,
+            why_saved = excluded.why_saved,
+            watch_updates = excluded.watch_updates,
+            last_checked_at = excluded.last_checked_at,
+            latest_file_id = excluded.latest_file_id
     `);
     const restoreAll = database.transaction(() => {
-        for (const favorite of favorites) {
-            restore.run(favorite.modId, favorite.section, favorite.savedAt);
+        for (const item of saved) {
+            restore.run(
+                item.modId, item.section, item.fileId ?? 0, item.fileName,
+                item.savedAt, item.titleSnapshot, item.profileUrlSnapshot,
+                item.notes, JSON.stringify(item.tags), item.whySaved,
+                item.watchUpdates ? 1 : 0, item.lastCheckedAt, item.latestFileId
+            );
         }
     });
     restoreAll();
@@ -405,34 +462,116 @@ export function getModById(id: number): CachedMod | null {
 
 /** Return the user's saved GameBanana items, newest first. */
 export function getFavoriteMods(section?: string): FavoriteMod[] {
+    return getSavedMods(section)
+        .filter((item) => item.fileId === null)
+        .map(({ modId, section: itemSection, savedAt }) => ({ modId, section: itemSection, savedAt }));
+}
+
+function parseSavedTags(value: unknown): string[] {
+    if (typeof value !== 'string') return [];
+    try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed.filter((tag): tag is string => typeof tag === 'string') : [];
+    } catch {
+        return [];
+    }
+}
+
+/** Return parent and exact-file bookmarks, newest first. */
+export function getSavedMods(section?: string): SavedMod[] {
     const database = initDatabase();
     const rows = section
-        ? database.prepare(
-            'SELECT mod_id, section, saved_at FROM favorite_mods WHERE section = ? ORDER BY saved_at DESC'
-        ).all(section)
-        : database.prepare(
-            'SELECT mod_id, section, saved_at FROM favorite_mods ORDER BY saved_at DESC'
-        ).all();
-
-    return (rows as Array<{ mod_id: number; section: string; saved_at: number }>).map((row) => ({
-        modId: row.mod_id,
-        section: row.section,
-        savedAt: row.saved_at,
+        ? database.prepare('SELECT * FROM saved_mods WHERE section = ? ORDER BY saved_at DESC').all(section)
+        : database.prepare('SELECT * FROM saved_mods ORDER BY saved_at DESC').all();
+    return (rows as Array<Record<string, unknown>>).map((row) => ({
+        modId: row.mod_id as number,
+        section: row.section as string,
+        fileId: (row.file_id as number) === 0 ? null : row.file_id as number,
+        fileName: row.file_name as string | null,
+        savedAt: row.saved_at as number,
+        titleSnapshot: row.title_snapshot as string | null,
+        profileUrlSnapshot: row.profile_url_snapshot as string | null,
+        notes: (row.notes as string) ?? '',
+        tags: parseSavedTags(row.tags),
+        whySaved: (row.why_saved as string) ?? '',
+        watchUpdates: row.watch_updates === 1,
+        lastCheckedAt: row.last_checked_at as number | null,
+        latestFileId: row.latest_file_id as number | null,
     }));
+}
+
+export interface SaveModInput {
+    modId: number;
+    section: string;
+    fileId?: number | null;
+    fileName?: string | null;
+    titleSnapshot?: string | null;
+    profileUrlSnapshot?: string | null;
+}
+
+/** Create or refresh a parent or exact-file bookmark. */
+export function saveMod(input: SaveModInput): void {
+    const database = initDatabase();
+    const fileId = input.fileId ?? 0;
+    database.prepare(`
+        INSERT INTO saved_mods (
+            mod_id, section, file_id, file_name, saved_at, title_snapshot, profile_url_snapshot
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(mod_id, section, file_id) DO UPDATE SET
+            saved_at = excluded.saved_at,
+            file_name = COALESCE(excluded.file_name, saved_mods.file_name),
+            title_snapshot = COALESCE(excluded.title_snapshot, saved_mods.title_snapshot),
+            profile_url_snapshot = COALESCE(excluded.profile_url_snapshot, saved_mods.profile_url_snapshot)
+    `).run(
+        input.modId, input.section, fileId, input.fileName ?? null, Date.now(),
+        input.titleSnapshot ?? null, input.profileUrlSnapshot ?? null
+    );
+}
+
+export function removeSavedMod(modId: number, section: string, fileId?: number | null): void {
+    initDatabase().prepare('DELETE FROM saved_mods WHERE mod_id = ? AND section = ? AND file_id = ?')
+        .run(modId, section, fileId ?? 0);
+}
+
+export interface SavedModMetadataInput {
+    modId: number;
+    section: string;
+    fileId?: number | null;
+    notes?: string;
+    tags?: string[];
+    whySaved?: string;
+    watchUpdates?: boolean;
+}
+
+export function updateSavedModMetadata(input: SavedModMetadataInput): void {
+    const database = initDatabase();
+    database.prepare(`
+        UPDATE saved_mods SET
+            notes = COALESCE(?, notes),
+            tags = COALESCE(?, tags),
+            why_saved = COALESCE(?, why_saved),
+            watch_updates = COALESCE(?, watch_updates)
+        WHERE mod_id = ? AND section = ? AND file_id = ?
+    `).run(
+        input.notes ?? null,
+        input.tags ? JSON.stringify(input.tags) : null,
+        input.whySaved ?? null,
+        input.watchUpdates === undefined ? null : input.watchUpdates ? 1 : 0,
+        input.modId, input.section, input.fileId ?? 0
+    );
+}
+
+export function updateSavedModCheck(modId: number, section: string, fileId: number | null, lastCheckedAt: number, latestFileId: number | null): void {
+    initDatabase().prepare(`
+        UPDATE saved_mods SET last_checked_at = ?, latest_file_id = ?
+        WHERE mod_id = ? AND section = ? AND file_id = ?
+    `).run(lastCheckedAt, latestFileId, modId, section, fileId ?? 0);
 }
 
 /** Save or remove an item without downloading or installing it. */
 export function setFavoriteMod(modId: number, section: string, saved: boolean): void {
-    const database = initDatabase();
-    if (saved) {
-        database.prepare(`
-            INSERT INTO favorite_mods (mod_id, section, saved_at)
-            VALUES (?, ?, ?)
-            ON CONFLICT(mod_id, section) DO UPDATE SET saved_at = excluded.saved_at
-        `).run(modId, section, Date.now());
-    } else {
-        database.prepare('DELETE FROM favorite_mods WHERE mod_id = ? AND section = ?').run(modId, section);
-    }
+    if (saved) saveMod({ modId, section });
+    else removeSavedMod(modId, section);
 }
 
 /** Return saved state for a batch of items, keyed by GameBanana id. */
@@ -441,7 +580,7 @@ export function getFavoriteModIds(modIds: number[], section: string): number[] {
     const database = initDatabase();
     const placeholders = modIds.map(() => '?').join(',');
     const rows = database.prepare(
-        `SELECT mod_id FROM favorite_mods WHERE section = ? AND mod_id IN (${placeholders})`
+        `SELECT mod_id FROM saved_mods WHERE section = ? AND file_id = 0 AND mod_id IN (${placeholders})`
     ).all(section, ...modIds) as Array<{ mod_id: number }>;
     return rows.map((row) => row.mod_id);
 }
