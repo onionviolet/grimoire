@@ -368,6 +368,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     fixGameinfo: () => ipcRenderer.invoke('fix-gameinfo'),
     getPerformanceConfigStatus: () => ipcRenderer.invoke('get-performance-config-status'),
     applyPerformanceConfig: () => ipcRenderer.invoke('apply-performance-config'),
+    setPerformanceHudConvars: (values: Record<string, boolean>) => ipcRenderer.invoke('set-performance-hud-convars', values),
+    setPerformanceAdvancedConvars: (values: Record<string, number>) => ipcRenderer.invoke('set-performance-advanced-convars', values),
     removePerformanceConfig: () => ipcRenderer.invoke('remove-performance-config'),
     resetPerformanceConfigOverrides: () => ipcRenderer.invoke('reset-performance-config-overrides'),
     restorePerformanceConfigBackup: () => ipcRenderer.invoke('restore-performance-config-backup'),

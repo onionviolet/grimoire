@@ -3,7 +3,7 @@ import { useTranslation, Trans } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { useNavigate } from 'react-router-dom';
 import { Gauge, ExternalLink, RefreshCw, RotateCcw, Settings2, SquarePen } from 'lucide-react';
-import { Card, Badge, Button } from '../common/ui';
+import { Card, Badge, Button, Toggle } from '../common/ui';
 import EditorPickerModal from './EditorPickerModal';
 import { useAppStore, type BrowseArtistRef } from '../../stores/appStore';
 import {
@@ -13,6 +13,8 @@ import {
   removePerformanceConfig,
   resetPerformanceConfigOverrides,
   restorePerformanceConfigBackup,
+  setPerformanceHudConvars,
+  setPerformanceAdvancedConvars,
 } from '../../lib/api';
 import type { PerformanceConfigStatus } from '../../types/electron';
 
@@ -28,6 +30,62 @@ const SQOOKY_ARTIST: BrowseArtistRef = {
   profileUrl: 'https://gamebanana.com/members/3826762',
   kofiUrl: SQOOKY_KOFI_URL,
 };
+
+const HUD_CONTROLS = [
+  {
+    key: 'citadel_unit_status_use_v2',
+    label: 'New Health Bars',
+    description: 'Use the alternate health bars for heroes, NPCs, and other units.',
+    on: 'true',
+  },
+  {
+    key: 'citadel_unit_status_use_v2_for_nonplayers',
+    label: 'Health Bars for NPCs',
+    description: 'Use the alternate health bars for NPCs and other non-player units.',
+    on: 'true',
+  },
+  {
+    key: 'citadel_unit_status_single_bar_mode',
+    label: 'Numeric / Single-Bar Health',
+    description: 'Use the single-bar health presentation when supported by the current game build.',
+    on: 'true',
+  },
+  {
+    key: 'citadel_unit_status_allies_see_thru_walls',
+    label: 'Ally Health Through Walls',
+    description: 'Show allied unit health status through walls.',
+    on: 'true',
+  },
+  {
+    key: 'citadel_hud_objective_health_enabled',
+    label: 'Objective Health Bars',
+    description: 'Show health information for objectives and major map units.',
+    on: '2',
+  },
+  {
+    key: 'citadel_damage_offscreen_indicator_disabled',
+    label: 'Offscreen Damage Indicators',
+    description: 'Show damage indicators for units outside your view.',
+    on: 'false',
+  },
+  {
+    key: 'citadel_damage_text_show_effectiveness',
+    label: 'Damage Effectiveness Text',
+    description: 'Show effectiveness information alongside damage numbers.',
+    on: '1',
+  },
+] as const;
+
+const ADVANCED_CONTROLS = [
+  { key: 'citadel_unit_status_allies_see_thru_walls_max_distance', label: 'Ally health visibility distance', min: 0, max: 200, step: 5, defaultValue: 40 },
+  { key: 'citadel_minimap_unit_click_radius', label: 'Minimap click radius', min: 400, max: 1200, step: 25, defaultValue: 800 },
+  { key: 'citadel_minimap_player_width', label: 'Minimap player icon size', min: 4, max: 12, step: 0.5, defaultValue: 8 },
+  { key: 'citadel_minimap_local_player_width', label: 'Minimap local-player icon size', min: 6, max: 16, step: 0.5, defaultValue: 12 },
+  { key: 'citadel_minimap_max_icon_shrink', label: 'Minimap icon shrink', min: 0.4, max: 1, step: 0.05, defaultValue: 0.8 },
+  { key: 'citadel_minimap_overlap_scan_distance', label: 'Minimap overlap scan distance', min: 0, max: 40, step: 1, defaultValue: 20 },
+  { key: 'citadel_minimap_zip_line_thickness', label: 'Minimap zipline thickness', min: 1, max: 8, step: 0.5, defaultValue: 6 },
+  { key: 'minimap_update_rate_hz', label: 'Minimap update rate', min: 5, max: 60, step: 5, defaultValue: 5 },
+] as const;
 
 /**
  * Localized status sentence built from the structured status fields, so the
@@ -119,6 +177,14 @@ export default function PerformanceConfigCard() {
     }
   };
 
+  const toggleHudControl = async (key: string, enabled: boolean) => {
+    await run(() => setPerformanceHudConvars({ [key]: enabled }));
+  };
+
+  const updateAdvancedControl = async (key: string, value: number) => {
+    await run(() => setPerformanceAdvancedConvars({ [key]: value }));
+  };
+
   const openFile = async () => {
     setOpenError(null);
     try {
@@ -144,6 +210,7 @@ export default function PerformanceConfigCard() {
 
   const applied = status?.state === 'applied';
   const wiped = status?.state === 'wiped';
+  const hudControlsAvailable = status?.state === 'applied' || status?.state === 'not-applied';
   // gameinfo.gi is empty/corrupt but we hold a backup: offer one-click recovery
   // so a manually cleared file is never a dead-end.
   const canRestore = status?.canRestoreBackup === true;
@@ -256,6 +323,60 @@ export default function PerformanceConfigCard() {
           )}
         </div>
       </div>
+      {hudControlsAvailable && (
+        <details className="mt-5 border-t border-white/5 pt-4">
+          <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-text-secondary hover:text-text-primary">
+            HUD & advanced gameinfo.gi settings
+          </summary>
+          <div className="mt-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              {HUD_CONTROLS.map((control) => {
+                const current = status?.convarValues?.[control.key];
+                const checked = current === control.on;
+                return (
+                  <Toggle
+                    key={control.key}
+                    checked={checked}
+                    onChange={(enabled) => void toggleHudControl(control.key, enabled)}
+                    disabled={busy || !status}
+                    label={control.label}
+                    description={control.description}
+                  />
+                );
+              })}
+            </div>
+          </div>
+          <div className="mt-5 border-t border-white/5 pt-4">
+            <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-text-secondary">Advanced numeric settings</p>
+            <div className="mt-4 grid gap-x-6 gap-y-4 sm:grid-cols-2">
+              {ADVANCED_CONTROLS.map((control) => {
+                const raw = status?.convarValues?.[control.key];
+                const value = raw === undefined ? control.defaultValue : Number(raw);
+                return (
+                  <label key={control.key} className="block">
+                    <div className="mb-1 flex items-center justify-between gap-3 text-xs text-text-secondary">
+                      <span>{control.label}</span>
+                      <span className="font-mono text-text-primary">{Number.isFinite(value) ? value : control.defaultValue}</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={control.min}
+                      max={control.max}
+                      step={control.step}
+                      value={Number.isFinite(value) ? value : control.defaultValue}
+                      onChange={(event) => void updateAdvancedControl(control.key, Number(event.target.value))}
+                      disabled={busy || !status}
+                      className="w-full accent-accent"
+                      aria-label={control.label}
+                    />
+                    {raw === undefined && <p className="mt-1 text-[11px] text-text-secondary/70">Using the game default until changed.</p>}
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        </details>
+      )}
       {pickerOpen && (
         <EditorPickerModal
           onClose={() => setPickerOpen(false)}

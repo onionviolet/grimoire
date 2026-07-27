@@ -16,6 +16,8 @@ import { getGameinfoPath } from './deadlock';
 import type { PerformanceConfigStatus } from '../../../src/types/electron';
 import {
     CONVARS,
+    ADVANCED_GAMEINFO_CONVARS,
+    HUD_CONVARS,
     PRESET_ID,
     PRESET_VERSION,
     SECTION_OPS,
@@ -295,7 +297,7 @@ function applyOp(content: string, op: SectionOp): string | null {
 
 export function applyPerformanceConfig(
     deadlockPath: string | null,
-    opts?: { resetOverrides?: boolean }
+    opts?: { resetOverrides?: boolean; convarOverrides?: Record<string, string> }
 ): PerformanceConfigStatus {
     if (!deadlockPath) return status('error', 'Deadlock path not configured.');
     const gameinfoPath = getGameinfoPath(deadlockPath);
@@ -317,6 +319,9 @@ export function applyPerformanceConfig(
             overrides = BEGIN_RE.test(content)
                 ? harvestOverrides(content)
                 : (readAppliedState(gameinfoPath)?.overrides ?? {});
+        }
+        for (const [key, value] of Object.entries(opts?.convarOverrides ?? {})) {
+            overrides[`ConVars/${key}`] = { value };
         }
         // Reapplying (e.g. after a preset data update) starts from a clean base.
         if (BEGIN_RE.test(content)) content = removeMarkers(content);
@@ -424,6 +429,102 @@ export function applyPerformanceConfig(
         return status('applied', `Performance config v${PRESET_VERSION} applied${note}.${keptNote}`, kept);
     } catch (err) {
         return status('error', `Failed to apply performance config: ${err}`);
+    }
+}
+
+/** Update only user-exposed HUD ConVars while retaining the normal managed
+ * performance patch and its backup/revert semantics. */
+export function setPerformanceHudConvars(
+    deadlockPath: string | null,
+    values: Record<string, boolean>
+): PerformanceConfigStatus {
+    const allowed = new Map<string, (typeof HUD_CONVARS)[number]>(HUD_CONVARS.map((entry) => [entry.key, entry]));
+    const convarValues: Record<string, string> = {};
+    for (const [key, enabled] of Object.entries(values)) {
+        const entry = allowed.get(key);
+        if (entry) convarValues[key] = enabled ? entry.on : entry.off;
+    }
+    return setPerformanceConvarValues(deadlockPath, convarValues, allowed);
+}
+
+export function setPerformanceAdvancedConvars(
+    deadlockPath: string | null,
+    values: Record<string, number>
+): PerformanceConfigStatus {
+    const allowed = new Map<string, { key: string; min: number; max: number; step: number }>(
+        ADVANCED_GAMEINFO_CONVARS.map((entry) => [entry.key, entry])
+    );
+    const convarValues: Record<string, string> = {};
+    for (const [key, value] of Object.entries(values)) {
+        const entry = allowed.get(key);
+        if (!entry || !Number.isFinite(value) || value < entry.min || value > entry.max) continue;
+        convarValues[key] = String(value);
+    }
+    return setPerformanceConvarValues(deadlockPath, convarValues, allowed);
+}
+
+function setPerformanceConvarValues(
+    deadlockPath: string | null,
+    convarValues: Record<string, string>,
+    allowed: Map<string, unknown>
+): PerformanceConfigStatus {
+    if (!deadlockPath) return status('error', 'Deadlock path not configured.');
+    const gameinfoPath = getGameinfoPath(deadlockPath);
+    if (existsSync(gameinfoPath) && !BEGIN_RE.test(readFileSync(gameinfoPath, 'utf-8'))) {
+        return setConvarsInUnmanagedFile(gameinfoPath, convarValues, allowed);
+    }
+    if (Object.keys(convarValues).length === 0) {
+        return getPerformanceConfigStatus(deadlockPath);
+    }
+    return applyPerformanceConfig(deadlockPath, { convarOverrides: convarValues });
+}
+
+/** Patch a manually managed gameinfo.gi without forcing the entire FPS preset
+ * onto it. Each changed line keeps its original value in a marker comment so
+ * the edit remains auditable and can be recognized on the next read. */
+function setConvarsInUnmanagedFile(
+    gameinfoPath: string,
+    values: Record<string, string>,
+    allowed: Map<string, unknown>
+): PerformanceConfigStatus {
+    try {
+        const original = readFileSync(gameinfoPath, 'utf-8');
+        const crlf = original.includes('\r\n');
+        let content = crlf ? original.split('\r\n').join('\n') : original;
+        const range = findSectionByPath(content, ['ConVars']);
+        if (!range) return status('error', 'gameinfo.gi has no ConVars section.');
+        let body = content.slice(range.bodyStart, range.bodyEnd);
+        const lines = body.split('\n');
+        for (const [key, value] of Object.entries(values)) {
+            if (!allowed.has(key)) continue;
+            const index = lines.findIndex((line) => entryKey(line) === key);
+            if (index >= 0) {
+                const line = lines[index];
+                const match = matchEntryLine(line, key);
+                if (!match) continue;
+                if (line.includes(`// ${MARKER} hud-was`)) {
+                    lines[index] = `${match.prefix}${quote(value)}${match.suffix}`;
+                } else {
+                    lines[index] = `${match.prefix}${quote(value)} // ${MARKER} hud-was ${quote(unquote(match.value))}${match.suffix}`;
+                }
+            } else {
+                const indent = detectIndent(body);
+                lines.unshift(`${indent}${key} ${quote(value)} // ${MARKER} hud-added`);
+                body = lines.join('\n');
+            }
+        }
+        body = lines.join('\n');
+        content = content.slice(0, range.bodyStart) + body + content.slice(range.bodyEnd);
+        if (!existsSync(backupPathFor(gameinfoPath)) && hasConVars(original)) {
+            try { writeFileSync(backupPathFor(gameinfoPath), original, 'utf-8'); } catch { /* best effort */ }
+        }
+        writeFileSync(gameinfoPath, crlf ? content.split('\n').join('\r\n') : content, 'utf-8');
+        return {
+            ...status('not-applied', 'HUD ConVars are configured in gameinfo.gi.'),
+            convarValues: readHudConvarValues(content),
+        };
+    } catch (err) {
+        return status('error', `Failed to update HUD ConVars: ${err}`);
     }
 }
 
@@ -552,6 +653,7 @@ export function getPerformanceConfigStatus(deadlockPath: string | null): Perform
 
     try {
         const content = readFileSync(gameinfoPath, 'utf-8');
+        const convarValues = readHudConvarValues(content);
         const begin = BEGIN_RE.exec(content);
         if (begin) {
             // The sidecar records a hash of the exact bytes Grimoire wrote, so
@@ -574,6 +676,7 @@ export function getPerformanceConfigStatus(deadlockPath: string | null): Perform
                 bundledVersion: PRESET_VERSION,
                 handEdited,
                 overrideCount,
+                convarValues,
                 message: handEdited
                     ? `${base}${overrideNote} The file has manual edits: Reapply folds them into your overrides.`
                     : `${base}${overrideNote}`,
@@ -599,16 +702,37 @@ export function getPerformanceConfigStatus(deadlockPath: string | null): Perform
             const restoreNote = savedOverrides
                 ? ` Your ${savedOverrides} saved override${savedOverrides === 1 ? '' : 's'} will be restored too.`
                 : '';
-            return status(
+            return {
+                ...status(
                 'wiped',
                 `A game update reset gameinfo.gi and removed the performance config. Reapply to restore it.${restoreNote}`,
                 savedOverrides
-            );
+                ),
+                convarValues,
+            };
         }
-        return status('not-applied', 'Performance config is not applied.');
+        return {
+            ...status('not-applied', 'Performance config is not applied.'),
+            convarValues,
+        };
     } catch (err) {
         return status('error', `Failed to read gameinfo.gi: ${err}`);
     }
+}
+
+function readHudConvarValues(content: string): Record<string, string> {
+    const normalized = content.includes('\r\n') ? content.split('\r\n').join('\n') : content;
+    const range = findSectionByPath(normalized, ['ConVars']);
+    if (!range) return {};
+    const body = normalized.slice(range.bodyStart, range.bodyEnd);
+    const values: Record<string, string> = {};
+    for (const line of body.split(/\r?\n/)) {
+        const key = entryKey(line);
+        if (!key || !HUD_CONVARS.some((entry) => entry.key === key)) continue;
+        const match = matchEntryLine(line, key);
+        if (match) values[key] = unquote(match.value);
+    }
+    return values;
 }
 
 function status(
