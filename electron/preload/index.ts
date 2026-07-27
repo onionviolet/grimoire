@@ -46,6 +46,7 @@ import type {
     OpenDialogOptions,
     SaveDialogOptions,
     ImportCustomModArgs,
+    ChatWheelSaveArgs,
     ImportSoulContainerGlbArgs,
     PreviewSoulContainerGlbArgs,
     ImportSpiritUrnGlbArgs,
@@ -95,6 +96,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
         scan: (req: DmmMigrationRequest) => ipcRenderer.invoke('dmm-migrate:scan', req),
         execute: (req: DmmMigrationRequest) => ipcRenderer.invoke('dmm-migrate:execute', req),
     },
+
+    chatWheelRead: (vpkPath: string) => ipcRenderer.invoke('chat-wheel:read', vpkPath),
+    chatWheelSave: (args: ChatWheelSaveArgs) => ipcRenderer.invoke('chat-wheel:save', args),
 
     // Discord Rich Presence (opt-in; talks only to the local Discord client)
     discord: {

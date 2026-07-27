@@ -95,6 +95,14 @@ export async function getMods(): Promise<Mod[]> {
   return window.electronAPI.getMods();
 }
 
+export async function readChatWheel(vpkPath: string): Promise<string> {
+  return window.electronAPI.chatWheelRead(vpkPath);
+}
+
+export async function saveChatWheel(args: import('../types/electron').ChatWheelSaveArgs): Promise<Mod | null> {
+  return withGameRunningWarning(() => window.electronAPI.chatWheelSave(args));
+}
+
 export async function enableMod(modId: string): Promise<Mod> {
   return window.electronAPI.enableMod(modId);
 }

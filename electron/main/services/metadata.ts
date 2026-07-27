@@ -19,6 +19,8 @@ export interface ModMetadata {
     categoryId?: number;
     categoryName?: string; // Hero/category name from GameBanana
     sourceSection?: string;
+    /** A locally generated ChatLane VPK, editable through the Chat Wheel page. */
+    chatWheel?: boolean;
     nsfw?: boolean;
     isArchived?: boolean;   // True when the downloaded GameBanana file is from the archived files list
     sha256?: string;       // SHA-256 hash of the installed VPK file contents

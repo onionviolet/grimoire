@@ -405,6 +405,13 @@ export interface CachedMod {
     cachedAt: number;
 }
 
+export interface ChatWheelSaveArgs {
+    yaml: string;
+    name: string;
+    /** Replace this installed generated VPK in-place, preserving its slot. */
+    replaceModId?: string;
+}
+
 export interface SavedMod {
     modId: number;
     section: string;
@@ -564,6 +571,9 @@ export interface ElectronAPI {
         scan: (req: DmmMigrationRequest) => Promise<DmmMigrationReport>;
         execute: (req: DmmMigrationRequest) => Promise<DmmMigrationReport>;
     };
+
+    chatWheelRead: (vpkPath: string) => Promise<string>;
+    chatWheelSave: (args: ChatWheelSaveArgs) => Promise<Mod | null>;
 
     // Discord Rich Presence (opt-in; talks only to the local Discord client)
     discord: {

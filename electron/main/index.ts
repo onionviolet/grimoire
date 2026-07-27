@@ -69,6 +69,7 @@ app.commandLine.appendSwitch(
 // Import IPC handlers
 import './ipc/settings';
 import './ipc/mods';
+import './ipc/chatWheel';
 import './ipc/gamebanana';
 import './ipc/system';
 import './ipc/conflicts';
