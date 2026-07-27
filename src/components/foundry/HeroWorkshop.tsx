@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft,
   Sparkles,
@@ -9,16 +9,19 @@ import {
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { HeroInfo } from '../../types/foundry';
+import type { Mod } from '../../types/mod';
 import {
   getHeroRenderPath,
   getHeroNamePath,
   getHeroWikiUrl,
 } from '../../lib/lockerUtils';
 import HeroEffectsPanel from '../locker/HeroEffectsPanel';
+import HeroSoundPicker from '../locker/HeroSoundPicker';
 import SoundBrowse from './SoundBrowse';
 import TextureBrowse from './TextureBrowse';
 import LibraryBrowse from './LibraryBrowse';
 import Tx from '../translation/Tx';
+import { useAppStore } from '../../stores/appStore';
 
 interface HeroWorkshopProps {
   hero: HeroInfo;
@@ -46,6 +49,10 @@ type SectionId = 'appearance' | 'abilities' | 'voice' | 'icons';
  */
 export default function HeroWorkshop({ hero, heroNames, onBack }: HeroWorkshopProps) {
   const { t } = useTranslation();
+  const mods = useAppStore((s) => s.mods);
+  const modsLoaded = useAppStore((s) => s.modsLoaded);
+  const loadMods = useAppStore((s) => s.loadMods);
+  const toggleMod = useAppStore((s) => s.toggleMod);
   const [section, setSection] = useState<SectionId>('appearance');
   const [renderStep, setRenderStep] = useState(0);
   const [nameFailed, setNameFailed] = useState(false);
@@ -53,6 +60,18 @@ export default function HeroWorkshop({ hero, heroNames, onBack }: HeroWorkshopPr
   // A single-hero roster so the reused browse panels are pre-scoped to this hero
   // (they each carry their own hero filter; handing them one hero pins it).
   const scopedRoster = useMemo<HeroInfo[]>(() => [hero], [hero]);
+
+  useEffect(() => {
+    if (!modsLoaded) void loadMods();
+  }, [modsLoaded, loadMods]);
+
+  const heroSoundMods = useMemo(
+    () =>
+      mods.filter((mod: Mod) =>
+        mod.abilitySounds?.perHero.some((entry) => entry.hero.toLowerCase() === hero.name.toLowerCase()),
+      ),
+    [mods, hero.name],
+  );
 
   const sections: Array<{ id: SectionId; label: string; icon: LucideIcon }> = [
     { id: 'appearance', label: t('foundry.workshop.appearance', 'Appearance'), icon: Sparkles },
@@ -161,6 +180,11 @@ export default function HeroWorkshop({ hero, heroNames, onBack }: HeroWorkshopPr
             <HeroEffectsPanel key={hero.name} heroName={hero.name} />
           ) : section === 'abilities' ? (
             <div className="space-y-6">
+              <HeroSoundPicker
+                heroName={hero.name}
+                soundList={heroSoundMods}
+                onSelect={(modId) => void toggleMod(modId)}
+              />
               {/* Each ability card lists its gameplay sounds with play + Swap (drop
                   your own MP3), forged through the soundswap engine. The ability
                   axis lives here (not under Voice); Voice is VO only. */}

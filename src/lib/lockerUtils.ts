@@ -304,7 +304,9 @@ const GLOBAL_SOUND_CATEGORIES: ReadonlySet<string> = new Set([
  * etc.) flow through.
  */
 export function isLockerManagedSound(mod: Mod): boolean {
-  if (mod.sourceSection !== 'Sound') return false;
+  // Locally dropped VPKs have no GameBanana sourceSection, but a positive
+  // ability footprint is enough to identify them as hero audio.
+  if (mod.sourceSection !== 'Sound' && !mod.abilitySounds?.dominantHero) return false;
   // An explicit hero tag (auto-set from the title at download, or set by hand)
   // means this sound is hero-specific and belongs in that hero's Sounds tab,
   // even when GameBanana filed it under a global music/UI category. The

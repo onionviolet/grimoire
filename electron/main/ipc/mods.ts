@@ -280,10 +280,28 @@ function enrichMod(mod: Mod): WireMod {
             imprintStale: metadata.imprintStale,
         };
     }
-    // No metadata row (a VPK dropped straight into addons): still file-tree tag
-    // the hero so unknown skins get their Locker chip like downloaded mods.
-    const { lockerHero, lockerHeroSource } = resolveUnknownLockerHero(mod, metadata, isUnknown, globalType);
-    return { ...mod, isUnknown, globalType: globalType ?? undefined, lockerHero, lockerHeroSource };
+    // No metadata row (a VPK dropped straight into addons): run the same sound
+    // footprint detection as downloaded Sound mods. This lets a locally placed
+    // audio VPK appear in the per-ability picker without GameBanana metadata.
+    let abilitySounds: AbilitySoundClassification | null = null;
+    try {
+        const result = classifyAbilitySoundsFromVpk(mod.path);
+        abilitySounds = result && result.dominantHero ? result : null;
+    } catch (err) {
+        console.warn(`[enrichMod] VPK ability-sound classification failed for ${mod.fileName}:`, err);
+    }
+    const resolved = resolveUnknownLockerHero(mod, metadata, isUnknown, globalType);
+    const lockerHero = abilitySounds?.dominantHero ?? resolved.lockerHero;
+    const lockerHeroSource = abilitySounds?.dominantHero ? 'vpk' : resolved.lockerHeroSource;
+    if (abilitySounds) setModMetadata(mod.metaKey, { abilitySounds });
+    return {
+        ...mod,
+        isUnknown,
+        globalType: globalType ?? undefined,
+        lockerHero,
+        lockerHeroSource,
+        abilitySounds: abilitySounds ?? undefined,
+    };
 }
 
 /**
