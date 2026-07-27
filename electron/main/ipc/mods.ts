@@ -116,11 +116,22 @@ async function copyIntoModSlot(
  * with no metadata row too (a VPK dropped straight into citadel/addons), so
  * locally added HUD / Soul Container mods get tagged like downloaded ones.
  * Persists the result + classifier version so later scans skip the re-parse.
+ *
+ * Foundry sound swaps are exempt from classification entirely. A swap's file
+ * tree is not its own: it mirrors whatever event it overrides, so path sniffing
+ * reads the *game's* layout rather than the mod's intent. An item-sound swap
+ * mints into `sounds/mods/`, which ANNOUNCER_PATTERN claims, and the resulting
+ * 'announcer' type then excludes it from the Locker's Sounds bucket (which
+ * filters on `!getEffectiveGlobalType`). That is 295 of the 1100 indexed global
+ * events, essentially the whole `item` category. The Foundry already decided
+ * placement at install time, so its decision stands; an explicit user retag
+ * (a stored positive `globalType`) still wins.
  */
 function resolveGlobalType(
     mod: Mod,
     metadata: ReturnType<typeof getModMetadata>
 ): import('../../../src/types/mod').GlobalModType | null {
+    if (metadata?.soundSwap) return metadata.globalType ?? null;
     const current = metadata?.globalType;
     const stamped = metadata?.globalTypeClassifierVersion ?? 0;
     const needsClassify =
@@ -1192,6 +1203,10 @@ ipcMain.handle(
 // with the user audio, so the swapped sound always plays. Tagged with lockerHero
 // so it groups under the hero in the Locker. v1 takes MP3 only (the mint path
 // parses the rate/channels from MP3 frame headers, no ffmpeg).
+//
+// Also serves non-hero sounds (UI, music, ambience, NPC, shop items): those pass
+// `soundeventsEntry` instead of a hero, land untagged, and so file under the
+// Locker's global Sounds bucket rather than a hero.
 ipcMain.handle(
     'foundry:swapSound',
     async (_, args: HeroSoundSwapRequest): Promise<WireMod[]> => {
@@ -1202,6 +1217,7 @@ ipcMain.handle(
         const {
             heroCodename,
             heroName,
+            soundeventsEntry,
             event,
             clipPaths,
             audioPath,
@@ -1214,6 +1230,10 @@ ipcMain.handle(
             gainDb,
         } = args;
         const hasClips = Array.isArray(clipPaths) && clipPaths.length > 0;
+        // Global (non-hero) swap: the caller names the soundevents file instead
+        // of a hero. Only meaningful in event mode; clip mode targets clip paths
+        // directly and never reads a soundevents file.
+        const globalEntry = !hasClips ? soundeventsEntry?.trim() : undefined;
         if (!name?.trim()) {
             throw new Error('A name is required');
         }
@@ -1232,6 +1252,7 @@ ipcMain.handle(
         //    win when both are present.
         const built = await buildHeroSoundSwapVpk(deadlockPath, {
             heroCodename,
+            soundeventsEntry: globalEntry,
             event: event?.trim(),
             clipPaths: hasClips ? clipPaths : undefined,
             audioPath,

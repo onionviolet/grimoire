@@ -3,6 +3,7 @@ import {
   Hammer,
   Library,
   Volume2,
+  Globe,
   Image as ImageIcon,
   ShoppingBag,
   Palette,
@@ -15,16 +16,20 @@ import { foundryHeroes, foundryWarmCache } from '../lib/api';
 import type { HeroInfo } from '../types/foundry';
 import LibraryBrowse from '../components/foundry/LibraryBrowse';
 import SoundBrowse from '../components/foundry/SoundBrowse';
+import GlobalSoundBrowse from '../components/foundry/GlobalSoundBrowse';
 import TextureBrowse from '../components/foundry/TextureBrowse';
 import RecolorTool from '../components/foundry/RecolorTool';
 import FoundryHeroGrid from '../components/foundry/FoundryHeroGrid';
 import HeroWorkshop from '../components/foundry/HeroWorkshop';
 
 // Sub-tools shown in the left rail of the Catalog (tool-first) mode. Library /
-// Sound / Texture / Recolor are live; Items rides the Library grid for now.
+// Sound / Global sounds / Texture / Recolor are live; Items rides the Library
+// grid for now. Sound is hero-scoped (`soundevents/hero/` + VO); Global covers
+// everything else the game plays (UI, music, ambience, NPCs, shop items).
 const SUBTOOLS = [
   { id: 'library', icon: Library, labelKey: 'foundry.subtools.library', enabled: true },
   { id: 'sound', icon: Volume2, labelKey: 'foundry.subtools.sound', enabled: true },
+  { id: 'globalSound', icon: Globe, labelKey: 'foundry.subtools.globalSound', enabled: true },
   { id: 'texture', icon: ImageIcon, labelKey: 'foundry.subtools.texture', enabled: true },
   { id: 'items', icon: ShoppingBag, labelKey: 'foundry.subtools.items', enabled: true },
   { id: 'recolor', icon: Palette, labelKey: 'foundry.subtools.recolor', enabled: true },
@@ -192,6 +197,8 @@ export default function Foundry() {
 
           {active === 'sound' ? (
             <SoundBrowse heroes={heroes} heroNames={heroNames} />
+          ) : active === 'globalSound' ? (
+            <GlobalSoundBrowse />
           ) : active === 'texture' ? (
             <TextureBrowse heroes={heroes} heroNames={heroNames} />
           ) : active === 'recolor' ? (

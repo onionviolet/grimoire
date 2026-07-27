@@ -7,6 +7,7 @@
 import { ipcMain } from 'electron';
 import { getActiveDeadlockPath } from '../services/settings';
 import {
+    getGlobalSounds,
     getHeroRoster,
     getHeroSounds,
     getTextures,
@@ -19,6 +20,8 @@ import {
 import { buildHeroEffectVpkForExport } from '../services/heroColors';
 import { exportVpkViaDialog } from '../services/foundryExport';
 import type {
+    GlobalSound,
+    GlobalSoundFilters,
     HeroEffectExportRequest,
     HeroInfo,
     HeroSound,
@@ -69,6 +72,13 @@ ipcMain.handle(
     'foundry:heroSounds',
     async (_e, filters: HeroSoundFilters = {}): Promise<HeroSound[]> => {
         return getHeroSounds(requireDeadlockPath(), filters);
+    }
+);
+
+ipcMain.handle(
+    'foundry:globalSounds',
+    async (_e, filters: GlobalSoundFilters = {}): Promise<GlobalSound[]> => {
+        return getGlobalSounds(requireDeadlockPath(), filters);
     }
 );
 

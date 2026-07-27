@@ -6,6 +6,7 @@ import type {
 import type { SnapshotTrigger } from '../../src/types/snapshot';
 import type { SocialSessionStatus } from '../../src/types/social';
 import type {
+    GlobalSoundFilters,
     HeroEffectExportRequest,
     HeroSoundFilters,
     HeroSoundSwapRequest,
@@ -597,6 +598,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
             ipcRenderer.invoke('foundry:voicelines', filters ?? {}),
         heroSounds: (filters?: HeroSoundFilters) =>
             ipcRenderer.invoke('foundry:heroSounds', filters ?? {}),
+        globalSounds: (filters?: GlobalSoundFilters) =>
+            ipcRenderer.invoke('foundry:globalSounds', filters ?? {}),
         ensureThumbnails: (category: TextureCategory) =>
             ipcRenderer.invoke('foundry:ensureThumbnails', category),
         fullImage: (category: TextureCategory, entryPath: string) =>

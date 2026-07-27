@@ -1323,6 +1323,14 @@ export async function foundryHeroSounds(
   return window.electronAPI.foundry.heroSounds(filters);
 }
 
+/** The non-hero sound index: UI, music, ambience, NPCs, shop items, gameplay.
+ *  Unscoped by hero (there is none), so callers filter by category / source. */
+export async function foundryGlobalSounds(
+  filters?: import('../types/foundry').GlobalSoundFilters
+): Promise<import('../types/foundry').GlobalSound[]> {
+  return window.electronAPI.foundry.globalSounds(filters);
+}
+
 export async function foundryFullImage(
   category: import('../types/foundry').TextureCategory,
   entryPath: string
