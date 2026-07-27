@@ -438,6 +438,14 @@ export interface SavedModMetadataInput {
     watchUpdates?: boolean;
 }
 
+export interface SavedModUpdateResult {
+    modId: number;
+    section: string;
+    fileId: number | null;
+    latestFileId: number | null;
+    status: 'current' | 'updated' | 'missing' | 'unavailable';
+}
+
 /**
  * Full crosshair model, matching the current in-game convar surface
  * (citadel_crosshair_*). Pip and dot outlines are (border width, gap,
@@ -937,6 +945,7 @@ export interface ElectronAPI {
     updateSavedModCheck: (modId: number, section: string, fileId: number | null, lastCheckedAt: number, latestFileId: number | null) => Promise<void>;
     exportSavedMods: () => Promise<string | null>;
     importSavedMods: () => Promise<{ imported: number; skipped: number } | null>;
+    checkSavedModUpdates: () => Promise<SavedModUpdateResult[]>;
     getLocalModCount: (section?: string) => Promise<number>;
     getLocalCategories: (section?: string) => Promise<Array<{ id: number; name: string; count: number }>>;
     getSectionStats: () => Promise<Array<{ section: string; count: number }>>;

@@ -118,6 +118,14 @@
     "import": "Import",
     "exporting": "Exporting saved mods...",
     "importing": "Importing saved mods..."
+    ,"checkUpdates": "Check updates",
+    "checkingUpdates": "Checking watched mods...",
+    "watchStatus": {
+      "current": "Up to date",
+      "updated": "Saved file is no longer the newest live file",
+      "missing": "No live files found",
+      "unavailable": "Could not reach GameBanana"
+    }
   },
   "foundry": {
     "header": {

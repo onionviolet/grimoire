@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Heart, ExternalLink, Loader2, Search, Trash2, Pencil, Save as SaveIcon, X, Upload, Download } from 'lucide-react';
+import { Heart, ExternalLink, Loader2, Search, Trash2, Pencil, Save as SaveIcon, X, Upload, Download, RefreshCw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import ModThumbnail from '../components/ModThumbnail';
 import { Button, IconButton } from '../components/common/ui';
-import type { CachedMod, SavedMod } from '../types/electron';
+import type { CachedMod, SavedMod, SavedModUpdateResult } from '../types/electron';
 import { formatDate } from '../types/gamebanana';
 import { useAppStore } from '../stores/appStore';
 
@@ -35,6 +35,7 @@ export default function Saved() {
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [draft, setDraft] = useState({ notes: '', tags: '', whySaved: '', watchUpdates: false });
   const [fileAction, setFileAction] = useState<string | null>(null);
+  const [watchResults, setWatchResults] = useState<SavedModUpdateResult[]>([]);
 
   const loadSaved = async () => {
     setLoading(true);
@@ -124,6 +125,19 @@ export default function Saved() {
     } finally { setFileAction(null); }
   };
 
+  const checkUpdates = async () => {
+    setFileAction(t('saved.checkingUpdates'));
+    try {
+      const results = await window.electronAPI.checkSavedModUpdates();
+      setWatchResults(results);
+      const resultByKey = new Map(results.map((result) => [`${result.section}:${result.modId}:${result.fileId ?? 'parent'}`, result]));
+      setRows((current) => current.map((row) => {
+        const result = resultByKey.get(rowKey(row));
+        return result ? { ...row, saved: { ...row.saved, lastCheckedAt: Date.now(), latestFileId: result.latestFileId } } : row;
+      }));
+    } finally { setFileAction(null); }
+  };
+
   return (
     <div className="h-full overflow-y-auto p-4 md:p-6">
       <div className="mx-auto max-w-7xl">
@@ -139,6 +153,7 @@ export default function Saved() {
           <div className="flex w-full flex-wrap items-center justify-end gap-2 md:max-w-xl">
             <Button size="sm" variant="secondary" onClick={() => void exportSaved()} disabled={!!fileAction}><Download className="mr-1.5 h-3.5 w-3.5" />{t('saved.export')}</Button>
             <Button size="sm" variant="secondary" onClick={() => void importSaved()} disabled={!!fileAction}><Upload className="mr-1.5 h-3.5 w-3.5" />{t('saved.import')}</Button>
+            <Button size="sm" variant="secondary" onClick={() => void checkUpdates()} disabled={!!fileAction}><RefreshCw className="mr-1.5 h-3.5 w-3.5" />{t('saved.checkUpdates')}</Button>
             <div className="flex min-w-[220px] flex-1 items-center gap-2 rounded-md border border-border bg-bg-secondary px-3 py-2">
               <Search className="h-4 w-4 shrink-0 text-text-secondary" />
               <input
@@ -203,6 +218,11 @@ export default function Saved() {
                   ) : (
                     <p className="mt-1 text-xs text-warning">{t('saved.unavailableDetail')}</p>
                   )}
+                  {(() => {
+                    const result = watchResults.find((candidate) => `${candidate.section}:${candidate.modId}:${candidate.fileId ?? 'parent'}` === rowKey(row));
+                    if (!result) return null;
+                    return <p className={`mt-1 text-xs ${result.status === 'current' ? 'text-green-400' : result.status === 'unavailable' ? 'text-text-secondary' : 'text-yellow-300'}`}>{t(`saved.watchStatus.${result.status}`)}</p>;
+                  })()}
                   <div className="mt-2 flex flex-wrap gap-2">
                     <Button size="sm" variant="secondary" onClick={() => openInBrowse(row)}><ExternalLink className="mr-1.5 h-3.5 w-3.5" />{t('saved.openInBrowse')}</Button>
                     <Button size="sm" variant="ghost" onClick={() => beginEdit(row)}><Pencil className="mr-1.5 h-3.5 w-3.5" />{t('saved.editMetadata')}</Button>
