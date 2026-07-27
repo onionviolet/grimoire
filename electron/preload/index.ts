@@ -525,6 +525,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
         ipcRenderer.invoke('update-saved-mod-metadata', input),
     updateSavedModCheck: (modId: number, section: string, fileId: number | null, lastCheckedAt: number, latestFileId: number | null) =>
         ipcRenderer.invoke('update-saved-mod-check', modId, section, fileId, lastCheckedAt, latestFileId),
+    exportSavedMods: () => ipcRenderer.invoke('export-saved-mods'),
+    importSavedMods: () => ipcRenderer.invoke('import-saved-mods'),
     getLocalModCount: (section?: string) => ipcRenderer.invoke('get-local-mod-count', section),
     getLocalCategories: (section?: string) => ipcRenderer.invoke('get-local-categories', section),
     getSectionStats: () => ipcRenderer.invoke('get-section-stats'),

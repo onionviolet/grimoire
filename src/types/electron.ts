@@ -935,6 +935,8 @@ export interface ElectronAPI {
     removeSavedMod: (modId: number, section: string, fileId?: number | null) => Promise<void>;
     updateSavedModMetadata: (input: SavedModMetadataInput) => Promise<void>;
     updateSavedModCheck: (modId: number, section: string, fileId: number | null, lastCheckedAt: number, latestFileId: number | null) => Promise<void>;
+    exportSavedMods: () => Promise<string | null>;
+    importSavedMods: () => Promise<{ imported: number; skipped: number } | null>;
     getLocalModCount: (section?: string) => Promise<number>;
     getLocalCategories: (section?: string) => Promise<Array<{ id: number; name: string; count: number }>>;
     getSectionStats: () => Promise<Array<{ section: string; count: number }>>;

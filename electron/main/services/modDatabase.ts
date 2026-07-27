@@ -581,6 +581,62 @@ export function updateSavedModCheck(modId: number, section: string, fileId: numb
     `).run(lastCheckedAt, latestFileId, modId, section, fileId ?? 0);
 }
 
+const SAVED_EXPORT_FORMAT = 'grimoire-saved-mods';
+
+export function exportSavedModsJson(): string {
+    return JSON.stringify({
+        format: SAVED_EXPORT_FORMAT,
+        schemaVersion: 1,
+        exportedAt: new Date().toISOString(),
+        entries: getSavedMods().map((item) => ({
+            modId: item.modId,
+            section: item.section,
+            fileId: item.fileId,
+            fileName: item.fileName,
+            savedAt: item.savedAt,
+            title: item.titleSnapshot,
+            notes: item.notes,
+            tags: item.tags,
+            whySaved: item.whySaved,
+            watchUpdates: item.watchUpdates,
+        })),
+    }, null, 2);
+}
+
+export function importSavedModsJson(payload: string): { imported: number; skipped: number } {
+    const parsed: unknown = JSON.parse(payload);
+    if (!parsed || typeof parsed !== 'object' || (parsed as { format?: unknown }).format !== SAVED_EXPORT_FORMAT) {
+        throw new Error('Unsupported saved-mods export format');
+    }
+    const entries = (parsed as { entries?: unknown }).entries;
+    if (!Array.isArray(entries) || entries.length > 1000) throw new Error('Saved-mods export has too many entries');
+    let imported = 0;
+    let skipped = 0;
+    const database = initDatabase();
+    const insert = database.transaction(() => {
+        for (const raw of entries) {
+            if (!raw || typeof raw !== 'object') { skipped++; continue; }
+            const value = raw as Record<string, unknown>;
+            const modId = value.modId;
+            const section = value.section;
+            const fileId: number | null = value.fileId === null || value.fileId === undefined ? null : Number(value.fileId);
+            if (!Number.isInteger(modId) || typeof section !== 'string' || !['Mod', 'Sound', 'Wip'].includes(section) || (fileId !== null && !Number.isInteger(fileId))) {
+                skipped++; continue;
+            }
+            const tags = Array.isArray(value.tags) ? normalizeSavedTags(value.tags.filter((tag): tag is string => typeof tag === 'string')) ?? [] : [];
+            const notes = typeof value.notes === 'string' ? normalizeSavedText(value.notes, 4000) ?? '' : '';
+            const whySaved = typeof value.whySaved === 'string' ? normalizeSavedText(value.whySaved, 500) ?? '' : '';
+            const title = typeof value.title === 'string' ? normalizeSavedText(value.title, 300) ?? null : null;
+            const fileName = typeof value.fileName === 'string' ? normalizeSavedText(value.fileName, 300) ?? null : null;
+            saveMod({ modId: modId as number, section, fileId, fileName, titleSnapshot: title });
+            updateSavedModMetadata({ modId: modId as number, section, fileId, notes, tags, whySaved, watchUpdates: value.watchUpdates === true });
+            imported++;
+        }
+    });
+    insert();
+    return { imported, skipped };
+}
+
 /** Save or remove an item without downloading or installing it. */
 export function setFavoriteMod(modId: number, section: string, saved: boolean): void {
     if (saved) saveMod({ modId, section });

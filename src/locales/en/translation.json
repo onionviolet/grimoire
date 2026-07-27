@@ -113,7 +113,11 @@
     "notesPlaceholder": "Notes",
     "tagsPlaceholder": "Tags, separated by commas",
     "whySavedPlaceholder": "Why did you save this?",
-    "watchUpdates": "Watch for updates"
+    "watchUpdates": "Watch for updates",
+    "export": "Export",
+    "import": "Import",
+    "exporting": "Exporting saved mods...",
+    "importing": "Importing saved mods..."
   },
   "foundry": {
     "header": {

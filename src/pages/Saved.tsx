@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Heart, ExternalLink, Loader2, Search, Trash2, Pencil, Save as SaveIcon, X } from 'lucide-react';
+import { Heart, ExternalLink, Loader2, Search, Trash2, Pencil, Save as SaveIcon, X, Upload, Download } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import ModThumbnail from '../components/ModThumbnail';
@@ -34,6 +34,7 @@ export default function Saved() {
   const [loading, setLoading] = useState(true);
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [draft, setDraft] = useState({ notes: '', tags: '', whySaved: '', watchUpdates: false });
+  const [fileAction, setFileAction] = useState<string | null>(null);
 
   const loadSaved = async () => {
     setLoading(true);
@@ -110,6 +111,19 @@ export default function Saved() {
     setEditingKey(null);
   };
 
+  const exportSaved = async () => {
+    setFileAction(t('saved.exporting'));
+    try { await window.electronAPI.exportSavedMods(); } finally { setFileAction(null); }
+  };
+
+  const importSaved = async () => {
+    setFileAction(t('saved.importing'));
+    try {
+      const result = await window.electronAPI.importSavedMods();
+      if (result) await loadSaved();
+    } finally { setFileAction(null); }
+  };
+
   return (
     <div className="h-full overflow-y-auto p-4 md:p-6">
       <div className="mx-auto max-w-7xl">
@@ -122,14 +136,19 @@ export default function Saved() {
             <h1 className="mt-1 text-2xl font-semibold text-text-primary">{t('saved.title')}</h1>
             <p className="mt-1 text-sm text-text-secondary">{t('saved.description')}</p>
           </div>
-          <div className="flex w-full max-w-md items-center gap-2 rounded-md border border-border bg-bg-secondary px-3 py-2">
-            <Search className="h-4 w-4 shrink-0 text-text-secondary" />
-            <input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder={t('saved.search')}
-              className="min-w-0 flex-1 bg-transparent text-sm text-text-primary outline-none placeholder:text-text-secondary"
-            />
+          <div className="flex w-full flex-wrap items-center justify-end gap-2 md:max-w-xl">
+            <Button size="sm" variant="secondary" onClick={() => void exportSaved()} disabled={!!fileAction}><Download className="mr-1.5 h-3.5 w-3.5" />{t('saved.export')}</Button>
+            <Button size="sm" variant="secondary" onClick={() => void importSaved()} disabled={!!fileAction}><Upload className="mr-1.5 h-3.5 w-3.5" />{t('saved.import')}</Button>
+            <div className="flex min-w-[220px] flex-1 items-center gap-2 rounded-md border border-border bg-bg-secondary px-3 py-2">
+              <Search className="h-4 w-4 shrink-0 text-text-secondary" />
+              <input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder={t('saved.search')}
+                className="min-w-0 flex-1 bg-transparent text-sm text-text-primary outline-none placeholder:text-text-secondary"
+              />
+            </div>
+            {fileAction && <span className="w-full text-right text-xs text-text-secondary">{fileAction}</span>}
           </div>
         </div>
 
