@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
     Search,
     Loader2,
@@ -11,15 +11,18 @@ import {
     ShoppingBag,
     Swords,
     MessageSquare,
+    Download,
+    Upload,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { EmptyState } from '../common/PageComponents';
 import Tx from '../translation/Tx';
 import { SoundRow, type SwapContext } from './SoundBrowse';
 import { useClipPlayer, type ClipPlayer } from './useClipPlayer';
-import { foundryGlobalSounds } from '../../lib/api';
+import { foundryGlobalSounds, foundrySoundAnnotations, foundrySoundAnnotationKey, saveFoundrySoundAnnotation, exportFoundrySoundAnnotations, importFoundrySoundAnnotations } from '../../lib/api';
+import { showToast } from '../../stores/toastStore';
 import { describeSound, matchesSound, primaryClipName } from '../../lib/soundDescribe';
-import type { GlobalSound, GlobalSoundCategory } from '../../types/foundry';
+import type { GlobalSound, GlobalSoundCategory, SoundAnnotation } from '../../types/foundry';
 
 // Display order: what a modder reaches for first (UI clicks, music) leads, then
 // the world layers, then the odds-and-ends bucket.
@@ -84,6 +87,51 @@ export default function GlobalSoundBrowse() {
     const [search, setSearch] = useState('');
     const [category, setCategory] = useState<GlobalSoundCategory | 'all'>('all');
     const [data, setData] = useState<{ sounds: GlobalSound[]; error: string | null } | null>(null);
+    const [annotations, setAnnotations] = useState<Record<string, SoundAnnotation>>({});
+    const importRef = useRef<HTMLInputElement | null>(null);
+
+    useEffect(() => {
+        let cancelled = false;
+        foundrySoundAnnotations()
+            .then((entries) => {
+                if (!cancelled) setAnnotations(Object.fromEntries(entries.map((entry) => [entry.key, entry.annotation])));
+            })
+            .catch(() => undefined);
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
+    const saveAnnotation = async (key: string, name: string, note: string) => {
+        const saved = await saveFoundrySoundAnnotation(key, name, note);
+        setAnnotations((current) => {
+            const next = { ...current };
+            if (saved) next[key] = saved.annotation;
+            else delete next[key];
+            return next;
+        });
+    };
+
+    const exportAnnotations = async () => {
+        const blob = new Blob([await exportFoundrySoundAnnotations()], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = 'grimoire-sound-annotations.json';
+        link.click();
+        URL.revokeObjectURL(url);
+    };
+
+    const importAnnotations = async (file: File | undefined) => {
+        if (!file) return;
+        try {
+            const entries = await importFoundrySoundAnnotations(await file.text());
+            setAnnotations(Object.fromEntries(entries.map((entry) => [entry.key, entry.annotation])));
+            showToast('Sound annotations imported.', { tone: 'success' });
+        } catch (error) {
+            showToast(error instanceof Error ? error.message : String(error), { tone: 'error' });
+        }
+    };
 
     useEffect(() => {
         let cancelled = false;
@@ -132,6 +180,11 @@ export default function GlobalSoundBrowse() {
                         )}
                         className="w-full rounded-sm border border-border bg-bg-tertiary py-2 pl-9 pr-3 text-sm text-text-primary placeholder:text-text-secondary/60 focus:border-accent/50 focus:outline-none"
                     />
+                </div>
+                <div className="flex items-center gap-1.5">
+                    <button type="button" onClick={exportAnnotations} className="flex items-center gap-1.5 rounded-sm border border-border px-2 py-1.5 text-xs text-text-secondary hover:text-text-primary" title="Export your sound names and notes"><Download size={13} />Export notes</button>
+                    <button type="button" onClick={() => importRef.current?.click()} className="flex items-center gap-1.5 rounded-sm border border-border px-2 py-1.5 text-xs text-text-secondary hover:text-text-primary" title="Import sound names and notes"><Upload size={13} />Import notes</button>
+                    <input ref={importRef} type="file" accept="application/json,.json" className="hidden" onChange={(event) => { void importAnnotations(event.target.files?.[0]); event.target.value = ''; }} />
                 </div>
             </div>
 
@@ -194,7 +247,7 @@ export default function GlobalSoundBrowse() {
                         {t('foundry.globalSound.count', '{{count}} sounds', { count: totalShown })}
                     </p>
                     {sections.map((section) => (
-                        <CategorySection key={section.category} section={section} player={player} />
+                        <CategorySection key={section.category} section={section} player={player} annotations={annotations} onSaveAnnotation={saveAnnotation} />
                     ))}
                 </div>
             )}
@@ -229,7 +282,7 @@ function FilterChip({
     );
 }
 
-function CategorySection({ section, player }: { section: Section; player: ClipPlayer }) {
+function CategorySection({ section, player, annotations, onSaveAnnotation }: { section: Section; player: ClipPlayer; annotations: Record<string, SoundAnnotation>; onSaveAnnotation: (key: string, name: string, note: string) => Promise<void> }) {
     const { t } = useTranslation();
     const Icon = CATEGORY_ICON[section.category];
     const title = t(
@@ -270,6 +323,9 @@ function CategorySection({ section, player }: { section: Section; player: ClipPl
                                 targetClip={row.vsnd[0]}
                                 description={describeSound(row)}
                                 clipName={primaryClipName(row.vsnd)}
+                                annotationKey={foundrySoundAnnotationKey(row.event, row.vsnd[0] ?? '')}
+                                annotation={annotations[foundrySoundAnnotationKey(row.event, row.vsnd[0] ?? '')]}
+                                onSaveAnnotation={onSaveAnnotation}
                             />
                         ))}
                     </div>
