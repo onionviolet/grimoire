@@ -18,6 +18,7 @@ import type {
     ImprintInstalledProgress,
     ImprintPreflightResult,
     ImprintDetails,
+    ModelCompatibilityReport,
     PeekImprintResult,
     ApplyHeroCardResult,
     HeroAbilitySlot,
@@ -131,6 +132,8 @@ export interface PerformanceConfigStatus {
     /** Saved user deviations from the preset (hand edits harvested on reapply,
      *  layered onto every apply, surviving game-update wipes). */
     overrideCount?: number;
+    /** Current values for the user-facing HUD ConVars. */
+    convarValues?: Record<string, string>;
     /** gameinfo.gi is empty/corrupt (no ConVars section to patch) AND a
      *  Grimoire backup exists, so the UI can offer a one-click restore. Only
      *  set on the broken-file states (error / wiped). */
@@ -157,6 +160,37 @@ export interface ImportCustomModArgs {
     name: string;
     thumbnailDataUrl?: string;
     nsfw?: boolean;
+}
+
+/** Batch local import: one entry per picked file, imported in array order. */
+export interface ImportCustomModsBatchArgs {
+    items: ImportCustomModArgs[];
+}
+
+/** Per-source outcome of a batch import. Failures never abort the batch. */
+export interface ImportCustomModResult {
+    vpkPath: string;
+    ok: boolean;
+    /** Mod slots this source produced (an archive can yield several). */
+    imported: number;
+    error?: string;
+}
+
+export interface ImportCustomModsBatchResult {
+    /** The full enriched mod list after the batch (whatever landed). */
+    mods: Mod[];
+    /** One entry per requested source, in request order. */
+    results: ImportCustomModResult[];
+}
+
+/** Streamed while a batch import runs, keyed by the request-order index. */
+export interface ImportCustomModsProgress {
+    index: number;
+    total: number;
+    vpkPath: string;
+    phase: 'importing' | 'done' | 'failed';
+    imported?: number;
+    error?: string;
 }
 
 export interface ImportSoulContainerGlbArgs {
@@ -403,6 +437,56 @@ export interface CachedMod {
     cachedAt: number;
 }
 
+export interface ChatWheelSaveArgs {
+    yaml: string;
+    name: string;
+    /** Replace this installed generated VPK in-place, preserving its slot. */
+    replaceModId?: string;
+}
+
+export interface SavedMod {
+    modId: number;
+    section: string;
+    fileId: number | null;
+    fileName: string | null;
+    savedAt: number;
+    titleSnapshot: string | null;
+    profileUrlSnapshot: string | null;
+    notes: string;
+    tags: string[];
+    whySaved: string;
+    watchUpdates: boolean;
+    lastCheckedAt: number | null;
+    latestFileId: number | null;
+}
+
+export interface SaveModInput {
+    modId: number;
+    section: string;
+    fileId?: number | null;
+    fileName?: string | null;
+    titleSnapshot?: string | null;
+    profileUrlSnapshot?: string | null;
+}
+
+export interface SavedModMetadataInput {
+    modId: number;
+    section: string;
+    fileId?: number | null;
+    notes?: string;
+    tags?: string[];
+    whySaved?: string;
+    watchUpdates?: boolean;
+}
+
+export interface SavedModUpdateResult {
+    modId: number;
+    section: string;
+    fileId: number | null;
+    latestFileId: number | null;
+    status: 'current' | 'updated' | 'missing' | 'unavailable';
+}
+
 /**
  * Full crosshair model, matching the current in-game convar surface
  * (citadel_crosshair_*). Pip and dot outlines are (border width, gap,
@@ -519,6 +603,9 @@ export interface ElectronAPI {
         scan: (req: DmmMigrationRequest) => Promise<DmmMigrationReport>;
         execute: (req: DmmMigrationRequest) => Promise<DmmMigrationReport>;
     };
+
+    chatWheelRead: (vpkPath: string) => Promise<string>;
+    chatWheelSave: (args: ChatWheelSaveArgs) => Promise<Mod | null>;
 
     // Discord Rich Presence (opt-in; talks only to the local Discord client)
     discord: {
@@ -652,12 +739,17 @@ export interface ElectronAPI {
     ) => Promise<Mod>;
     setModPriority: (modId: string, priority: number) => Promise<Mod>;
     reorderMods: (orderedIds: string[]) => Promise<Mod[]>;
+    getModelCompatibilityReport: () => Promise<ModelCompatibilityReport>;
+    applyModelCompatibilityFix: () => Promise<Mod[]>;
     applyModToggleBatch: (
         enableIds: string[],
         disableIds: string[]
     ) => Promise<{ mods: Mod[]; failures: string[] }>;
     swapModPriority: (modIdA: string, modIdB: string) => Promise<Mod[]>;
-    importCustomMod: (args: ImportCustomModArgs) => Promise<Mod[]>;
+    importCustomMods: (args: ImportCustomModsBatchArgs) => Promise<ImportCustomModsBatchResult>;
+    onImportCustomModsProgress: (
+        callback: (progress: ImportCustomModsProgress) => void
+    ) => () => void;
     importSoulContainerGlb: (args: ImportSoulContainerGlbArgs) => Promise<Mod[]>;
     exportSoulContainerGlb: (
         args: ImportSoulContainerGlbArgs
@@ -788,6 +880,8 @@ export interface ElectronAPI {
     fixGameinfo: () => Promise<GameinfoStatus>;
     getPerformanceConfigStatus: () => Promise<PerformanceConfigStatus>;
     applyPerformanceConfig: () => Promise<PerformanceConfigStatus>;
+    setPerformanceHudConvars: (values: Record<string, boolean>) => Promise<PerformanceConfigStatus>;
+    setPerformanceAdvancedConvars: (values: Record<string, number>) => Promise<PerformanceConfigStatus>;
     removePerformanceConfig: () => Promise<PerformanceConfigStatus>;
     resetPerformanceConfigOverrides: () => Promise<PerformanceConfigStatus>;
     restorePerformanceConfigBackup: () => Promise<PerformanceConfigStatus>;
@@ -802,6 +896,8 @@ export interface ElectronAPI {
 
     // Dialogs
     showOpenDialog: (options: OpenDialogOptions) => Promise<string | null>;
+    /** Multi-select open dialog. Returns [] when the user cancels. */
+    showOpenDialogMulti: (options: OpenDialogOptions) => Promise<string[]>;
     showSaveDialog: (options: SaveDialogOptions) => Promise<string | null>;
     revealPath: (targetPath: string) => Promise<void>;
 
@@ -892,6 +988,17 @@ export interface ElectronAPI {
     isSyncInProgress: () => Promise<boolean>;
     searchLocalMods: (options: SearchLocalModsOptions) => Promise<LocalSearchResult>;
     getCachedMod: (id: number) => Promise<CachedMod | null>;
+    getFavoriteMods: (section?: string) => Promise<Array<{ modId: number; section: string; savedAt: number }>>;
+    setFavoriteMod: (modId: number, section: string, saved: boolean) => Promise<void>;
+    getFavoriteModIds: (modIds: number[], section: string) => Promise<number[]>;
+    getSavedMods: (section?: string) => Promise<SavedMod[]>;
+    saveMod: (input: SaveModInput) => Promise<void>;
+    removeSavedMod: (modId: number, section: string, fileId?: number | null) => Promise<void>;
+    updateSavedModMetadata: (input: SavedModMetadataInput) => Promise<void>;
+    updateSavedModCheck: (modId: number, section: string, fileId: number | null, lastCheckedAt: number, latestFileId: number | null) => Promise<void>;
+    exportSavedMods: () => Promise<string | null>;
+    importSavedMods: () => Promise<{ imported: number; skipped: number } | null>;
+    checkSavedModUpdates: () => Promise<SavedModUpdateResult[]>;
     getLocalModCount: (section?: string) => Promise<number>;
     getLocalCategories: (section?: string) => Promise<Array<{ id: number; name: string; count: number }>>;
     getSectionStats: () => Promise<Array<{ section: string; count: number }>>;
@@ -919,7 +1026,7 @@ export interface ElectronAPI {
     updater: {
         getVersion: () => Promise<string>;
         getStatus: () => Promise<UpdateStatus>;
-        getInstallSource: () => Promise<'managed' | 'appimage' | 'standard'>;
+        getInstallSource: () => Promise<'managed' | 'appimage' | 'standard' | 'fork'>;
         checkForUpdates: () => Promise<UpdateInfo | null>;
         downloadUpdate: () => Promise<void>;
         installUpdate: () => void;
@@ -979,6 +1086,9 @@ export interface ElectronAPI {
         heroSounds: (
             filters?: import('./foundry').HeroSoundFilters
         ) => Promise<import('./foundry').HeroSound[]>;
+        globalSounds: (
+            filters?: import('./foundry').GlobalSoundFilters
+        ) => Promise<import('./foundry').GlobalSound[]>;
         ensureThumbnails: (
             category: import('./foundry').TextureCategory
         ) => Promise<import('./foundry').TextureGridItem[]>;
@@ -988,12 +1098,16 @@ export interface ElectronAPI {
         ) => Promise<string | null>;
         voiceclip: (vsndPath: string) => Promise<string | null>;
         warmCache: () => Promise<void>;
+        engineInfo: () => Promise<import('./foundry').EngineInfo>;
         exportHeroEffect: (
             req: import('./foundry').HeroEffectExportRequest
         ) => Promise<import('./foundry').VpkExportResult>;
         swapSound: (
             req: import('./foundry').HeroSoundSwapRequest
         ) => Promise<import('./mod').Mod[]>;
+    };
+    browser: {
+        filterStats: () => Promise<import('./foundry').BrowserFilterStats>;
     };
 
     // Language packs (downloaded on demand from GitHub)

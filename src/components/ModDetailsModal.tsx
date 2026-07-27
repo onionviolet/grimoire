@@ -1,6 +1,7 @@
 import { memo, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
 import { useTranslation, Trans } from 'react-i18next';
 import { createPortal } from 'react-dom';
+import { useBackdropDismiss } from './common/useBackdropDismiss';
 import {
   Volume2,
   Loader2,
@@ -26,6 +27,8 @@ import {
   Link2,
   CloudOff,
   EyeOff,
+  Star,
+  Bookmark,
 } from 'lucide-react';
 import DOMPurify from 'dompurify';
 import type {
@@ -81,6 +84,11 @@ interface ModDetailsModalProps {
   navigationDirection?: ModDetailsNavigationDirection;
   navigationLabel?: string;
   updateAvailable?: boolean;
+  /** Browse-only local bookmark. This does not imply a download or install. */
+  saved?: boolean;
+  onToggleSaved?: () => void;
+  savedFileIds?: Set<number>;
+  onToggleSavedFile?: (file: GameBananaFile) => void;
   /** When provided, render a toggle next to the Update/Installed badge that
    *  flips the underlying mod's ignoreUpdates flag. Only meaningful in the
    *  installed-mod path; Browse leaves both undefined. */
@@ -139,6 +147,10 @@ function ModDetailsModal({
   navigationDirection = 'next',
   navigationLabel,
   updateAvailable,
+  saved = false,
+  onToggleSaved,
+  savedFileIds = new Set(),
+  onToggleSavedFile,
   ignoreUpdates,
   onToggleIgnoreUpdates,
   onClose,
@@ -246,6 +258,17 @@ function ModDetailsModal({
   const [imageRatios, setImageRatios] = useState<Record<number, number>>({});
   const [deleteCandidate, setDeleteCandidate] = useState<{ modId: string; fileName: string } | null>(null);
   const [deleteInProgress, setDeleteInProgress] = useState(false);
+  // Backdrop dismissal for the two nested overlays. The hook ignores drags
+  // that only end on the backdrop, so releasing a text selection (or the
+  // lightbox drag) outside the panel no longer closes them.
+  const lightboxBackdropRef = useBackdropDismiss<HTMLDivElement>(
+    () => setLightboxOpen(false),
+    lightboxOpen
+  );
+  const deleteBackdropRef = useBackdropDismiss<HTMLDivElement>(
+    () => setDeleteCandidate(null),
+    !!deleteCandidate && !deleteInProgress
+  );
 
   // Default the archived section open when the file you currently have installed
   // lives there. That's the common update case: an author archives the old
@@ -654,6 +677,14 @@ function ModDetailsModal({
               disabled={isBusyThis || deleteInProgress}
             />
           )}
+          {onToggleSavedFile && (
+            <IconButton
+              icon={Bookmark}
+              label={savedFileIds.has(file.id) ? 'Remove saved file' : 'Save this file variant'}
+              onClick={() => onToggleSavedFile(file)}
+              className={savedFileIds.has(file.id) ? 'text-yellow-300' : undefined}
+            />
+          )}
           <Button
             type="button"
             variant={isUpdate || !isInstalled ? 'primary' : 'secondary'}
@@ -1055,6 +1086,14 @@ function ModDetailsModal({
               onClick={() => onChangeView(isSidebar ? 'modal' : 'sidebar')}
             />
           )}
+          {onToggleSaved && (
+            <IconButton
+              icon={Star}
+              label={saved ? 'Remove saved mod' : 'Save mod for later'}
+              onClick={onToggleSaved}
+              className={saved ? 'text-yellow-300' : undefined}
+            />
+          )}
           <IconButton
             icon={X}
             label={t('common.actions.close')}
@@ -1064,14 +1103,11 @@ function ModDetailsModal({
 
         {deleteCandidate && (
           <div
+            ref={deleteBackdropRef}
             className="fixed inset-0 z-[60] flex items-center justify-center bg-black/65 p-4"
             role="alertdialog"
             aria-modal="true"
             aria-labelledby="delete-file-title"
-            onClick={(e) => {
-              e.stopPropagation();
-              if (!deleteInProgress) setDeleteCandidate(null);
-            }}
           >
             <div
               className="w-full max-w-md rounded-lg border border-border bg-bg-secondary p-5 shadow-2xl"
@@ -1717,11 +1753,8 @@ function ModDetailsModal({
           the global keydown listener so users can flip pictures while zoomed. */}
       {lightboxOpen && currentImageFullUrl && (
         <div
+          ref={lightboxBackdropRef}
           className="fixed inset-0 z-[60] bg-black/95 flex items-center justify-center p-4 animate-fade-in"
-          onClick={(e) => {
-            e.stopPropagation();
-            setLightboxOpen(false);
-          }}
           role="dialog"
           aria-modal="true"
           aria-label={`${mod.name} - full size image`}

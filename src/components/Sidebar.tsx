@@ -4,6 +4,7 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   Boxes,
   Compass,
+  Heart,
   Globe2,
   Server,
   Vault,
@@ -26,6 +27,7 @@ import {
   Square,
   Volume2,
   VolumeX,
+  MessageCircle,
 } from 'lucide-react';
 import {
   getConflicts,
@@ -469,7 +471,7 @@ export default function Sidebar() {
       labelKey: string;
       label: string;
       tooltip: string;
-      experimental?: 'crosshair' | 'stats' | 'social' | 'servers' | 'foundry';
+      experimental?: 'crosshair' | 'stats' | 'social' | 'servers' | 'foundry' | 'browser';
       tone?: 'test';
       badge?: number;
       badgeTone?: BadgeTone;
@@ -477,6 +479,7 @@ export default function Sidebar() {
     const items: NavItem[] = [
       { to: '/', icon: Boxes, labelKey: 'nav.installed', label: t('nav.installed'), tooltip: t('sidebar.tooltip.installed'), badge: installedCount, badgeTone: 'muted' },
       { to: '/browse', icon: Compass, labelKey: 'nav.browse', label: t('nav.browse'), tooltip: t('sidebar.tooltip.browse') },
+      { to: '/saved', icon: Heart, labelKey: 'nav.saved', label: t('nav.saved'), tooltip: t('sidebar.tooltip.saved') },
       {
         to: '/discover',
         icon: Globe2,
@@ -491,9 +494,11 @@ export default function Sidebar() {
       },
       { to: '/servers', icon: Server, labelKey: 'nav.servers', label: t('nav.servers'), tooltip: t('sidebar.tooltip.servers'), experimental: 'servers' },
       { to: '/locker', icon: Vault, labelKey: 'nav.locker', label: t('nav.locker'), tooltip: t('sidebar.tooltip.locker') },
+      { to: '/browser', icon: Globe2, labelKey: 'nav.browser', label: t('nav.browser'), tooltip: t('sidebar.tooltip.browser'), experimental: 'browser' },
       { to: '/foundry', icon: Hammer, labelKey: 'nav.foundry', label: t('nav.foundry'), tooltip: t('sidebar.tooltip.foundry'), experimental: 'foundry' },
       { to: '/crosshair', icon: Target, labelKey: 'nav.crosshair', label: t('nav.crosshair'), tooltip: t('sidebar.tooltip.crosshair'), experimental: 'crosshair' },
       { to: '/autoexec', icon: ScrollText, labelKey: 'nav.autoexec', label: t('nav.autoexec'), tooltip: t('sidebar.tooltip.autoexec') },
+      { to: '/chat-wheel', icon: MessageCircle, labelKey: 'nav.chatWheel', label: 'Chat Wheel', tooltip: 'Edit ChatLane chat wheels' },
       { to: '/stats', icon: Activity, labelKey: 'nav.stats', label: t('nav.stats'), tooltip: t('sidebar.tooltip.stats'), experimental: 'stats' },
       { to: '/conflicts', icon: Swords, labelKey: 'nav.conflicts', label: t('nav.conflicts'), tooltip: t('sidebar.tooltip.conflicts'), badge: conflictCount, badgeTone: 'warning' },
       { to: '/profiles', icon: BookMarked, labelKey: 'nav.profiles', label: t('nav.profiles'), tooltip: t('sidebar.tooltip.profiles') },
@@ -505,9 +510,10 @@ export default function Sidebar() {
       if (item.experimental === 'social') return settings?.experimentalSocial;
       if (item.experimental === 'servers') return settings?.experimentalDeadworksServers;
       if (item.experimental === 'foundry') return settings?.experimentalFoundry;
+      if (item.experimental === 'browser') return settings?.experimentalBrowser;
       return true;
     });
-  }, [t, settings?.experimentalStats, settings?.experimentalCrosshair, settings?.experimentalSocial, settings?.experimentalDeadworksServers, settings?.experimentalFoundry, conflictCount, discoverNotificationCount, installedCount]);
+  }, [t, settings?.experimentalStats, settings?.experimentalCrosshair, settings?.experimentalSocial, settings?.experimentalDeadworksServers, settings?.experimentalFoundry, settings?.experimentalBrowser, conflictCount, discoverNotificationCount, installedCount]);
 
   // Optimistic nav highlight. The router wraps navigation in startTransition,
   // so location.pathname (and any highlight derived from it) only updates

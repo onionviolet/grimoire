@@ -5,7 +5,7 @@ import DOMPurify from 'dompurify';
 import { Button } from './common/ui';
 import { Modal } from './common/Modal';
 
-type InstallSource = 'managed' | 'appimage' | 'standard';
+type InstallSource = 'managed' | 'appimage' | 'standard' | 'fork';
 
 interface UpdateInfo {
     version: string;
@@ -106,6 +106,22 @@ export default function UpdateModal({ onClose }: Props) {
                 </div>
 
                 <div className="p-6 overflow-y-auto flex-1 min-h-0">
+                    {installSource === 'fork' && (
+                        <div className="flex items-start gap-3 p-4 rounded-lg bg-bg-tertiary border border-white/10 mb-4">
+                            <Package className="w-5 h-5 flex-shrink-0 mt-0.5 text-accent" />
+                            <div className="text-sm text-text-secondary space-y-2">
+                                <p className="text-text-primary font-medium">
+                                    {t('updateModal.forkBuild', 'Custom build')}
+                                </p>
+                                <p>
+                                    {t(
+                                        'updateModal.forkBuildDetail',
+                                        'This is a locally built version with extra patches. In-app updates are turned off because installing the official release would replace this build and remove those patches. Update it by rebuilding from source.'
+                                    )}
+                                </p>
+                            </div>
+                        </div>
+                    )}
                     {installSource === 'managed' && (
                         <div className="flex items-start gap-3 p-4 rounded-lg bg-bg-tertiary border border-white/10 mb-4">
                             <Package className="w-5 h-5 flex-shrink-0 mt-0.5 text-accent" />
@@ -202,7 +218,7 @@ export default function UpdateModal({ onClose }: Props) {
                                 </div>
                             )}
                         </>
-                    ) : installSource !== 'managed' && !status?.available && !status?.checking && (
+                    ) : installSource !== 'managed' && installSource !== 'fork' && !status?.available && !status?.checking && (
                         <p className="text-sm text-text-secondary">
                             {t('updateModal.deliveredViaGithub')}
                         </p>

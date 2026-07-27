@@ -116,11 +116,34 @@ function devVpkmergeBinaryPath(): string | null {
 }
 
 /**
- * Resolve the bundled vpkmerge binary path. In dev the binary lives under
- * the repo's resources/; in a packaged build electron-builder's
- * extraResources places it at process.resourcesPath/vpkmerge/.
+ * Resolve the vpkmerge binary path, in priority order:
+ *   1. `settings.vpkmergeBinaryPath` (an explicit user override, any build)
+ *   2. `$VPKMERGE_BINARY` / a sibling `../vpkmerge/target` build (dev only)
+ *   3. the bundled binary (repo `resources/` in dev,
+ *      `process.resourcesPath/vpkmerge/` when packaged)
+ *
+ * The settings override exists because 2 is gated on `!app.isPackaged`, so a
+ * PACKAGED build had no way at all to run a different engine: you had to
+ * rebuild and repackage the whole app to change one sidecar binary. With the
+ * override, a packaged build can be pointed at a locally built engine, which is
+ * what makes A/B-ing engine changes practical.
+ *
+ * A configured-but-missing path is a hard error rather than a silent fallback.
+ * Falling back to the bundled engine would look like the override "worked"
+ * while quietly running different code, which is the worst outcome when the
+ * whole point of the setting is knowing which engine produced a mod.
  */
 export function vpkmergeBinaryPath(): string {
+    const override = loadSettings().vpkmergeBinaryPath?.trim();
+    if (override) {
+        if (!existsSync(override)) {
+            throw new Error(
+                `Custom vpkmerge binary not found at ${override}. Fix or clear the path in Settings.`
+            );
+        }
+        return override;
+    }
+
     if (!app.isPackaged) {
         const local = devVpkmergeBinaryPath();
         if (local) return local;

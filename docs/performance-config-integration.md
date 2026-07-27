@@ -154,6 +154,17 @@ agrees on, with the aggressive tiers (boot, Kaizu) as opt-in.
 
 ## Updating presets
 
+### HUD and advanced gameinfo controls
+
+The Settings card also exposes a small, bounded set of user-facing HUD and
+minimap ConVars, including V2 health bars, non-player health bars, single-bar
+mode, ally-health visibility, minimap sizing, icon shrink, zipline thickness,
+and update rate. Re-check these against the live `gameinfo.gi` and current
+Deadlock build after major patches. Look for additional client-side HUD or
+readability ConVars, but do not expose `devonly`, cheat, server/gameplay, or
+debug values without confirming that they are safe and useful for normal
+players.
+
 Re-download the upstream config + clean baseline, re-run the section/key diff,
 regenerate the tables in `performanceConfigData.ts`. Upstream is the source of
 truth for preset contents; do not hand-tune values. Bumping a preset means

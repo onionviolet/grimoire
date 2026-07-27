@@ -2,6 +2,8 @@ import { ipcMain } from 'electron';
 import { loadSettings, saveSettings, type AppSettings } from '../services/settings';
 import { detectDeadlockPath, looksLikeDeadlockPath } from '../services/deadlock';
 import { ensureDevDeadlockPath } from '../services/dev';
+import { configureFilter, filterStats } from '../services/browserContentFilter';
+import type { BrowserFilterStats } from '../../../src/types/foundry';
 
 // detect-deadlock
 ipcMain.handle('detect-deadlock', (): string | null => {
@@ -28,4 +30,19 @@ ipcMain.handle('get-settings', (): AppSettings => {
 // set-settings
 ipcMain.handle('set-settings', (_, settings: AppSettings): void => {
     saveSettings(settings);
+    // Rebuild the browser blocklist in the same breath as the save, so a list
+    // path or toggle change takes effect without restarting the app. Cheap: a
+    // file read and a Set rebuild, and it no-ops when the filter is off.
+    configureFilter({
+        enabled: settings.browserBlockTrackers !== false,
+        userListPath: settings.browserBlockListPath,
+    });
+});
+
+// browser:filterStats
+// Settings reads this to show what the filter is actually doing (entry count,
+// requests blocked this session, and any error from a bad user list). Without
+// it the blocking is invisible and a broken custom list would fail silently.
+ipcMain.handle('browser:filterStats', (): BrowserFilterStats => {
+    return filterStats();
 });

@@ -5,8 +5,9 @@
  * rather than a raw spawn failure.
  */
 import { ipcMain } from 'electron';
-import { getActiveDeadlockPath } from '../services/settings';
+import { getActiveDeadlockPath, loadSettings } from '../services/settings';
 import {
+    getGlobalSounds,
     getHeroRoster,
     getHeroSounds,
     getTextures,
@@ -18,7 +19,11 @@ import {
 } from '../services/foundryCatalog';
 import { buildHeroEffectVpkForExport } from '../services/heroColors';
 import { exportVpkViaDialog } from '../services/foundryExport';
+import { runVpkmergeStdout, vpkmergeBinaryPath } from '../services/modMerger';
 import type {
+    EngineInfo,
+    GlobalSound,
+    GlobalSoundFilters,
     HeroEffectExportRequest,
     HeroInfo,
     HeroSound,
@@ -73,6 +78,13 @@ ipcMain.handle(
 );
 
 ipcMain.handle(
+    'foundry:globalSounds',
+    async (_e, filters: GlobalSoundFilters = {}): Promise<GlobalSound[]> => {
+        return getGlobalSounds(requireDeadlockPath(), filters);
+    }
+);
+
+ipcMain.handle(
     'foundry:fullImage',
     async (_e, category: TextureCategory, entryPath: string): Promise<string | null> => {
         return ensureFullImage(requireDeadlockPath(), category, entryPath);
@@ -106,3 +118,45 @@ ipcMain.handle(
         return exportVpkViaDialog(vpkPath, suggestedName);
     }
 );
+
+// Report which vpkmerge engine is actually in use and what version it is.
+//
+// The engine is a swappable sidecar (settings.vpkmergeBinaryPath overrides the
+// bundled one, in packaged builds too), so "which engine am I running" stops
+// being obvious the moment anyone uses that override. This answers it from the
+// same resolver the real calls go through, rather than re-deriving the path and
+// risking a different answer than the one that actually built a mod.
+ipcMain.handle('foundry:engineInfo', async (): Promise<EngineInfo> => {
+    let path: string;
+    try {
+        path = vpkmergeBinaryPath();
+    } catch (err) {
+        return {
+            path: null,
+            version: null,
+            bundled: false,
+            error: err instanceof Error ? err.message : String(err),
+        };
+    }
+    const override = loadSettings().vpkmergeBinaryPath?.trim();
+    try {
+        // `--version` prints "vpkmerge <semver>"; keep the whole line, since a
+        // locally built engine may carry more than upstream's release string.
+        const out = await runVpkmergeStdout(['--version'], 10000);
+        return {
+            path,
+            version: out.trim() || null,
+            bundled: !override,
+            error: null,
+        };
+    } catch (err) {
+        // Resolvable but not runnable (wrong arch, missing perms, not a real
+        // vpkmerge). Report the path so the user can see WHAT failed.
+        return {
+            path,
+            version: null,
+            bundled: !override,
+            error: err instanceof Error ? err.message : String(err),
+        };
+    }
+});

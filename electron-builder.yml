@@ -38,6 +38,11 @@ asarUnpack:
 # the asar so the OS can execute it directly. Resolved at runtime via
 # process.resourcesPath.
 extraResources:
+  # ChatLane is the YAML <-> VPK conversion engine for the Chat Wheel page.
+  - from: resources/chatlane
+    to: chatlane
+    filter:
+      - "**/*"
   - from: resources/vpkmerge
     to: vpkmerge
     filter:

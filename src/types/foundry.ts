@@ -111,6 +111,45 @@ export interface HeroSoundFilters {
     limit?: number;
 }
 
+/** Which family a non-hero (global) sound belongs to, from `catalog globalsounds`.
+ *  Derived engine-side from the event's *source file* rather than its name, since
+ *  global event names follow no cross-file convention. */
+export type GlobalSoundCategory =
+    | 'ui'
+    | 'music'
+    | 'ambience'
+    | 'npc'
+    | 'item'
+    | 'gameplay'
+    | 'voice'
+    | 'other';
+
+/** One playable non-hero sound from `catalog globalsounds --json`: everything
+ *  outside the hero and VO trees (UI, music, ambience, NPCs, shop items, match
+ *  gameplay). `soundevents` is the `.vsndevts_c` entry the event lives in, which
+ *  is what a swap passes back as `--soundevents` (there is no hero to infer it
+ *  from); `source` is that path rendered short (`ui`, `npc/troopers`) and is the
+ *  grouping key; `label` is the event name as prose (search key); `vsnd` lists the
+ *  clip path(s) (>1 == a randomizer pool). */
+export interface GlobalSound {
+    event: string;
+    soundevents: string;
+    source: string;
+    category: GlobalSoundCategory;
+    label: string;
+    vsnd: string[];
+    duration: number | null;
+}
+
+/** Filters accepted by `getGlobalSounds`; all optional and AND-combined by the
+ *  CLI. `source` matches as a prefix, so `npc` keeps the whole NPC tree. */
+export interface GlobalSoundFilters {
+    category?: GlobalSoundCategory;
+    source?: string;
+    search?: string;
+    limit?: number;
+}
+
 /** One record in the thumbnail batch's `manifest.json` (path -> PNG file + dims). */
 export interface ThumbManifestEntry {
     entry: string;
@@ -161,6 +200,12 @@ export interface VpkExportResult {
 export interface HeroSoundSwapRequest {
     heroCodename: string;
     heroName: string;
+    /** Global swap: the `.vsndevts_c` entry carrying `event` (a
+     *  `GlobalSound.soundevents`, e.g. `soundevents/ui.vsndevts_c`). Set for
+     *  non-hero sounds, where there is no hero to resolve the file from; it
+     *  overrides `heroCodename` on the engine call, and the installed mod is
+     *  left untagged rather than filed under a hero. */
+    soundeventsEntry?: string;
     /** Gameplay swap: the soundevent name (event mode). Omit when using
      *  `clipPaths`. */
     event?: string;
@@ -179,4 +224,24 @@ export interface HeroSoundSwapRequest {
     /** Optional loudness gain (dB) from the "match volume" normalizer, applied
      *  losslessly before minting. Omitted / 0 = no change. */
     gainDb?: number;
+}
+
+/** Which vpkmerge engine the app is actually running, for the Settings card.
+ *  `bundled` is false when settings.vpkmergeBinaryPath overrides it. A non-null
+ *  `error` with a non-null `path` means the binary resolved but would not run. */
+export interface EngineInfo {
+    path: string | null;
+    version: string | null;
+    bundled: boolean;
+    error: string | null;
+}
+
+/** What the in-app browser's ad/tracker filter is doing, for the Settings card.
+ *  `domains` counts blocklist entries (built-in plus any user list); `blocked`
+ *  counts requests cancelled since launch; `error` reports an unreadable user
+ *  list, which would otherwise fail silently and look like weak blocking. */
+export interface BrowserFilterStats {
+    domains: number;
+    blocked: number;
+    error: string | null;
 }

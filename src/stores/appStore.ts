@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { Mod, AppSettings, AppearanceSurface, EditLocalModArgs, GlobalModType } from '../types/mod';
+import type { ImportCustomModArgs, ImportCustomModResult } from '../types/electron';
 import { getActiveDeadlockPath } from '../lib/appSettings';
 import { setDateFormat } from '../lib/dateFormat';
 import i18n, { applyLanguagePreference } from '../i18n';
@@ -10,9 +11,16 @@ import { modRestoreKey, planSoloByKeys, planRestore } from '../lib/soloRestore';
 import {
   SHUFFLE_INCLUDED_KEY,
   SHUFFLE_ON_LAUNCH_KEY,
+  SHUFFLE_INCLUDE_VANILLA_KEY,
+  SOUND_SHUFFLE_INCLUDED_KEY,
+  CARD_SHUFFLE_INCLUDED_KEY,
+  planCardShuffle,
   planLaunchShuffle,
   readStoredShuffleIncluded,
   readStoredShuffleOnLaunch,
+  readStoredShuffleIncludeVanilla,
+  readStoredSoundShuffleIncluded,
+  readStoredCardShuffleIncluded,
   readStoredShuffleVariants,
   writeStoredShuffleVariants,
   type VariantChoice,
@@ -231,6 +239,10 @@ interface AppState {
   shuffleOnLaunch: boolean;
   shuffleIncluded: Set<string>;
   shuffleVariants: Map<string, VariantChoice>;
+  shuffleIncludeVanilla: boolean;
+  soundShuffleIncluded: Set<string>;
+  /** Card-source keys (hero + VPK) opted into launch shuffle. */
+  cardShuffleIncluded: Set<string>;
 
   // Browse-page UI state (preserved across page nav)
   browseUi: BrowseUiState;
@@ -242,6 +254,13 @@ interface AppState {
   // Installed-page scroll position. Kept in memory so returning from another
   // tab can restore the page without persisting UI session state to disk.
   installedScrollTop: number;
+
+  // Whether the batch local-import dialog is open. Lives here, and the dialog
+  // is mounted by Layout, because Installed early-returns an empty state when
+  // it has no mods: hosting the dialog there would unmount it (losing the rows
+  // a partly-failed batch still needs to retry) the instant a first-ever import
+  // made the list non-empty.
+  batchImportOpen: boolean;
 
   // Display name of the hero currently open in the Locker (e.g. "Abrams"), or
   // null. Published by the Locker page and read by DiscordPresence so Rich
@@ -305,6 +324,9 @@ interface AppState {
   /** Store an explicit per-skin variant policy, or clear it back to the unset
    *  default (keep the currently loaded files) with null. */
   setShuffleVariant: (skinKey: string, choice: VariantChoice | null) => void;
+  setShuffleIncludeVanilla: (enabled: boolean) => void;
+  toggleSoundShuffleIncluded: (soundKey: string) => void;
+  toggleCardShuffleIncluded: (cardKey: string) => void;
   runLaunchShuffle: () => Promise<{ failures: number }>;
   /** Disable every other mod and enable only `enableKeys` (one card's file(s)),
    *  snapshotting the prior enabled set for one-click restore. `applied` is
@@ -319,7 +341,8 @@ interface AppState {
   setModLockerHero: (modId: string, heroName: string | null) => Promise<void>;
   setModGlobalType: (modId: string, globalType: GlobalModType | null) => Promise<void>;
   setVariantLabel: (modId: string, label: string) => Promise<void>;
-  importCustomMod: (args: { vpkPath: string; name: string; thumbnailDataUrl?: string; nsfw?: boolean }) => Promise<void>;
+  /** Batch local import. Resolves with one result per source, in request order. */
+  importCustomMods: (items: ImportCustomModArgs[]) => Promise<ImportCustomModResult[]>;
 
   // Download counts cache actions
   getDownloadCount: (modId: number) => number | undefined;
@@ -337,6 +360,7 @@ interface AppState {
   // Browse session cache (loaded mods + scroll position)
   setBrowseSession: (cache: BrowseSessionCache | null) => void;
   setInstalledScrollTop: (scrollTop: number) => void;
+  setBatchImportOpen: (open: boolean) => void;
   setLockerHeroName: (name: string | null) => void;
   loadLockerModImages: () => Promise<void>;
   /** `source` is a `data:` URL (custom upload) or an `http(s)` gallery URL. */
@@ -388,9 +412,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   shuffleOnLaunch: readStoredShuffleOnLaunch(),
   shuffleIncluded: readStoredShuffleIncluded(),
   shuffleVariants: readStoredShuffleVariants(),
+  shuffleIncludeVanilla: readStoredShuffleIncludeVanilla(),
+  soundShuffleIncluded: readStoredSoundShuffleIncluded(),
+  cardShuffleIncluded: readStoredCardShuffleIncluded(),
   browseUi: { ...DEFAULT_BROWSE_UI },
   browseSession: null,
   installedScrollTop: 0,
+  batchImportOpen: false,
   lockerHeroName: null,
   lockerModImages: {},
   lockerHideHeroName: {},
@@ -735,6 +763,25 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ shuffleVariants: next });
   },
 
+  setShuffleIncludeVanilla: (enabled: boolean) => {
+    try { localStorage.setItem(SHUFFLE_INCLUDE_VANILLA_KEY, enabled ? 'true' : 'false'); } catch { /* ignore */ }
+    set({ shuffleIncludeVanilla: enabled });
+  },
+
+  toggleSoundShuffleIncluded: (soundKey: string) => {
+    const next = new Set(get().soundShuffleIncluded);
+    if (next.has(soundKey)) next.delete(soundKey); else next.add(soundKey);
+    try { localStorage.setItem(SOUND_SHUFFLE_INCLUDED_KEY, JSON.stringify([...next])); } catch { /* ignore */ }
+    set({ soundShuffleIncluded: next });
+  },
+
+  toggleCardShuffleIncluded: (cardKey: string) => {
+    const next = new Set(get().cardShuffleIncluded);
+    if (next.has(cardKey)) next.delete(cardKey); else next.add(cardKey);
+    try { localStorage.setItem(CARD_SHUFFLE_INCLUDED_KEY, JSON.stringify([...next])); } catch { /* ignore */ }
+    set({ cardShuffleIncluded: next });
+  },
+
   // Re-roll skins for the launch. No-op unless the master switch is on and at
   // least one skin is in the pool. Groups the live mod list by hero (cached
   // categories, the same grouping the Locker shows), picks one opted-in skin per
@@ -743,8 +790,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   // the caller can warn that the shuffle only half-applied; a stuck shuffle
   // never blocks the launch (the Sidebar swallows a thrown error).
   runLaunchShuffle: async (): Promise<{ failures: number }> => {
-    const { shuffleOnLaunch, shuffleIncluded } = get();
-    if (!shuffleOnLaunch || shuffleIncluded.size === 0) return { failures: 0 };
+    const { shuffleOnLaunch, shuffleIncluded, soundShuffleIncluded, cardShuffleIncluded } = get();
+    if (!shuffleOnLaunch || (shuffleIncluded.size === 0 && soundShuffleIncluded.size === 0 && cardShuffleIncluded.size === 0)) return { failures: 0 };
     let heroList: { id: number; name: string }[] = [];
     try {
       heroList = buildHeroList(await api.getGamebananaCategories('ModCategory'));
@@ -761,18 +808,33 @@ export const useAppStore = create<AppState>((set, get) => ({
     // derived from the mods state after any in-flight manual toggle has settled,
     // not from a pre-launch snapshot that a concurrent rename could invalidate.
     return enqueueToggle(async () => {
-      const { mods, shuffleIncluded: included, shuffleVariants: variants } = get();
-      const plan = planLaunchShuffle({ mods, heroList, included, variants });
-      if (plan.enableIds.length === 0 && plan.disableIds.length === 0) return { failures: 0 };
+      const { mods, shuffleIncluded: included, shuffleVariants: variants, soundShuffleIncluded: soundIncluded, shuffleIncludeVanilla: includeVanilla, cardShuffleIncluded } = get();
+      const plan = planLaunchShuffle({ mods, heroList, included, variants, soundIncluded, includeVanilla });
+      const cardChoices = planCardShuffle(cardShuffleIncluded);
+      let failures = 0;
+      if (plan.enableIds.length === 0 && plan.disableIds.length === 0 && cardChoices.length === 0) return { failures };
       try {
-        const { mods: updated, failures } = await api.applyModToggleBatch(plan.enableIds, plan.disableIds);
-        set({ mods: updated });
-        return { failures: failures.length };
+        if (plan.enableIds.length || plan.disableIds.length) {
+          const applied = await api.applyModToggleBatch(plan.enableIds, plan.disableIds);
+          set({ mods: applied.mods });
+          failures += applied.failures.length;
+        }
+        // Card sources may be disabled: applying copies their portrait entries
+        // into the managed Locker Cards VPK, so they remain independent from
+        // the visual-skin pool and work for locally forged/imported cards too.
+        for (const choice of cardChoices) {
+          try {
+            await api.applyHeroCard(choice.heroName, choice.sourceFileName);
+          } catch {
+            failures += 1;
+          }
+        }
+        return { failures };
       } catch (err) {
         if (isEnableCapError(err)) { set({ modsNotice: ENABLE_CAP_NOTICE }); }
         else if (!isGameRunningModLockError(err)) { set({ modsError: String(err) }); }
         get().loadMods();
-        return { failures: plan.enableIds.length + plan.disableIds.length };
+        return { failures: failures + plan.enableIds.length + plan.disableIds.length + cardChoices.length };
       }
     });
   },
@@ -864,18 +926,22 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  importCustomMod: async (args) => {
+  importCustomMods: async (items) => {
     try {
-      const updated = await api.importCustomMod(args);
-      // Bump the generation so any in-flight silent reload (e.g. the focus
-      // refresh from the just-closed file picker) can't overwrite this with a
-      // scan taken before the new VPK landed.
+      const { mods, results } = await api.importCustomMods(items);
+      // Same generation bump as the single import: whatever landed must not be
+      // overwritten by a scan taken before the copies finished.
       modsGeneration++;
-      set({ mods: updated });
+      set({ mods });
+      // Per-source failures come back in `results`, not as a throw, so the cap
+      // check runs over them. The dialog shows each failed row inline; the
+      // notice is what explains the cap itself (which no row-level message can).
+      if (results.some((r) => !r.ok && isEnableCapError(r.error))) {
+        set({ modsNotice: ENABLE_CAP_NOTICE });
+      }
+      return results;
     } catch (err) {
-      // At the 99-active cap, importing (which lands enabled) can't claim a
-      // slot. Toast it rather than blanking the page; still rethrow so the
-      // import dialog knows it failed.
+      // A throw here means the whole batch never ran (no game path, empty list).
       if (isEnableCapError(err)) { set({ modsNotice: ENABLE_CAP_NOTICE }); }
       else { set({ modsError: String(err) }); }
       throw err;
@@ -948,6 +1014,10 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   setInstalledScrollTop: (scrollTop: number) => {
     set({ installedScrollTop: Math.max(0, scrollTop) });
+  },
+
+  setBatchImportOpen: (open: boolean) => {
+    set({ batchImportOpen: open });
   },
 
   setLockerHeroName: (name: string | null) => {

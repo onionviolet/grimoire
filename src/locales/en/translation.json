@@ -66,6 +66,7 @@
   "nav": {
     "installed": "Installed",
     "browse": "Browse",
+    "saved": "Saved",
     "discover": "Discover",
     "servers": "Servers",
     "locker": "Locker",
@@ -75,7 +76,64 @@
     "crosshair": "Crosshair",
     "autoexec": "Autoexec",
     "stats": "Stats",
-    "settings": "Settings"
+    "settings": "Settings",
+    "browser": "Browser"
+  },
+  "saved": {
+    "title": "Saved Mods",
+    "description": "Keep mods for later without downloading or installing them.",
+    "search": "Search saved mods",
+    "sort": "Sort",
+    "sortOptions": {
+      "saved": "Saved time",
+      "name": "Name",
+      "updated": "Recently updated"
+    },
+    "sections": {
+      "all": "All",
+      "Mod": "Mods",
+      "Sound": "Sounds",
+      "Wip": "WiPs"
+    },
+    "loading": "Loading saved mods...",
+    "empty": {
+      "title": "Nothing saved yet",
+      "description": "Use Save mod for later in Browse to build a watchlist.",
+      "filtered": "No saved mods match this view",
+      "filteredDescription": "Try another section or search."
+    },
+    "unavailable": "Saved mod unavailable",
+    "unavailableDetail": "The catalog does not have a cached copy. Open Browse after the next sync.",
+    "unknownCreator": "Unknown creator",
+    "updated": "Updated {{date}}",
+    "savedAt": "Saved {{date}}",
+    "openInBrowse": "Open in Browse",
+    "remove": "Remove saved mod",
+    "editMetadata": "Edit details",
+    "notesPlaceholder": "Notes",
+    "tagsPlaceholder": "Tags, separated by commas",
+    "whySavedPlaceholder": "Why did you save this?",
+    "watchUpdates": "Watch for updates",
+    "export": "Export",
+    "import": "Import",
+    "exporting": "Exporting saved mods...",
+    "importing": "Importing saved mods..."
+    ,"checkUpdates": "Check updates",
+    "checkingUpdates": "Checking watched mods...",
+    "previewProfile": "Preview profile",
+    "profilePreviewTitle": "Saved profile preview",
+    "profilePreviewDescription": "Select the saved items you want to plan together. This preview never downloads or installs anything.",
+    "parentBookmark": "Parent bookmark, choose a file before downloading",
+    "profileReady": "Exact file",
+    "profileUnresolved": "Needs review",
+    "profileSelected": "{{count}} selected",
+    "profileDone": "Done",
+    "watchStatus": {
+      "current": "Up to date",
+      "updated": "Saved file is no longer the newest live file",
+      "missing": "No live files found",
+      "unavailable": "Could not reach GameBanana"
+    }
   },
   "foundry": {
     "header": {
@@ -106,6 +164,7 @@
       "heading": "Workshop",
       "library": "Library",
       "sound": "Sound",
+      "globalSound": "Global sounds",
       "texture": "Texture",
       "items": "Items",
       "recolor": "Recolor",
@@ -163,6 +222,7 @@
       "searchPlaceholder": "Search sounds...",
       "loading": "Reading sounds from your game files...",
       "play": "Audition",
+      "poolPosition": "clip {{n}} of {{total}}",
       "gameplayCount": "{{count}} gameplay sounds",
       "noMatch": "No sounds match your search.",
       "ult": "ULT",
@@ -213,6 +273,27 @@
         "reset": "Reset",
         "matchVolume": "Match the original volume",
         "matchUnavailable": "original unavailable"
+      }
+    },
+    "globalSound": {
+      "searchPlaceholder": "Search UI, music, ambience, NPC and item sounds...",
+      "loading": "Reading sounds from your game files...",
+      "count": "{{count}} sounds",
+      "noMatch": "No sounds match your search.",
+      "empty": {
+        "title": "No global sounds",
+        "description": "Your installed game files carry no non-hero soundevents."
+      },
+      "category": {
+        "all": "All",
+        "ui": "Interface",
+        "music": "Music",
+        "item": "Shop items",
+        "gameplay": "Gameplay",
+        "npc": "NPCs",
+        "ambience": "Ambience",
+        "voice": "Voice",
+        "other": "Other"
       }
     }
   },
@@ -666,7 +747,8 @@
       "support": "Support",
       "maintenance": "Maintenance",
       "modDatabaseCache": "Mod Database Cache",
-      "localPreviewCache": "Local preview cache"
+      "localPreviewCache": "Local preview cache",
+      "forkBuild": "Custom build"
     },
     "language": {
       "label": "Language",
@@ -707,6 +789,8 @@
       "downloadUpdate": "Download Update",
       "checkForUpdates": "Check for Updates",
       "managed": "Updates are managed by your package manager.",
+      "forkBuild": "This is a custom build.",
+      "forkBuildInstructions": "In-app updates are turned off. The official release would install cleanly over this build and remove the patches it carries, so updates come from rebuilding it instead.",
       "managedInstructions": "Grimoire was installed via a system package. Update with your distro's tools: <arch>yay -Syu grimoire-bin</arch> on Arch, or <apt>sudo apt update && sudo apt upgrade</apt> on Debian/Ubuntu.",
       "installedDeb": "Installed the <deb>.deb</deb> manually? Add the apt repository for automatic updates (instructions at <url>grimoiremods.com/download</url>).",
       "downloading": "Downloading update...",
@@ -786,7 +870,8 @@
       "vpkImprint": "Imprint installed mods",
       "deadworksServers": "Deadworks Servers",
       "performanceConfig": "Performance Config",
-      "foundry": "Door Stuck"
+      "foundry": "Door Stuck",
+      "browser": "In-app browser"
     },
     "support": {
       "reportBuildFailed": "Failed to build report: {{error}}",
@@ -857,7 +942,35 @@
       "fixUnknown": "Match unknown local VPKs against GameBanana to recover names and thumbnails. May hit rate limits on large libraries.",
       "vpkImprint": "Give each newly installed mod a small identity imprint so an orphaned file can be recognized offline. Adds an Imprint installed mods button on the Installed page to imprint mods you already have.",
       "deadworks": "Add a Servers tab to browse and join Deadworks community servers. Required content downloads before connecting.",
-      "performanceConfig": "One-click fps boost using Sqooky's community preset. Mods keep working. Remove any time."
+      "performanceConfig": "One-click fps boost using Sqooky's community preset. Mods keep working. Remove any time.",
+      "browser": "Adds a Browser page for mod sites. Pages run isolated from the app, with downloads and popups handed to your real browser."
+    },
+    "forkBuild": {
+      "description": "This build carries patches that are not in the official release. Switch them off to compare against stock behaviour without rebuilding."
+    },
+    "fork": {
+      "globalSounds": "Global sounds tab",
+      "globalSoundsDetail": "Browse and swap UI, music, ambience, NPC and shop-item sounds, not just hero ones.",
+      "poolCycling": "Cycle randomizer pools",
+      "poolCyclingDetail": "Auditioning an event with several clips walks the whole pool instead of replaying the first one.",
+      "engine": "Engine (vpkmerge)",
+      "engineDetail": "The sidecar that reads your game files and builds mods. Point this at a locally built binary to test engine changes without repackaging the app.",
+      "engineChecking": "Checking engine...",
+      "engineUnknown": "Unknown version",
+      "engineBundled": "Bundled with this build",
+      "engineCustom": "Custom path (overrides the bundled engine)",
+      "engineChoose": "Choose binary",
+      "engineReset": "Use bundled",
+      "engineRecheck": "Re-check"
+    },
+    "browser": {
+      "blockTrackers": "Block ads and trackers",
+      "blockTrackersDetail": "Cancels requests to known ad and tracker domains inside the in-app browser. The page still loads; the ad request never leaves your machine.",
+      "blockStats": "{{domains}} domains blocked, {{blocked}} requests stopped this session",
+      "blockListChoose": "Choose a blocklist file",
+      "blockListClear": "Use built-in list only",
+      "blockListError": "Custom list failed to load: ",
+      "blockListHint": "Any hosts file or plain list of domains, one per line. The built-in list is deliberately small; point this at a real filter list for full coverage."
     }
   },
   "crosshair": {
@@ -945,11 +1058,11 @@
     },
     "actions": {
       "browseMods": "Browse Mods",
-      "importCustomMod": "Import Custom Mod",
+      "importCustomMod": "Import Local Mods",
       "fixOrder": "Fix order",
       "fixOrderHint": "Fix order: renumber enabled mods 1, 2, 3, ... to tidy priority slots",
-      "addCustomMod": "Add custom mod",
-      "addCustomModHint": "Add custom mod: import a VPK from disk with a custom name and thumbnail",
+      "addCustomMod": "Add local mods",
+      "addCustomModHint": "Add local mods: import VPKs or archives from disk, with names and thumbnails",
       "openModsFolder": "Open mods folder",
       "exitSelectionMode": "Exit selection mode",
       "selectMultiple": "Select multiple mods",
@@ -1060,7 +1173,10 @@
       "enabled_one": "Enabled",
       "enabled_other": "Enabled",
       "disabled_one": "Disabled",
-      "disabled_other": "Disabled"
+      "disabled_other": "Disabled",
+      "sortAlphabetical": "A-Z",
+      "sortAlphabeticalHint": "Sort disabled mods A to Z. Pinned mods stay on top.",
+      "sortCustomHint": "Back to your own order (pinned first, then how you arranged them)."
     },
     "view": {
       "viewOptions": "View options",
@@ -1177,16 +1293,9 @@
       "makeCustomTitle": "Make Custom Mod",
       "saveCustom": "Save Custom Mod",
       "alreadyInstalledHint": "This VPK is already installed. Saving will only add custom metadata to it.",
-      "title": "Import Custom Mod",
-      "vpkHelp": "Drop a .vpk or an archive (.zip, .7z, .rar) and it will be copied into your addons folder with the next available pak## priority. Tip: drag the .zip file itself, not a file dragged out of an opened zip window.",
-      "selectVpk": "Select VPK or archive",
       "expectedVpk": "Expected a .vpk or archive (.zip, .7z, .rar) - got \"{{name}}\".",
       "dropUnresolved": "Could not read that file. If you dragged it out of an opened zip window, drag the .zip file itself here instead.",
       "vpkFile": "VPK or archive",
-      "vpkSelected": "File selected: {{path}}. Press Enter to change.",
-      "vpkSelectedLocked": "File selected: {{path}}",
-      "vpkAriaBrowse": "Drop a .vpk or archive here or press Enter to browse",
-      "dropVpkHere": "Drop a <code>.vpk</code> or <code>.zip</code> here",
       "orClickToBrowse": "or click to browse",
       "modName": "Mod name",
       "modNamePlaceholder": "My awesome skin",
@@ -1308,6 +1417,37 @@
       "rangeError": "Use 1-{{max}}",
       "chipAriaLabel": "Load order {{value}}. Click to change.",
       "inputAriaLabel": "Set load order for {{modName}}"
+    },
+    "batchImport": {
+      "title": "Import Local Mods",
+      "help": "Drop any number of .vpk files or archives (.zip, .7z, .rar). Each one is copied into your addons folder at the next free pak## priority, using the name parsed from its filename unless you change it. Tip: drag the .zip itself, not a file dragged out of an opened zip window.",
+      "selectFiles": "Select VPK files or archives",
+      "ariaBrowse": "Drop .vpk files or archives here, or press Enter to browse",
+      "dropFilesHere": "Drop <code>.vpk</code> files or archives here",
+      "dropMoreHere": "Drop more files here to add them",
+      "fileCount_one": "{{count}} file selected",
+      "fileCount_other": "{{count}} files selected",
+      "namesHint": "Names are parsed from the filenames. Edit any of them before importing.",
+      "addMore": "Add more",
+      "clearAll": "Clear all",
+      "markAllNsfw": "Mark all NSFW",
+      "clearAllNsfw": "Clear NSFW",
+      "thumbnailHint": "Click or drop an image to set a thumbnail",
+      "nameFor": "Name for {{file}}",
+      "removeFile": "Remove {{file}}",
+      "nameRequired": "Name required",
+      "unnamedBlocked_one": "{{count}} file still needs a name.",
+      "unnamedBlocked_other": "{{count}} files still need a name.",
+      "importCount_one": "Import {{count}} mod",
+      "importCount_other": "Import {{count}} mods",
+      "importedCount_one": "{{count}} mod from this file",
+      "importedCount_other": "{{count}} mods from this file",
+      "importedToast_one": "Imported {{count}} mod",
+      "importedToast_other": "Imported {{count}} mods",
+      "someFailed_one": "{{count}} file could not be imported. It is still listed below with the reason.",
+      "someFailed_other": "{{count}} files could not be imported. They are still listed below with the reason.",
+      "failedToast_one": "{{count}} file could not be imported: {{error}}",
+      "failedToast_other": "{{count}} files could not be imported. First error: {{error}}"
     }
   },
   "locker": {
@@ -2175,6 +2315,7 @@
     "tooltip": {
       "installed": "Mods currently in your Deadlock addons folder.",
       "browse": "Discover and download mods from GameBanana.",
+      "saved": "Mods you bookmarked to revisit later.",
       "discover": "Browse and import profiles published by other Grimoire users.",
       "discoverNew_one": "{{count}} new published profile.",
       "discoverNew_other": "{{count}} new published profiles.",
@@ -2185,7 +2326,8 @@
       "autoexec": "Console commands that run at game launch.",
       "stats": "Match history and personal stats.",
       "conflicts": "Mods that overwrite the same game files.",
-      "profiles": "Save and swap sets of enabled mods."
+      "profiles": "Save and swap sets of enabled mods.",
+      "browser": "Browse mod sites without leaving Grimoire"
     },
     "launch": {
       "noPath": "Configure your Deadlock path in Settings first",
@@ -2427,6 +2569,8 @@
     "youReOn": "You're on <ver>v{{version}}</ver>",
     "releasedOn": "(released {{date}})",
     "managedByPackageManager": "Managed by your package manager.",
+    "forkBuild": "Custom build",
+    "forkBuildDetail": "This is a locally built version with extra patches. In-app updates are turned off because installing the official release would replace this build and remove those patches. Update it by rebuilding from source.",
     "managedDistroTools": "Update with your distro's tools: <arch>yay -Syu grimoire-bin</arch> on Arch, or <apt>sudo apt update && sudo apt upgrade</apt> on Debian/Ubuntu.",
     "managedAptRepo": "Installed the <deb>.deb</deb> manually? Add the apt repository for auto-updates: <url>grimoiremods.com/download</url>.",
     "downloadingUpdate": "Downloading update...",
@@ -2609,5 +2753,21 @@
     },
     "emptyApplied": "No {{noun}} overrides applied yet.",
     "openLocker": "Open the Locker"
+  },
+  "browser": {
+    "addressPlaceholder": "Enter a web address",
+    "back": "Back",
+    "forward": "Forward",
+    "reload": "Reload",
+    "stop": "Stop",
+    "home": "Home",
+    "openExternal": "Open in your browser",
+    "openExternalLabel": "Open externally",
+    "badUrl": "That does not look like a web address. Try gamebanana.com.",
+    "loadFailed": "Page failed to load.",
+    "disabled": {
+      "title": "Browser is off",
+      "description": "Enable the in-app browser in Settings to use this page."
+    }
   }
 }

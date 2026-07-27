@@ -29,7 +29,7 @@ import type {
     GetModUpdatesArgs,
     GetCategoriesArgs,
 } from '../../../src/types/electron';
-import { updateModNsfw } from '../services/modDatabase';
+import { getSavedMods, updateSavedModCheck, updateModNsfw } from '../services/modDatabase';
 
 // browse-mods
 ipcMain.handle(
@@ -39,6 +39,32 @@ ipcMain.handle(
         return fetchSubmissions(section, page, perPage, search, categoryId, sort, submitterId);
     }
 );
+
+ipcMain.handle('check-saved-mod-updates', async () => {
+    const watched = getSavedMods().filter((item) => item.watchUpdates);
+    const results = [];
+    for (const item of watched) {
+        const checkedAt = Date.now();
+        try {
+            const details = await fetchModDetails(item.modId, item.section);
+            const liveFiles = (details.files ?? []).filter((file) => !file.isArchived);
+            const latest = liveFiles
+                .slice()
+                .sort((left, right) => (right.dateAdded ?? 0) - (left.dateAdded ?? 0))[0]?.id ?? null;
+            const status = item.fileId === null
+                ? latest === null ? 'missing' : 'current'
+                : liveFiles.some((file) => file.id === item.fileId)
+                    ? 'current'
+                    : latest === null ? 'missing' : 'updated';
+            updateSavedModCheck(item.modId, item.section, item.fileId, checkedAt, latest);
+            results.push({ modId: item.modId, section: item.section, fileId: item.fileId, latestFileId: latest, status });
+        } catch {
+            updateSavedModCheck(item.modId, item.section, item.fileId, checkedAt, null);
+            results.push({ modId: item.modId, section: item.section, fileId: item.fileId, latestFileId: null, status: 'unavailable' as const });
+        }
+    }
+    return results;
+});
 
 // get-mod-details (enriches local cache with NSFW flag)
 ipcMain.handle(

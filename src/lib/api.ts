@@ -1,4 +1,4 @@
-import type { Mod, AppSettings, GlobalModType, UnknownModFilterGuess, UnknownModDetectionProgress, ApplyUnknownModMatchArgs, ApplyUnknownCustomModArgs, AssociateUnknownModArgs, UnknownModFileList, EditLocalModArgs, MergeModsArgs, UnmergeModResult, ExtractMergeSourceResult, AddMergeSourcesResult, ImprintAllInstalledResult, ImprintInstalledProgress, ImprintPreflightResult, ImprintDetails, PeekImprintResult, ApplyHeroCardResult, HeroAbilitySlot, AbilitySlot, AbilitySoundParams, ActiveHeroSound, ApplyHeroSoundResult, ActiveHeroColor, ApplyHeroColorResult, ApplyHeroPrismResult, ActiveTrippySkin, ApplyTrippySkinResult, ApplyTrippyVfxResult, TrippySpriteOptions, TrippySpriteResult, TrippyVfxChoice, LockerOverview, LockerCardThumbnail, LockerClearScope, AppearanceSurface } from '../types/mod';
+import type { Mod, AppSettings, GlobalModType, UnknownModFilterGuess, UnknownModDetectionProgress, ApplyUnknownModMatchArgs, ApplyUnknownCustomModArgs, AssociateUnknownModArgs, UnknownModFileList, EditLocalModArgs, MergeModsArgs, UnmergeModResult, ExtractMergeSourceResult, AddMergeSourcesResult, ImprintAllInstalledResult, ImprintInstalledProgress, ImprintPreflightResult, ImprintDetails, PeekImprintResult, ModelCompatibilityReport, ApplyHeroCardResult, HeroAbilitySlot, AbilitySlot, AbilitySoundParams, ActiveHeroSound, ApplyHeroSoundResult, ActiveHeroColor, ApplyHeroColorResult, ApplyHeroPrismResult, ActiveTrippySkin, ApplyTrippySkinResult, ApplyTrippyVfxResult, TrippySpriteOptions, TrippySpriteResult, TrippyVfxChoice, LockerOverview, LockerCardThumbnail, LockerClearScope, AppearanceSurface } from '../types/mod';
 import type { DmmMigrationRequest, DmmMigrationReport } from './dmmMigration';
 import type {
   HeroPortrait,
@@ -22,6 +22,12 @@ import type {
   GameBananaArtistLink,
 } from '../types/gamebanana';
 import type { DownloadedLocale, LocaleManifest } from '../types/locales';
+import type {
+  ImportCustomModArgs,
+  ImportCustomModResult,
+  ImportCustomModsBatchResult,
+  ImportCustomModsProgress,
+} from '../types/electron';
 import { parseFeModel, type ClothModel } from './feModel';
 import { showToast } from '../stores/toastStore';
 import i18n from '../i18n';
@@ -93,6 +99,14 @@ export async function dmmMigrateExecute(req: DmmMigrationRequest): Promise<DmmMi
 // Mods
 export async function getMods(): Promise<Mod[]> {
   return window.electronAPI.getMods();
+}
+
+export async function readChatWheel(vpkPath: string): Promise<string> {
+  return window.electronAPI.chatWheelRead(vpkPath);
+}
+
+export async function saveChatWheel(args: import('../types/electron').ChatWheelSaveArgs): Promise<Mod | null> {
+  return withGameRunningWarning(() => window.electronAPI.chatWheelSave(args));
 }
 
 export async function enableMod(modId: string): Promise<Mod> {
@@ -443,6 +457,14 @@ export async function reorderMods(orderedIds: string[]): Promise<Mod[]> {
   return withGameRunningWarning(() => window.electronAPI.reorderMods(orderedIds));
 }
 
+export async function getModelCompatibilityReport(): Promise<ModelCompatibilityReport> {
+  return window.electronAPI.getModelCompatibilityReport();
+}
+
+export async function applyModelCompatibilityFix(): Promise<Mod[]> {
+  return withGameRunningWarning(() => window.electronAPI.applyModelCompatibilityFix());
+}
+
 export async function applyModToggleBatch(
   enableIds: string[],
   disableIds: string[]
@@ -456,14 +478,23 @@ export async function swapModPriority(modIdA: string, modIdB: string): Promise<M
   return withGameRunningWarning(() => window.electronAPI.swapModPriority(modIdA, modIdB));
 }
 
-export async function importCustomMod(args: {
-  vpkPath: string;
-  name: string;
-  thumbnailDataUrl?: string;
-  nsfw?: boolean;
-}): Promise<Mod[]> {
-  return window.electronAPI.importCustomMod(args);
+/** Import several local sources in one exclusive mutation. Per-source failures
+ *  come back in `results` instead of throwing, so a bad file can't discard the
+ *  ones that landed. */
+export async function importCustomMods(
+  items: ImportCustomModArgs[]
+): Promise<ImportCustomModsBatchResult> {
+  return window.electronAPI.importCustomMods({ items });
 }
+
+/** Subscribe to batch-import progress. Returns an unsubscribe function. */
+export function onImportCustomModsProgress(
+  callback: (progress: ImportCustomModsProgress) => void
+): () => void {
+  return window.electronAPI.onImportCustomModsProgress(callback);
+}
+
+export type { ImportCustomModArgs, ImportCustomModResult, ImportCustomModsBatchResult, ImportCustomModsProgress };
 
 /** Build a soul-container override VPK from a user GLB and install it as a
  *  tracked local mod. Returns the full enriched mod list after install. */
@@ -866,6 +897,14 @@ export async function applyPerformanceConfig(): Promise<PerformanceConfigStatus>
   return window.electronAPI.applyPerformanceConfig();
 }
 
+export async function setPerformanceHudConvars(values: Record<string, boolean>): Promise<PerformanceConfigStatus> {
+  return window.electronAPI.setPerformanceHudConvars(values);
+}
+
+export async function setPerformanceAdvancedConvars(values: Record<string, number>): Promise<PerformanceConfigStatus> {
+  return window.electronAPI.setPerformanceAdvancedConvars(values);
+}
+
 export async function removePerformanceConfig(): Promise<PerformanceConfigStatus> {
   return window.electronAPI.removePerformanceConfig();
 }
@@ -910,6 +949,15 @@ export async function showOpenDialog(options: {
   filters?: Array<{ name: string; extensions: string[] }>;
 }): Promise<string | null> {
   return window.electronAPI.showOpenDialog(options);
+}
+
+/** Multi-select open dialog. Resolves to [] when the user cancels. */
+export async function showOpenDialogMulti(options: {
+  title?: string;
+  defaultPath?: string;
+  filters?: Array<{ name: string; extensions: string[] }>;
+}): Promise<string[]> {
+  return window.electronAPI.showOpenDialogMulti(options);
 }
 
 export async function showSaveDialog(options: {
@@ -1321,6 +1369,14 @@ export async function foundryHeroSounds(
   filters?: import('../types/foundry').HeroSoundFilters
 ): Promise<import('../types/foundry').HeroSound[]> {
   return window.electronAPI.foundry.heroSounds(filters);
+}
+
+/** The non-hero sound index: UI, music, ambience, NPCs, shop items, gameplay.
+ *  Unscoped by hero (there is none), so callers filter by category / source. */
+export async function foundryGlobalSounds(
+  filters?: import('../types/foundry').GlobalSoundFilters
+): Promise<import('../types/foundry').GlobalSound[]> {
+  return window.electronAPI.foundry.globalSounds(filters);
 }
 
 export async function foundryFullImage(

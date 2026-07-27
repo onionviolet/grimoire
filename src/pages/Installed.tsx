@@ -35,7 +35,6 @@ import {
   Search,
   Download,
   Info,
-  UploadCloud,
   List,
   LayoutGrid,
   Grid3x3,
@@ -53,6 +52,7 @@ import {
   MoreHorizontal,
   Wand2,
   SlidersHorizontal,
+  ArrowDownAZ,
   ArrowDownUp,
   Link2,
   ChevronDown,
@@ -74,10 +74,10 @@ import { showToast } from '../stores/toastStore';
 import { useAppStore, type BrowseArtistRef } from '../stores/appStore';
 import { getActiveDeadlockPath } from '../lib/appSettings';
 import { isImprintPending } from '../lib/imprintPending';
-import { getConflicts, openModsFolder, readImageDataUrl, showOpenDialog, getModDetails, getModFileList, downloadMod, createSnapshot, detectUnknownModFilters, detectUnknownModCacheBulk, cancelUnknownModDetection, onUnknownModDetectionProgress, applyUnknownModMatch, applyUnknownCustomMod, associateUnknownMod, listUnknownModFiles, browseMods, mergeMods, unmergeMod, extractMergeSource, addMergeSources, reorderMods as apiReorderMods, setModIgnoreUpdates, getLockerOverview, revealModInFolder, dmmMigrateScan, dmmMigrateExecute, imprintAllInstalled, onImprintAllInstalledProgress, imprintPreflight, readImprintDetails, peekImprint, launchModded } from '../lib/api';
-import type { UnmergeModResult, ImprintAllInstalledResult, ImprintInstalledProgress, ImprintPreflightResult, ImprintDetails, PeekImprintResult } from '../lib/api';
+import { getConflicts, openModsFolder, readImageDataUrl, showOpenDialog, getModDetails, getModFileList, downloadMod, createSnapshot, detectUnknownModFilters, detectUnknownModCacheBulk, cancelUnknownModDetection, onUnknownModDetectionProgress, applyUnknownModMatch, applyUnknownCustomMod, associateUnknownMod, listUnknownModFiles, browseMods, mergeMods, unmergeMod, extractMergeSource, addMergeSources, reorderMods as apiReorderMods, setModIgnoreUpdates, getLockerOverview, revealModInFolder, dmmMigrateScan, dmmMigrateExecute, imprintAllInstalled, onImprintAllInstalledProgress, imprintPreflight, readImprintDetails, getModelCompatibilityReport, applyModelCompatibilityFix, launchModded } from '../lib/api';
+import type { UnmergeModResult, ImprintAllInstalledResult, ImprintInstalledProgress, ImprintPreflightResult, ImprintDetails } from '../lib/api';
 import type { ModConflict } from '../lib/api';
-import type { Mod, GlobalModType, UnknownModDetectionProgress, UnknownModFilterGuess, MergedModSource, AssociateUnknownModArgs, ImprintAnomalousMod, ImprintSkippedMod, ImprintFailedMod } from '../types/mod';
+import type { Mod, GlobalModType, UnknownModDetectionProgress, UnknownModFilterGuess, MergedModSource, AssociateUnknownModArgs, ImprintAnomalousMod, ImprintSkippedMod, ImprintFailedMod, ModelCompatibilityReport } from '../types/mod';
 import type { GameBananaModDetails, GameBananaMod, GameBananaItemRef } from '../types/gamebanana';
 import { getModThumbnail } from '../types/gamebanana';
 import ModThumbnail from '../components/ModThumbnail';
@@ -88,7 +88,9 @@ import VariantPickerModal from '../components/VariantPickerModal';
 import MergeModsModal from '../components/MergeModsModal';
 import MergedContentsModal from '../components/MergedContentsModal';
 import PriorityEditor from '../components/PriorityEditor';
+import { IMAGE_EXTS, deriveModNameFromPath } from '../lib/customModImport';
 import { Modal } from '../components/common/Modal';
+import { useBackdropDismiss } from '../components/common/useBackdropDismiss';
 import { inferHeroFromTitle, getHeroRenderPath, getHeroFacePosition, getHeroChipIconPath, HERO_NAMES, HERO_NAMES_SORTED, canonicalHeroName, GLOBAL_MOD_TYPE_ORDER, GLOBAL_MOD_TYPE_LABELS, getEffectiveGlobalType } from '../lib/lockerUtils';
 import { formatRelativeDate, formatAbsoluteDate } from '../lib/dates';
 import { useStableCallback } from '../lib/useStableCallback';
@@ -457,7 +459,14 @@ const SortableEntryCard = memo(function SortableEntryCard({
       // on hover we lift containment (-> visible) and raise z so the expanded card
       // renders whole and on top. The has-menu-open lift does the same for an open
       // action menu that would otherwise paint behind the next card.
-      className={`flex flex-col has-[[data-card-menu-open]]:z-20 [content-visibility:auto] ${isList ? '' : 'hover:[content-visibility:visible] hover:z-10'} ${sortableDisabled ? '' : 'cursor-grab active:cursor-grabbing'}`}
+      // overflow-anchor:none opts every card out of the browser's scroll
+      // anchoring. Without it, pinning a card near the bottom of a long library
+      // dragged the viewport along with it: Chrome had picked that card as the
+      // scroll anchor, so when the star moved it to the top of the disabled
+      // section the scroller "helpfully" followed it thousands of pixels up.
+      // Excluding cards leaves the grid container as the anchor, which never
+      // moves on a reorder, so the view stays put through pin / unpin / delete.
+      className={`flex flex-col has-[[data-card-menu-open]]:z-20 [overflow-anchor:none] [content-visibility:auto] ${isList ? '' : 'hover:[content-visibility:visible] hover:z-10'} ${sortableDisabled ? '' : 'cursor-grab active:cursor-grabbing'}`}
       style={style}
       {...attributes}
       {...listeners}
@@ -752,7 +761,6 @@ export default function Installed() {
     setModLockerHero,
     setModGlobalType,
     setVariantLabel,
-    importCustomMod,
     soundVolume,
     setInstalledScrollTop,
     setBrowseUi,
@@ -910,6 +918,8 @@ export default function Installed() {
   // progress phase streaming done/total + current file, and a final report of
   // what was imprinted / skipped / failed. `null` means the modal is closed.
   const [imprintState, setImprintState] = useState<ImprintModalState>(null);
+  const [modelCompatibilityReport, setModelCompatibilityReport] = useState<ModelCompatibilityReport | null>(null);
+  const [modelCompatibilityLoading, setModelCompatibilityLoading] = useState(false);
   // "View imprint" details modal target (right-click menu on an imprinted mod's
   // card). The modal fetches the embedded imprint itself; null means closed.
   const [imprintDetailsMod, setImprintDetailsMod] = useState<Mod | null>(null);
@@ -949,9 +959,22 @@ export default function Installed() {
   const [tagFilter, setTagFilter] = useState<string[]>([]);
   const installedHideNsfwPreviews =
     settings?.installedHideNsfwPreviews ?? settings?.hideNsfwPreviews ?? true;
+  // Disabled-section sort, deliberately separate from the top-bar sort above.
+  // That one spans both sections and turns the whole page read-only (a sorted
+  // enabled list no longer maps to load order). The disabled library is a
+  // shelf, not load order, so it can be alphabetized on its own without
+  // costing the enabled section its drag handles. 'custom' is the shipped
+  // behavior (pinned first, then the manual drag order); 'name' sorts A to Z
+  // inside those same pin bands.
+  const [disabledSortMode, setDisabledSortMode] = useState<'custom' | 'name'>(() =>
+    localStorage.getItem('installedDisabledSort') === 'name' ? 'name' : 'custom'
+  );
   useEffect(() => {
     localStorage.setItem('installedSortMode', sortMode);
   }, [sortMode]);
+  useEffect(() => {
+    localStorage.setItem('installedDisabledSort', disabledSortMode);
+  }, [disabledSortMode]);
   useEffect(() => {
     localStorage.setItem('installedSourceSel', JSON.stringify(sourceSel));
   }, [sourceSel]);
@@ -1126,7 +1149,11 @@ export default function Installed() {
   // derived from live `mods` each render so per-file deletes inside the
   // picker reflect immediately without juggling a separate snapshot.
   const [pickerGroupId, setPickerGroupId] = useState<number | null>(null);
-  const [importOpen, setImportOpen] = useState(false);
+  // The batch local-import dialog is mounted by Layout, not here: this page
+  // early-returns an empty state when it has no mods, so hosting the dialog
+  // would unmount it mid-batch on a first-ever import. Only the open flag lives
+  // on the page's buttons.
+  const setImportOpen = useAppStore((s) => s.setBatchImportOpen);
   const [unknownFilterGuess, setUnknownFilterGuess] = useState<{
     mod: Mod;
     loading: boolean;
@@ -1431,6 +1458,17 @@ export default function Installed() {
     setDetailsActiveFileIds(new Set());
     setDetailsDates(null);
   });
+
+  // Backdrops for the details loading/error overlays. Selecting the error text
+  // to copy it and releasing outside the panel used to dismiss the error.
+  const detailsLoadingBackdropRef = useBackdropDismiss<HTMLDivElement>(
+    closeModDetails,
+    detailsLoading
+  );
+  const detailsErrorBackdropRef = useBackdropDismiss<HTMLDivElement>(
+    closeModDetails,
+    !!detailsError && !detailsMod
+  );
 
   // Open a GameBanana item linked from description/changelog/comments inside
   // the same details modal (in-app), rather than the OS browser. Works for
@@ -3364,13 +3402,20 @@ export default function Installed() {
   const disabledDefaultIndex = new Map(
     defaultSortedDisabled.map((entry, index) => [entry.key, index])
   );
+  // A-Z drops the saved drag order (that's the point of asking for it) but
+  // keeps the pinned band: the star's promise is "pins it to the top", so
+  // favorites sort A-Z among themselves, then everything else does.
+  const disabledAlphabetical = disabledSortMode === 'name';
   const visibleDisabled = statusSel.includes('disabled')
     ? [...defaultSortedDisabled].sort(createDisabledEntryComparator({
         favorites: disabledFavorites,
-        manualOrder: disabledOrder,
+        manualOrder: disabledAlphabetical ? [] : disabledOrder,
         keyOf: entryDisabledPreferenceKey,
-        fallback: (left, right) =>
-          (disabledDefaultIndex.get(left.key) ?? 0) - (disabledDefaultIndex.get(right.key) ?? 0),
+        fallback: disabledAlphabetical
+          ? (left, right) =>
+              entryName(left).localeCompare(entryName(right), undefined, { sensitivity: 'base' })
+          : (left, right) =>
+              (disabledDefaultIndex.get(left.key) ?? 0) - (disabledDefaultIndex.get(right.key) ?? 0),
       }))
     : [];
   const totalMatches = visibleEnabled.length + visibleDisabled.length;
@@ -3541,6 +3586,28 @@ export default function Installed() {
     reorderMods(compactOrder.map((m) => m.id));
   };
 
+  const openModelCompatibility = async () => {
+    setModelCompatibilityLoading(true);
+    try {
+      setModelCompatibilityReport(await getModelCompatibilityReport());
+    } catch (err) {
+      showToast(`Could not inspect model mods: ${err instanceof Error ? err.message : String(err)}`, { tone: 'error' });
+    } finally {
+      setModelCompatibilityLoading(false);
+    }
+  };
+
+  const handleModelCompatibilityFix = async () => {
+    try {
+      await applyModelCompatibilityFix();
+      await loadMods({ silent: true });
+      setModelCompatibilityReport(null);
+      showToast('Model mods were moved to the end of load order.', { tone: 'success' });
+    } catch (err) {
+      showToast(`Could not apply model compatibility fix: ${err instanceof Error ? err.message : String(err)}`, { tone: 'error' });
+    }
+  };
+
   /**
    * Commit a typed load-order position from the Load editor. The number is a
    * 1-based global position over the enabled mods (1 = loads first), so we move
@@ -3621,6 +3688,10 @@ export default function Installed() {
 
   const renderSortableSection = (section: DragSection) => {
     const entries = previewEntriesForSection(section);
+    // A-Z is a display order, so a drop in the disabled section would have
+    // nowhere to be saved. The enabled section keeps its handles either way.
+    const sectionSortable =
+      sortableEnabled && !(section === 'disabled' && disabledAlphabetical);
     const activeEntry = draggingSection === section
       ? entries.find((entry) => entry.key === draggingKey)
       : undefined;
@@ -3649,7 +3720,7 @@ export default function Installed() {
             {(gridWarm ? entries : entries.slice(0, INITIAL_MOUNT_COUNT)).map((entry) => (
               <SortableEntryCard
                 key={entry.key}
-                sortableDisabled={!sortableEnabled}
+                sortableDisabled={!sectionSortable}
                 {...cardPropsFor(entry)}
               />
             ))}
@@ -3685,14 +3756,6 @@ export default function Installed() {
             </div>
           }
         />
-        {importOpen && (
-          <ImportCustomModModal
-            onClose={() => setImportOpen(false)}
-            onImport={async (args) => {
-              await importCustomMod(args);
-            }}
-          />
-        )}
       </>
     );
   }
@@ -3779,6 +3842,17 @@ export default function Installed() {
             className="!px-2.5"
             aria-label={t('installed.actions.copyEnabled')}
             title={t('installed.actions.copyEnabledHint')}
+          />
+        )}
+        {enabledModCount > 0 && (
+          <Button
+            variant="secondary"
+            onClick={() => { void openModelCompatibility(); }}
+            icon={Wand2}
+            className="!px-2.5"
+            aria-label="Check model compatibility"
+            title="Check character model compatibility"
+            isLoading={modelCompatibilityLoading}
           />
         )}
         {viewIsReorderable && (
@@ -4240,8 +4314,29 @@ export default function Installed() {
 
       {visibleDisabled.length > 0 && (
         <div>
-          <div className="flex items-baseline justify-between mb-[14px]">
+          <div className="flex items-center justify-between gap-3 mb-[14px]">
             <SectionHeader count={visibleDisabled.length} className="!mb-0 !text-xs !font-semibold !tracking-[0.06em]">{t('installed.sections.disabled', { count: visibleDisabled.length })}</SectionHeader>
+            {/* Sort toggle for the disabled shelf only, parked on the header
+                row so it reads as belonging to this section and not to the
+                top bar's page-wide sort. */}
+            <button
+              type="button"
+              onClick={() => setDisabledSortMode(disabledAlphabetical ? 'custom' : 'name')}
+              aria-pressed={disabledAlphabetical}
+              title={
+                disabledAlphabetical
+                  ? t('installed.sections.sortCustomHint')
+                  : t('installed.sections.sortAlphabeticalHint')
+              }
+              className={`inline-flex flex-shrink-0 cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.06em] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 ${
+                disabledAlphabetical
+                  ? 'border-accent/40 bg-accent/10 text-accent'
+                  : 'border-white/[0.08] bg-bg-tertiary/50 text-text-secondary hover:border-white/20 hover:text-text-primary'
+              }`}
+            >
+              <ArrowDownAZ className="h-3.5 w-3.5" />
+              {t('installed.sections.sortAlphabetical')}
+            </button>
           </div>
           {renderSortableSection('disabled')}
         </div>
@@ -4376,16 +4471,6 @@ export default function Installed() {
         onCancel={() => setModToDelete(null)}
       />
 
-      {importOpen && (
-        <ImportCustomModModal
-          onClose={() => setImportOpen(false)}
-          onImport={async (args) => {
-            await importCustomMod(args);
-          }}
-        />
-      )}
-
-
       {localEditMod && (
         <EditLocalModModal
           mod={localEditMod}
@@ -4465,8 +4550,8 @@ export default function Installed() {
 
       {detailsLoading && createPortal(
         <div
+          ref={detailsLoadingBackdropRef}
           className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 animate-fade-in"
-          onClick={closeModDetails}
         >
           <div
             className="bg-bg-secondary border border-border rounded-xl p-6 flex items-center gap-3"
@@ -4481,8 +4566,8 @@ export default function Installed() {
 
       {detailsError && !detailsMod && createPortal(
         <div
+          ref={detailsErrorBackdropRef}
           className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-          onClick={closeModDetails}
         >
           <div
             className="bg-bg-secondary border border-border rounded-xl p-6 max-w-md"
@@ -4588,15 +4673,11 @@ export default function Installed() {
       />
 
       {customUnknownMod && (
-        <ImportCustomModModal
-          title={t('installed.import.makeCustomTitle')}
-          submitLabel={t('installed.import.saveCustom')}
-          initialVpkPath={customUnknownMod.path}
+        <MakeCustomModModal
+          vpkPath={customUnknownMod.path}
           initialName={deriveModNameFromPath(customUnknownMod.fileName)}
-          lockVpk
-          vpkHelpText={t('installed.import.alreadyInstalledHint')}
           onClose={() => setCustomUnknownMod(null)}
-          onImport={async ({ name, thumbnailDataUrl, nsfw }) => {
+          onSave={async ({ name, thumbnailDataUrl, nsfw }) => {
             await applyUnknownCustomMod(customUnknownMod.id, { name, thumbnailDataUrl, nsfw });
             await loadMods();
             setUnknownFilterCache((prev) => clearUnknownCacheForMod(prev, customUnknownMod));
@@ -4649,6 +4730,50 @@ export default function Installed() {
           onClose={() => setImprintState(null)}
         />
       )}
+
+      <ConfirmModal
+        isOpen={modelCompatibilityReport !== null}
+        title="Character model compatibility"
+        message={
+          modelCompatibilityReport && (
+            <div className="space-y-3 text-sm">
+              {modelCompatibilityReport.modelMods.length === 0 ? (
+                <p>No compiled hero-model overrides were found in the installed VPKs.</p>
+              ) : (
+                <>
+                  <p>
+                    Found {modelCompatibilityReport.modelMods.filter((mod) => mod.enabled).length} enabled character-model mod{modelCompatibilityReport.modelMods.filter((mod) => mod.enabled).length === 1 ? '' : 's'}.
+                    The automatic fix moves them after ordinary mods so their files win normal load-order conflicts.
+                  </p>
+                  <ul className="max-h-28 list-disc space-y-1 overflow-y-auto pl-5 text-xs text-text-secondary">
+                    {modelCompatibilityReport.modelMods.map((mod) => (
+                      <li key={mod.id}>{mod.name} ({mod.hero}){mod.enabled ? '' : ' — disabled'}</li>
+                    ))}
+                  </ul>
+                </>
+              )}
+              {modelCompatibilityReport.overlappingModels.length > 0 && (
+                <p className="text-amber-200">
+                  {modelCompatibilityReport.overlappingModels.length} model file conflict{modelCompatibilityReport.overlappingModels.length === 1 ? '' : 's'} remain: only the later model can win. Disable the one you do not want.
+                </p>
+              )}
+              <p className="rounded-sm border border-amber-400/25 bg-amber-400/10 p-2 text-amber-100">
+                This cannot repair a compiled model whose skeleton, bone weights, or animation bindings changed after a Deadlock update. Those need an author rebuild/re-export.
+              </p>
+              {modelCompatibilityReport.unreadableMods.length > 0 && (
+                <p className="text-xs text-text-secondary">Could not inspect {modelCompatibilityReport.unreadableMods.length} unreadable VPK{modelCompatibilityReport.unreadableMods.length === 1 ? '' : 's'}.</p>
+              )}
+            </div>
+          )
+        }
+        confirmLabel={modelCompatibilityReport?.canFixLoadOrder ? 'Apply load-order fix' : 'Close'}
+        cancelLabel="Cancel"
+        onConfirm={() => {
+          if (modelCompatibilityReport?.canFixLoadOrder) void handleModelCompatibilityFix();
+          else setModelCompatibilityReport(null);
+        }}
+        onCancel={() => setModelCompatibilityReport(null)}
+      />
 
       {imprintDetailsMod && (
         <ImprintDetailsModal
@@ -4967,14 +5092,15 @@ function UnknownFilterGuessModal({
 }) {
   const { t } = useTranslation();
   const { mod } = state;
+  const backdropRef = useBackdropDismiss<HTMLDivElement>(onClose);
 
   return createPortal(
     <div
+      ref={backdropRef}
       className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 animate-fade-in"
       role="dialog"
       aria-modal="true"
       aria-labelledby="unknown-filter-title"
-      onClick={onClose}
     >
       <div
         className="bg-bg-secondary border border-white/10 rounded-xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden shadow-2xl"
@@ -5073,15 +5199,16 @@ function BulkUnknownFixModal({
     (mod) => !pendingIds.has(mod.id) && cache[mod.id]?.crcMatch.status === 'not-found'
   ).length;
   const [confirmFindAll, setConfirmFindAll] = useState(false);
+  const backdropRef = useBackdropDismiss<HTMLDivElement>(onClose);
 
   return createPortal(
     <>
     <div
+      ref={backdropRef}
       className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 animate-fade-in"
       role="dialog"
       aria-modal="true"
       aria-labelledby="bulk-unknown-title"
-      onClick={onClose}
     >
       <div
         className="bg-bg-secondary border border-white/10 rounded-xl w-full max-w-5xl max-h-[85vh] flex flex-col overflow-hidden shadow-2xl"
@@ -8234,6 +8361,9 @@ interface EditLocalModModalProps {
 
 function EditLocalModModal({ mod, onClose, onSave }: EditLocalModModalProps) {
   const { t } = useTranslation();
+  // Drag-selecting the name field and releasing outside the panel used to
+  // close this dialog and drop the edit.
+  const backdropRef = useBackdropDismiss<HTMLDivElement>(onClose);
   const [name, setName] = useState(mod.name);
   const [imagePath, setImagePath] = useState('');
   const [thumbnailDataUrl, setThumbnailDataUrl] = useState(mod.thumbnailUrl ?? '');
@@ -8308,8 +8438,8 @@ function EditLocalModModal({ mod, onClose, onSave }: EditLocalModModalProps) {
 
   return createPortal(
     <div
+      ref={backdropRef}
       className="fixed inset-0 z-50 flex items-center justify-center bg-bg-primary/75 p-4 backdrop-blur-sm"
-      onClick={onClose}
     >
       <div
         className="w-full max-w-md rounded-lg border border-border bg-bg-secondary p-5 shadow-2xl"
@@ -8436,89 +8566,29 @@ function EditLocalModModal({ mod, onClose, onSave }: EditLocalModModalProps) {
   );
 }
 
-interface ImportCustomModModalProps {
+interface MakeCustomModModalProps {
   onClose: () => void;
-  onImport: (args: { vpkPath: string; name: string; thumbnailDataUrl?: string; nsfw?: boolean }) => Promise<void>;
-  title?: string;
-  submitLabel?: string;
-  initialVpkPath?: string;
-  initialName?: string;
-  lockVpk?: boolean;
-  vpkHelpText?: string;
+  onSave: (args: { name: string; thumbnailDataUrl?: string; nsfw?: boolean }) => Promise<void>;
+  /** The already-installed VPK the metadata attaches to. Display only. */
+  vpkPath: string;
+  initialName: string;
 }
 
-const IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'gif', 'webp'];
-// Local mod import accepts a bare VPK or an archive we extract on the main side.
-const VPK_IMPORT_EXTS = ['vpk', 'zip', '7z', 'rar'];
-const VPK_IMPORT_RE = /\.(vpk|zip|7z|rar)$/i;
-
-function deriveModNameFromPath(p: string): string {
-  const base = p.split(/[\\/]/).pop() ?? '';
-  return base
-    .replace(/\.(zip|7z|rar)$/i, '')
-    .replace(/_dir\.vpk$/i, '')
-    .replace(/\.vpk$/i, '')
-    .replace(/^pak\d{2}_/, '')
-    .replace(/[_-]+/g, ' ')
-    .trim();
-}
-
-function ImportCustomModModal({
-  onClose,
-  onImport,
-  title: titleProp,
-  submitLabel: submitLabelProp,
-  initialVpkPath = '',
-  initialName = '',
-  lockVpk = false,
-  vpkHelpText: vpkHelpTextProp,
-}: ImportCustomModModalProps) {
+/**
+ * Attach custom metadata (name, thumbnail, NSFW) to a VPK that is ALREADY on
+ * disk: the "make this unknown mod custom" flow. The file is fixed, so there is
+ * no picker and nothing is copied. Importing fresh files from disk goes through
+ * ImportCustomModsModal instead.
+ */
+function MakeCustomModModal({ onClose, onSave, vpkPath, initialName }: MakeCustomModModalProps) {
   const { t } = useTranslation();
-  const title = titleProp ?? t('installed.import.title');
-  const submitLabel = submitLabelProp ?? t('profiles.actions.import');
-  const vpkHelpText = vpkHelpTextProp ?? t('installed.import.vpkHelp');
-  const [vpkPath, setVpkPath] = useState<string>(initialVpkPath);
-  const [name, setName] = useState<string>(initialName || (initialVpkPath ? deriveModNameFromPath(initialVpkPath) : ''));
+  const [name, setName] = useState<string>(initialName);
   const [imagePath, setImagePath] = useState<string>('');
   const [thumbnailDataUrl, setThumbnailDataUrl] = useState<string>('');
   const [nsfw, setNsfw] = useState<boolean>(false);
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [vpkDragActive, setVpkDragActive] = useState(false);
   const [imgDragActive, setImgDragActive] = useState(false);
-  // Whether the CURRENT name field value came from the user actually typing,
-  // vs. an auto-fill (filename-derived, or an imprint recognition prefill).
-  // Recognition only prefills over an auto-filled name, never over one the
-  // user actually edited.
-  const nameTouchedRef = useRef(!!initialName);
-  // Imprint recognition for a single picked .vpk (archives skip the peek:
-  // extraction happens later, at which point every extracted VPK still goes
-  // through adoption at import time, so nothing is lost by not peeking here).
-  const [recognized, setRecognized] = useState<PeekImprintResult | null>(null);
-  const peekRequestRef = useRef(0);
-
-  const acceptVpkPath = (picked: string) => {
-    setVpkPath(picked);
-    setError(null);
-    setRecognized(null);
-    if (!nameTouchedRef.current) setName(deriveModNameFromPath(picked));
-
-    if (!picked.toLowerCase().endsWith('.vpk')) return;
-    const requestId = ++peekRequestRef.current;
-    void peekImprint(picked)
-      .then((result) => {
-        // Stale response guard: the user may have picked a different file
-        // (or closed the modal) while this was in flight.
-        if (peekRequestRef.current !== requestId) return;
-        setRecognized(result);
-        if (result?.title && !nameTouchedRef.current) {
-          setName(result.title);
-        }
-      })
-      .catch(() => {
-        // Best-effort recognition only; a failed peek just shows no note.
-      });
-  };
 
   const acceptImagePath = async (picked: string) => {
     setImagePath(picked);
@@ -8532,42 +8602,12 @@ function ImportCustomModModal({
     }
   };
 
-  const pickVpk = async () => {
-    if (lockVpk) return;
-    const picked = await showOpenDialog({
-      title: t('installed.import.selectVpk'),
-      filters: [{ name: 'VPK or archive', extensions: VPK_IMPORT_EXTS }],
-    });
-    if (picked) acceptVpkPath(picked);
-  };
-
   const pickImage = async () => {
     const picked = await showOpenDialog({
       title: t('installed.imageField.selectImage'),
       filters: [{ name: 'Images', extensions: IMAGE_EXTS }],
     });
     if (picked) await acceptImagePath(picked);
-  };
-
-  const handleVpkDrop = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setVpkDragActive(false);
-    if (lockVpk) return;
-    const file = e.dataTransfer.files?.[0];
-    if (!file) return;
-    if (!VPK_IMPORT_RE.test(file.name)) {
-      setError(t('installed.import.expectedVpk', { name: file.name }));
-      return;
-    }
-    const path = window.electronAPI.getDroppedFilePath(file);
-    if (!path) {
-      // No real on-disk path: almost always a file dragged out of Windows'
-      // built-in zip viewer (a virtual shell file). Point them at the zip itself.
-      setError(t('installed.import.dropUnresolved'));
-      return;
-    }
-    acceptVpkPath(path);
   };
 
   const handleImageDrop = async (e: React.DragEvent<HTMLDivElement>) => {
@@ -8589,22 +8629,14 @@ function ImportCustomModModal({
     await acceptImagePath(path);
   };
 
-  const onZoneKeyDown = (e: React.KeyboardEvent, action: () => void) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      action();
-    }
-  };
-
-  const canSubmit = !!vpkPath && !!name.trim() && !submitting;
+  const canSubmit = !!name.trim() && !submitting;
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
     setSubmitting(true);
     setError(null);
     try {
-      await onImport({
-        vpkPath,
+      await onSave({
         name: name.trim(),
         thumbnailDataUrl: thumbnailDataUrl || undefined,
         nsfw,
@@ -8619,102 +8651,43 @@ function ImportCustomModModal({
   return (
     <Modal
       onClose={onClose}
-      labelledBy="import-custom-mod-title"
+      labelledBy="make-custom-mod-title"
       size="lg"
       dismissable={!submitting}
       panelClassName="flex max-h-[80vh] flex-col overflow-hidden"
     >
-        <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
-          <div className="flex items-center gap-2.5">
-            <FilePlus className="h-5 w-5 text-accent" />
-            <h2 id="import-custom-mod-title" className="text-base font-semibold text-text-primary">
-              {title}
-            </h2>
-          </div>
-          <button
-            type="button"
-            onClick={() => !submitting && onClose()}
-            disabled={submitting}
-            aria-label={t('common.actions.close')}
-            className="rounded-md p-1 text-text-secondary hover:bg-bg-tertiary hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
+        <ModalHeader
+          title={t('installed.import.makeCustomTitle')}
+          titleId="make-custom-mod-title"
+          onClose={onClose}
+          closeLabel={t('common.actions.close')}
+          closeDisabled={submitting}
+        />
 
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-3.5">
           <p className="text-xs leading-5 text-text-secondary">
-            {vpkHelpText}
+            {t('installed.import.alreadyInstalledHint')}
           </p>
 
           <div>
             <label className="block text-sm font-medium text-text-primary mb-1.5">
-              {t('installed.import.vpkFile')} <span className="text-state-danger">*</span>
+              {t('installed.import.vpkFile')}
             </label>
-            <div
-              role="button"
-              tabIndex={0}
-              aria-label={vpkPath ? (lockVpk ? t('installed.import.vpkSelectedLocked', { path: vpkPath }) : t('installed.import.vpkSelected', { path: vpkPath })) : t('installed.import.vpkAriaBrowse')}
-              onClick={pickVpk}
-              onKeyDown={(e) => onZoneKeyDown(e, pickVpk)}
-              onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); if (!lockVpk) setVpkDragActive(true); }}
-              onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = lockVpk ? 'none' : 'copy'; if (!lockVpk) setVpkDragActive(true); }}
-              onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setVpkDragActive(false); }}
-              onDrop={handleVpkDrop}
-              className={`relative flex flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed px-4 py-4 text-center transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg-secondary ${
-                vpkDragActive
-                  ? 'border-accent bg-accent/10'
-                  : vpkPath
-                    ? `border-accent/40 bg-bg-tertiary/60 ${lockVpk ? 'cursor-default' : 'cursor-pointer hover:bg-bg-tertiary'}`
-                    : 'border-border bg-bg-tertiary/40 hover:bg-bg-tertiary hover:border-white/20'
-              }`}
-            >
-              {vpkPath ? (
-                <>
-                  <FilePlus className="w-5 h-5 text-accent" aria-hidden />
-                  <span className="text-sm text-text-primary font-medium truncate max-w-full">
-                    {vpkPath.split(/[\\/]/).pop()}
-                  </span>
-                  <span className="text-xs text-text-secondary font-mono truncate max-w-full">{vpkPath}</span>
-                  {!lockVpk && <span className="text-xs text-accent">{t('installed.imageField.clickToReplaceAnother')}</span>}
-                </>
-              ) : (
-                <>
-                  <UploadCloud className="w-6 h-6 text-text-secondary" aria-hidden />
-                  <span className="text-sm text-text-primary font-medium">
-                    <Trans
-                      i18nKey="installed.import.dropVpkHere"
-                      components={{ code: <code className="font-mono text-accent" /> }}
-                    />
-                  </span>
-                  <span className="text-xs text-text-secondary">{t('installed.import.orClickToBrowse')}</span>
-                </>
-              )}
+            <div className="flex flex-col items-center gap-1 rounded-lg border border-border bg-bg-tertiary/40 px-4 py-3 text-center">
+              <FilePlus className="w-5 h-5 text-accent" aria-hidden />
+              <span className="text-sm text-text-primary font-medium truncate max-w-full">
+                {vpkPath.split(/[\\/]/).pop()}
+              </span>
+              <span className="text-xs text-text-secondary font-mono truncate max-w-full">{vpkPath}</span>
             </div>
           </div>
 
           <FormField label={t('installed.import.modName')} required>
             <Input
               value={name}
-              onChange={(e) => {
-                nameTouchedRef.current = true;
-                setName(e.target.value);
-              }}
+              onChange={(e) => setName(e.target.value)}
               placeholder={t('installed.import.modNamePlaceholder')}
             />
-            {recognized && (
-              <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                <Tag tone="success" icon={Fingerprint}>
-                  {t('installed.import.recognizedFromImprint')}
-                </Tag>
-                {recognized.title && <Tag tone="neutral">{recognized.title}</Tag>}
-                {recognized.gamebananaId && (
-                  <Tag tone="neutral">
-                    {t('installed.import.recognizedGameBananaId', { id: recognized.gamebananaId })}
-                  </Tag>
-                )}
-              </div>
-            )}
           </FormField>
 
           <div>
@@ -8726,7 +8699,12 @@ function ImportCustomModModal({
               tabIndex={0}
               aria-label={imagePath ? t('installed.import.thumbnailSelected', { path: imagePath }) : t('installed.imageField.ariaBrowse')}
               onClick={pickImage}
-              onKeyDown={(e) => onZoneKeyDown(e, pickImage)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  void pickImage();
+                }
+              }}
               onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setImgDragActive(true); }}
               onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'copy'; setImgDragActive(true); }}
               onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setImgDragActive(false); }}
@@ -8789,7 +8767,7 @@ function ImportCustomModModal({
             isLoading={submitting}
             className="!px-10 !py-1.5"
           >
-            {submitLabel}
+            {t('installed.import.saveCustom')}
           </Button>
         </div>
     </Modal>

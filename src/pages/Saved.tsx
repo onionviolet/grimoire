@@ -1,0 +1,276 @@
+import { useEffect, useMemo, useState } from 'react';
+import { Heart, ExternalLink, Loader2, Search, Trash2, Pencil, Save as SaveIcon, X, Upload, Download, RefreshCw, ListChecks } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
+import ModThumbnail from '../components/ModThumbnail';
+import { Button, IconButton } from '../components/common/ui';
+import type { CachedMod, SavedMod, SavedModUpdateResult } from '../types/electron';
+import { formatDate } from '../types/gamebanana';
+import { useAppStore } from '../stores/appStore';
+
+type SavedFilter = 'all' | 'Mod' | 'Sound' | 'Wip';
+type SavedSort = 'saved' | 'name' | 'updated';
+
+interface SavedRow {
+  saved: SavedMod;
+  mod: CachedMod | null;
+}
+
+const sectionLabels: Record<SavedFilter, string> = {
+  all: 'All',
+  Mod: 'Mods',
+  Sound: 'Sounds',
+  Wip: 'WiPs',
+};
+
+export default function Saved() {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  const setBrowseUi = useAppStore((state) => state.setBrowseUi);
+  const [rows, setRows] = useState<SavedRow[]>([]);
+  const [filter, setFilter] = useState<SavedFilter>('all');
+  const [sort, setSort] = useState<SavedSort>('saved');
+  const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [editingKey, setEditingKey] = useState<string | null>(null);
+  const [draft, setDraft] = useState({ notes: '', tags: '', whySaved: '', watchUpdates: false });
+  const [fileAction, setFileAction] = useState<string | null>(null);
+  const [watchResults, setWatchResults] = useState<SavedModUpdateResult[]>([]);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewKeys, setPreviewKeys] = useState<Set<string>>(new Set());
+
+  const loadSaved = async () => {
+    setLoading(true);
+    try {
+      const favorites = await window.electronAPI.getSavedMods();
+      const loaded = await Promise.all(
+        favorites.map(async (favorite) => ({
+          saved: favorite,
+          mod: await window.electronAPI.getCachedMod(favorite.modId),
+        }))
+      );
+      setRows(loaded);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadSaved();
+  }, []);
+
+  const visibleRows = useMemo(() => {
+    const query = search.trim().toLocaleLowerCase();
+    return rows
+      .filter((row) => filter === 'all' || row.saved.section === filter)
+      .filter((row) => {
+        if (!query) return true;
+        const haystack = `${row.mod?.name ?? row.saved.titleSnapshot ?? ''} ${row.mod?.submitterName ?? ''} ${row.mod?.categoryName ?? ''} ${row.saved.fileName ?? ''} ${row.saved.modId}`.toLocaleLowerCase();
+        return haystack.includes(query);
+      })
+      .sort((left, right) => {
+        if (sort === 'name') return (left.mod?.name ?? left.saved.titleSnapshot ?? '').localeCompare(right.mod?.name ?? right.saved.titleSnapshot ?? '');
+        if (sort === 'updated') return (right.mod?.dateModified ?? 0) - (left.mod?.dateModified ?? 0);
+        return right.saved.savedAt - left.saved.savedAt;
+      });
+  }, [filter, rows, search, sort]);
+
+  const openInBrowse = (row: SavedRow) => {
+    setBrowseUi({ section: row.saved.section, search: '', categoryId: 'all', heroCategoryId: 'all', submitter: undefined });
+    navigate('/browse');
+  };
+
+  const remove = async (row: SavedRow) => {
+    await window.electronAPI.removeSavedMod(row.saved.modId, row.saved.section, row.saved.fileId);
+    setRows((current) => current.filter((candidate) => candidate !== row));
+  };
+
+  const rowKey = (row: SavedRow) => `${row.saved.section}:${row.saved.modId}:${row.saved.fileId ?? 'parent'}`;
+
+  const beginEdit = (row: SavedRow) => {
+    setEditingKey(rowKey(row));
+    setDraft({
+      notes: row.saved.notes,
+      tags: row.saved.tags.join(', '),
+      whySaved: row.saved.whySaved,
+      watchUpdates: row.saved.watchUpdates,
+    });
+  };
+
+  const saveMetadata = async (row: SavedRow) => {
+    const tags = draft.tags.split(',').map((tag) => tag.trim()).filter(Boolean);
+    await window.electronAPI.updateSavedModMetadata({
+      modId: row.saved.modId,
+      section: row.saved.section,
+      fileId: row.saved.fileId,
+      notes: draft.notes,
+      tags,
+      whySaved: draft.whySaved,
+      watchUpdates: draft.watchUpdates,
+    });
+    setRows((current) => current.map((candidate) => candidate === row
+      ? { ...candidate, saved: { ...candidate.saved, notes: draft.notes.trim(), tags, whySaved: draft.whySaved.trim(), watchUpdates: draft.watchUpdates } }
+      : candidate));
+    setEditingKey(null);
+  };
+
+  const exportSaved = async () => {
+    setFileAction(t('saved.exporting'));
+    try { await window.electronAPI.exportSavedMods(); } finally { setFileAction(null); }
+  };
+
+  const importSaved = async () => {
+    setFileAction(t('saved.importing'));
+    try {
+      const result = await window.electronAPI.importSavedMods();
+      if (result) await loadSaved();
+    } finally { setFileAction(null); }
+  };
+
+  const checkUpdates = async () => {
+    setFileAction(t('saved.checkingUpdates'));
+    try {
+      const results = await window.electronAPI.checkSavedModUpdates();
+      setWatchResults(results);
+      const resultByKey = new Map(results.map((result) => [`${result.section}:${result.modId}:${result.fileId ?? 'parent'}`, result]));
+      setRows((current) => current.map((row) => {
+        const result = resultByKey.get(rowKey(row));
+        return result ? { ...row, saved: { ...row.saved, lastCheckedAt: Date.now(), latestFileId: result.latestFileId } } : row;
+      }));
+    } finally { setFileAction(null); }
+  };
+
+  const openPreview = () => {
+    setPreviewKeys(new Set(visibleRows.map(rowKey)));
+    setPreviewOpen(true);
+  };
+
+  return (
+    <div className="h-full overflow-y-auto p-4 md:p-6">
+      <div className="mx-auto max-w-7xl">
+        <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2 text-accent">
+              <Heart className="h-5 w-5" />
+              <span className="text-xs font-semibold uppercase tracking-[0.18em]">{t('nav.saved')}</span>
+            </div>
+            <h1 className="mt-1 text-2xl font-semibold text-text-primary">{t('saved.title')}</h1>
+            <p className="mt-1 text-sm text-text-secondary">{t('saved.description')}</p>
+          </div>
+          <div className="flex w-full flex-wrap items-center justify-end gap-2 md:max-w-xl">
+            <Button size="sm" variant="secondary" onClick={() => void exportSaved()} disabled={!!fileAction}><Download className="mr-1.5 h-3.5 w-3.5" />{t('saved.export')}</Button>
+            <Button size="sm" variant="secondary" onClick={() => void importSaved()} disabled={!!fileAction}><Upload className="mr-1.5 h-3.5 w-3.5" />{t('saved.import')}</Button>
+            <Button size="sm" variant="secondary" onClick={() => void checkUpdates()} disabled={!!fileAction}><RefreshCw className="mr-1.5 h-3.5 w-3.5" />{t('saved.checkUpdates')}</Button>
+            <Button size="sm" onClick={openPreview}><ListChecks className="mr-1.5 h-3.5 w-3.5" />{t('saved.previewProfile')}</Button>
+            <div className="flex min-w-[220px] flex-1 items-center gap-2 rounded-md border border-border bg-bg-secondary px-3 py-2">
+              <Search className="h-4 w-4 shrink-0 text-text-secondary" />
+              <input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder={t('saved.search')}
+                className="min-w-0 flex-1 bg-transparent text-sm text-text-primary outline-none placeholder:text-text-secondary"
+              />
+            </div>
+            {fileAction && <span className="w-full text-right text-xs text-text-secondary">{fileAction}</span>}
+          </div>
+        </div>
+
+        <div className="mb-5 flex flex-wrap items-center gap-2">
+          {(Object.keys(sectionLabels) as SavedFilter[]).map((value) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setFilter(value)}
+              className={`rounded-md border px-3 py-1.5 text-sm transition-colors ${filter === value ? 'border-accent bg-accent/15 text-accent' : 'border-border text-text-secondary hover:text-text-primary'}`}
+            >
+              {t(`saved.sections.${value}`, sectionLabels[value])}
+            </button>
+          ))}
+          <label className="ml-auto flex items-center gap-2 text-sm text-text-secondary">
+            <span>{t('saved.sort')}</span>
+            <select value={sort} onChange={(event) => setSort(event.target.value as SavedSort)} className="rounded-md border border-border bg-bg-secondary px-2 py-1.5 text-text-primary outline-none">
+              <option value="saved">{t('saved.sortOptions.saved')}</option>
+              <option value="name">{t('saved.sortOptions.name')}</option>
+              <option value="updated">{t('saved.sortOptions.updated')}</option>
+            </select>
+          </label>
+        </div>
+
+        {loading ? (
+          <div className="flex items-center justify-center gap-2 py-20 text-text-secondary"><Loader2 className="h-5 w-5 animate-spin" />{t('saved.loading')}</div>
+        ) : visibleRows.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-border p-12 text-center text-text-secondary">
+            <Heart className="mx-auto mb-3 h-8 w-8 opacity-50" />
+            <p className="text-text-primary">{rows.length === 0 ? t('saved.empty.title') : t('saved.empty.filtered')}</p>
+            <p className="mt-1 text-sm">{rows.length === 0 ? t('saved.empty.description') : t('saved.empty.filteredDescription')}</p>
+          </div>
+        ) : (
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {visibleRows.map((row) => (
+              <article key={rowKey(row)} className="flex min-h-[132px] gap-3 rounded-xl border border-border bg-bg-secondary p-3">
+                <ModThumbnail
+                  src={row.mod?.thumbnailUrl ?? undefined}
+                  alt={row.mod?.name ?? `GameBanana ${row.saved.modId}`}
+                  nsfw={row.mod?.isNsfw}
+                  hideNsfw={false}
+                  className="h-24 w-24 shrink-0 rounded-lg bg-bg-tertiary"
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-start justify-between gap-2">
+                    <h2 className="line-clamp-2 font-medium text-text-primary">{row.mod?.name ?? row.saved.titleSnapshot ?? t('saved.unavailable')}</h2>
+                    <IconButton icon={Trash2} label={t('saved.remove')} onClick={() => void remove(row)} className="shrink-0" />
+                  </div>
+                  <p className="mt-1 text-xs uppercase tracking-wider text-accent">{t(`saved.sections.${row.saved.section}`, row.saved.section)}{row.saved.fileName ? ` · ${row.saved.fileName}` : ''}</p>
+                  {row.mod ? (
+                    <p className="mt-1 text-xs text-text-secondary">{row.mod.submitterName ?? t('saved.unknownCreator')} · {t('saved.updated', { date: formatDate(row.mod.dateModified) })}</p>
+                  ) : (
+                    <p className="mt-1 text-xs text-warning">{t('saved.unavailableDetail')}</p>
+                  )}
+                  {(() => {
+                    const result = watchResults.find((candidate) => `${candidate.section}:${candidate.modId}:${candidate.fileId ?? 'parent'}` === rowKey(row));
+                    if (!result) return null;
+                    return <p className={`mt-1 text-xs ${result.status === 'current' ? 'text-green-400' : result.status === 'unavailable' ? 'text-text-secondary' : 'text-yellow-300'}`}>{t(`saved.watchStatus.${result.status}`)}</p>;
+                  })()}
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <Button size="sm" variant="secondary" onClick={() => openInBrowse(row)}><ExternalLink className="mr-1.5 h-3.5 w-3.5" />{t('saved.openInBrowse')}</Button>
+                    <Button size="sm" variant="ghost" onClick={() => beginEdit(row)}><Pencil className="mr-1.5 h-3.5 w-3.5" />{t('saved.editMetadata')}</Button>
+                    <span className="self-center text-[11px] text-text-secondary">{t('saved.savedAt', { date: formatDate(Math.floor(row.saved.savedAt / 1000)) })}</span>
+                  </div>
+                  {editingKey === rowKey(row) && (
+                    <div className="mt-3 space-y-2 rounded-lg border border-border bg-bg-primary/40 p-3">
+                      <textarea value={draft.notes} onChange={(event) => setDraft((current) => ({ ...current, notes: event.target.value }))} placeholder={t('saved.notesPlaceholder')} rows={2} className="w-full resize-y rounded-md border border-border bg-bg-secondary px-2 py-1.5 text-xs text-text-primary outline-none" />
+                      <input value={draft.tags} onChange={(event) => setDraft((current) => ({ ...current, tags: event.target.value }))} placeholder={t('saved.tagsPlaceholder')} className="w-full rounded-md border border-border bg-bg-secondary px-2 py-1.5 text-xs text-text-primary outline-none" />
+                      <input value={draft.whySaved} onChange={(event) => setDraft((current) => ({ ...current, whySaved: event.target.value }))} placeholder={t('saved.whySavedPlaceholder')} className="w-full rounded-md border border-border bg-bg-secondary px-2 py-1.5 text-xs text-text-primary outline-none" />
+                      <label className="flex items-center gap-2 text-xs text-text-secondary"><input type="checkbox" checked={draft.watchUpdates} onChange={(event) => setDraft((current) => ({ ...current, watchUpdates: event.target.checked }))} />{t('saved.watchUpdates')}</label>
+                      <div className="flex justify-end gap-2"><Button size="sm" variant="ghost" onClick={() => setEditingKey(null)}><X className="mr-1.5 h-3.5 w-3.5" />{t('common.actions.cancel')}</Button><Button size="sm" onClick={() => void saveMetadata(row)}><SaveIcon className="mr-1.5 h-3.5 w-3.5" />{t('common.actions.save')}</Button></div>
+                    </div>
+                  )}
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </div>
+      {previewOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true">
+          <div className="max-h-[85vh] w-full max-w-2xl overflow-hidden rounded-xl border border-border bg-bg-secondary shadow-2xl">
+            <div className="flex items-start justify-between border-b border-border p-4">
+              <div><h2 className="text-lg font-semibold text-text-primary">{t('saved.profilePreviewTitle')}</h2><p className="mt-1 text-sm text-text-secondary">{t('saved.profilePreviewDescription')}</p></div>
+              <IconButton icon={X} label={t('common.actions.close')} onClick={() => setPreviewOpen(false)} />
+            </div>
+            <div className="max-h-[55vh] space-y-2 overflow-y-auto p-4">
+              {visibleRows.map((row) => {
+                const key = rowKey(row);
+                const selected = previewKeys.has(key);
+                const label = row.mod?.name ?? row.saved.titleSnapshot ?? t('saved.unavailable');
+                const unresolved = !row.mod || row.saved.fileId === null;
+                return <label key={key} className="flex items-center gap-3 rounded-lg border border-border bg-bg-primary/30 p-3 text-sm"><input type="checkbox" checked={selected} onChange={() => setPreviewKeys((current) => { const next = new Set(current); if (selected) next.delete(key); else next.add(key); return next; })} /><span className="min-w-0 flex-1"><span className="block truncate text-text-primary">{label}</span><span className="text-xs text-text-secondary">{row.saved.fileName ?? t('saved.parentBookmark')}</span></span><span className={`text-xs ${unresolved ? 'text-yellow-300' : 'text-green-400'}`}>{unresolved ? t('saved.profileUnresolved') : t('saved.profileReady')}</span></label>;
+              })}
+            </div>
+            <div className="flex items-center justify-between border-t border-border p-4"><span className="text-sm text-text-secondary">{t('saved.profileSelected', { count: previewKeys.size })}</span><Button onClick={() => setPreviewOpen(false)}>{t('saved.profileDone')}</Button></div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

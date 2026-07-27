@@ -3,6 +3,8 @@ import { HashRouter, Routes, Route } from 'react-router-dom';
 import Layout from './components/Layout';
 import Installed from './pages/Installed';
 import Browse from './pages/Browse';
+import Saved from './pages/Saved';
+import Browser from './pages/Browser';
 import Discover from './pages/Discover';
 import Servers from './pages/Servers';
 import Locker from './pages/Locker';
@@ -13,6 +15,7 @@ import Settings from './pages/Settings';
 import Crosshair from './pages/Crosshair';
 import Autoexec from './pages/Autoexec';
 import Stats from './pages/Stats';
+import ChatWheel from './pages/ChatWheel';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { useSocialStore } from './stores/socialStore';
 import { useAppStore } from './stores/appStore';
@@ -72,6 +75,8 @@ export default function App() {
           <Route path="/" element={<Layout />}>
             <Route index element={<Installed />} />
             <Route path="browse" element={<Browse />} />
+            <Route path="saved" element={<Saved />} />
+            <Route path="browser" element={<Browser />} />
             <Route path="discover" element={<Discover />} />
             <Route path="servers" element={<Servers />} />
             <Route path="locker/*" element={<Locker />} />
@@ -81,6 +86,7 @@ export default function App() {
             <Route path="crosshair" element={<Crosshair />} />
             <Route path="autoexec" element={<Autoexec />} />
             <Route path="stats" element={<Stats />} />
+            <Route path="chat-wheel" element={<ChatWheel />} />
             <Route path="settings" element={<Settings />} />
           </Route>
         </Routes>

@@ -188,6 +188,8 @@ interface HeroSkinsPanelProps {
   /** When the master "shuffle on launch" switch is armed, the per-skin toggles
    *  are always visible (not hover-only) so the pool is easy to curate. */
   shuffleArmed?: boolean;
+  /** Sound pools use a separate namespace from visual skin pools. */
+  shuffleKeyFor?: (mod: Mod) => string;
   /** 'list' (default): compact thumbnail rows, used by the Locker list view's
    *  narrow inline expansion. 'cards': the 2-up media-card grid used by the
    *  hero detail view, sharing the Global view's card language (glass backdrop
@@ -933,6 +935,7 @@ export default function HeroSkinsPanel({
   shuffleVariantChoices,
   onSetShuffleVariant,
   shuffleArmed,
+  shuffleKeyFor = shuffleSkinKey,
 }: HeroSkinsPanelProps) {
   const hasMods = mods.length > 0;
   const soundVolume = useAppStore((s) => s.soundVolume);
@@ -997,16 +1000,16 @@ export default function HeroSkinsPanel({
                   loadOrderPosition={loadOrderByKey.get(group.key)}
                   overrideSrc={lockerModImages[group.key]}
                   onPickImage={pickImageFor(group)}
-                  isIncluded={includedSkinKeys?.has(shuffleSkinKey(group.primary))}
+                  isIncluded={includedSkinKeys?.has(shuffleKeyFor(group.primary))}
                   onToggleIncluded={
                     onToggleShuffleIncluded
-                      ? () => onToggleShuffleIncluded(shuffleSkinKey(group.primary))
+                      ? () => onToggleShuffleIncluded(shuffleKeyFor(group.primary))
                       : undefined
                   }
-                  shuffleVariantChoice={shuffleVariantChoices?.get(shuffleSkinKey(group.primary))}
+                  shuffleVariantChoice={shuffleVariantChoices?.get(shuffleKeyFor(group.primary))}
                   onSetShuffleVariant={
                     onSetShuffleVariant
-                      ? (choice) => onSetShuffleVariant(shuffleSkinKey(group.primary), choice)
+                      ? (choice) => onSetShuffleVariant(shuffleKeyFor(group.primary), choice)
                       : undefined
                   }
                   shuffleArmed={shuffleArmed}
@@ -1021,16 +1024,16 @@ export default function HeroSkinsPanel({
                 group={group}
                 overrideSrc={lockerModImages[group.key]}
                 onPickImage={pickImageFor(group)}
-                isIncluded={includedSkinKeys?.has(shuffleSkinKey(group.primary))}
+                isIncluded={includedSkinKeys?.has(shuffleKeyFor(group.primary))}
                 onToggleIncluded={
                   onToggleShuffleIncluded
-                    ? () => onToggleShuffleIncluded(shuffleSkinKey(group.primary))
+                    ? () => onToggleShuffleIncluded(shuffleKeyFor(group.primary))
                     : undefined
                 }
-                shuffleVariantChoice={shuffleVariantChoices?.get(shuffleSkinKey(group.primary))}
+                shuffleVariantChoice={shuffleVariantChoices?.get(shuffleKeyFor(group.primary))}
                 onSetShuffleVariant={
                   onSetShuffleVariant
-                    ? (choice) => onSetShuffleVariant(shuffleSkinKey(group.primary), choice)
+                    ? (choice) => onSetShuffleVariant(shuffleKeyFor(group.primary), choice)
                     : undefined
                 }
                 shuffleArmed={shuffleArmed}

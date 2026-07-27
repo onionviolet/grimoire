@@ -14,6 +14,28 @@ export interface SyncState {
     pagesSynced: number;
 }
 
+export interface FavoriteMod {
+    modId: number;
+    section: string;
+    savedAt: number;
+}
+
+export interface SavedMod {
+    modId: number;
+    section: string;
+    fileId: number | null;
+    fileName: string | null;
+    savedAt: number;
+    titleSnapshot: string | null;
+    profileUrlSnapshot: string | null;
+    notes: string;
+    tags: string[];
+    whySaved: string;
+    watchUpdates: boolean;
+    lastCheckedAt: number | null;
+    latestFileId: number | null;
+}
+
 let db: Database.Database | null = null;
 
 const SEARCH_SCHEMA_SQL = `
@@ -120,6 +142,40 @@ export function initDatabase(): Database.Database {
                 payload TEXT NOT NULL
             );
 
+            -- User intent is separate from the downloaded/install state. A
+            -- favorite survives catalog refreshes and does not create a VPK.
+            CREATE TABLE IF NOT EXISTS favorite_mods (
+                mod_id INTEGER NOT NULL,
+                section TEXT NOT NULL,
+                saved_at INTEGER NOT NULL,
+                PRIMARY KEY (mod_id, section)
+            );
+            CREATE INDEX IF NOT EXISTS idx_favorite_mods_saved_at
+                ON favorite_mods(saved_at DESC);
+
+            -- Saved state is separate from the legacy favorite table so a
+            -- parent bookmark and multiple exact file bookmarks can coexist.
+            CREATE TABLE IF NOT EXISTS saved_mods (
+                mod_id INTEGER NOT NULL,
+                section TEXT NOT NULL,
+                file_id INTEGER NOT NULL DEFAULT 0,
+                file_name TEXT,
+                saved_at INTEGER NOT NULL,
+                title_snapshot TEXT,
+                profile_url_snapshot TEXT,
+                notes TEXT NOT NULL DEFAULT '',
+                tags TEXT NOT NULL DEFAULT '[]',
+                why_saved TEXT NOT NULL DEFAULT '',
+                watch_updates INTEGER NOT NULL DEFAULT 0,
+                last_checked_at INTEGER,
+                latest_file_id INTEGER,
+                PRIMARY KEY (mod_id, section, file_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_saved_mods_saved_at
+                ON saved_mods(saved_at DESC);
+            INSERT OR IGNORE INTO saved_mods (mod_id, section, file_id, saved_at)
+                SELECT mod_id, section, 0, saved_at FROM favorite_mods;
+
             ${SEARCH_SCHEMA_SQL}
         `);
 
@@ -181,6 +237,10 @@ export function closeDatabase(): void {
  */
 export function wipeDatabase(): void {
     const dbPath = getDbPath();
+    // Favorites are user intent, not disposable catalog cache. Snapshot them
+    // before replacing the database so "refresh local cache" cannot erase a
+    // reading list the user deliberately saved.
+    const saved = getSavedMods();
     closeDatabase();
 
     const filesToRemove = [dbPath, `${dbPath}-wal`, `${dbPath}-shm`];
@@ -190,7 +250,36 @@ export function wipeDatabase(): void {
         }
     }
 
-    initDatabase();
+    const database = initDatabase();
+    const restore = database.prepare(`
+        INSERT INTO saved_mods (
+            mod_id, section, file_id, file_name, saved_at, title_snapshot,
+            profile_url_snapshot, notes, tags, why_saved, watch_updates,
+            last_checked_at, latest_file_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(mod_id, section, file_id) DO UPDATE SET
+            file_name = excluded.file_name,
+            saved_at = excluded.saved_at,
+            title_snapshot = excluded.title_snapshot,
+            profile_url_snapshot = excluded.profile_url_snapshot,
+            notes = excluded.notes,
+            tags = excluded.tags,
+            why_saved = excluded.why_saved,
+            watch_updates = excluded.watch_updates,
+            last_checked_at = excluded.last_checked_at,
+            latest_file_id = excluded.latest_file_id
+    `);
+    const restoreAll = database.transaction(() => {
+        for (const item of saved) {
+            restore.run(
+                item.modId, item.section, item.fileId ?? 0, item.fileName,
+                item.savedAt, item.titleSnapshot, item.profileUrlSnapshot,
+                item.notes, JSON.stringify(item.tags), item.whySaved,
+                item.watchUpdates ? 1 : 0, item.lastCheckedAt, item.latestFileId
+            );
+        }
+    });
+    restoreAll();
 }
 
 /**
@@ -369,6 +458,200 @@ export function getModById(id: number): CachedMod | null {
     const row = stmt.get(id) as Record<string, unknown> | undefined;
     if (!row) return null;
     return mapRowToMod(row);
+}
+
+/** Return the user's saved GameBanana items, newest first. */
+export function getFavoriteMods(section?: string): FavoriteMod[] {
+    return getSavedMods(section)
+        .filter((item) => item.fileId === null)
+        .map(({ modId, section: itemSection, savedAt }) => ({ modId, section: itemSection, savedAt }));
+}
+
+function parseSavedTags(value: unknown): string[] {
+    if (typeof value !== 'string') return [];
+    try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed.filter((tag): tag is string => typeof tag === 'string') : [];
+    } catch {
+        return [];
+    }
+}
+
+/** Return parent and exact-file bookmarks, newest first. */
+export function getSavedMods(section?: string): SavedMod[] {
+    const database = initDatabase();
+    const rows = section
+        ? database.prepare('SELECT * FROM saved_mods WHERE section = ? ORDER BY saved_at DESC').all(section)
+        : database.prepare('SELECT * FROM saved_mods ORDER BY saved_at DESC').all();
+    return (rows as Array<Record<string, unknown>>).map((row) => ({
+        modId: row.mod_id as number,
+        section: row.section as string,
+        fileId: (row.file_id as number) === 0 ? null : row.file_id as number,
+        fileName: row.file_name as string | null,
+        savedAt: row.saved_at as number,
+        titleSnapshot: row.title_snapshot as string | null,
+        profileUrlSnapshot: row.profile_url_snapshot as string | null,
+        notes: (row.notes as string) ?? '',
+        tags: parseSavedTags(row.tags),
+        whySaved: (row.why_saved as string) ?? '',
+        watchUpdates: row.watch_updates === 1,
+        lastCheckedAt: row.last_checked_at as number | null,
+        latestFileId: row.latest_file_id as number | null,
+    }));
+}
+
+export interface SaveModInput {
+    modId: number;
+    section: string;
+    fileId?: number | null;
+    fileName?: string | null;
+    titleSnapshot?: string | null;
+    profileUrlSnapshot?: string | null;
+}
+
+/** Create or refresh a parent or exact-file bookmark. */
+export function saveMod(input: SaveModInput): void {
+    const database = initDatabase();
+    const fileId = input.fileId ?? 0;
+    database.prepare(`
+        INSERT INTO saved_mods (
+            mod_id, section, file_id, file_name, saved_at, title_snapshot, profile_url_snapshot
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(mod_id, section, file_id) DO UPDATE SET
+            saved_at = excluded.saved_at,
+            file_name = COALESCE(excluded.file_name, saved_mods.file_name),
+            title_snapshot = COALESCE(excluded.title_snapshot, saved_mods.title_snapshot),
+            profile_url_snapshot = COALESCE(excluded.profile_url_snapshot, saved_mods.profile_url_snapshot)
+    `).run(
+        input.modId, input.section, fileId, input.fileName ?? null, Date.now(),
+        input.titleSnapshot ?? null, input.profileUrlSnapshot ?? null
+    );
+}
+
+export function removeSavedMod(modId: number, section: string, fileId?: number | null): void {
+    initDatabase().prepare('DELETE FROM saved_mods WHERE mod_id = ? AND section = ? AND file_id = ?')
+        .run(modId, section, fileId ?? 0);
+}
+
+export interface SavedModMetadataInput {
+    modId: number;
+    section: string;
+    fileId?: number | null;
+    notes?: string;
+    tags?: string[];
+    whySaved?: string;
+    watchUpdates?: boolean;
+}
+
+function normalizeSavedText(value: string | undefined, maxLength: number): string | undefined {
+    if (value === undefined) return undefined;
+    return value.replace(/\s+/g, ' ').trim().slice(0, maxLength);
+}
+
+function normalizeSavedTags(value: string[] | undefined): string[] | undefined {
+    if (value === undefined) return undefined;
+    return Array.from(new Set(value
+        .filter((tag) => typeof tag === 'string')
+        .map((tag) => tag.replace(/\s+/g, ' ').trim().slice(0, 40))
+        .filter(Boolean))).slice(0, 20);
+}
+
+export function updateSavedModMetadata(input: SavedModMetadataInput): void {
+    const database = initDatabase();
+    database.prepare(`
+        UPDATE saved_mods SET
+            notes = COALESCE(?, notes),
+            tags = COALESCE(?, tags),
+            why_saved = COALESCE(?, why_saved),
+            watch_updates = COALESCE(?, watch_updates)
+        WHERE mod_id = ? AND section = ? AND file_id = ?
+    `).run(
+        normalizeSavedText(input.notes, 4000) ?? null,
+        normalizeSavedTags(input.tags) ? JSON.stringify(normalizeSavedTags(input.tags)) : null,
+        normalizeSavedText(input.whySaved, 500) ?? null,
+        input.watchUpdates === undefined ? null : input.watchUpdates ? 1 : 0,
+        input.modId, input.section, input.fileId ?? 0
+    );
+}
+
+export function updateSavedModCheck(modId: number, section: string, fileId: number | null, lastCheckedAt: number, latestFileId: number | null): void {
+    initDatabase().prepare(`
+        UPDATE saved_mods SET last_checked_at = ?, latest_file_id = ?
+        WHERE mod_id = ? AND section = ? AND file_id = ?
+    `).run(lastCheckedAt, latestFileId, modId, section, fileId ?? 0);
+}
+
+const SAVED_EXPORT_FORMAT = 'grimoire-saved-mods';
+
+export function exportSavedModsJson(): string {
+    return JSON.stringify({
+        format: SAVED_EXPORT_FORMAT,
+        schemaVersion: 1,
+        exportedAt: new Date().toISOString(),
+        entries: getSavedMods().map((item) => ({
+            modId: item.modId,
+            section: item.section,
+            fileId: item.fileId,
+            fileName: item.fileName,
+            savedAt: item.savedAt,
+            title: item.titleSnapshot,
+            notes: item.notes,
+            tags: item.tags,
+            whySaved: item.whySaved,
+            watchUpdates: item.watchUpdates,
+        })),
+    }, null, 2);
+}
+
+export function importSavedModsJson(payload: string): { imported: number; skipped: number } {
+    const parsed: unknown = JSON.parse(payload);
+    if (!parsed || typeof parsed !== 'object' || (parsed as { format?: unknown }).format !== SAVED_EXPORT_FORMAT) {
+        throw new Error('Unsupported saved-mods export format');
+    }
+    const entries = (parsed as { entries?: unknown }).entries;
+    if (!Array.isArray(entries) || entries.length > 1000) throw new Error('Saved-mods export has too many entries');
+    let imported = 0;
+    let skipped = 0;
+    const database = initDatabase();
+    const insert = database.transaction(() => {
+        for (const raw of entries) {
+            if (!raw || typeof raw !== 'object') { skipped++; continue; }
+            const value = raw as Record<string, unknown>;
+            const modId = value.modId;
+            const section = value.section;
+            const fileId: number | null = value.fileId === null || value.fileId === undefined ? null : Number(value.fileId);
+            if (!Number.isInteger(modId) || typeof section !== 'string' || !['Mod', 'Sound', 'Wip'].includes(section) || (fileId !== null && !Number.isInteger(fileId))) {
+                skipped++; continue;
+            }
+            const tags = Array.isArray(value.tags) ? normalizeSavedTags(value.tags.filter((tag): tag is string => typeof tag === 'string')) ?? [] : [];
+            const notes = typeof value.notes === 'string' ? normalizeSavedText(value.notes, 4000) ?? '' : '';
+            const whySaved = typeof value.whySaved === 'string' ? normalizeSavedText(value.whySaved, 500) ?? '' : '';
+            const title = typeof value.title === 'string' ? normalizeSavedText(value.title, 300) ?? null : null;
+            const fileName = typeof value.fileName === 'string' ? normalizeSavedText(value.fileName, 300) ?? null : null;
+            saveMod({ modId: modId as number, section, fileId, fileName, titleSnapshot: title });
+            updateSavedModMetadata({ modId: modId as number, section, fileId, notes, tags, whySaved, watchUpdates: value.watchUpdates === true });
+            imported++;
+        }
+    });
+    insert();
+    return { imported, skipped };
+}
+
+/** Save or remove an item without downloading or installing it. */
+export function setFavoriteMod(modId: number, section: string, saved: boolean): void {
+    if (saved) saveMod({ modId, section });
+    else removeSavedMod(modId, section);
+}
+
+/** Return saved state for a batch of items, keyed by GameBanana id. */
+export function getFavoriteModIds(modIds: number[], section: string): number[] {
+    if (modIds.length === 0) return [];
+    const database = initDatabase();
+    const placeholders = modIds.map(() => '?').join(',');
+    const rows = database.prepare(
+        `SELECT mod_id FROM saved_mods WHERE section = ? AND file_id = 0 AND mod_id IN (${placeholders})`
+    ).all(section, ...modIds) as Array<{ mod_id: number }>;
+    return rows.map((row) => row.mod_id);
 }
 
 /**

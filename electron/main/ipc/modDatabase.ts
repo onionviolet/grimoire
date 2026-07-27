@@ -1,5 +1,6 @@
-import { ipcMain } from 'electron';
-import { initDatabase, getModById, getModCount, wipeDatabase, getModsNsfwStatus, updateModNsfw, getModsDownloadCounts, updateModDownloadCount } from '../services/modDatabase';
+import { dialog, ipcMain } from 'electron';
+import fs from 'fs';
+import { initDatabase, getModById, getModCount, wipeDatabase, getModsNsfwStatus, updateModNsfw, getModsDownloadCounts, updateModDownloadCount, getFavoriteMods, setFavoriteMod, getFavoriteModIds, getSavedMods, saveMod, removeSavedMod, updateSavedModMetadata, updateSavedModCheck, exportSavedModsJson, importSavedModsJson } from '../services/modDatabase';
 import { searchMods, getCategories, getSectionStats, type SearchOptions } from '../services/searchService';
 import { syncAllSections, syncSingleSection, getSyncStatus, needsSync, isSyncInProgress } from '../services/syncService';
 
@@ -44,6 +45,51 @@ ipcMain.handle('search-local-mods', (_, options: SearchOptions) => {
 
 ipcMain.handle('get-cached-mod', (_, id: number) => {
     return getModById(id);
+});
+
+ipcMain.handle('get-favorite-mods', (_, section?: string) => getFavoriteMods(section));
+
+ipcMain.handle('get-saved-mods', (_, section?: string) => getSavedMods(section));
+
+ipcMain.handle('save-mod', (_, input) => saveMod(input));
+
+ipcMain.handle('remove-saved-mod', (_, modId: number, section: string, fileId?: number | null) => {
+    removeSavedMod(modId, section, fileId);
+});
+
+ipcMain.handle('update-saved-mod-metadata', (_, input) => updateSavedModMetadata(input));
+
+ipcMain.handle('update-saved-mod-check', (_, modId: number, section: string, fileId: number | null, lastCheckedAt: number, latestFileId: number | null) => {
+    updateSavedModCheck(modId, section, fileId, lastCheckedAt, latestFileId);
+});
+
+ipcMain.handle('export-saved-mods', async () => {
+    const result = await dialog.showSaveDialog({
+        title: 'Export saved mods',
+        defaultPath: 'grimoire-saved-mods.json',
+        filters: [{ name: 'JSON', extensions: ['json'] }],
+    });
+    if (result.canceled || !result.filePath) return null;
+    fs.writeFileSync(result.filePath, exportSavedModsJson(), 'utf8');
+    return result.filePath;
+});
+
+ipcMain.handle('import-saved-mods', async () => {
+    const result = await dialog.showOpenDialog({
+        title: 'Import saved mods',
+        properties: ['openFile'],
+        filters: [{ name: 'JSON', extensions: ['json'] }],
+    });
+    if (result.canceled || !result.filePaths[0]) return null;
+    return importSavedModsJson(fs.readFileSync(result.filePaths[0], 'utf8'));
+});
+
+ipcMain.handle('set-favorite-mod', (_, modId: number, section: string, saved: boolean) => {
+    setFavoriteMod(modId, section, saved);
+});
+
+ipcMain.handle('get-favorite-mod-ids', (_, modIds: number[], section: string) => {
+    return getFavoriteModIds(modIds, section);
 });
 
 ipcMain.handle('get-local-mod-count', (_, section?: string) => {

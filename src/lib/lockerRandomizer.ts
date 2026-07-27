@@ -5,6 +5,7 @@ import {
   groupLockerSkins,
   groupModsByCategory,
   isLockerManagedMod,
+  isLockerManagedSound,
   type LockerSkin,
 } from './lockerUtils';
 
@@ -14,6 +15,10 @@ export const SHUFFLE_INCLUDED_KEY = 'lockerShuffleIncluded';
 export const SHUFFLE_ON_LAUNCH_KEY = 'lockerShuffleOnLaunch';
 /** localStorage key for per-skin variant choices. */
 export const SHUFFLE_VARIANT_KEY = 'lockerShuffleVariant';
+export const SHUFFLE_INCLUDE_VANILLA_KEY = 'lockerShuffleIncludeVanilla';
+export const SOUND_SHUFFLE_INCLUDED_KEY = 'lockerSoundShuffleIncluded';
+/** localStorage key for hero-card sources opted into the launch shuffle. */
+export const CARD_SHUFFLE_INCLUDED_KEY = 'lockerCardShuffleIncluded';
 
 /**
  * An explicit per-skin variant policy for the shuffle. Absence of a choice (no
@@ -46,6 +51,35 @@ export function shuffleSkinKey(mod: Mod): string {
   return `mod:${mod.id}`;
 }
 
+/** Separate namespace keeps a sound pack from colliding with a skin pack. */
+export function shuffleSoundKey(mod: Mod): string {
+  return `sound:${shuffleSkinKey(mod)}`;
+}
+
+/** Stable, serializable identity for one hero card source. A source contains
+ * every portrait variant it ships (normal, low HP, gloat, minimap, ...). */
+export function shuffleCardKey(heroName: string, sourceFileName: string): string {
+  return JSON.stringify([heroName, sourceFileName]);
+}
+
+export interface CardShuffleChoice {
+  heroName: string;
+  sourceFileName: string;
+}
+
+/** Parse persisted card-pool membership defensively. */
+export function parseShuffleCardKey(key: string): CardShuffleChoice | null {
+  try {
+    const value: unknown = JSON.parse(key);
+    if (!Array.isArray(value) || value.length !== 2 || typeof value[0] !== 'string' || typeof value[1] !== 'string') return null;
+    const [heroName, sourceFileName] = value;
+    if (!heroName || !sourceFileName) return null;
+    return { heroName, sourceFileName };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Synchronous loader for the persisted shuffle-inclusion set. Used as a lazy
  * useState initializer so the value is present on the very first render. See
@@ -71,6 +105,38 @@ export function readStoredShuffleOnLaunch(): boolean {
   } catch {
     return false;
   }
+}
+
+export function readStoredShuffleIncludeVanilla(): boolean {
+  try { return localStorage.getItem(SHUFFLE_INCLUDE_VANILLA_KEY) === 'true'; } catch { return false; }
+}
+
+export function readStoredSoundShuffleIncluded(): Set<string> {
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(SOUND_SHUFFLE_INCLUDED_KEY) ?? '[]');
+    return new Set(Array.isArray(parsed) ? parsed.filter((key): key is string => typeof key === 'string') : []);
+  } catch { return new Set(); }
+}
+
+export function readStoredCardShuffleIncluded(): Set<string> {
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(CARD_SHUFFLE_INCLUDED_KEY) ?? '[]');
+    return new Set(Array.isArray(parsed) ? parsed.filter((key): key is string => typeof key === 'string' && parseShuffleCardKey(key) !== null) : []);
+  } catch { return new Set(); }
+}
+
+/** Pick one opted-in card source per hero. Card application happens separately
+ * from VPK enable/disable, because it rebuilds the managed Locker Cards VPK. */
+export function planCardShuffle(included: ReadonlySet<string>, rng: () => number = Math.random): CardShuffleChoice[] {
+  const byHero = new Map<string, CardShuffleChoice[]>();
+  for (const key of included) {
+    const choice = parseShuffleCardKey(key);
+    if (!choice) continue;
+    const choices = byHero.get(choice.heroName) ?? [];
+    choices.push(choice);
+    byHero.set(choice.heroName, choices);
+  }
+  return [...byHero.values()].map((choices) => choices[Math.min(choices.length - 1, Math.floor(rng() * choices.length))]);
 }
 
 /**
@@ -132,6 +198,10 @@ export interface RandomizePlanOptions {
    * one so a repeat shuffle visibly changes its look. Defaults to true.
    */
   avoidCurrent?: boolean;
+  /** Add vanilla (all hero mods disabled) as an equally likely choice. */
+  includeVanilla?: boolean;
+  /** Stable namespace-aware identity for a pool entry. */
+  keyFor?: (mod: Mod) => string;
 }
 
 export interface RandomizePlan {
@@ -171,7 +241,7 @@ export function planRandomization(options: RandomizePlanOptions): RandomizePlan 
     included,
     variants = new Map(),
     rng = Math.random,
-    avoidCurrent = true,
+    avoidCurrent = true, includeVanilla = false, keyFor = shuffleSkinKey,
   } = options;
   const enableIds: string[] = [];
   const disableIds: string[] = [];
@@ -182,22 +252,31 @@ export function planRandomization(options: RandomizePlanOptions): RandomizePlan 
     if (!mods || mods.length === 0) continue;
 
     const skins = groupLockerSkins(mods);
-    const eligible = skins.filter((skin) => included.has(shuffleSkinKey(skin.primary)));
+    const eligible = skins.filter((skin) => included.has(keyFor(skin.primary)));
     if (eligible.length === 0) continue;
 
     // Bias away from the currently-active skin so each launch changes the look.
     // Only when there's an alternative left to pick.
     const activeMod = activeLockerSkin(mods);
-    const activeKey = activeMod ? shuffleSkinKey(activeMod) : undefined;
+    const activeKey = activeMod ? keyFor(activeMod) : undefined;
     let pool = eligible;
     if (avoidCurrent && eligible.length > 1 && activeKey) {
-      const without = eligible.filter((skin) => shuffleSkinKey(skin.primary) !== activeKey);
+      const without = eligible.filter((skin) => keyFor(skin.primary) !== activeKey);
       if (without.length > 0) pool = without;
     }
 
-    const index = Math.min(pool.length - 1, Math.floor(rng() * pool.length));
-    const chosen = pool[index];
-    const chosenKey = shuffleSkinKey(chosen.primary);
+    const choices: Array<LockerSkin | null> = includeVanilla ? [...pool, null] : pool;
+    const index = Math.min(choices.length - 1, Math.floor(rng() * choices.length));
+    const chosen = choices[index];
+    if (!chosen) {
+      const enabled = mods.filter((mod) => mod.enabled);
+      if (enabled.length) {
+        disableIds.push(...enabled.map((mod) => mod.id));
+        changedHeroes.push(heroId);
+      }
+      continue;
+    }
+    const chosenKey = keyFor(chosen.primary);
     const variantChoice = variants.get(chosenKey);
     let chosenVariant = chosen.primary;
     // Only 'random' and a file id count as an explicit policy. Anything else,
@@ -250,6 +329,8 @@ export interface LaunchShufflePlanOptions {
   included: Set<string>;
   /** Per-skin variant preferences. */
   variants?: ReadonlyMap<string, VariantChoice>;
+  soundIncluded?: Set<string>;
+  includeVanilla?: boolean;
   /** Injectable RNG; defaults to Math.random. */
   rng?: () => number;
 }
@@ -263,9 +344,13 @@ export interface LaunchShufflePlanOptions {
  * shows the per-skin opt-in toggle on.
  */
 export function planLaunchShuffle(options: LaunchShufflePlanOptions): RandomizePlan {
-  const { mods, heroList, included, variants, rng } = options;
-  if (included.size === 0) return { enableIds: [], disableIds: [], changedHeroes: [] };
-  const lockerSkins = mods.filter((m) => isLockerManagedMod(m) && !getEffectiveGlobalType(m));
+  const { mods, heroList, included, variants, rng, soundIncluded = new Set(), includeVanilla = false } = options;
+  if (included.size === 0 && soundIncluded.size === 0) return { enableIds: [], disableIds: [], changedHeroes: [] };
+  const lockerSkins = mods.filter((m) => isLockerManagedMod(m) && !getEffectiveGlobalType(m) && m.sourceSection !== 'Sound');
   const { map } = groupModsByCategory(lockerSkins, heroList);
-  return planRandomization({ heroSkins: map, heroIds: [...map.keys()], included, variants, rng });
+  const skins = planRandomization({ heroSkins: map, heroIds: [...map.keys()], included, variants, rng, includeVanilla });
+  const lockerSounds = mods.filter((m) => isLockerManagedSound(m));
+  const soundMap = groupModsByCategory(lockerSounds, heroList).map;
+  const sounds = planRandomization({ heroSkins: soundMap, heroIds: [...soundMap.keys()], included: soundIncluded, rng, keyFor: shuffleSoundKey });
+  return { enableIds: [...skins.enableIds, ...sounds.enableIds], disableIds: [...skins.disableIds, ...sounds.disableIds], changedHeroes: [...new Set([...skins.changedHeroes, ...sounds.changedHeroes])] };
 }

@@ -5,6 +5,7 @@ import { FolderOpen, Check, X, Loader2, RefreshCw, Database, Trash2, Shield, Wre
 import { HexColorPicker, HexColorInput } from 'react-colorful';
 import DOMPurify from 'dompurify';
 import { useAppStore } from '../stores/appStore';
+import type { BrowserFilterStats, EngineInfo } from '../types/foundry';
 import {
   buildDiagnosticReport,
   cleanupAddons,
@@ -17,6 +18,7 @@ import {
   openPerformanceConfigFile,
 } from '../lib/api';
 import { showToast } from '../stores/toastStore';
+import { useBackdropDismiss } from '../components/common/useBackdropDismiss';
 import { getActiveDeadlockPath, shouldBlurNsfw } from '../lib/appSettings';
 import { formatDateParts } from '../lib/dateFormat';
 import { Card, Badge, Toggle, Button } from '../components/common/ui';
@@ -113,7 +115,7 @@ export default function Settings() {
   } | null>(null);
   const [showChangelog, setShowChangelog] = useState(false);
   const [upToDate, setUpToDate] = useState(false);
-  const [installSource, setInstallSource] = useState<'managed' | 'appimage' | 'standard'>('standard');
+  const [installSource, setInstallSource] = useState<'managed' | 'appimage' | 'standard' | 'fork'>('standard');
 
   // Bug report form (copy-paste flow)
   const [bugDescription, setBugDescription] = useState('');
@@ -276,6 +278,13 @@ export default function Settings() {
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [customPickerOpen, commitCustomDraft]);
+
+  // Dismiss on backdrop click, but not when the gesture merely ends there
+  // (drag-selecting the hex field and releasing outside used to commit).
+  const customPickerBackdropRef = useBackdropDismiss<HTMLDivElement>(
+    useCallback(() => void commitCustomDraft(), [commitCustomDraft]),
+    customPickerOpen
+  );
 
   const handleLockerCardsExpandedByDefaultChange = async (checked: boolean) => {
     if (settings) {
@@ -839,7 +848,7 @@ export default function Settings() {
                 >
                   <Tx k="settings.updates.whatsNew" fallback="What's New" />
                 </Button>
-                {installSource === 'managed' ? null : updateStatus?.downloaded ? (
+                {installSource === 'managed' || installSource === 'fork' ? null : updateStatus?.downloaded ? (
                   <Button
                     onClick={handleInstallUpdate}
                     icon={ArrowDownCircle}
@@ -870,6 +879,20 @@ export default function Settings() {
                 )}
               </div>
             </div>
+
+            {installSource === 'fork' && (
+              <div className="rounded-lg bg-bg-tertiary border border-white/10 p-3 text-sm text-text-secondary space-y-2">
+                <p className="text-text-primary font-medium">
+                  <Tx k="settings.updates.forkBuild" fallback="This is a custom build." />
+                </p>
+                <p>
+                  <Tx
+                    k="settings.updates.forkBuildInstructions"
+                    fallback="In-app updates are turned off. The official release would install cleanly over this build and remove the patches it carries, so updates come from rebuilding it instead."
+                  />
+                </p>
+              </div>
+            )}
 
             {installSource === 'managed' && (
               <div className="rounded-lg bg-bg-tertiary border border-white/10 p-3 text-sm text-text-secondary space-y-2">
@@ -973,8 +996,8 @@ export default function Settings() {
 
                     {customPickerOpen && createPortal(
                       <div
+                        ref={customPickerBackdropRef}
                         className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in"
-                        onClick={() => void commitCustomDraft()}
                         role="presentation"
                       >
                         <div
@@ -1297,8 +1320,52 @@ export default function Settings() {
               onChange={(checked) => settings && saveSettings({ ...settings, experimentalFoundry: checked })}
               label={<Tx k="settings.experimental.foundry" fallback="Door Stuck" />}
             />
+
+            <div className="h-px bg-white/5" />
+
+            <Toggle
+              checked={settings?.experimentalBrowser ?? false}
+              onChange={(checked) => settings && saveSettings({ ...settings, experimentalBrowser: checked })}
+              label={<Tx k="settings.experimental.browser" fallback="In-app browser" />}
+              description={<Tx k="settings.toggles.browser" fallback="Adds a Browser page for mod sites. Pages run isolated from the app, with downloads and popups handed to your real browser." />}
+            />
+
+            {settings?.experimentalBrowser && <BrowserFilterControls />}
           </div>
         </Card>
+
+        {/* Fork-build controls. Only meaningful in a locally built Grimoire, so
+            the card is hidden on stock installs rather than showing dead
+            switches: the engine override and the patch flags both describe
+            things a stock build does not have. */}
+        {installSource === 'fork' && (
+          <Card
+            title={<Tx k="settings.sections.forkBuild" fallback="Custom build" />}
+            description={<Tx k="settings.forkBuild.description" fallback="This build carries patches that are not in the official release. Switch them off to compare against stock behaviour without rebuilding." />}
+            icon={Beaker}
+            className="lg:col-span-2"
+          >
+            <div className="space-y-4">
+              <EngineSwitcher />
+
+              <div className="h-px bg-white/5" />
+
+              <Toggle
+                checked={settings?.forkGlobalSounds !== false}
+                onChange={(checked) => settings && saveSettings({ ...settings, forkGlobalSounds: checked })}
+                label={<Tx k="settings.fork.globalSounds" fallback="Global sounds tab" />}
+                description={<Tx k="settings.fork.globalSoundsDetail" fallback="Browse and swap UI, music, ambience, NPC and shop-item sounds, not just hero ones." />}
+              />
+
+              <Toggle
+                checked={settings?.forkPoolCycling !== false}
+                onChange={(checked) => settings && saveSettings({ ...settings, forkPoolCycling: checked })}
+                label={<Tx k="settings.fork.poolCycling" fallback="Cycle randomizer pools" />}
+                description={<Tx k="settings.fork.poolCyclingDetail" fallback="Auditioning an event with several clips walks the whole pool instead of replaying the first one." />}
+              />
+            </div>
+          </Card>
+        )}
 
         {/* Hidden creators. Only rendered once there is a list to show: the
             always-available entry point is the Manage button in Preferences. */}
@@ -1852,6 +1919,212 @@ function AutoexecSection({ gamePath }: { gamePath: string | null }) {
             <Tx k="settings.autoexec.createFile" fallback="Create File" />
           </Button>
         )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Ad/tracker blocking for the in-app browser.
+ *
+ * The embedded browser cannot load extensions, so a user who runs uBlock in
+ * their real browser is LESS protected inside Grimoire than outside it, purely
+ * because they came in through the app. That asymmetry is the whole reason this
+ * exists. Blocking is domain-level and on by default; the custom list is the
+ * escape hatch, since a short built-in set is not a real filter list.
+ *
+ * Permission denial (camera, mic, location, notifications) is not exposed here
+ * on purpose: it is a floor, not a preference, and there is no UI in an embedded
+ * frame in which a user could sensibly evaluate such a prompt.
+ */
+function BrowserFilterControls() {
+  const { t } = useTranslation();
+  const settings = useAppStore((s) => s.settings);
+  const saveSettings = useAppStore((s) => s.saveSettings);
+  const [stats, setStats] = useState<BrowserFilterStats | null>(null);
+
+  const blocking = settings?.browserBlockTrackers !== false;
+  const listPath = settings?.browserBlockListPath ?? '';
+
+  // Re-read after any change to the toggle or the list, because the main
+  // process rebuilds the set on save and the entry count is the only feedback
+  // that a custom list actually loaded.
+  useEffect(() => {
+    let cancelled = false;
+    window.electronAPI.browser
+      .filterStats()
+      .then((s) => !cancelled && setStats(s))
+      .catch(() => !cancelled && setStats(null));
+    return () => {
+      cancelled = true;
+    };
+  }, [blocking, listPath]);
+
+  const pickList = async () => {
+    const chosen = await window.electronAPI.showOpenDialog({
+      title: t('settings.browser.blockListChoose', 'Choose a blocklist file'),
+    });
+    if (chosen && settings) await saveSettings({ ...settings, browserBlockListPath: chosen });
+  };
+
+  return (
+    <div className="space-y-3 rounded-sm border border-border bg-bg-tertiary/50 p-3">
+      <Toggle
+        checked={blocking}
+        onChange={(checked) => settings && saveSettings({ ...settings, browserBlockTrackers: checked })}
+        label={<Tx k="settings.browser.blockTrackers" fallback="Block ads and trackers" />}
+        description={
+          <Tx
+            k="settings.browser.blockTrackersDetail"
+            fallback="Cancels requests to known ad and tracker domains inside the in-app browser. The page still loads; the ad request never leaves your machine."
+          />
+        }
+      />
+
+      {blocking && (
+        <>
+          <p className="text-xs text-text-secondary">
+            {stats?.error ? (
+              <span className="text-warning">
+                {t('settings.browser.blockListError', 'Custom list failed to load: ')}
+                {stats.error}
+              </span>
+            ) : (
+              t('settings.browser.blockStats', {
+                defaultValue: '{{domains}} domains blocked, {{blocked}} requests stopped this session',
+                domains: stats?.domains ?? 0,
+                blocked: stats?.blocked ?? 0,
+              })
+            )}
+          </p>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Button onClick={pickList} variant="secondary" icon={FolderOpen}>
+              <Tx k="settings.browser.blockListChoose" fallback="Choose a blocklist file" />
+            </Button>
+            {listPath && (
+              <Button
+                onClick={() => settings && saveSettings({ ...settings, browserBlockListPath: '' })}
+                variant="secondary"
+                icon={X}
+              >
+                <Tx k="settings.browser.blockListClear" fallback="Use built-in list only" />
+              </Button>
+            )}
+          </div>
+          {listPath && <p className="break-all font-mono text-[11px] text-text-secondary">{listPath}</p>}
+          <p className="text-[11px] text-text-secondary/70">
+            <Tx
+              k="settings.browser.blockListHint"
+              fallback="Any hosts file or plain list of domains, one per line. The built-in list is deliberately small; point this at a real filter list for full coverage."
+            />
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Engine switcher: point this build at a different `vpkmerge` binary.
+ *
+ * The engine is a sidecar process, so swapping it needs no rebuild of the app,
+ * but until `settings.vpkmergeBinaryPath` existed a PACKAGED build had no way
+ * to use anything but the binary shipped inside it ($VPKMERGE_BINARY and the
+ * sibling-build probe are both gated on !app.isPackaged).
+ *
+ * The reported version comes from running the resolved binary through the same
+ * resolver the real calls use, not from re-deriving the path here. Anything
+ * else could report one engine while a mod was built by another, which defeats
+ * the point of being able to switch.
+ */
+function EngineSwitcher() {
+  const { t } = useTranslation();
+  const settings = useAppStore((s) => s.settings);
+  const saveSettings = useAppStore((s) => s.saveSettings);
+  const [info, setInfo] = useState<EngineInfo | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  // Async, and only ever sets state from the promise callbacks, so the effect
+  // itself never calls setState synchronously (react-hooks/set-state-in-effect).
+  const refresh = useCallback(async () => {
+    setBusy(true);
+    try {
+      setInfo(await window.electronAPI.foundry.engineInfo());
+    } catch {
+      setInfo(null);
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
+  const overridePath = settings?.vpkmergeBinaryPath;
+  useEffect(() => {
+    void refresh();
+  }, [refresh, overridePath]);
+
+  const pick = async () => {
+    // showOpenDialog returns the chosen path (or null), not Electron's raw
+    // result object. The engine is extensionless on macOS/Linux, so a filter is
+    // only useful on Windows; elsewhere it would hide the very file wanted.
+    const chosen = await window.electronAPI.showOpenDialog(
+      navigator.userAgent.includes('Windows')
+        ? { title: t('settings.fork.engineChoose', 'Choose binary'), filters: [{ name: 'vpkmerge', extensions: ['exe'] }] }
+        : { title: t('settings.fork.engineChoose', 'Choose binary') }
+    );
+    if (chosen && settings) await saveSettings({ ...settings, vpkmergeBinaryPath: chosen });
+  };
+
+  const clear = async () => {
+    if (settings) await saveSettings({ ...settings, vpkmergeBinaryPath: '' });
+  };
+
+  return (
+    <div className="space-y-2">
+      <p className="text-sm font-medium text-text-primary">
+        <Tx k="settings.fork.engine" fallback="Engine (vpkmerge)" />
+      </p>
+      <p className="text-xs text-text-secondary">
+        <Tx
+          k="settings.fork.engineDetail"
+          fallback="The sidecar that reads your game files and builds mods. Point this at a locally built binary to test engine changes without repackaging the app."
+        />
+      </p>
+
+      <div className="rounded-sm border border-border bg-bg-tertiary p-3 text-xs">
+        {busy ? (
+          <span className="text-text-secondary">
+            <Tx k="settings.fork.engineChecking" fallback="Checking engine..." />
+          </span>
+        ) : info?.error ? (
+          <span className="text-warning">{info.error}</span>
+        ) : (
+          <>
+            <div className="text-text-primary">
+              {info?.version ?? t('settings.fork.engineUnknown', 'Unknown version')}
+            </div>
+            <div className="mt-1 break-all font-mono text-text-secondary">{info?.path ?? '-'}</div>
+            <div className="mt-1 text-text-secondary">
+              {info?.bundled
+                ? t('settings.fork.engineBundled', 'Bundled with this build')
+                : t('settings.fork.engineCustom', 'Custom path (overrides the bundled engine)')}
+            </div>
+          </>
+        )}
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <Button onClick={pick} variant="secondary" icon={FolderOpen}>
+          <Tx k="settings.fork.engineChoose" fallback="Choose binary" />
+        </Button>
+        {settings?.vpkmergeBinaryPath ? (
+          <Button onClick={clear} variant="secondary" icon={X}>
+            <Tx k="settings.fork.engineReset" fallback="Use bundled" />
+          </Button>
+        ) : null}
+        <Button onClick={() => void refresh()} variant="secondary" icon={RefreshCw}>
+          <Tx k="settings.fork.engineRecheck" fallback="Re-check" />
+        </Button>
       </div>
     </div>
   );

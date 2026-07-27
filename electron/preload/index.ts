@@ -6,6 +6,7 @@ import type {
 import type { SnapshotTrigger } from '../../src/types/snapshot';
 import type { SocialSessionStatus } from '../../src/types/social';
 import type {
+    GlobalSoundFilters,
     HeroEffectExportRequest,
     HeroSoundFilters,
     HeroSoundSwapRequest,
@@ -26,6 +27,7 @@ import type {
     LockerClearScope,
     MergeModsArgs,
     ImprintInstalledProgress,
+    ModelCompatibilityReport,
     TrippySpriteOptions,
     TrippyVfxChoice,
     UnknownModDetectionProgress,
@@ -44,12 +46,16 @@ import type {
     GetCategoriesArgs,
     OpenDialogOptions,
     SaveDialogOptions,
-    ImportCustomModArgs,
+    ChatWheelSaveArgs,
+    ImportCustomModsBatchArgs,
+    ImportCustomModsProgress,
     ImportSoulContainerGlbArgs,
     PreviewSoulContainerGlbArgs,
     ImportSpiritUrnGlbArgs,
     PreviewSpiritUrnGlbArgs,
     SearchLocalModsOptions,
+    SaveModInput,
+    SavedModMetadataInput,
     CrosshairSettings,
     VanillaRestoreResult,
     ProfileCrosshairSettings,
@@ -92,6 +98,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
         scan: (req: DmmMigrationRequest) => ipcRenderer.invoke('dmm-migrate:scan', req),
         execute: (req: DmmMigrationRequest) => ipcRenderer.invoke('dmm-migrate:execute', req),
     },
+
+    chatWheelRead: (vpkPath: string) => ipcRenderer.invoke('chat-wheel:read', vpkPath),
+    chatWheelSave: (args: ChatWheelSaveArgs) => ipcRenderer.invoke('chat-wheel:save', args),
 
     // Discord Rich Presence (opt-in; talks only to the local Discord client)
     discord: {
@@ -241,12 +250,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
         ipcRenderer.invoke('set-mod-priority', modId, priority),
     reorderMods: (orderedIds: string[]) =>
         ipcRenderer.invoke('reorder-mods', orderedIds),
+    getModelCompatibilityReport: (): Promise<ModelCompatibilityReport> =>
+        ipcRenderer.invoke('get-model-compatibility-report'),
+    applyModelCompatibilityFix: () => ipcRenderer.invoke('apply-model-compatibility-fix'),
     applyModToggleBatch: (enableIds: string[], disableIds: string[]) =>
         ipcRenderer.invoke('apply-mod-toggle-batch', enableIds, disableIds),
     swapModPriority: (modIdA: string, modIdB: string) =>
         ipcRenderer.invoke('swap-mod-priority', modIdA, modIdB),
-    importCustomMod: (args: ImportCustomModArgs) =>
-        ipcRenderer.invoke('import-custom-mod', args),
+    importCustomMods: (args: ImportCustomModsBatchArgs) =>
+        ipcRenderer.invoke('import-custom-mods', args),
+    onImportCustomModsProgress: (callback: (progress: ImportCustomModsProgress) => void) => {
+        const handler = (_event: Electron.IpcRendererEvent, progress: ImportCustomModsProgress) =>
+            callback(progress);
+        ipcRenderer.on('import-custom-mods-progress', handler);
+        return () => ipcRenderer.removeListener('import-custom-mods-progress', handler);
+    },
     importSoulContainerGlb: (args: ImportSoulContainerGlbArgs) =>
         ipcRenderer.invoke('import-soul-container-glb', args),
     exportSoulContainerGlb: (args: ImportSoulContainerGlbArgs) =>
@@ -365,6 +383,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     fixGameinfo: () => ipcRenderer.invoke('fix-gameinfo'),
     getPerformanceConfigStatus: () => ipcRenderer.invoke('get-performance-config-status'),
     applyPerformanceConfig: () => ipcRenderer.invoke('apply-performance-config'),
+    setPerformanceHudConvars: (values: Record<string, boolean>) => ipcRenderer.invoke('set-performance-hud-convars', values),
+    setPerformanceAdvancedConvars: (values: Record<string, number>) => ipcRenderer.invoke('set-performance-advanced-convars', values),
     removePerformanceConfig: () => ipcRenderer.invoke('remove-performance-config'),
     resetPerformanceConfigOverrides: () => ipcRenderer.invoke('reset-performance-config-overrides'),
     restorePerformanceConfigBackup: () => ipcRenderer.invoke('restore-performance-config-backup'),
@@ -379,6 +399,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     // Dialogs
     showOpenDialog: (options: OpenDialogOptions) => ipcRenderer.invoke('show-open-dialog', options),
+    showOpenDialogMulti: (options: OpenDialogOptions) =>
+        ipcRenderer.invoke('show-open-dialog-multi', options),
     showSaveDialog: (options: SaveDialogOptions) => ipcRenderer.invoke('show-save-dialog', options),
     revealPath: (targetPath: string) => ipcRenderer.invoke('reveal-path', targetPath),
 
@@ -509,6 +531,22 @@ contextBridge.exposeInMainWorld('electronAPI', {
     isSyncInProgress: () => ipcRenderer.invoke('is-sync-in-progress'),
     searchLocalMods: (options: SearchLocalModsOptions) => ipcRenderer.invoke('search-local-mods', options),
     getCachedMod: (id: number) => ipcRenderer.invoke('get-cached-mod', id),
+    getFavoriteMods: (section?: string) => ipcRenderer.invoke('get-favorite-mods', section),
+    setFavoriteMod: (modId: number, section: string, saved: boolean) =>
+        ipcRenderer.invoke('set-favorite-mod', modId, section, saved),
+    getFavoriteModIds: (modIds: number[], section: string) =>
+        ipcRenderer.invoke('get-favorite-mod-ids', modIds, section),
+    getSavedMods: (section?: string) => ipcRenderer.invoke('get-saved-mods', section),
+    saveMod: (input: SaveModInput) => ipcRenderer.invoke('save-mod', input),
+    removeSavedMod: (modId: number, section: string, fileId?: number | null) =>
+        ipcRenderer.invoke('remove-saved-mod', modId, section, fileId),
+    updateSavedModMetadata: (input: SavedModMetadataInput) =>
+        ipcRenderer.invoke('update-saved-mod-metadata', input),
+    updateSavedModCheck: (modId: number, section: string, fileId: number | null, lastCheckedAt: number, latestFileId: number | null) =>
+        ipcRenderer.invoke('update-saved-mod-check', modId, section, fileId, lastCheckedAt, latestFileId),
+    exportSavedMods: () => ipcRenderer.invoke('export-saved-mods'),
+    importSavedMods: () => ipcRenderer.invoke('import-saved-mods'),
+    checkSavedModUpdates: () => ipcRenderer.invoke('check-saved-mod-updates'),
     getLocalModCount: (section?: string) => ipcRenderer.invoke('get-local-mod-count', section),
     getLocalCategories: (section?: string) => ipcRenderer.invoke('get-local-categories', section),
     getSectionStats: () => ipcRenderer.invoke('get-section-stats'),
@@ -597,16 +635,24 @@ contextBridge.exposeInMainWorld('electronAPI', {
             ipcRenderer.invoke('foundry:voicelines', filters ?? {}),
         heroSounds: (filters?: HeroSoundFilters) =>
             ipcRenderer.invoke('foundry:heroSounds', filters ?? {}),
+        globalSounds: (filters?: GlobalSoundFilters) =>
+            ipcRenderer.invoke('foundry:globalSounds', filters ?? {}),
         ensureThumbnails: (category: TextureCategory) =>
             ipcRenderer.invoke('foundry:ensureThumbnails', category),
         fullImage: (category: TextureCategory, entryPath: string) =>
             ipcRenderer.invoke('foundry:fullImage', category, entryPath),
         voiceclip: (vsndPath: string) => ipcRenderer.invoke('foundry:voiceclip', vsndPath),
         warmCache: () => ipcRenderer.invoke('foundry:warmCache'),
+        engineInfo: () => ipcRenderer.invoke('foundry:engineInfo'),
         exportHeroEffect: (req: HeroEffectExportRequest) =>
             ipcRenderer.invoke('foundry:exportHeroEffect', req),
         swapSound: (req: HeroSoundSwapRequest) =>
             ipcRenderer.invoke('foundry:swapSound', req),
+    },
+
+    // In-app browser: read-only view of the ad/tracker filter's state.
+    browser: {
+        filterStats: () => ipcRenderer.invoke('browser:filterStats'),
     },
 
     // Language packs (downloaded on demand from GitHub)

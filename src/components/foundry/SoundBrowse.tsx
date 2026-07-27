@@ -21,23 +21,30 @@ import { useTranslation } from 'react-i18next';
 import { EmptyState } from '../common/PageComponents';
 import Tx from '../translation/Tx';
 import { SoundImportEditor, type SoundImportEdits } from './SoundImportEditor';
+import { useClipPlayer, type ClipPlayer, type RowState } from './useClipPlayer';
 import {
     foundryHeroSounds,
     foundryVoicelines,
-    foundryVoiceclip,
     foundrySwapSound,
     getHeroAbilitySlots,
 } from '../../lib/api';
+import { describeSound, matchesSound, primaryClipName } from '../../lib/soundDescribe';
 import { showToast } from '../../stores/toastStore';
 import { useAppStore } from '../../stores/appStore';
 import type { HeroInfo, HeroSound, HeroSoundCategory, VoiceLine } from '../../types/foundry';
 import type { HeroAbilitySlot } from '../../types/mod';
 
-/** Hero context threaded to the gameplay rows so each can offer an inline
- *  sound-swap (drop your own MP3 onto the event). VO rows don't get this. */
-interface SwapContext {
+/** Context threaded to a row so it can offer an inline sound-swap (drop your own
+ *  MP3 onto the event). Hero rows carry the hero; global (non-hero) rows carry
+ *  the soundevents file the event lives in instead, since there is no hero to
+ *  resolve it from. VO rows swap by clip path and need neither. */
+export interface SwapContext {
     hero: string;
     heroName: string;
+    /** Global mode: the `.vsndevts_c` entry carrying the event (a
+     *  `GlobalSound.soundevents`). When set, `hero`/`heroName` are empty and the
+     *  built mod is filed under the Locker's global Sounds bucket. */
+    soundeventsEntry?: string;
 }
 
 interface SoundBrowseProps {
@@ -282,12 +289,11 @@ interface CategorySectionData {
 }
 
 function groupSounds(sounds: HeroSound[], search: string): CategorySectionData[] {
-    const q = search.trim().toLowerCase();
-    const matches = (s: HeroSound) =>
-        !q ||
-        s.label.toLowerCase().includes(q) ||
-        s.event.toLowerCase().includes(q) ||
-        (s.ability?.toLowerCase().includes(q) ?? false);
+    // Same match surface as the global tab, clip names included: every hero's
+    // charged-melee pool lives in sounds/player/melee/shared/, so searching a
+    // clip name is often the only way to reach the row you mean.
+    const q = search.trim();
+    const matches = (s: HeroSound) => matchesSound(s, q);
 
     const byCategory = new Map<HeroSoundCategory, HeroSound[]>();
     for (const s of sounds) {
@@ -406,8 +412,11 @@ function CategorySection({
                                 duration={row.duration}
                                 state={player.stateFor(row.event)}
                                 onToggle={() => player.toggle(row)}
+                                poolIndex={player.poolIndexFor(row.event)}
                                 swap={swap}
                                 targetClip={row.vsnd[0]}
+                                description={describeSound(row)}
+                                clipName={primaryClipName(row.vsnd)}
                             />
                         ))}
                     </div>
@@ -474,12 +483,8 @@ function VoiceLinesSection({
     const lines = ready?.lines ?? NO_LINES;
 
     const visible = useMemo(() => {
-        const q = search.trim().toLowerCase();
-        return q
-            ? lines.filter(
-                  (l) => l.label.toLowerCase().includes(q) || l.event.toLowerCase().includes(q)
-              )
-            : lines;
+        const q = search.trim();
+        return q ? lines.filter((l) => matchesSound(l, q)) : lines;
     }, [lines, search]);
     const shown = visible.slice(0, VO_ROW_CAP);
 
@@ -541,9 +546,15 @@ function VoiceLinesSection({
                                     duration={line.duration}
                                     state={player.stateFor(line.event)}
                                     onToggle={() => player.toggle(line)}
+                                    poolIndex={player.poolIndexFor(line.event)}
                                     swap={swap}
                                     clipPaths={line.vsnd}
                                     targetClip={line.vsnd[0]}
+                                    // VO rows carry a caption when the game ships
+                                    // one; the label is already prose, so no
+                                    // derived description is added on top.
+                                    description={line.caption}
+                                    clipName={primaryClipName(line.vsnd)}
                                 />
                             ))}
                             {visible.length > VO_ROW_CAP && (
@@ -565,8 +576,6 @@ function VoiceLinesSection({
 
 // ----- Row + shared audition player ---------------------------------------
 
-type RowState = 'idle' | 'loading' | 'playing';
-
 interface SoundRowProps {
     label: string;
     event: string;
@@ -574,6 +583,9 @@ interface SoundRowProps {
     duration: number | null;
     state: RowState;
     onToggle: () => void;
+    /** 0-based cursor into a randomizer pool: which clip the next press plays.
+     *  Ignored when `clips` is 1. */
+    poolIndex?: number;
     /** When present, the row offers an inline sound-swap. */
     swap?: SwapContext;
     /** First clip path of this row, used as the swap normalizer's volume target. */
@@ -581,12 +593,28 @@ interface SoundRowProps {
     /** Voice-line rows pass their clip entries so the swap uses clip mode (VO has
      *  no per-hero soundevents file). Gameplay rows omit this and use event mode. */
     clipPaths?: string[];
+    /** Plain-English "what this actually is", from lib/soundDescribe. Null when
+     *  nothing honest can be derived, in which case the row just omits it. */
+    description?: string | null;
+    /** Filename of the first clip in the pool. Shown because it is the identifier
+     *  a modder recognizes (and can paste back into the search box). */
+    clipName?: string | null;
 }
 
-function SoundRow({ label, event, clips, duration, state, onToggle, swap, targetClip, clipPaths }: SoundRowProps) {
+export function SoundRow({ label, event, clips, duration, state, onToggle, poolIndex = 0, swap, targetClip, clipPaths, description, clipName }: SoundRowProps) {
     const { t } = useTranslation();
     const [swapOpen, setSwapOpen] = useState(false);
     const seconds = duration && duration > 0 ? `${duration.toFixed(1)}s` : null;
+    // Randomizer pool: name which clip the next press auditions, so repeated
+    // presses read as walking the pool rather than as a stuck button.
+    const poolNote =
+        clips > 1
+            ? ` · ${t('foundry.sound.poolPosition', {
+                  defaultValue: 'clip {{n}} of {{total}}',
+                  n: (poolIndex % clips) + 1,
+                  total: clips,
+              })}`
+            : '';
     return (
         <div style={{ contentVisibility: 'auto', containIntrinsicSize: '0 44px' }}>
             <div className="flex items-center gap-3 rounded-sm border border-border bg-bg-secondary px-3 py-2">
@@ -608,9 +636,20 @@ function SoundRow({ label, event, clips, duration, state, onToggle, swap, target
                     <p className="truncate text-sm text-text-primary" title={label}>
                         {label || event}
                     </p>
-                    <p className="truncate text-[11px] text-text-secondary" title={event}>
+                    {description && (
+                        <p className="truncate text-[11px] text-text-secondary" title={description}>
+                            {description}
+                        </p>
+                    )}
+                    {/* Engine identifiers last and dimmer: they are what you
+                        search and swap by, but not what tells you what a row is. */}
+                    <p
+                        className="truncate text-[11px] text-text-secondary/70"
+                        title={clipName ? `${event}\n${clipName}` : event}
+                    >
                         {event}
-                        {clips > 1 ? ` · ${clips} clips` : ''}
+                        {clipName ? ` · ${clipName}` : ''}
+                        {poolNote}
                     </p>
                 </div>
                 {seconds && (
@@ -638,6 +677,7 @@ function SoundRow({ label, event, clips, duration, state, onToggle, swap, target
                 <SwapPanel
                     hero={swap.hero}
                     heroName={swap.heroName}
+                    soundeventsEntry={swap.soundeventsEntry}
                     event={event}
                     clipPaths={clipPaths}
                     label={label}
@@ -662,6 +702,7 @@ function SoundRow({ label, event, clips, duration, state, onToggle, swap, target
 function SwapPanel({
     hero,
     heroName,
+    soundeventsEntry,
     event,
     clipPaths,
     label,
@@ -671,6 +712,8 @@ function SwapPanel({
 }: {
     hero: string;
     heroName: string;
+    /** Global swap: the soundevents file carrying `event` (no hero involved). */
+    soundeventsEntry?: string;
     event: string;
     /** Voice-line swap: the clip entries to override in place (clip mode). When
      *  set, the swap targets these clips instead of the soundevents tree. */
@@ -688,7 +731,10 @@ function SwapPanel({
     const [audioName, setAudioName] = useState('');
     const [audioFile, setAudioFile] = useState<File | null>(null);
     const [edits, setEdits] = useState<SoundImportEdits>({});
-    const [name, setName] = useState(`${heroName} ${label}`.trim());
+    // Default mod name: "<Hero> <Sound>" for a hero swap, just the sound's label
+    // for a global one (there is no hero to lead with).
+    const defaultName = `${heroName} ${label}`.trim();
+    const [name, setName] = useState(defaultName);
     const [loop, setLoop] = useState<'auto' | 'on' | 'off'>('auto');
     const [busy, setBusy] = useState(false);
     const [dragOver, setDragOver] = useState(false);
@@ -713,12 +759,13 @@ function SwapPanel({
 
     const forge = useCallback(async () => {
         if (!audioPath || busy) return;
-        const finalName = name.trim() || `${heroName} ${label}`.trim();
+        const finalName = name.trim() || defaultName;
         setBusy(true);
         try {
             await foundrySwapSound({
                 heroCodename: hero,
                 heroName,
+                soundeventsEntry,
                 event,
                 clipPaths,
                 audioPath,
@@ -741,7 +788,10 @@ function SwapPanel({
         } finally {
             setBusy(false);
         }
-    }, [audioPath, busy, name, heroName, label, hero, event, clipPaths, loop, edits, t, onClose]);
+    }, [
+        audioPath, busy, name, defaultName, heroName, hero, soundeventsEntry,
+        event, clipPaths, loop, edits, t, onClose,
+    ]);
 
     return (
         <div className="mt-1.5 rounded-sm border border-accent/30 bg-bg-tertiary/40 p-3">
@@ -849,96 +899,3 @@ function SwapPanel({
     );
 }
 
-/** The minimal shape the player needs: an identity key + the clip path(s). Both
- *  HeroSound and VoiceLine satisfy it. */
-interface PlayableClip {
-    event: string;
-    vsnd: string[];
-}
-
-interface ClipPlayer {
-    toggle: (clip: PlayableClip) => void;
-    stateFor: (event: string) => RowState;
-}
-
-/**
- * One shared <audio> element across the whole tab: at most one clip plays at a
- * time, and each clip's MP3 (a data URL from the main process) is cached so a
- * replay is instant. Auditions the first clip of a randomizer pool. Routes
- * through the global preview-audio controller (the sidebar volume widget) like
- * AudioPreviewPlayer does: it flips `previewAudioPlaying` so the sidebar control
- * surfaces, and tracks the shared `soundVolume`. Returns per-row state + toggle.
- */
-function useClipPlayer(): ClipPlayer {
-    const audioRef = useRef<HTMLAudioElement | null>(null);
-    const srcCache = useRef<Map<string, string | null>>(new Map());
-    const [playing, setPlaying] = useState<string | null>(null);
-    const [loadingKey, setLoadingKey] = useState<string | null>(null);
-    const soundVolume = useAppStore((s) => s.soundVolume);
-    const setPreviewAudioPlaying = useAppStore((s) => s.setPreviewAudioPlaying);
-
-    // Keep the live element in sync with the sidebar's preview-volume slider.
-    useEffect(() => {
-        if (audioRef.current) audioRef.current.volume = soundVolume;
-    }, [soundVolume]);
-
-    // Stop the shared element + clear the sidebar widget when the tab unmounts.
-    useEffect(
-        () => () => {
-            audioRef.current?.pause();
-            audioRef.current = null;
-            setPreviewAudioPlaying(false);
-        },
-        [setPreviewAudioPlaying]
-    );
-
-    const toggle = useCallback(
-        async (clip: PlayableClip) => {
-            const key = clip.event;
-            const path = clip.vsnd[0];
-            if (!path) return; // event with no own clips (inherited): not auditionable
-            const audio = (audioRef.current ??= new Audio());
-
-            if (playing === key) {
-                audio.pause();
-                setPlaying(null);
-                setPreviewAudioPlaying(false);
-                return;
-            }
-            audio.pause();
-
-            let src = srcCache.current.get(path);
-            if (src === undefined) {
-                setLoadingKey(key);
-                src = await foundryVoiceclip(path).catch(() => null);
-                srcCache.current.set(path, src);
-                setLoadingKey((k) => (k === key ? null : k));
-            }
-            if (!src) return; // not auditionable (missing entry / unsupported codec)
-
-            audio.src = src;
-            audio.volume = soundVolume;
-            audio.onended = () => {
-                setPlaying((p) => (p === key ? null : p));
-                setPreviewAudioPlaying(false);
-            };
-            try {
-                await audio.play();
-                setPlaying(key);
-                setPreviewAudioPlaying(true);
-            } catch {
-                setPlaying(null);
-                setPreviewAudioPlaying(false);
-            }
-        },
-        [playing, soundVolume, setPreviewAudioPlaying]
-    );
-
-    const stateFor = useCallback(
-        (key: string): RowState =>
-            loadingKey === key ? 'loading' : playing === key ? 'playing' : 'idle',
-        [loadingKey, playing]
-    );
-
-    return { toggle, stateFor };
-}

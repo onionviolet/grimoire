@@ -62,7 +62,7 @@ import {
   type GlobalModGroups,
   type HeroCategory,
 } from '../lib/lockerUtils';
-import { shuffleSkinKey, type VariantChoice } from '../lib/lockerRandomizer';
+import { shuffleSkinKey, shuffleSoundKey, type VariantChoice } from '../lib/lockerRandomizer';
 
 // Route changes flip the overlay state instantly, which unmounts the hero or
 // global panel on the next frame with no exit transition. Retain the last
@@ -215,7 +215,7 @@ function FacetSheenDefs() {
 
 export default function Locker() {
   const { t } = useTranslation();
-  const { settings, mods, modsLoading, modsError, loadSettings, loadMods, toggleMod, reorderMods, deleteMod, setBrowseUi, setLockerHeroName, lockerModImages, lockerHideHeroName, lockerModThumbnails, lockerThumbHideHeroName, loadLockerModImages, shuffleOnLaunch, setShuffleOnLaunch, shuffleIncluded, toggleShuffleIncluded, shuffleVariants, setShuffleVariant } =
+  const { settings, mods, modsLoading, modsError, loadSettings, loadMods, toggleMod, reorderMods, deleteMod, setBrowseUi, setLockerHeroName, lockerModImages, lockerHideHeroName, lockerModThumbnails, lockerThumbHideHeroName, loadLockerModImages, shuffleOnLaunch, setShuffleOnLaunch, shuffleIncluded, toggleShuffleIncluded, shuffleVariants, setShuffleVariant, shuffleIncludeVanilla, setShuffleIncludeVanilla, soundShuffleIncluded, toggleSoundShuffleIncluded } =
     useAppStore();
   const activeDeadlockPath = getActiveDeadlockPath(settings);
   const [categories, setCategories] = useState<GameBananaCategoryNode[]>(
@@ -900,10 +900,22 @@ export default function Locker() {
                     shuffleIncluded.size > 0 ? 'bg-accent/15 text-accent' : 'bg-yellow-500/15 text-yellow-400'
                   }`}
                 >
-                  {shuffleIncluded.size}
+                  {shuffleIncluded.size + soundShuffleIncluded.size}
                 </span>
               )}
               <ToggleIndicator checked={shuffleOnLaunch} className="ml-0.5 scale-90" />
+            </button>
+          )}
+          {heroesWithSkins > 0 && (
+            <button
+              type="button"
+              role="switch"
+              aria-checked={shuffleIncludeVanilla}
+              onClick={() => setShuffleIncludeVanilla(!shuffleIncludeVanilla)}
+              title="Allow the character-model shuffle to choose vanilla"
+              className="flex items-center gap-1.5 self-stretch rounded-sm border border-border bg-bg-secondary px-3 text-xs text-text-secondary hover:bg-bg-tertiary hover:text-text-primary cursor-pointer"
+            >
+              Vanilla {shuffleIncludeVanilla ? 'included' : 'off'}
             </button>
           )}
           {viewMode === 'gallery' &&
@@ -1046,6 +1058,8 @@ export default function Locker() {
               shuffleVariantChoices={shuffleVariants}
               onSetShuffleVariant={setShuffleVariant}
               shuffleArmed={shuffleOnLaunch}
+              soundShuffleIncluded={soundShuffleIncluded}
+              onToggleSoundShuffleIncluded={toggleSoundShuffleIncluded}
               isFavorite={favoriteHeroes.includes(hero.id)}
               onToggleFavorite={() =>
                 setFavoriteHeroes((prev) =>
@@ -1260,6 +1274,8 @@ interface HeroCardProps {
   shuffleVariantChoices: ReadonlyMap<string, VariantChoice>;
   onSetShuffleVariant: (skinKey: string, choice: VariantChoice | null) => void;
   shuffleArmed: boolean;
+  soundShuffleIncluded: Set<string>;
+  onToggleSoundShuffleIncluded: (soundKey: string) => void;
   isFavorite: boolean;
   onToggleFavorite: () => void;
   hideNsfwPreviews: boolean;
@@ -2170,6 +2186,8 @@ function HeroCard({
   shuffleVariantChoices,
   onSetShuffleVariant,
   shuffleArmed,
+  soundShuffleIncluded,
+  onToggleSoundShuffleIncluded,
   isFavorite,
   onToggleFavorite,
   hideNsfwPreviews,
@@ -2335,11 +2353,12 @@ function HeroCard({
           onSelect={onSelect}
           onToggleVariant={onToggleVariant}
           onRequestDelete={onRequestDelete}
-          includedSkinKeys={activeSection === 'skins' ? includedSkinKeys : undefined}
-          onToggleShuffleIncluded={activeSection === 'skins' ? onToggleShuffleIncluded : undefined}
+          includedSkinKeys={activeSection === 'skins' ? includedSkinKeys : soundShuffleIncluded}
+          onToggleShuffleIncluded={activeSection === 'skins' ? onToggleShuffleIncluded : onToggleSoundShuffleIncluded}
           shuffleVariantChoices={activeSection === 'skins' ? shuffleVariantChoices : undefined}
           onSetShuffleVariant={activeSection === 'skins' ? onSetShuffleVariant : undefined}
           shuffleArmed={shuffleArmed}
+          shuffleKeyFor={activeSection === 'sounds' ? shuffleSoundKey : undefined}
           hideNsfwPreviews={hideNsfwPreviews}
           showDownloadable={activeSection === 'skins'}
           browseAction={
