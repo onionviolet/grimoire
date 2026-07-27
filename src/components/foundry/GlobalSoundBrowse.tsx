@@ -18,6 +18,7 @@ import Tx from '../translation/Tx';
 import { SoundRow, type SwapContext } from './SoundBrowse';
 import { useClipPlayer, type ClipPlayer } from './useClipPlayer';
 import { foundryGlobalSounds } from '../../lib/api';
+import { describeSound, matchesSound, primaryClipName } from '../../lib/soundDescribe';
 import type { GlobalSound, GlobalSoundCategory } from '../../types/foundry';
 
 // Display order: what a modder reaches for first (UI clicks, music) leads, then
@@ -267,6 +268,8 @@ function CategorySection({ section, player }: { section: Section; player: ClipPl
                                 poolIndex={player.poolIndexFor(row.event)}
                                 swap={swapContextFor(row)}
                                 targetClip={row.vsnd[0]}
+                                description={describeSound(row)}
+                                clipName={primaryClipName(row.vsnd)}
                             />
                         ))}
                     </div>
@@ -287,13 +290,13 @@ function groupSounds(
     search: string,
     category: GlobalSoundCategory | 'all'
 ): Section[] {
-    const q = search.trim().toLowerCase();
+    // Clip filenames and paths are part of the match surface, not just the
+    // event/label/source triple. A modder holds a clip name (`charged_melee_full`)
+    // far more often than an event name, and pasting one used to return nothing.
+    // See lib/soundDescribe.ts for why, and its test for the pinned case.
+    const q = search.trim();
     const matches = (s: GlobalSound) =>
-        (category === 'all' || s.category === category) &&
-        (!q ||
-            s.label.toLowerCase().includes(q) ||
-            s.event.toLowerCase().includes(q) ||
-            s.source.toLowerCase().includes(q));
+        (category === 'all' || s.category === category) && matchesSound(s, q);
 
     const byCategory = new Map<GlobalSoundCategory, Map<string, GlobalSound[]>>();
     for (const s of sounds) {

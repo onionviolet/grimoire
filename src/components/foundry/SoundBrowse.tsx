@@ -28,6 +28,7 @@ import {
     foundrySwapSound,
     getHeroAbilitySlots,
 } from '../../lib/api';
+import { describeSound, matchesSound, primaryClipName } from '../../lib/soundDescribe';
 import { showToast } from '../../stores/toastStore';
 import { useAppStore } from '../../stores/appStore';
 import type { HeroInfo, HeroSound, HeroSoundCategory, VoiceLine } from '../../types/foundry';
@@ -288,12 +289,11 @@ interface CategorySectionData {
 }
 
 function groupSounds(sounds: HeroSound[], search: string): CategorySectionData[] {
-    const q = search.trim().toLowerCase();
-    const matches = (s: HeroSound) =>
-        !q ||
-        s.label.toLowerCase().includes(q) ||
-        s.event.toLowerCase().includes(q) ||
-        (s.ability?.toLowerCase().includes(q) ?? false);
+    // Same match surface as the global tab, clip names included: every hero's
+    // charged-melee pool lives in sounds/player/melee/shared/, so searching a
+    // clip name is often the only way to reach the row you mean.
+    const q = search.trim();
+    const matches = (s: HeroSound) => matchesSound(s, q);
 
     const byCategory = new Map<HeroSoundCategory, HeroSound[]>();
     for (const s of sounds) {
@@ -415,6 +415,8 @@ function CategorySection({
                                 poolIndex={player.poolIndexFor(row.event)}
                                 swap={swap}
                                 targetClip={row.vsnd[0]}
+                                description={describeSound(row)}
+                                clipName={primaryClipName(row.vsnd)}
                             />
                         ))}
                     </div>
@@ -481,12 +483,8 @@ function VoiceLinesSection({
     const lines = ready?.lines ?? NO_LINES;
 
     const visible = useMemo(() => {
-        const q = search.trim().toLowerCase();
-        return q
-            ? lines.filter(
-                  (l) => l.label.toLowerCase().includes(q) || l.event.toLowerCase().includes(q)
-              )
-            : lines;
+        const q = search.trim();
+        return q ? lines.filter((l) => matchesSound(l, q)) : lines;
     }, [lines, search]);
     const shown = visible.slice(0, VO_ROW_CAP);
 
@@ -552,6 +550,11 @@ function VoiceLinesSection({
                                     swap={swap}
                                     clipPaths={line.vsnd}
                                     targetClip={line.vsnd[0]}
+                                    // VO rows carry a caption when the game ships
+                                    // one; the label is already prose, so no
+                                    // derived description is added on top.
+                                    description={line.caption}
+                                    clipName={primaryClipName(line.vsnd)}
                                 />
                             ))}
                             {visible.length > VO_ROW_CAP && (
@@ -590,9 +593,15 @@ interface SoundRowProps {
     /** Voice-line rows pass their clip entries so the swap uses clip mode (VO has
      *  no per-hero soundevents file). Gameplay rows omit this and use event mode. */
     clipPaths?: string[];
+    /** Plain-English "what this actually is", from lib/soundDescribe. Null when
+     *  nothing honest can be derived, in which case the row just omits it. */
+    description?: string | null;
+    /** Filename of the first clip in the pool. Shown because it is the identifier
+     *  a modder recognizes (and can paste back into the search box). */
+    clipName?: string | null;
 }
 
-export function SoundRow({ label, event, clips, duration, state, onToggle, poolIndex = 0, swap, targetClip, clipPaths }: SoundRowProps) {
+export function SoundRow({ label, event, clips, duration, state, onToggle, poolIndex = 0, swap, targetClip, clipPaths, description, clipName }: SoundRowProps) {
     const { t } = useTranslation();
     const [swapOpen, setSwapOpen] = useState(false);
     const seconds = duration && duration > 0 ? `${duration.toFixed(1)}s` : null;
@@ -627,8 +636,19 @@ export function SoundRow({ label, event, clips, duration, state, onToggle, poolI
                     <p className="truncate text-sm text-text-primary" title={label}>
                         {label || event}
                     </p>
-                    <p className="truncate text-[11px] text-text-secondary" title={event}>
+                    {description && (
+                        <p className="truncate text-[11px] text-text-secondary" title={description}>
+                            {description}
+                        </p>
+                    )}
+                    {/* Engine identifiers last and dimmer: they are what you
+                        search and swap by, but not what tells you what a row is. */}
+                    <p
+                        className="truncate text-[11px] text-text-secondary/70"
+                        title={clipName ? `${event}\n${clipName}` : event}
+                    >
                         {event}
+                        {clipName ? ` · ${clipName}` : ''}
                         {poolNote}
                     </p>
                 </div>
