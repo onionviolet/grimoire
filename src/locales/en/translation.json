@@ -164,6 +164,7 @@
       "searchPlaceholder": "Search sounds...",
       "loading": "Reading sounds from your game files...",
       "play": "Audition",
+      "poolPosition": "clip {{n}} of {{total}}",
       "gameplayCount": "{{count}} gameplay sounds",
       "noMatch": "No sounds match your search.",
       "ult": "ULT",
