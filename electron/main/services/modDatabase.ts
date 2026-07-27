@@ -198,6 +198,10 @@ export function closeDatabase(): void {
  */
 export function wipeDatabase(): void {
     const dbPath = getDbPath();
+    // Favorites are user intent, not disposable catalog cache. Snapshot them
+    // before replacing the database so "refresh local cache" cannot erase a
+    // reading list the user deliberately saved.
+    const favorites = getFavoriteMods();
     closeDatabase();
 
     const filesToRemove = [dbPath, `${dbPath}-wal`, `${dbPath}-shm`];
@@ -207,7 +211,18 @@ export function wipeDatabase(): void {
         }
     }
 
-    initDatabase();
+    const database = initDatabase();
+    const restore = database.prepare(`
+        INSERT INTO favorite_mods (mod_id, section, saved_at)
+        VALUES (?, ?, ?)
+        ON CONFLICT(mod_id, section) DO UPDATE SET saved_at = excluded.saved_at
+    `);
+    const restoreAll = database.transaction(() => {
+        for (const favorite of favorites) {
+            restore.run(favorite.modId, favorite.section, favorite.savedAt);
+        }
+    });
+    restoreAll();
 }
 
 /**
