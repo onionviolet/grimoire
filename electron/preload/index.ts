@@ -27,6 +27,7 @@ import type {
     LockerClearScope,
     MergeModsArgs,
     ImprintInstalledProgress,
+    ModelCompatibilityReport,
     TrippySpriteOptions,
     TrippyVfxChoice,
     UnknownModDetectionProgress,
@@ -249,6 +250,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
         ipcRenderer.invoke('set-mod-priority', modId, priority),
     reorderMods: (orderedIds: string[]) =>
         ipcRenderer.invoke('reorder-mods', orderedIds),
+    getModelCompatibilityReport: (): Promise<ModelCompatibilityReport> =>
+        ipcRenderer.invoke('get-model-compatibility-report'),
+    applyModelCompatibilityFix: () => ipcRenderer.invoke('apply-model-compatibility-fix'),
     applyModToggleBatch: (enableIds: string[], disableIds: string[]) =>
         ipcRenderer.invoke('apply-mod-toggle-batch', enableIds, disableIds),
     swapModPriority: (modIdA: string, modIdB: string) =>

@@ -825,6 +825,14 @@ export interface UnknownModFileList {
   fileCount: number;
 }
 
+/** Read-only inspection of installed VPKs that override compiled hero models. */
+export interface ModelCompatibilityReport {
+  modelMods: Array<{ id: string; name: string; hero: string; enabled: boolean }>;
+  unreadableMods: string[];
+  overlappingModels: Array<{ path: string; mods: string[] }>;
+  canFixLoadOrder: boolean;
+}
+
 export interface EditLocalModArgs {
   name: string;
   thumbnailDataUrl?: string;

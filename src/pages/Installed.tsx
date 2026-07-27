@@ -74,10 +74,10 @@ import { showToast } from '../stores/toastStore';
 import { useAppStore, type BrowseArtistRef } from '../stores/appStore';
 import { getActiveDeadlockPath } from '../lib/appSettings';
 import { isImprintPending } from '../lib/imprintPending';
-import { getConflicts, openModsFolder, readImageDataUrl, showOpenDialog, getModDetails, getModFileList, downloadMod, createSnapshot, detectUnknownModFilters, detectUnknownModCacheBulk, cancelUnknownModDetection, onUnknownModDetectionProgress, applyUnknownModMatch, applyUnknownCustomMod, associateUnknownMod, listUnknownModFiles, browseMods, mergeMods, unmergeMod, extractMergeSource, addMergeSources, reorderMods as apiReorderMods, setModIgnoreUpdates, getLockerOverview, revealModInFolder, dmmMigrateScan, dmmMigrateExecute, imprintAllInstalled, onImprintAllInstalledProgress, imprintPreflight, readImprintDetails, launchModded } from '../lib/api';
+import { getConflicts, openModsFolder, readImageDataUrl, showOpenDialog, getModDetails, getModFileList, downloadMod, createSnapshot, detectUnknownModFilters, detectUnknownModCacheBulk, cancelUnknownModDetection, onUnknownModDetectionProgress, applyUnknownModMatch, applyUnknownCustomMod, associateUnknownMod, listUnknownModFiles, browseMods, mergeMods, unmergeMod, extractMergeSource, addMergeSources, reorderMods as apiReorderMods, setModIgnoreUpdates, getLockerOverview, revealModInFolder, dmmMigrateScan, dmmMigrateExecute, imprintAllInstalled, onImprintAllInstalledProgress, imprintPreflight, readImprintDetails, getModelCompatibilityReport, applyModelCompatibilityFix, launchModded } from '../lib/api';
 import type { UnmergeModResult, ImprintAllInstalledResult, ImprintInstalledProgress, ImprintPreflightResult, ImprintDetails } from '../lib/api';
 import type { ModConflict } from '../lib/api';
-import type { Mod, GlobalModType, UnknownModDetectionProgress, UnknownModFilterGuess, MergedModSource, AssociateUnknownModArgs, ImprintAnomalousMod, ImprintSkippedMod, ImprintFailedMod } from '../types/mod';
+import type { Mod, GlobalModType, UnknownModDetectionProgress, UnknownModFilterGuess, MergedModSource, AssociateUnknownModArgs, ImprintAnomalousMod, ImprintSkippedMod, ImprintFailedMod, ModelCompatibilityReport } from '../types/mod';
 import type { GameBananaModDetails, GameBananaMod, GameBananaItemRef } from '../types/gamebanana';
 import { getModThumbnail } from '../types/gamebanana';
 import ModThumbnail from '../components/ModThumbnail';
@@ -918,6 +918,8 @@ export default function Installed() {
   // progress phase streaming done/total + current file, and a final report of
   // what was imprinted / skipped / failed. `null` means the modal is closed.
   const [imprintState, setImprintState] = useState<ImprintModalState>(null);
+  const [modelCompatibilityReport, setModelCompatibilityReport] = useState<ModelCompatibilityReport | null>(null);
+  const [modelCompatibilityLoading, setModelCompatibilityLoading] = useState(false);
   // "View imprint" details modal target (right-click menu on an imprinted mod's
   // card). The modal fetches the embedded imprint itself; null means closed.
   const [imprintDetailsMod, setImprintDetailsMod] = useState<Mod | null>(null);
@@ -3584,6 +3586,28 @@ export default function Installed() {
     reorderMods(compactOrder.map((m) => m.id));
   };
 
+  const openModelCompatibility = async () => {
+    setModelCompatibilityLoading(true);
+    try {
+      setModelCompatibilityReport(await getModelCompatibilityReport());
+    } catch (err) {
+      showToast(`Could not inspect model mods: ${err instanceof Error ? err.message : String(err)}`, { tone: 'error' });
+    } finally {
+      setModelCompatibilityLoading(false);
+    }
+  };
+
+  const handleModelCompatibilityFix = async () => {
+    try {
+      await applyModelCompatibilityFix();
+      await loadMods({ silent: true });
+      setModelCompatibilityReport(null);
+      showToast('Model mods were moved to the end of load order.', { tone: 'success' });
+    } catch (err) {
+      showToast(`Could not apply model compatibility fix: ${err instanceof Error ? err.message : String(err)}`, { tone: 'error' });
+    }
+  };
+
   /**
    * Commit a typed load-order position from the Load editor. The number is a
    * 1-based global position over the enabled mods (1 = loads first), so we move
@@ -3818,6 +3842,17 @@ export default function Installed() {
             className="!px-2.5"
             aria-label={t('installed.actions.copyEnabled')}
             title={t('installed.actions.copyEnabledHint')}
+          />
+        )}
+        {enabledModCount > 0 && (
+          <Button
+            variant="secondary"
+            onClick={() => { void openModelCompatibility(); }}
+            icon={Wand2}
+            className="!px-2.5"
+            aria-label="Check model compatibility"
+            title="Check character model compatibility"
+            isLoading={modelCompatibilityLoading}
           />
         )}
         {viewIsReorderable && (
@@ -4695,6 +4730,50 @@ export default function Installed() {
           onClose={() => setImprintState(null)}
         />
       )}
+
+      <ConfirmModal
+        isOpen={modelCompatibilityReport !== null}
+        title="Character model compatibility"
+        message={
+          modelCompatibilityReport && (
+            <div className="space-y-3 text-sm">
+              {modelCompatibilityReport.modelMods.length === 0 ? (
+                <p>No compiled hero-model overrides were found in the installed VPKs.</p>
+              ) : (
+                <>
+                  <p>
+                    Found {modelCompatibilityReport.modelMods.filter((mod) => mod.enabled).length} enabled character-model mod{modelCompatibilityReport.modelMods.filter((mod) => mod.enabled).length === 1 ? '' : 's'}.
+                    The automatic fix moves them after ordinary mods so their files win normal load-order conflicts.
+                  </p>
+                  <ul className="max-h-28 list-disc space-y-1 overflow-y-auto pl-5 text-xs text-text-secondary">
+                    {modelCompatibilityReport.modelMods.map((mod) => (
+                      <li key={mod.id}>{mod.name} ({mod.hero}){mod.enabled ? '' : ' — disabled'}</li>
+                    ))}
+                  </ul>
+                </>
+              )}
+              {modelCompatibilityReport.overlappingModels.length > 0 && (
+                <p className="text-amber-200">
+                  {modelCompatibilityReport.overlappingModels.length} model file conflict{modelCompatibilityReport.overlappingModels.length === 1 ? '' : 's'} remain: only the later model can win. Disable the one you do not want.
+                </p>
+              )}
+              <p className="rounded-sm border border-amber-400/25 bg-amber-400/10 p-2 text-amber-100">
+                This cannot repair a compiled model whose skeleton, bone weights, or animation bindings changed after a Deadlock update. Those need an author rebuild/re-export.
+              </p>
+              {modelCompatibilityReport.unreadableMods.length > 0 && (
+                <p className="text-xs text-text-secondary">Could not inspect {modelCompatibilityReport.unreadableMods.length} unreadable VPK{modelCompatibilityReport.unreadableMods.length === 1 ? '' : 's'}.</p>
+              )}
+            </div>
+          )
+        }
+        confirmLabel={modelCompatibilityReport?.canFixLoadOrder ? 'Apply load-order fix' : 'Close'}
+        cancelLabel="Cancel"
+        onConfirm={() => {
+          if (modelCompatibilityReport?.canFixLoadOrder) void handleModelCompatibilityFix();
+          else setModelCompatibilityReport(null);
+        }}
+        onCancel={() => setModelCompatibilityReport(null)}
+      />
 
       {imprintDetailsMod && (
         <ImprintDetailsModal

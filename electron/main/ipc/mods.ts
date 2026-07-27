@@ -60,9 +60,50 @@ import { exportVpkViaDialog, exportVpkFileName } from '../services/foundryExport
 import { getMainWindow } from '../index';
 import type { ImportCustomModArgs, ImportCustomModsBatchArgs, ImportCustomModsBatchResult, ImportCustomModResult, ImportCustomModsProgress, ImportSoulContainerGlbArgs, PreviewSoulContainerGlbArgs, SoulContainerPreview, ImportSpiritUrnGlbArgs, PreviewSpiritUrnGlbArgs, SpiritUrnPreview } from '../../../src/types/electron';
 import type { VpkExportResult, HeroSoundSwapRequest } from '../../../src/types/foundry';
-import type { AbilitySoundClassification, AddMergeSourcesResult, ApplyUnknownCustomModArgs, ApplyUnknownModMatchArgs, AssociateUnknownModArgs, EditLocalModArgs, GlobalModType, LockerHeroSource, MergeModsArgs, Mod as WireMod, SoulContainerImportInfo, SoundSwapInfo, UrnImportInfo, UnmergeModResult, ExtractMergeSourceResult, UnknownModFileList, ImprintPreflightResult, ImprintDetails, PeekImprintResult } from '../../../src/types/mod';
+import type { AbilitySoundClassification, AddMergeSourcesResult, ApplyUnknownCustomModArgs, ApplyUnknownModMatchArgs, AssociateUnknownModArgs, EditLocalModArgs, GlobalModType, LockerHeroSource, MergeModsArgs, Mod as WireMod, SoulContainerImportInfo, SoundSwapInfo, UrnImportInfo, UnmergeModResult, ExtractMergeSourceResult, UnknownModFileList, ImprintPreflightResult, ImprintDetails, PeekImprintResult, ModelCompatibilityReport } from '../../../src/types/mod';
 
 const unknownDetectionControllers = new Map<string, AbortController>();
+
+// A VPK tree tells us which compiled hero models a mod supplies. It cannot
+// reveal whether a model's internal rig is still compatible with the live game.
+const HERO_MODEL_PATH = /^models\/heroes(?:_wip)?\/([^/]+)\/.*\.vmdl_c$/i;
+
+async function inspectModelCompatibility(deadlockPath: string): Promise<{ report: ModelCompatibilityReport; modelIds: Set<string> }> {
+    const mods = await scanMods(deadlockPath);
+    const pathsByVpk = await parseVpkDirectoriesAsync(mods.map((mod) => mod.path));
+    const modelIds = new Set<string>();
+    const modelMods: ModelCompatibilityReport['modelMods'] = [];
+    const unreadableMods: string[] = [];
+    const owners = new Map<string, string[]>();
+
+    for (const mod of mods) {
+        const paths = pathsByVpk.get(mod.path);
+        if (!paths) {
+            unreadableMods.push(mod.name);
+            continue;
+        }
+        const modelPaths = paths.filter((path) => HERO_MODEL_PATH.test(path));
+        if (modelPaths.length === 0) continue;
+        modelIds.add(mod.id);
+        const hero = HERO_MODEL_PATH.exec(modelPaths[0])?.[1] ?? 'hero';
+        modelMods.push({ id: mod.id, name: mod.name, hero, enabled: mod.enabled });
+        if (mod.enabled) {
+            for (const path of modelPaths) owners.set(path, [...(owners.get(path) ?? []), mod.name]);
+        }
+    }
+
+    return {
+        report: {
+            modelMods,
+            unreadableMods,
+            overlappingModels: [...owners.entries()]
+                .filter(([, names]) => names.length > 1)
+                .map(([path, names]) => ({ path, mods: names })),
+            canFixLoadOrder: modelMods.some((mod) => mod.enabled),
+        },
+        modelIds,
+    };
+}
 
 interface UnknownCacheBulkRequest {
     modId: string;
@@ -952,6 +993,30 @@ ipcMain.handle(
         return mods.map(enrichMod);
     }
 );
+
+// Read-only first: the UI explains the boundary before offering the only safe
+// automatic recovery (putting model overrides after ordinary cosmetic VPKs).
+ipcMain.handle('get-model-compatibility-report', async (): Promise<ModelCompatibilityReport> => {
+    const deadlockPath = getActiveDeadlockPath();
+    if (!deadlockPath) throw new Error('No Deadlock path configured');
+    return (await inspectModelCompatibility(deadlockPath)).report;
+});
+
+ipcMain.handle('apply-model-compatibility-fix', async (): Promise<Mod[]> => {
+    const deadlockPath = getActiveDeadlockPath();
+    if (!deadlockPath) throw new Error('No Deadlock path configured');
+    const { modelIds } = await inspectModelCompatibility(deadlockPath);
+    const mods = await scanMods(deadlockPath);
+    const enabled = mods.filter((mod) => mod.enabled);
+    // Last VPK wins Source 2 file overrides. Preserve the user's ordering
+    // within each group; only move hero-model VPKs after non-model VPKs.
+    const orderedIds = [
+        ...enabled.filter((mod) => !modelIds.has(mod.id)),
+        ...enabled.filter((mod) => modelIds.has(mod.id)),
+    ].map((mod) => mod.id);
+    await reorderMods(deadlockPath, orderedIds);
+    return (await scanMods(deadlockPath)).map(enrichMod);
+});
 
 // apply-mod-toggle-batch: disable a set then enable a set as one atomic
 // mutation, returning the fresh mod list AND the per-mod failures. Backs the

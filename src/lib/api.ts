@@ -1,4 +1,4 @@
-import type { Mod, AppSettings, GlobalModType, UnknownModFilterGuess, UnknownModDetectionProgress, ApplyUnknownModMatchArgs, ApplyUnknownCustomModArgs, AssociateUnknownModArgs, UnknownModFileList, EditLocalModArgs, MergeModsArgs, UnmergeModResult, ExtractMergeSourceResult, AddMergeSourcesResult, ImprintAllInstalledResult, ImprintInstalledProgress, ImprintPreflightResult, ImprintDetails, PeekImprintResult, ApplyHeroCardResult, HeroAbilitySlot, AbilitySlot, AbilitySoundParams, ActiveHeroSound, ApplyHeroSoundResult, ActiveHeroColor, ApplyHeroColorResult, ApplyHeroPrismResult, ActiveTrippySkin, ApplyTrippySkinResult, ApplyTrippyVfxResult, TrippySpriteOptions, TrippySpriteResult, TrippyVfxChoice, LockerOverview, LockerCardThumbnail, LockerClearScope, AppearanceSurface } from '../types/mod';
+import type { Mod, AppSettings, GlobalModType, UnknownModFilterGuess, UnknownModDetectionProgress, ApplyUnknownModMatchArgs, ApplyUnknownCustomModArgs, AssociateUnknownModArgs, UnknownModFileList, EditLocalModArgs, MergeModsArgs, UnmergeModResult, ExtractMergeSourceResult, AddMergeSourcesResult, ImprintAllInstalledResult, ImprintInstalledProgress, ImprintPreflightResult, ImprintDetails, PeekImprintResult, ModelCompatibilityReport, ApplyHeroCardResult, HeroAbilitySlot, AbilitySlot, AbilitySoundParams, ActiveHeroSound, ApplyHeroSoundResult, ActiveHeroColor, ApplyHeroColorResult, ApplyHeroPrismResult, ActiveTrippySkin, ApplyTrippySkinResult, ApplyTrippyVfxResult, TrippySpriteOptions, TrippySpriteResult, TrippyVfxChoice, LockerOverview, LockerCardThumbnail, LockerClearScope, AppearanceSurface } from '../types/mod';
 import type { DmmMigrationRequest, DmmMigrationReport } from './dmmMigration';
 import type {
   HeroPortrait,
@@ -455,6 +455,14 @@ export async function setModPriority(modId: string, priority: number): Promise<M
 
 export async function reorderMods(orderedIds: string[]): Promise<Mod[]> {
   return withGameRunningWarning(() => window.electronAPI.reorderMods(orderedIds));
+}
+
+export async function getModelCompatibilityReport(): Promise<ModelCompatibilityReport> {
+  return window.electronAPI.getModelCompatibilityReport();
+}
+
+export async function applyModelCompatibilityFix(): Promise<Mod[]> {
+  return withGameRunningWarning(() => window.electronAPI.applyModelCompatibilityFix());
 }
 
 export async function applyModToggleBatch(

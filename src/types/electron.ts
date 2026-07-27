@@ -18,6 +18,7 @@ import type {
     ImprintInstalledProgress,
     ImprintPreflightResult,
     ImprintDetails,
+    ModelCompatibilityReport,
     PeekImprintResult,
     ApplyHeroCardResult,
     HeroAbilitySlot,
@@ -738,6 +739,8 @@ export interface ElectronAPI {
     ) => Promise<Mod>;
     setModPriority: (modId: string, priority: number) => Promise<Mod>;
     reorderMods: (orderedIds: string[]) => Promise<Mod[]>;
+    getModelCompatibilityReport: () => Promise<ModelCompatibilityReport>;
+    applyModelCompatibilityFix: () => Promise<Mod[]>;
     applyModToggleBatch: (
         enableIds: string[],
         disableIds: string[]
