@@ -1,6 +1,6 @@
 {
   "sourceLanguage": "en",
-  "totalKeys": 2020,
+  "totalKeys": 2024,
   "languages": [
     {
       "code": "bg",
@@ -11,7 +11,7 @@
     {
       "code": "en",
       "name": "English",
-      "translatedKeys": 2020,
+      "translatedKeys": 2024,
       "pct": 100
     },
     {

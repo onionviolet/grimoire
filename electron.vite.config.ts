@@ -84,6 +84,13 @@ export default defineConfig(({ mode }) => {
         ],
         define: {
             'process.env.GRIMOIRE_SOCIAL_BASE_URL': JSON.stringify(SOCIAL_BASE_URL),
+            // LOCAL FORK BUILD MARKER. Baked at build time so the packaged app
+            // knows it is not stock Grimoire and must not update itself from
+            // upstream's release feed (which would replace this build, and every
+            // patch in it, with the official one). See services/updater.ts.
+            'process.env.GRIMOIRE_FORK_BUILD': JSON.stringify(
+                process.env['GRIMOIRE_FORK_BUILD'] ?? ''
+            ),
         },
         build: {
             outDir: 'dist/main',

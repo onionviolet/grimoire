@@ -26,10 +26,12 @@ export default function AppUpdateBanner() {
   useEffect(() => {
     // Package-manager installs (apt / AUR / snap / flatpak) own their own
     // updates and the auto-updater is disabled there, so never nag with a
-    // banner; the user updates through their package manager.
+    // banner; the user updates through their package manager. Fork builds are
+    // suppressed for the opposite reason: the update would install fine and
+    // wipe the build's patches, so it must never be offered as a banner.
     window.electronAPI.updater
       .getInstallSource()
-      .then((src) => setManaged(src === 'managed'))
+      .then((src) => setManaged(src === 'managed' || src === 'fork'))
       .catch(() => {});
     window.electronAPI.updater.getStatus().then(setStatus).catch(() => {});
     return window.electronAPI.updater.onStatus(setStatus);

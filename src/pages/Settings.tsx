@@ -113,7 +113,7 @@ export default function Settings() {
   } | null>(null);
   const [showChangelog, setShowChangelog] = useState(false);
   const [upToDate, setUpToDate] = useState(false);
-  const [installSource, setInstallSource] = useState<'managed' | 'appimage' | 'standard'>('standard');
+  const [installSource, setInstallSource] = useState<'managed' | 'appimage' | 'standard' | 'fork'>('standard');
 
   // Bug report form (copy-paste flow)
   const [bugDescription, setBugDescription] = useState('');
@@ -839,7 +839,7 @@ export default function Settings() {
                 >
                   <Tx k="settings.updates.whatsNew" fallback="What's New" />
                 </Button>
-                {installSource === 'managed' ? null : updateStatus?.downloaded ? (
+                {installSource === 'managed' || installSource === 'fork' ? null : updateStatus?.downloaded ? (
                   <Button
                     onClick={handleInstallUpdate}
                     icon={ArrowDownCircle}
@@ -870,6 +870,20 @@ export default function Settings() {
                 )}
               </div>
             </div>
+
+            {installSource === 'fork' && (
+              <div className="rounded-lg bg-bg-tertiary border border-white/10 p-3 text-sm text-text-secondary space-y-2">
+                <p className="text-text-primary font-medium">
+                  <Tx k="settings.updates.forkBuild" fallback="This is a custom build." />
+                </p>
+                <p>
+                  <Tx
+                    k="settings.updates.forkBuildInstructions"
+                    fallback="In-app updates are turned off. The official release would install cleanly over this build and remove the patches it carries, so updates come from rebuilding it instead."
+                  />
+                </p>
+              </div>
+            )}
 
             {installSource === 'managed' && (
               <div className="rounded-lg bg-bg-tertiary border border-white/10 p-3 text-sm text-text-secondary space-y-2">
