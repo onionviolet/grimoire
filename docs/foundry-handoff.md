@@ -3,6 +3,12 @@
 Picking up the Grimoire **Foundry** tab. Read [foundry-tab-design.md](./foundry-tab-design.md)
 for the full vision. This file is the "where we are / what's next" snippet.
 
+## Current Grimoire status, 2026-07-27
+
+The active branch is `codex/grimoire-sound-annotations`. Global Sound Forge rows now support local names and notes, keyed by event plus first clip path. The renderer, preload bridge, IPC handlers, and atomic user-data JSON store are wired. JSON import validates the envelope, rejects malformed JSON and unsupported shapes, bounds key length and entry count, normalizes text, and merges valid entries without discarding existing annotations. Focused tests cover normalization, merge, deletion, malformed input, size limits, and persistence.
+
+Hero gameplay and voice rows now use the same annotation seam as Global Sound rows. Names and notes are loaded from the shared user-data store and keyed by event plus first clip path, so they survive catalog refreshes and are available in both the gameplay and voice corpora. Shared-pool warnings remain the next feature and must explain whether a swap affects one event, an inherited base event, or the shared melee clip pool. QOL Lock content remains out of scope.
+
 ## Branch + state (both repos, NOT pushed)
 
 - **vpkmerge** `feat/foundry-catalog-voiceline` (rebased onto current main; the broken
