@@ -120,6 +120,14 @@
     "importing": "Importing saved mods..."
     ,"checkUpdates": "Check updates",
     "checkingUpdates": "Checking watched mods...",
+    "previewProfile": "Preview profile",
+    "profilePreviewTitle": "Saved profile preview",
+    "profilePreviewDescription": "Select the saved items you want to plan together. This preview never downloads or installs anything.",
+    "parentBookmark": "Parent bookmark, choose a file before downloading",
+    "profileReady": "Exact file",
+    "profileUnresolved": "Needs review",
+    "profileSelected": "{{count}} selected",
+    "profileDone": "Done",
     "watchStatus": {
       "current": "Up to date",
       "updated": "Saved file is no longer the newest live file",

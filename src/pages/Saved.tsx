@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Heart, ExternalLink, Loader2, Search, Trash2, Pencil, Save as SaveIcon, X, Upload, Download, RefreshCw } from 'lucide-react';
+import { Heart, ExternalLink, Loader2, Search, Trash2, Pencil, Save as SaveIcon, X, Upload, Download, RefreshCw, ListChecks } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import ModThumbnail from '../components/ModThumbnail';
@@ -36,6 +36,8 @@ export default function Saved() {
   const [draft, setDraft] = useState({ notes: '', tags: '', whySaved: '', watchUpdates: false });
   const [fileAction, setFileAction] = useState<string | null>(null);
   const [watchResults, setWatchResults] = useState<SavedModUpdateResult[]>([]);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewKeys, setPreviewKeys] = useState<Set<string>>(new Set());
 
   const loadSaved = async () => {
     setLoading(true);
@@ -138,6 +140,11 @@ export default function Saved() {
     } finally { setFileAction(null); }
   };
 
+  const openPreview = () => {
+    setPreviewKeys(new Set(visibleRows.map(rowKey)));
+    setPreviewOpen(true);
+  };
+
   return (
     <div className="h-full overflow-y-auto p-4 md:p-6">
       <div className="mx-auto max-w-7xl">
@@ -154,6 +161,7 @@ export default function Saved() {
             <Button size="sm" variant="secondary" onClick={() => void exportSaved()} disabled={!!fileAction}><Download className="mr-1.5 h-3.5 w-3.5" />{t('saved.export')}</Button>
             <Button size="sm" variant="secondary" onClick={() => void importSaved()} disabled={!!fileAction}><Upload className="mr-1.5 h-3.5 w-3.5" />{t('saved.import')}</Button>
             <Button size="sm" variant="secondary" onClick={() => void checkUpdates()} disabled={!!fileAction}><RefreshCw className="mr-1.5 h-3.5 w-3.5" />{t('saved.checkUpdates')}</Button>
+            <Button size="sm" onClick={openPreview}><ListChecks className="mr-1.5 h-3.5 w-3.5" />{t('saved.previewProfile')}</Button>
             <div className="flex min-w-[220px] flex-1 items-center gap-2 rounded-md border border-border bg-bg-secondary px-3 py-2">
               <Search className="h-4 w-4 shrink-0 text-text-secondary" />
               <input
@@ -243,6 +251,26 @@ export default function Saved() {
           </div>
         )}
       </div>
+      {previewOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true">
+          <div className="max-h-[85vh] w-full max-w-2xl overflow-hidden rounded-xl border border-border bg-bg-secondary shadow-2xl">
+            <div className="flex items-start justify-between border-b border-border p-4">
+              <div><h2 className="text-lg font-semibold text-text-primary">{t('saved.profilePreviewTitle')}</h2><p className="mt-1 text-sm text-text-secondary">{t('saved.profilePreviewDescription')}</p></div>
+              <IconButton icon={X} label={t('common.actions.close')} onClick={() => setPreviewOpen(false)} />
+            </div>
+            <div className="max-h-[55vh] space-y-2 overflow-y-auto p-4">
+              {visibleRows.map((row) => {
+                const key = rowKey(row);
+                const selected = previewKeys.has(key);
+                const label = row.mod?.name ?? row.saved.titleSnapshot ?? t('saved.unavailable');
+                const unresolved = !row.mod || row.saved.fileId === null;
+                return <label key={key} className="flex items-center gap-3 rounded-lg border border-border bg-bg-primary/30 p-3 text-sm"><input type="checkbox" checked={selected} onChange={() => setPreviewKeys((current) => { const next = new Set(current); if (selected) next.delete(key); else next.add(key); return next; })} /><span className="min-w-0 flex-1"><span className="block truncate text-text-primary">{label}</span><span className="text-xs text-text-secondary">{row.saved.fileName ?? t('saved.parentBookmark')}</span></span><span className={`text-xs ${unresolved ? 'text-yellow-300' : 'text-green-400'}`}>{unresolved ? t('saved.profileUnresolved') : t('saved.profileReady')}</span></label>;
+              })}
+            </div>
+            <div className="flex items-center justify-between border-t border-border p-4"><span className="text-sm text-text-secondary">{t('saved.profileSelected', { count: previewKeys.size })}</span><Button onClick={() => setPreviewOpen(false)}>{t('saved.profileDone')}</Button></div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
