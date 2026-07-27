@@ -5,6 +5,8 @@ import { getGameinfoPath } from '../services/deadlock';
 import { listEditorCandidates, openInEditor } from '../services/externalEditor';
 import {
     applyPerformanceConfig,
+    setPerformanceHudConvars,
+    setPerformanceAdvancedConvars,
     getPerformanceConfigStatus,
     removePerformanceConfig,
     resetPerformanceConfigOverrides,
@@ -20,6 +22,14 @@ ipcMain.handle('get-performance-config-status', (): PerformanceConfigStatus => {
 // apply-performance-config
 ipcMain.handle('apply-performance-config', (): PerformanceConfigStatus => {
     return applyPerformanceConfig(getActiveDeadlockPath());
+});
+
+ipcMain.handle('set-performance-hud-convars', (_event, values: Record<string, boolean>): PerformanceConfigStatus => {
+    return setPerformanceHudConvars(getActiveDeadlockPath(), values);
+});
+
+ipcMain.handle('set-performance-advanced-convars', (_event, values: Record<string, number>): PerformanceConfigStatus => {
+    return setPerformanceAdvancedConvars(getActiveDeadlockPath(), values);
 });
 
 // remove-performance-config

@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Terminal, Copy, Check, Plus, Trash2, RefreshCw, Zap, Globe, Layout, Map, Users, MousePointer2, Search, Save, AlertTriangle, Rocket, ChevronDown } from 'lucide-react';
 import { getSettings, setSettings } from '../lib/api';
-import { Card, Badge, Button } from '../components/common/ui';
+import { Card, Badge, Button, Toggle } from '../components/common/ui';
 import { Input } from '../components/common/forms';
 import { ConfirmModal } from '../components/common/PageComponents';
 import Tx from '../components/translation/Tx';
@@ -77,6 +77,16 @@ const COMMAND_PRESETS = [
         ],
     },
 ];
+
+const NEW_HEALTH_BARS_COMMAND = 'citadel_unit_status_use_new';
+
+function isNewHealthBarsCommand(command: string): boolean {
+    return new RegExp(`^${NEW_HEALTH_BARS_COMMAND}\\s+`, 'i').test(command.trim());
+}
+
+function isEnabledValue(command: string): boolean {
+    return new RegExp(`^${NEW_HEALTH_BARS_COMMAND}\\s+(true|1)\\s*$`, 'i').test(command.trim());
+}
 
 interface AutoexecStatus {
     exists: boolean;
@@ -183,9 +193,24 @@ export default function Autoexec() {
     const copiedCommands = useMemo(() => [...commands, ...manualCommands], [commands, manualCommands]);
     const commandAlreadyPresent = (command: string) => commands.includes(command) || manualCommands.includes(command);
 
+    const newHealthBarsEnabled = [...manualCommands, ...commands]
+        .filter(isNewHealthBarsCommand)
+        .map(isEnabledValue)
+        .at(-1) ?? false;
+
     const handleAddCommand = (command: string) => {
         if (commandAlreadyPresent(command)) return;
         setCommands(prev => [...prev, command]);
+        setHasUnsaved(true);
+    };
+
+    const handleNewHealthBarsChange = (enabled: boolean) => {
+        // Keep one authoritative managed value. This also lets the user turn
+        // the feature back off instead of leaving a stale `true` in autoexec.
+        setCommands(prev => [
+            ...prev.filter(command => !isNewHealthBarsCommand(command)),
+            `${NEW_HEALTH_BARS_COMMAND} ${enabled ? 'true' : 'false'}`,
+        ]);
         setHasUnsaved(true);
     };
 
@@ -250,6 +275,13 @@ export default function Autoexec() {
                         {/* Custom Command Input */}
                         <Card title={<Tx k="autoexec.customCommand.title" fallback="Custom Command" />}>
                             <div className="space-y-4">
+                                <Toggle
+                                    checked={newHealthBarsEnabled}
+                                    onChange={handleNewHealthBarsChange}
+                                    label={t('autoexec.newHealthBars.label')}
+                                    description={t('autoexec.newHealthBars.description')}
+                                />
+
                                 <div className="flex gap-2">
                                     <Input
                                         type="text"
@@ -305,13 +337,16 @@ export default function Autoexec() {
 
                                                         <div className="space-y-1">
                                                             {category.commands.map((cmd) => {
-                                                                const isAdded = commandAlreadyPresent(cmd.command);
+                                                                const isAdded = commandAlreadyPresent(cmd.command) ||
+                                                                    (isNewHealthBarsCommand(cmd.command) && newHealthBarsEnabled);
                                                                 const commandName = t(cmd.nameKey);
                                                                 const commandDescription = t(cmd.descriptionKey);
                                                                 return (
                                                                     <button
                                                                         key={cmd.command}
-                                                                        onClick={() => handleAddCommand(cmd.command)}
+                                                                        onClick={() => isNewHealthBarsCommand(cmd.command)
+                                                                            ? handleNewHealthBarsChange(true)
+                                                                            : handleAddCommand(cmd.command)}
                                                                         disabled={isAdded}
                                                                         title={commandDescription}
                                                                         aria-label={`${commandName}: ${commandDescription}. ${cmd.command}`}

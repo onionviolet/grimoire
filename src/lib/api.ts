@@ -881,6 +881,14 @@ export async function applyPerformanceConfig(): Promise<PerformanceConfigStatus>
   return window.electronAPI.applyPerformanceConfig();
 }
 
+export async function setPerformanceHudConvars(values: Record<string, boolean>): Promise<PerformanceConfigStatus> {
+  return window.electronAPI.setPerformanceHudConvars(values);
+}
+
+export async function setPerformanceAdvancedConvars(values: Record<string, number>): Promise<PerformanceConfigStatus> {
+  return window.electronAPI.setPerformanceAdvancedConvars(values);
+}
+
 export async function removePerformanceConfig(): Promise<PerformanceConfigStatus> {
   return window.electronAPI.removePerformanceConfig();
 }

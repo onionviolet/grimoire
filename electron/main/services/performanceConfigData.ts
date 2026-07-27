@@ -34,6 +34,34 @@ export const PRESET_NAME = "Sqooky's Default (OptimizationLock)";
 export const PRESET_VERSION = '2.4.6';
 export const PRESET_SOURCE_URL = 'https://github.com/Sqooky/OptimizationLock';
 
+/** ConVars exposed as reversible user controls in Settings. Values are only
+ * written when the user changes a control; they are not forced by the FPS
+ * preset itself. */
+export const HUD_CONVARS = [
+    { key: 'citadel_unit_status_use_new', on: 'true', off: 'false' },
+    { key: 'citadel_unit_status_use_v2', on: 'true', off: 'false' },
+    { key: 'citadel_unit_status_single_bar_mode', on: 'true', off: 'false' },
+    { key: 'citadel_unit_status_use_v2_for_nonplayers', on: 'true', off: 'false' },
+    { key: 'citadel_unit_status_allies_see_thru_walls', on: 'true', off: 'false' },
+    { key: 'citadel_hud_objective_health_enabled', on: '2', off: '0' },
+    { key: 'citadel_damage_offscreen_indicator_disabled', on: 'false', off: 'true' },
+    { key: 'citadel_damage_text_show_effectiveness', on: '1', off: '0' },
+] as const;
+
+// Review against the live game's ConVars after Deadlock updates. Keep these
+// advanced controls bounded: they are client-side presentation/readability
+// settings, not gameplay settings.
+export const ADVANCED_GAMEINFO_CONVARS = [
+    { key: 'citadel_unit_status_allies_see_thru_walls_max_distance', min: 0, max: 200, step: 5 },
+    { key: 'citadel_minimap_unit_click_radius', min: 400, max: 1200, step: 25 },
+    { key: 'citadel_minimap_player_width', min: 4, max: 12, step: 0.5 },
+    { key: 'citadel_minimap_local_player_width', min: 6, max: 16, step: 0.5 },
+    { key: 'citadel_minimap_max_icon_shrink', min: 0.4, max: 1, step: 0.05 },
+    { key: 'citadel_minimap_overlap_scan_distance', min: 0, max: 40, step: 1 },
+    { key: 'citadel_minimap_zip_line_thickness', min: 1, max: 8, step: 0.5 },
+    { key: 'minimap_update_rate_hz', min: 5, max: 60, step: 5 },
+] as const;
+
 /** Engine-section edits outside ConVars. The SceneSystem shadow/fog keys are
  *  a large share of the preset's fps win. */
 export const SECTION_OPS: SectionOp[] = [

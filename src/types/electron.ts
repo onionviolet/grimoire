@@ -131,6 +131,8 @@ export interface PerformanceConfigStatus {
     /** Saved user deviations from the preset (hand edits harvested on reapply,
      *  layered onto every apply, surviving game-update wipes). */
     overrideCount?: number;
+    /** Current values for the user-facing HUD ConVars. */
+    convarValues?: Record<string, string>;
     /** gameinfo.gi is empty/corrupt (no ConVars section to patch) AND a
      *  Grimoire backup exists, so the UI can offer a one-click restore. Only
      *  set on the broken-file states (error / wiped). */
@@ -822,6 +824,8 @@ export interface ElectronAPI {
     fixGameinfo: () => Promise<GameinfoStatus>;
     getPerformanceConfigStatus: () => Promise<PerformanceConfigStatus>;
     applyPerformanceConfig: () => Promise<PerformanceConfigStatus>;
+    setPerformanceHudConvars: (values: Record<string, boolean>) => Promise<PerformanceConfigStatus>;
+    setPerformanceAdvancedConvars: (values: Record<string, number>) => Promise<PerformanceConfigStatus>;
     removePerformanceConfig: () => Promise<PerformanceConfigStatus>;
     resetPerformanceConfigOverrides: () => Promise<PerformanceConfigStatus>;
     restorePerformanceConfigBackup: () => Promise<PerformanceConfigStatus>;
