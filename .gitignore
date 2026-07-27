@@ -69,3 +69,6 @@ target/
 /*.sharecode.txt
 /gb-deadlock-lookup.tsv
 /grimoire-import-prompt.md
+# Marker written by `pnpm use-local-vpkmerge` so postinstall does not overwrite
+# a locally built engine. Machine-specific; never committed.
+resources/vpkmerge/.local-build

@@ -17,7 +17,7 @@
 // When the engine changes land upstream and the pin is bumped, delete this
 // script and the branch that carries it.
 
-import { copyFile, mkdir, stat } from 'node:fs/promises';
+import { copyFile, mkdir, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -60,4 +60,17 @@ try {
 
 await mkdir(dirname(dest), { recursive: true });
 await copyFile(built, dest);
+
+// Marker that tells postinstall (fetch-vpkmerge.mjs) to leave this copy alone.
+// Without it, ANY `pnpm install` re-fetches the sha-pinned upstream release over
+// the local build, silently producing a packaged app whose Global sounds tab
+// errors because the pinned engine has no `catalog globalsounds`. The failure
+// arrives one command later than its cause, which is the worst kind.
+// Delete this file (or run `pnpm fetch-vpkmerge`) to go back to the pin.
+await writeFile(
+    join(dirname(dest), '.local-build'),
+    `${built}\n${new Date().toISOString()}\n`
+);
+
 console.log(`[use-local-vpkmerge] ${built}\n  -> ${dest}`);
+console.log('[use-local-vpkmerge] marked local; postinstall will not overwrite it.');

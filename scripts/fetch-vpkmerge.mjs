@@ -91,6 +91,26 @@ async function main() {
     await mkdir(outDir, { recursive: true });
     const destPath = join(outDir, asset.name);
 
+    // LOCAL BUILD GUARD (fork-only concern, but harmless upstream).
+    // `pnpm use-local-vpkmerge` drops a `.local-build` marker beside the binary.
+    // Without this check, any `pnpm install` re-fetches the pinned release over
+    // that local engine, and the resulting package loses whatever unreleased
+    // verbs it carried (for this fork: `catalog globalsounds`, so the Global
+    // sounds tab errors). The break surfaces one command later than its cause,
+    // during packaging or at runtime, which makes it expensive to diagnose.
+    // Skipping is the safe default: a stale local engine is visible in the
+    // Settings engine card, an overwritten one is not.
+    try {
+        await stat(join(outDir, '.local-build'));
+        console.log(
+            `[fetch-vpkmerge] ${asset.name} is a local build (.local-build marker present); leaving it alone.\n` +
+                `  Run \`pnpm fetch-vpkmerge\` after deleting that marker to restore the pinned ${VPKMERGE_VERSION} release.`
+        );
+        return;
+    } catch {
+        // No marker: normal pinned-release behaviour below.
+    }
+
     if (await fileExistsWithHash(destPath, asset.sha256)) {
         console.log(`[fetch-vpkmerge] ${asset.name} already present and matches sha256; skipping download.`);
         return;
