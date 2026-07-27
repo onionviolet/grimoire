@@ -26,6 +26,7 @@ import {
   Link2,
   CloudOff,
   EyeOff,
+  Star,
 } from 'lucide-react';
 import DOMPurify from 'dompurify';
 import type {
@@ -81,6 +82,9 @@ interface ModDetailsModalProps {
   navigationDirection?: ModDetailsNavigationDirection;
   navigationLabel?: string;
   updateAvailable?: boolean;
+  /** Browse-only local bookmark. This does not imply a download or install. */
+  saved?: boolean;
+  onToggleSaved?: () => void;
   /** When provided, render a toggle next to the Update/Installed badge that
    *  flips the underlying mod's ignoreUpdates flag. Only meaningful in the
    *  installed-mod path; Browse leaves both undefined. */
@@ -139,6 +143,8 @@ function ModDetailsModal({
   navigationDirection = 'next',
   navigationLabel,
   updateAvailable,
+  saved = false,
+  onToggleSaved,
   ignoreUpdates,
   onToggleIgnoreUpdates,
   onClose,
@@ -1053,6 +1059,14 @@ function ModDetailsModal({
               icon={isSidebar ? Maximize2 : PanelRight}
               label={isSidebar ? 'Pop out to centered window' : 'Dock to side'}
               onClick={() => onChangeView(isSidebar ? 'modal' : 'sidebar')}
+            />
+          )}
+          {onToggleSaved && (
+            <IconButton
+              icon={Star}
+              label={saved ? 'Remove saved mod' : 'Save mod for later'}
+              onClick={onToggleSaved}
+              className={saved ? 'text-yellow-300' : undefined}
             />
           )}
           <IconButton

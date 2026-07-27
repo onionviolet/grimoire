@@ -1154,6 +1154,7 @@ export default function Browse() {
   const [mods, setMods] = useState<GameBananaMod[]>(
     () => (initialCache?.mods as GameBananaMod[] | undefined) ?? []
   );
+  const [favoriteModIds, setFavoriteModIds] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(() => initialCache?.page ?? 1);
@@ -1188,6 +1189,16 @@ export default function Browse() {
   // between results and the error state (issue #99). Lifted on filter change,
   // refresh, or an explicit retry.
   const [autoLoadPaused, setAutoLoadPaused] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void window.electronAPI.getFavoriteModIds(mods.map((mod) => mod.id), section)
+      .then((ids) => {
+        if (!cancelled) setFavoriteModIds(new Set(ids));
+      })
+      .catch((err) => console.warn('Failed to load saved mods:', err));
+    return () => { cancelled = true; };
+  }, [mods, section]);
 
   // Last fetch's identity stamp. Value-comparison gate: if the next call to
   // fetchMods/searchLocal would target the same (page + filters), skip it.
@@ -2300,6 +2311,19 @@ export default function Browse() {
     setRefreshKey((k) => k + 1);
   }, []);
 
+  const handleToggleSaved = useStableCallback(async (modId: number, detailsSection: string = selectedDetailsSection) => {
+    const saved = !favoriteModIds.has(modId);
+    await window.electronAPI.setFavoriteMod(modId, detailsSection, saved);
+    if (detailsSection === section) {
+      setFavoriteModIds((current) => {
+        const next = new Set(current);
+        if (saved) next.add(modId);
+        else next.delete(modId);
+        return next;
+      });
+    }
+  });
+
   const applyLoadedModDetails = async (
     mod: GameBananaMod,
     details: GameBananaModDetails,
@@ -2962,6 +2986,8 @@ export default function Browse() {
         extracting={extracting}
         progress={downloadProgress}
         hideNsfwPreviews={browseBlurNsfwPreviews}
+        saved={favoriteModIds.has(selectedMod.id)}
+        onToggleSaved={() => { void handleToggleSaved(selectedMod.id); }}
         dateAdded={selectedModDates?.dateAdded}
         dateModified={selectedModDates?.dateModified}
         isNavigating={!!modalNavigation}
