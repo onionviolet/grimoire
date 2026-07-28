@@ -25,6 +25,7 @@ import Tx from '../translation/Tx';
 import { SoundImportEditor, type SoundImportEdits } from './SoundImportEditor';
 import { useClipPlayer, type ClipPlayer, type RowState } from './useClipPlayer';
 import { resolveForgeAudioPath } from './resolveForgeAudio';
+import { planSoundPool, type PoolAudio, type SoundPoolMode } from './soundPoolPlan';
 import {
     foundryHeroSounds,
     foundryVoicelines,
@@ -464,6 +465,7 @@ function CategorySection({
                                 poolIndex={player.poolIndexFor(row.event)}
                                 swap={swap}
                                 targetClip={row.vsnd[0]}
+                                sourceClipPaths={row.vsnd}
                                 description={describeSound(row)}
                                 clipName={primaryClipName(row.vsnd)}
                                 annotationKey={foundrySoundAnnotationKey(row.event, row.vsnd[0] ?? '')}
@@ -606,6 +608,7 @@ function VoiceLinesSection({
                                     swap={swap}
                                     clipPaths={line.vsnd}
                                     targetClip={line.vsnd[0]}
+                                    sourceClipPaths={line.vsnd}
                                     // VO rows carry a caption when the game ships
                                     // one; the label is already prose, so no
                                     // derived description is added on top.
@@ -652,6 +655,8 @@ interface SoundRowProps {
     /** Voice-line rows pass their clip entries so the swap uses clip mode (VO has
      *  no per-hero soundevents file). Gameplay rows omit this and use event mode. */
     clipPaths?: string[];
+    /** Complete source pool, including gameplay/global event pools. */
+    sourceClipPaths?: string[];
     /** Plain-English "what this actually is", from lib/soundDescribe. Null when
      *  nothing honest can be derived, in which case the row just omits it. */
     description?: string | null;
@@ -663,7 +668,7 @@ interface SoundRowProps {
     onSaveAnnotation?: (key: string, name: string, note: string, tags: string[]) => Promise<void>;
 }
 
-export function SoundRow({ label, event, clips, duration, state, onToggle, poolIndex = 0, swap, targetClip, clipPaths, description, clipName, annotationKey, annotation, onSaveAnnotation }: SoundRowProps) {
+export function SoundRow({ label, event, clips, duration, state, onToggle, poolIndex = 0, swap, targetClip, clipPaths, sourceClipPaths, description, clipName, annotationKey, annotation, onSaveAnnotation }: SoundRowProps) {
     const { t } = useTranslation();
     const [swapOpen, setSwapOpen] = useState(false);
     const [annotationOpen, setAnnotationOpen] = useState(false);
@@ -765,6 +770,7 @@ export function SoundRow({ label, event, clips, duration, state, onToggle, poolI
                     soundeventsEntry={swap.soundeventsEntry}
                     event={event}
                     clipPaths={clipPaths}
+                    sourceClipPaths={sourceClipPaths ?? clipPaths ?? (targetClip ? [targetClip] : [])}
                     label={label}
                     clips={clips}
                     targetClip={targetClip}
@@ -801,6 +807,7 @@ function SwapPanel({
     soundeventsEntry,
     event,
     clipPaths,
+    sourceClipPaths,
     label,
     clips,
     targetClip,
@@ -814,6 +821,7 @@ function SwapPanel({
     /** Voice-line swap: the clip entries to override in place (clip mode). When
      *  set, the swap targets these clips instead of the soundevents tree. */
     clipPaths?: string[];
+    sourceClipPaths: string[];
     label: string;
     clips: number;
     /** A clip of the sound being replaced, decoded as the normalizer's loudness
@@ -826,6 +834,10 @@ function SwapPanel({
     const [audioPath, setAudioPath] = useState<string | null>(null);
     const [audioName, setAudioName] = useState('');
     const [audioFile, setAudioFile] = useState<File | null>(null);
+    const [library, setLibrary] = useState<PoolAudio[]>([]);
+    const [poolMode, setPoolMode] = useState<SoundPoolMode>('replace-all');
+    const [selectedTargets, setSelectedTargets] = useState<Set<string>>(() => new Set(sourceClipPaths));
+    const [poolSeed, setPoolSeed] = useState(() => Math.floor(Math.random() * 0x7fffffff));
     // A stock clip lives under a game-build fingerprinted cache directory. Keep
     // its UI File for the editor, but never assume its path will survive until
     // Forge: a Deadlock update can prune that cache in between.
@@ -852,10 +864,25 @@ function SwapPanel({
             setAudioPath(path);
             setAudioName(file.name);
             setAudioFile(file);
+            setLibrary([{ path, name: file.name }]);
             setUsingOriginal(false);
             setEdits({});
         },
         [t]
+    );
+
+    const addLibraryFiles = useCallback((files: FileList | File[]) => {
+        const next = Array.from(files).flatMap((file) => {
+            if (!file.name.toLowerCase().endsWith('.mp3')) return [];
+            const path = window.electronAPI.getDroppedFilePath(file);
+            return path ? [{ path, name: file.name }] : [];
+        });
+        if (next.length) setLibrary((current) => [...current, ...next.filter((item) => !current.some((old) => old.path === item.path))]);
+    }, []);
+
+    const assignments = useMemo(
+        () => planSoundPool(poolMode, sourceClipPaths, selectedTargets, library.length ? library : (audioPath ? [{ path: audioPath, name: audioName }] : []), poolSeed),
+        [poolMode, sourceClipPaths, selectedTargets, library, audioPath, audioName, poolSeed]
     );
 
     // "Retune the original": pull the stock clip out of the pak and load it into
@@ -885,6 +912,7 @@ function SwapPanel({
             setAudioPath(path);
             setAudioName(fileName);
             setAudioFile(new File([blob], fileName, { type: 'audio/mpeg' }));
+            setLibrary([{ path, name: fileName }]);
             setUsingOriginal(true);
             setEdits({});
         } catch (e) {
@@ -911,6 +939,9 @@ function SwapPanel({
             if (!forgeAudioPath) {
                 throw new Error(t('foundry.sound.swap.originalUnavailable', 'Could not read the original clip.'));
             }
+            if (!assignments.length) {
+                throw new Error(poolMode === 'n-to-n' ? 'N-to-N needs exactly one audio file for each selected clip.' : 'Select at least one target and MP3.');
+            }
             await foundrySwapSound({
                 heroCodename: hero,
                 heroName,
@@ -918,6 +949,14 @@ function SwapPanel({
                 event,
                 clipPaths,
                 audioPath: forgeAudioPath,
+                assignments: assignments.map((assignment) => ({
+                    ...assignment,
+                    // The active original donor may have been refreshed right
+                    // before Forge; make the generated write set use it too.
+                    audioPath: assignment.audioPath === audioPath ? forgeAudioPath : assignment.audioPath,
+                })),
+                poolMode,
+                poolSeed: poolMode === 'seeded-library' ? poolSeed : undefined,
                 name: finalName,
                 loop,
                 trimStartMs: edits.trimStartMs,
@@ -939,7 +978,7 @@ function SwapPanel({
         }
     }, [
         audioPath, busy, name, defaultName, heroName, hero, soundeventsEntry,
-        event, clipPaths, loop, edits, t, onClose, usingOriginal, targetClip,
+        event, clipPaths, loop, edits, t, onClose, usingOriginal, targetClip, assignments, poolMode, poolSeed,
     ]);
 
     return (
@@ -997,6 +1036,35 @@ function SwapPanel({
                     e.target.value = '';
                 }}
             />
+
+            {sourceClipPaths.length > 1 && audioPath && (
+                <div className="mt-2 rounded-sm border border-border bg-bg-secondary/50 p-2 text-xs text-text-secondary">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <label className="text-text-primary">Pool mode</label>
+                        <select value={poolMode} onChange={(e) => setPoolMode(e.target.value as SoundPoolMode)} className="rounded-sm border border-border bg-bg-secondary px-2 py-1 text-xs text-text-primary">
+                            <option value="replace-all">Replace all clips</option>
+                            <option value="selected-targets">Replace selected targets</option>
+                            <option value="n-to-n">Map N uploaded clips to N targets</option>
+                            <option value="seeded-library">Seeded user-library randomization</option>
+                        </select>
+                        {(poolMode === 'n-to-n' || poolMode === 'seeded-library') && (
+                            <label className="cursor-pointer rounded-sm border border-border px-2 py-1 hover:text-text-primary">
+                                Add MP3s
+                                <input type="file" accept=".mp3,audio/mpeg" multiple className="hidden" onChange={(e) => { addLibraryFiles(e.target.files ?? []); e.target.value = ''; }} />
+                            </label>
+                        )}
+                        {poolMode === 'seeded-library' && (
+                            <label className="flex items-center gap-1">Seed <input type="number" value={poolSeed} onChange={(e) => setPoolSeed(Number(e.target.value) || 1)} className="w-24 rounded-sm border border-border bg-bg-secondary px-1 py-0.5 text-text-primary" /></label>
+                        )}
+                    </div>
+                    {poolMode !== 'replace-all' && (
+                        <div className="mt-2 max-h-28 space-y-1 overflow-auto">
+                            {sourceClipPaths.map((path, index) => <label key={path} className="flex items-center gap-2"><input type="checkbox" checked={selectedTargets.has(path)} onChange={(e) => setSelectedTargets((current) => { const next = new Set(current); if (e.target.checked) next.add(path); else next.delete(path); return next; })} className="accent-accent" />{index + 1}. <span className="truncate" title={path}>{path.split('/').pop()}</span></label>)}
+                        </div>
+                    )}
+                    <p className="mt-2">{assignments.length} exact clip write{assignments.length === 1 ? '' : 's'}{poolMode === 'n-to-n' && assignments.length === 0 ? ' — add one MP3 per selected target.' : ''}</p>
+                </div>
+            )}
 
             {targetClip && (
                 <button

@@ -324,6 +324,7 @@ function CategorySection({ section, player, annotations, onSaveAnnotation }: { s
                                 poolIndex={player.poolIndexFor(row.event)}
                                 swap={swapContextFor(row)}
                                 targetClip={row.vsnd[0]}
+                                sourceClipPaths={row.vsnd}
                                 description={describeSound(row)}
                                 clipName={primaryClipName(row.vsnd)}
                                 annotationKey={foundrySoundAnnotationKey(row.event, row.vsnd[0] ?? '')}
