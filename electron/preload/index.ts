@@ -669,6 +669,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
             ipcRenderer.invoke('foundry:inspectSoundConflicts', writeSet),
         inspectAssetSources: (paths: string[]): Promise<FoundryAssetSourcesInspection> =>
             ipcRenderer.invoke('foundry:inspectAssetSources', paths),
+        auditionSourceClip: (modId: string, entryPath: string): Promise<string | null> =>
+            ipcRenderer.invoke('foundry:auditionSourceClip', modId, entryPath),
+        checkAudioPaths: (paths: string[]): Promise<string[]> =>
+            ipcRenderer.invoke('foundry:checkAudioPaths', paths),
         replaceTexture: (req: TextureReplacementRequest) =>
             ipcRenderer.invoke('foundry:replaceTexture', req),
         forge: (req: import('../../src/types/foundry').FoundryForgeRequest) =>

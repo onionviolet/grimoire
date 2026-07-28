@@ -1129,6 +1129,12 @@ export interface ElectronAPI {
         ) => Promise<import('./mod').Mod[]>;
         inspectSoundConflicts: (writeSet: string[]) => Promise<import('./foundry').FoundrySoundConflictInspection>;
         inspectAssetSources: (paths: string[]) => Promise<import('./foundry').FoundryAssetSourcesInspection>;
+        /** Audition the clip an installed VPK actually writes, extracted from
+         *  that VPK rather than from the game paks. Null when the entry is
+         *  missing or the codec cannot be decoded. */
+        auditionSourceClip: (modId: string, entryPath: string) => Promise<string | null>;
+        /** Filter a list of absolute audio paths down to those still on disk. */
+        checkAudioPaths: (paths: string[]) => Promise<string[]>;
         replaceTexture: (
             req: import('./foundry').TextureReplacementRequest
         ) => Promise<import('./mod').Mod[]>;

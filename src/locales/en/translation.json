@@ -2298,7 +2298,42 @@
     "localModsIncluded_other": "{{count}} local mods included",
     "flattenCount_one": "{{count}} merged mod will be flattened into this one",
     "flattenCount_other": "{{count}} merged mods will be flattened into this one",
-    "flattenDescription": "Only the original source mods are included. Parent merges are removed after the new merge succeeds."
+    "flattenDescription": "Only the original source mods are included. Parent merges are removed after the new merge succeeds.",
+    "review": {
+      "button": "Review collisions",
+      "hide": "Hide review",
+      "title": "Merge review",
+      "loading": "Reading the selected VPKs...",
+      "errorTitle": "Couldn't analyze this merge",
+      "retry": "Try again",
+      "noCollisions": "No two sources write the same file path.",
+      "collisionCount_one": "{{count}} collided path",
+      "collisionCount_other": "{{count}} collided paths",
+      "orderTitle": "Composition order",
+      "orderHint": "The top source wins a collision. This order applies to this merge only and never changes installed load order.",
+      "moveUp": "Move earlier",
+      "moveDown": "Move later",
+      "resetOrder": "Reset to priority order",
+      "reorderedNotice": "This merge will be built in your reviewed order instead of priority order.",
+      "unreadable_one": "{{count}} VPK could not be read, so collisions and winners are incomplete.",
+      "unreadable_other": "{{count}} VPKs could not be read, so collisions and winners are incomplete.",
+      "reorderBlocked": "Reordering is unavailable until every selected VPK can be read.",
+      "winner": "Wins: {{name}}",
+      "overridden": "Overridden here",
+      "sourceEntries": "{{count}} entries",
+      "sourceUnreadable": "Unreadable",
+      "showAll": "Show all {{count}} paths",
+      "showFewer": "Show fewer",
+      "category": {
+        "models": "Models",
+        "materials": "Materials",
+        "particles": "Particles",
+        "sounds": "Sounds",
+        "ui": "Interface",
+        "maps": "Maps",
+        "other": "Other"
+      }
+    }
   },
   "mergedContents": {
     "disabledAtMerge": "Disabled at merge time",

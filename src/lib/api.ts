@@ -1467,6 +1467,30 @@ export async function foundryInspectAssetSources(
   return window.electronAPI.foundry.inspectAssetSources(paths);
 }
 
+/** Audition what an installed VPK actually writes at an exact entry path. The
+ *  clip is extracted from that mod's own VPK, so it answers "what do I hear
+ *  right now" rather than "what does the base game ship". */
+export async function foundryAuditionSourceClip(
+  modId: string,
+  entryPath: string
+): Promise<string | null> {
+  return window.electronAPI.foundry.auditionSourceClip(modId, entryPath);
+}
+
+/** Which of these recorded audio files are still on disk. Used to block a
+ *  re-forge that would otherwise fail halfway through the build. */
+export async function foundryCheckAudioPaths(paths: string[]): Promise<string[]> {
+  return window.electronAPI.foundry.checkAudioPaths(paths);
+}
+
+/** Read-only merge preflight: grouped collisions and the effective winner for
+ *  each collided path, for the given source order. */
+export async function analyzeMerge(
+  modIds: string[]
+): Promise<import('../types/mod').MergeAnalysisResult> {
+  return window.electronAPI.analyzeMerge(modIds);
+}
+
 /** Bake one PNG onto a catalog texture and install it as a managed local mod. */
 export async function foundryReplaceTexture(
   req: import('../types/foundry').TextureReplacementRequest
