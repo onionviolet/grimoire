@@ -116,7 +116,7 @@ export default function UpdateModal({ onClose }: Props) {
                                 <p>
                                     {t(
                                         'updateModal.forkBuildDetail',
-                                        'This is a locally built version with extra patches. In-app updates are turned off because installing the official release would replace this build and remove those patches. Update it by rebuilding from source.'
+                                        'This fork checks the Onionviolet Grimoire release channel. Updates stay on this fork and will not install an official Grimoire release.'
                                     )}
                                 </p>
                             </div>

@@ -88,6 +88,10 @@ jobs:
           # builds refuse to start without this set to an https:// URL so
           # installers can't ship pointing at localhost:8787.
           GRIMOIRE_SOCIAL_BASE_URL: https://grimoire-social.slusheliott.workers.dev
+          # Bake the fork marker into the main-process bundle. This keeps the
+          # updater UI honest and ensures these artifacts identify their own
+          # GitHub release channel rather than looking like stock builds.
+          GRIMOIRE_FORK_BUILD: '1'
         run: |
           if [ "${{ matrix.platform }}" = "linux" ]; then
             pnpm exec electron-vite build && pnpm exec electron-builder --linux --publish never
