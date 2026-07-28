@@ -17,13 +17,18 @@ import { useAppStore } from '../stores/appStore';
 import { EmptyState } from '../components/common/PageComponents';
 import Tx from '../components/translation/Tx';
 
-/** Shortcut destinations. Kept short on purpose: this is a modding side-panel,
- *  not a bookmark manager. */
+/** Shortcut destinations. These are a deliberately small set of useful and
+ *  community-loved Deadlock stops, rather than a general bookmark manager. */
 const SHORTCUTS: { label: string; url: string }[] = [
     { label: 'GameBanana', url: 'https://gamebanana.com/games/20948' },
     { label: 'Deadlock Forge', url: 'https://deadlockforge.net/' },
     { label: 'Deadlock Wiki', url: 'https://deadlocked.wiki/' },
     { label: 'deadlock-api', url: 'https://deadlock-api.com/' },
+    { label: 'Deadlock.io', url: 'https://deadlock.io/' },
+    { label: 'Deadlocker', url: 'https://www.deadlocker.gg/' },
+    { label: 'r/DeadlockTheGame', url: 'https://www.reddit.com/r/DeadlockTheGame/' },
+    { label: 'Deadlock Daily (memes)', url: 'https://www.deadlockdaily.com/' },
+    { label: 'Goonlock (18+)', url: 'https://goonlock.com/' },
 ];
 
 const HOME_URL = SHORTCUTS[0].url;

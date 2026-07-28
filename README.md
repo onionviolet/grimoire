@@ -10,9 +10,10 @@
   [![apt installs](https://img.shields.io/endpoint?url=https%3A%2F%2Fgrimoiremods.com%2Fapi%2Fapt-badge.json)](https://apt.grimoiremods.com)
   [![AUR](https://img.shields.io/aur/version/grimoire-bin?label=aur)](https://aur.archlinux.org/packages/grimoire-bin)
   [![CI](https://img.shields.io/github/actions/workflow/status/Slush97/grimoire/ci.yml?branch=main&label=ci)](../../actions/workflows/ci.yml)
-  [![Discord](https://img.shields.io/badge/Discord-5865F2?logo=discord&logoColor=white)](https://discord.gg/KgYGHEMq2P)
   [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 </div>
+
+> **Independent fork.** Please support the original Grimoire project through [GitHub](https://github.com/Slush97/grimoire), [grimoiremods.com](https://grimoiremods.com), or its [Discord community](https://discord.gg/KgYGHEMq2P).
 
 ## Install
 
@@ -78,7 +79,7 @@ Offline-first and no telemetry: a fresh install phones home for nothing.
 
 This fork is under active development and includes newer features that have not yet received broad real-world testing. In particular, saved-mod workflows, engine switching, Foundry/Locker sound features, launch shuffling, chat-wheel editing, and advanced HUD controls may still have rough edges or compatibility issues with particular game builds and mods.
 
-Please keep backups of important mod profiles and game configuration files, test changes with a small mod set first, and report reproducible problems through [Issues](../../issues) or [Discord](https://discord.gg/KgYGHEMq2P). The detailed release history is in [CHANGELOG.md](CHANGELOG.md).
+Please keep backups of important mod profiles and game configuration files, test changes with a small mod set first, and report reproducible problems through [Issues](../../issues). The detailed release history is in [CHANGELOG.md](CHANGELOG.md).
 
 ## Screenshots
 
