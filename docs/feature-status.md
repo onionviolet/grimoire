@@ -1,6 +1,6 @@
 # Feature status
 
-Status snapshot: 2026-07-28, based on `main` at v1.25.169. This is an
+Status snapshot: 2026-07-28, based on `main` at v1.25.170. This is an
 implementation inventory, not a substitute for the manual in-game validation
 required before a release.
 
@@ -23,9 +23,9 @@ required before a release.
 ## Confirmed gaps
 
 1. **Chat Wheel visual editor.** There is no radial preview, slot form editor,
-   typed/lossless YAML model, inline YAML validation, or direct manipulation.
-   `Start a new wheel` can appear to do nothing because the same starter YAML
-   is already loaded; creation happens only on Save & install. See
+   typed/lossless YAML model, or direct manipulation. Converter-backed inline
+   YAML validation and an explicit `Create new wheel` flow exist, but creation
+   still happens only on Save & install. See
    [chat-wheel.md](./chat-wheel.md).
 2. **Combined Foundry output.** The build tray reviews staged edits, collision
    winners, and the final write set, but it does not yet bake selected sound,
@@ -56,10 +56,10 @@ required before a release.
 
 ## Release follow-up
 
-The release workflow now needs to be committed with the forked `vpkmerge`
-sidecar build step. Cut a new version rather than replacing v1.25.169, because
-that published build contains the upstream engine that lacks
-`catalog globalsounds`.
+The forked `vpkmerge` sidecar workflow shipped in the published
+`v1.25.170` release. The remaining release-integrity evidence is the
+packaged Windows smoke record; do not represent this as game-validated until
+that record exists.
 
 ## Next-version implementation plan
 
@@ -122,17 +122,26 @@ guessing source ownership or priority rules.
 
 ### Current implementation update
 
-The first parallel batch (A-C) and the D/E source-panel batch are implemented
-in this worktree. The shared `AssetSourcesInspection` contract now drives
-visual-card and sound-row inspection, including exact compiled sound clips and
-event containers, portrait-path families, priority winners, and unreadable
-VPK blocking. Visual and sound changes each now have a supported staged-edit
-serializer, so the dependency gate for F is met.
+The automated portions of A-C are complete: the release workflow is published,
+Chat Wheel has safer YAML-only authoring, and `AssetSourcesInspection` has
+fixture coverage for normalized ownership, priority winners, third-party
+entries, and unreadable VPKs. The Windows smoke record is still outstanding.
 
-Combined Foundry output (F) has **not** started: it still needs its explicit
-named-VPK confirmation and atomic build/cancel implementation. Models, VFX,
-and advanced composition (G) remain blocked. The remaining release work for
-this batch is the packaged Windows smoke record described below.
+D and E are **partial**. Visual cards and sound rows can inspect exact source
+paths; visual replacement preflight blocks unreadable VPKs and asks before an
+enabled conflict creates a separate managed replacement. Portrait-family path
+grouping and compiled sound clip/event inspection are covered by unit tests.
+The shared panel is inspect-only: it does not yet provide the planned audition,
+open-in-Installed, or normal-mod-store enable/disable actions. `My sound
+changes` currently supports normal-state enable/disable, rename, and delete,
+but not annotation access, jump-to-conflict, or re-forge.
+
+Visual and sound staged-edit serializers exist and are unit-tested, but the
+sound serializer is not invoked by a live forge path and neither serializer is
+added to the build-tray review. Therefore F's integration gate is **not met**;
+F must first wire both live authoring flows into one reviewed write-set before
+implementing its named-VPK build/cancel behavior. Models, VFX, and advanced
+composition (G) remain blocked.
 
 **Repository verification gate.** Each implementation batch must run the
 relevant Vitest files, then `pnpm typecheck`, `pnpm lint`, and the full
