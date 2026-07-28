@@ -18,15 +18,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
-            platform: linux
           - os: windows-latest
             platform: win
-          # macos-14 is an Apple Silicon runner. The application sidecar only
-          # supports darwin-arm64, so packaging an Intel or universal app would
-          # create an installer whose core mod engine cannot run.
-          - os: macos-14
-            platform: mac
 
     runs-on: ${{ matrix.os }}
 
@@ -113,13 +106,7 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          if [ "${{ matrix.platform }}" = "linux" ]; then
-            pnpm exec electron-vite build && pnpm exec electron-builder --linux --publish never
-          elif [ "${{ matrix.platform }}" = "mac" ]; then
-            pnpm exec electron-vite build && pnpm exec electron-builder --mac --arm64 --publish never
-          else
-            pnpm exec electron-vite build && pnpm exec electron-builder --win --publish never
-          fi
+          pnpm exec electron-vite build && pnpm exec electron-builder --win --publish never
 
       - name: List release directory
         if: always()
@@ -143,7 +130,7 @@ jobs:
           cd release
           # Hash user-facing artifacts only (skip auto-update metadata and blockmaps).
           shopt -s nullglob
-          files=(*.exe *.AppImage *.deb *.dmg *.zip)
+          files=(*.exe)
           if [ ${#files[@]} -eq 0 ]; then
             echo "ERROR: no artifact files found to hash"
             exit 1
@@ -161,10 +148,6 @@ jobs:
         with:
           subject-path: |
             grimoire/release/*.exe
-            grimoire/release/*.AppImage
-            grimoire/release/*.deb
-            grimoire/release/*.dmg
-            grimoire/release/*.zip
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
@@ -217,7 +200,8 @@ jobs:
   aur-publish:
     needs: release
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/') && inputs.draft != true
+    # Windows-only releases do not publish an AUR package.
+    if: false
 
     steps:
       - name: Checkout

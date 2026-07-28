@@ -1,5 +1,5 @@
 import { existsSync, promises as fs } from 'fs';
-import { join, resolve } from 'path';
+import { join, resolve, sep, win32 } from 'path';
 import { tmpdir } from 'os';
 import { randomUUID } from 'crypto';
 import { app } from 'electron';
@@ -28,9 +28,15 @@ export function hasVerifiedYcocgIconSupport(options: {
     packaged: boolean;
     markerExists: boolean;
 }): boolean {
-    const siblingBuild = resolve(options.appPath, '..', 'vpkmerge', 'target');
-    const resolvedBinary = resolve(options.binaryPath);
-    return (!options.packaged && resolvedBinary.startsWith(siblingBuild + '\\')) || options.markerExists;
+    // Tests supply Windows paths even when Vitest runs on Linux. More
+    // importantly, this check is security-sensitive: compare both paths using
+    // the semantics of the path we were passed, never the CI host's separator.
+    const paths = /^[A-Za-z]:\\/.test(options.appPath) || options.binaryPath.includes('\\')
+        ? win32
+        : { resolve, sep };
+    const siblingBuild = paths.resolve(options.appPath, '..', 'vpkmerge', 'target');
+    const resolvedBinary = paths.resolve(options.binaryPath);
+    return (!options.packaged && resolvedBinary.startsWith(siblingBuild + paths.sep)) || options.markerExists;
 }
 
 function assertYcocgIconSupport(): void {

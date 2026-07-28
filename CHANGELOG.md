@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented here. Format is loosely based on [Keep a Changelog](https://keepachangelog.com/), and the project adheres to semantic versioning.
 
-## [1.25.167] - 2026-07-28
+## [1.25.168] - 2026-07-28
 
 ### Added
 - **Fork in-app update channel.** Packaged fork builds now identify the
@@ -23,6 +23,8 @@ All notable changes to this project are documented here. Format is loosely based
   base-game VPK target (for example, `charged_melee_full.vsnd_c`).
 - Sound annotations are opt-in: the regular browse view stays uncluttered until
   **Annotate** is enabled.
+- Release packaging currently targets Windows only while the cross-platform
+  signing and artifact paths are completed.
 
 ## [1.10.0] - 2026-05
 
