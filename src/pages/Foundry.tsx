@@ -22,6 +22,7 @@ import RecolorTool from '../components/foundry/RecolorTool';
 import FoundryHeroGrid from '../components/foundry/FoundryHeroGrid';
 import HeroWorkshop from '../components/foundry/HeroWorkshop';
 import FoundryBuildTray from '../components/foundry/FoundryBuildTray';
+import MySoundChanges from '../components/foundry/MySoundChanges';
 import type { FoundryStagedEdit } from '../components/foundry/buildTray';
 
 // Sub-tools shown in the left rail of the Catalog (tool-first) mode. Library /
@@ -31,6 +32,7 @@ import type { FoundryStagedEdit } from '../components/foundry/buildTray';
 const SUBTOOLS = [
   { id: 'library', icon: Library, labelKey: 'foundry.subtools.library', enabled: true },
   { id: 'sound', icon: Volume2, labelKey: 'foundry.subtools.sound', enabled: true },
+  { id: 'mySounds', icon: Volume2, labelKey: 'foundry.subtools.mySounds', enabled: true },
   { id: 'globalSound', icon: Globe, labelKey: 'foundry.subtools.globalSound', enabled: true },
   { id: 'texture', icon: ImageIcon, labelKey: 'foundry.subtools.texture', enabled: true },
   { id: 'items', icon: ShoppingBag, labelKey: 'foundry.subtools.items', enabled: true },
@@ -225,6 +227,8 @@ export default function Foundry() {
 
           {active === 'sound' ? (
             <SoundBrowse heroes={heroes} heroNames={heroNames} />
+          ) : active === 'mySounds' ? (
+            <MySoundChanges />
           ) : active === 'globalSound' && settings?.forkGlobalSounds !== false ? (
             <GlobalSoundBrowse />
           ) : active === 'texture' ? (

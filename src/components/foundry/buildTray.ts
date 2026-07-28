@@ -22,6 +22,41 @@ export interface BuildTrayCollision {
   overwritten: FoundryStagedEdit[];
 }
 
+/** The explicit review the user must see before a tray is forged. */
+export interface BuildTrayReview {
+  selected: FoundryStagedEdit[];
+  /** The exact, normalized entries the output VPK will own. */
+  writeSet: string[];
+  collisions: BuildTrayCollision[];
+}
+
+/**
+ * A tray selection is intentionally separate from catalogue selection.  A
+ * catalogue search/filter must never accidentally turn into a bulk build.
+ */
+export function selectedStagedEdits(
+  edits: readonly FoundryStagedEdit[],
+  selectedIds: ReadonlySet<string>,
+): FoundryStagedEdit[] {
+  return edits.filter((edit) => selectedIds.has(edit.id));
+}
+
+export function reviewStagedEdits(
+  edits: readonly FoundryStagedEdit[],
+  selectedIds: ReadonlySet<string>,
+): BuildTrayReview {
+  const selected = selectedStagedEdits(edits, selectedIds);
+  return {
+    selected,
+    writeSet: [...new Set(selected.flatMap((edit) => edit.affectedFiles.map(normalizeEntryPath)))].filter(Boolean).sort(),
+    collisions: analyzeStagedEdits(selected),
+  };
+}
+
+export function normalizeEntryPath(file: string): string {
+  return file.replace(/\\/g, '/').replace(/^\/+/, '');
+}
+
 export function normalizeOutputName(name: string): string {
   const cleaned = name.trim().replace(/[\\/:*?"<>|]/g, '-').replace(/\s+/g, ' ');
   return cleaned || 'Foundry mod';
@@ -32,7 +67,7 @@ export function analyzeStagedEdits(edits: readonly FoundryStagedEdit[]): BuildTr
   const writers = new Map<string, FoundryStagedEdit[]>();
   for (const edit of edits) {
     for (const rawFile of edit.affectedFiles) {
-      const file = rawFile.replace(/\\/g, '/').replace(/^\/+/, '');
+      const file = normalizeEntryPath(rawFile);
       if (!file) continue;
       writers.set(file, [...(writers.get(file) ?? []), edit]);
     }
@@ -51,5 +86,5 @@ export function analyzeStagedEdits(edits: readonly FoundryStagedEdit[]): BuildTr
 }
 
 export function affectedFileCount(edits: readonly FoundryStagedEdit[]): number {
-  return new Set(edits.flatMap((edit) => edit.affectedFiles.map((file) => file.replace(/\\/g, '/')))).size;
+  return new Set(edits.flatMap((edit) => edit.affectedFiles.map(normalizeEntryPath)).filter(Boolean)).size;
 }
