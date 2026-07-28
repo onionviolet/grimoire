@@ -13,28 +13,14 @@ the managed add-on: saving a selected wheel replaces that VPK in its current
 slot, while a new wheel is allocated through the normal managed-mod flow.
 The page never edits `gameinfo.gi`.
 
-## Known interaction gap (next iteration)
+## Current editor
 
-`Start a new wheel` currently reloads the same starter YAML that is already
-loaded when the page opens. If no installed wheel is selected, this has no
-visible effect; selecting `New chat wheel` again also cannot fire a selection
-change. A new wheel is only created after `Save & install`, so the current
-label makes the workflow appear broken.
+`Create new wheel` resets to the bundled starter configuration after confirming
+that unsaved changes may be discarded. It creates only a draft; installation
+still happens only when the user chooses `Save & install`.
 
-The editor is YAML-only today. There is no chat-wheel visualizer, radial
-preview, or direct manipulation UI in the renderer.
-
-Next iteration:
-
-1. Replace the ambiguous action with an explicit `Create new wheel` flow that
-   confirms resetting unsaved changes and clearly states that installation
-   happens on save.
-2. Parse the supported ChatLane YAML into a typed, lossless editor model; keep
-   unsupported fields and comments intact when serializing it back to YAML.
-3. Add a live radial preview with menu navigation, icons, labels, and empty or
-   invalid-slot states. Selecting a preview slot should focus its form fields.
-4. Add a form-based editor for wheel settings, menus, and commands alongside
-   an advanced YAML view, with two-way synchronization and inline validation.
-5. Cover the reset/create flow, YAML round-tripping, preview layout, and
-   converter failures with unit and end-to-end tests before lifting the
-   experimental gate.
+The page has a form editor and a live, non-destructive radial preview for the
+ChatLane fields it understands. Advanced YAML remains available for every
+supported and unsupported ChatLane option. The editor preserves text outside
+the fields it owns, but editing unfamiliar YAML in Advanced YAML should be
+validated before saving.
