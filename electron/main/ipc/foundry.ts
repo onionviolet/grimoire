@@ -21,6 +21,12 @@ import {
 import { buildHeroEffectVpkForExport } from '../services/heroColors';
 import { exportVpkViaDialog } from '../services/foundryExport';
 import { runVpkmergeStdout, vpkmergeBinaryPath } from '../services/modMerger';
+import {
+    exportSoundAnnotations,
+    importSoundAnnotations,
+    listSoundAnnotations,
+    saveSoundAnnotation,
+} from '../services/soundAnnotations';
 import type {
     EngineInfo,
     GlobalSound,
@@ -83,6 +89,15 @@ ipcMain.handle(
     async (_e, filters: GlobalSoundFilters = {}): Promise<GlobalSound[]> => {
         return getGlobalSounds(requireDeadlockPath(), filters);
     }
+);
+
+ipcMain.handle('foundry:listSoundAnnotations', async () => listSoundAnnotations());
+ipcMain.handle('foundry:saveSoundAnnotation', async (_e, key: string, name: string, note: string) =>
+    saveSoundAnnotation(key, { name, note })
+);
+ipcMain.handle('foundry:exportSoundAnnotations', async () => exportSoundAnnotations());
+ipcMain.handle('foundry:importSoundAnnotations', async (_e, content: string) =>
+    importSoundAnnotations(content)
 );
 
 ipcMain.handle(

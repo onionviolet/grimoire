@@ -8,6 +8,16 @@ code rather than carried forward; the previous revision described a pre-merge
 world (unpushed branches, three sub-tabs still `soon`, an engine binary without
 `catalog`) that main had long since overtaken.
 
+Sound annotations have since landed on `main`. Global Sound Forge rows and hero
+gameplay/voice rows share one annotation seam: local names and notes keyed by
+event plus first clip path, persisted in an atomic user-data JSON store and
+reached through the preload bridge. Import validates the envelope, rejects
+malformed or unsupported shapes, bounds key length and entry count, normalizes
+text, and merges without discarding existing entries. Because the key is event
+plus clip path, annotations survive catalog refreshes. Shared-pool warnings are
+the next feature: they must say whether a swap affects one event, an inherited
+base event, or the shared melee clip pool. QOL Lock content remains out of scope.
+
 ## State
 
 **Engine.** `vpkmerge` v0.19.0 is the pinned release (`VPKMERGE_VERSION` in

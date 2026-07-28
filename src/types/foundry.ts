@@ -150,6 +150,23 @@ export interface GlobalSoundFilters {
     limit?: number;
 }
 
+/** A user-authored name or note for one catalog event and one clip path. */
+export interface SoundAnnotation {
+    name: string | null;
+    note: string | null;
+    updatedAt: string;
+}
+
+export interface SoundAnnotationEntry {
+    key: string;
+    annotation: SoundAnnotation;
+}
+
+export interface SoundAnnotationsFile {
+    version: 1;
+    entries: Record<string, SoundAnnotation>;
+}
+
 /** One record in the thumbnail batch's `manifest.json` (path -> PNG file + dims). */
 export interface ThumbManifestEntry {
     entry: string;

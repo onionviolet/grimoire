@@ -16,6 +16,8 @@ import {
     Wand2,
     Upload,
     X,
+    Pencil,
+    Check,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { EmptyState } from '../common/PageComponents';
@@ -29,11 +31,14 @@ import {
     foundryVoiceclip,
     foundryVoiceclipFile,
     getHeroAbilitySlots,
+    foundrySoundAnnotations,
+    foundrySoundAnnotationKey,
+    saveFoundrySoundAnnotation,
 } from '../../lib/api';
 import { describeSound, matchesSound, primaryClipName } from '../../lib/soundDescribe';
 import { showToast } from '../../stores/toastStore';
 import { useAppStore } from '../../stores/appStore';
-import type { HeroInfo, HeroSound, HeroSoundCategory, VoiceLine } from '../../types/foundry';
+import type { HeroInfo, HeroSound, HeroSoundCategory, VoiceLine, SoundAnnotation } from '../../types/foundry';
 import type { HeroAbilitySlot } from '../../types/mod';
 
 /** Context threaded to a row so it can offer an inline sound-swap (drop your own
@@ -170,6 +175,31 @@ export default function SoundBrowse({ heroes, heroNames, only }: SoundBrowseProp
 
     const player = useClipPlayer();
 
+    const [annotations, setAnnotations] = useState<Record<string, SoundAnnotation>>({});
+    useEffect(() => {
+        let cancelled = false;
+        foundrySoundAnnotations()
+            .then((entries) => {
+                if (!cancelled) {
+                    setAnnotations(Object.fromEntries(entries.map((entry) => [entry.key, entry.annotation])));
+                }
+            })
+            .catch(() => undefined);
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
+    const saveAnnotation = useCallback(async (key: string, name: string, note: string) => {
+        const saved = await saveFoundrySoundAnnotation(key, name, note);
+        setAnnotations((current) => {
+            const next = { ...current };
+            if (saved) next[key] = saved.annotation;
+            else delete next[key];
+            return next;
+        });
+    }, []);
+
     // Filter + group gameplay sounds by category (and, within abilities, by
     // ability name ordered by slot).
     const sections = useMemo(() => groupSounds(sounds, search), [sounds, search]);
@@ -253,6 +283,8 @@ export default function SoundBrowse({ heroes, heroNames, only }: SoundBrowseProp
                                         player={player}
                                         swap={swapContext}
                                         slotMeta={slotMeta}
+                                        annotations={annotations}
+                                        onSaveAnnotation={saveAnnotation}
                                     />
                                 ))}
                             </>
@@ -268,6 +300,8 @@ export default function SoundBrowse({ heroes, heroNames, only }: SoundBrowseProp
                     player={player}
                     standalone={!showGameplay}
                     swap={swapContext}
+                    annotations={annotations}
+                    onSaveAnnotation={saveAnnotation}
                 />
             )}
         </>
@@ -364,11 +398,15 @@ function CategorySection({
     player,
     swap,
     slotMeta,
+    annotations,
+    onSaveAnnotation,
 }: {
     section: CategorySectionData;
     player: ClipPlayer;
     swap: SwapContext;
     slotMeta: Map<number, HeroAbilitySlot>;
+    annotations: Record<string, SoundAnnotation>;
+    onSaveAnnotation: (key: string, name: string, note: string) => Promise<void>;
 }) {
     const { t } = useTranslation();
     const Icon = CATEGORY_ICON[section.category];
@@ -419,6 +457,9 @@ function CategorySection({
                                 targetClip={row.vsnd[0]}
                                 description={describeSound(row)}
                                 clipName={primaryClipName(row.vsnd)}
+                                annotationKey={foundrySoundAnnotationKey(row.event, row.vsnd[0] ?? '')}
+                                annotation={annotations[foundrySoundAnnotationKey(row.event, row.vsnd[0] ?? '')]}
+                                onSaveAnnotation={onSaveAnnotation}
                             />
                         ))}
                     </div>
@@ -450,6 +491,8 @@ function VoiceLinesSection({
     player,
     standalone = false,
     swap,
+    annotations,
+    onSaveAnnotation,
 }: {
     hero: string;
     search: string;
@@ -459,6 +502,8 @@ function VoiceLinesSection({
     standalone?: boolean;
     /** Hero context so each voice line offers a Swap (clip mode). */
     swap?: SwapContext;
+    annotations: Record<string, SoundAnnotation>;
+    onSaveAnnotation: (key: string, name: string, note: string) => Promise<void>;
 }) {
     const { t } = useTranslation();
     const [open, setOpen] = useState(standalone);
@@ -557,6 +602,9 @@ function VoiceLinesSection({
                                     // derived description is added on top.
                                     description={line.caption}
                                     clipName={primaryClipName(line.vsnd)}
+                                    annotationKey={foundrySoundAnnotationKey(line.event, line.vsnd[0] ?? '')}
+                                    annotation={annotations[foundrySoundAnnotationKey(line.event, line.vsnd[0] ?? '')]}
+                                    onSaveAnnotation={onSaveAnnotation}
                                 />
                             ))}
                             {visible.length > VO_ROW_CAP && (
@@ -601,11 +649,22 @@ interface SoundRowProps {
     /** Filename of the first clip in the pool. Shown because it is the identifier
      *  a modder recognizes (and can paste back into the search box). */
     clipName?: string | null;
+    annotationKey?: string;
+    annotation?: SoundAnnotation;
+    onSaveAnnotation?: (key: string, name: string, note: string) => Promise<void>;
 }
 
-export function SoundRow({ label, event, clips, duration, state, onToggle, poolIndex = 0, swap, targetClip, clipPaths, description, clipName }: SoundRowProps) {
+export function SoundRow({ label, event, clips, duration, state, onToggle, poolIndex = 0, swap, targetClip, clipPaths, description, clipName, annotationKey, annotation, onSaveAnnotation }: SoundRowProps) {
     const { t } = useTranslation();
     const [swapOpen, setSwapOpen] = useState(false);
+    const [annotationOpen, setAnnotationOpen] = useState(false);
+    const [annotationName, setAnnotationName] = useState(annotation?.name ?? '');
+    const [annotationNote, setAnnotationNote] = useState(annotation?.note ?? '');
+    const [annotationBusy, setAnnotationBusy] = useState(false);
+    useEffect(() => {
+        setAnnotationName(annotation?.name ?? '');
+        setAnnotationNote(annotation?.note ?? '');
+    }, [annotation?.name, annotation?.note]);
     const seconds = duration && duration > 0 ? `${duration.toFixed(1)}s` : null;
     // Randomizer pool: name which clip the next press auditions, so repeated
     // presses read as walking the pool rather than as a stuck button.
@@ -635,12 +694,12 @@ export function SoundRow({ label, event, clips, duration, state, onToggle, poolI
                     )}
                 </button>
                 <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm text-text-primary" title={label}>
-                        {label || event}
+                    <p className="truncate text-sm text-text-primary" title={annotation?.name || label}>
+                        {annotation?.name || label || event}
                     </p>
-                    {description && (
-                        <p className="truncate text-[11px] text-text-secondary" title={description}>
-                            {description}
+                    {(annotation?.note || description) && (
+                        <p className="truncate text-[11px] text-text-secondary" title={annotation?.note || description || undefined}>
+                            {annotation?.note || description}
                         </p>
                     )}
                     {/* Engine identifiers last and dimmer: they are what you
@@ -654,6 +713,16 @@ export function SoundRow({ label, event, clips, duration, state, onToggle, poolI
                         {poolNote}
                     </p>
                 </div>
+                {annotationKey && onSaveAnnotation && (
+                    <button
+                        type="button"
+                        onClick={() => setAnnotationOpen((open) => !open)}
+                        title={t('foundry.sound.annotation.edit', 'Rename or annotate')}
+                        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-sm border transition-colors ${annotationOpen || annotation ? 'border-accent/50 bg-accent/15 text-accent' : 'border-border text-text-secondary hover:text-text-primary'}`}
+                    >
+                        <Pencil size={14} />
+                    </button>
+                )}
                 {seconds && (
                     <span className="shrink-0 text-[11px] tabular-nums text-text-secondary">
                         {seconds}
@@ -687,6 +756,15 @@ export function SoundRow({ label, event, clips, duration, state, onToggle, poolI
                     targetClip={targetClip}
                     onClose={() => setSwapOpen(false)}
                 />
+            )}
+            {annotationOpen && annotationKey && onSaveAnnotation && (
+                <div className="mt-1.5 rounded-sm border border-border bg-bg-tertiary/40 p-3">
+                    <div className="flex flex-wrap gap-2">
+                        <input value={annotationName} onChange={(e) => setAnnotationName(e.target.value)} placeholder={t('foundry.sound.annotation.name', 'Your name for this sound')} className="min-w-[180px] flex-1 rounded-sm border border-border bg-bg-secondary px-2 py-1.5 text-sm text-text-primary placeholder:text-text-secondary/60 focus:border-accent/50 focus:outline-none" />
+                        <button type="button" disabled={annotationBusy} onClick={async () => { setAnnotationBusy(true); try { await onSaveAnnotation(annotationKey, annotationName, annotationNote); setAnnotationOpen(false); } finally { setAnnotationBusy(false); } }} className="flex items-center gap-1.5 rounded-sm bg-accent px-3 py-1.5 text-sm font-medium text-bg-primary disabled:opacity-40"><Check size={14} />{t('common.actions.save', 'Save')}</button>
+                    </div>
+                    <textarea value={annotationNote} onChange={(e) => setAnnotationNote(e.target.value)} placeholder={t('foundry.sound.annotation.note', 'What this sound is, or where you found it')} rows={2} className="mt-2 w-full resize-y rounded-sm border border-border bg-bg-secondary px-2 py-1.5 text-sm text-text-primary placeholder:text-text-secondary/60 focus:border-accent/50 focus:outline-none" />
+                </div>
             )}
         </div>
     );
