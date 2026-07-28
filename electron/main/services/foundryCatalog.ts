@@ -22,6 +22,7 @@ import { tmpdir } from 'os';
 import { pathToFileURL } from 'url';
 import { app, protocol, net } from 'electron';
 import { runVpkmerge, runVpkmergeStdout, verifyVpkOutput } from './modMerger';
+import { prepareAudioForMint } from './audioConversion';
 import { getCitadelPath } from './deadlock';
 import { soundCodenameForHero } from './heroSoundCodenames';
 import type {
@@ -237,9 +238,8 @@ function toVsndcEntry(p: string): string {
  * every clip in the event's randomizer pool is overridden with the user's MP3,
  * each minted around that clip's own donor container so loop/format/GUID are
  * preserved. Returns a temp staging VPK the caller installs into the managed mod
- * list (mirrors buildSoulContainerVpk's build-to-temp contract). The audio must
- * be an MP3 (the mint path parses rate/channels/duration from the MP3 frame
- * headers, no ffmpeg); transcoding other formats is a caller concern.
+ * list (mirrors buildSoulContainerVpk's build-to-temp contract). Non-MP3 input
+ * is converted locally to a temporary MP3 before the MP3-only mint step.
  */
 export async function buildHeroSoundSwapVpk(
     deadlockPath: string,
@@ -254,28 +254,36 @@ export async function buildHeroSoundSwapVpk(
     await fs.mkdir(dir, { recursive: true });
     const vpkPath = join(dir, 'soundswap_dir.vpk');
 
-    // Shared mint options for either mode: the source audio, loop handling, and
-    // the optional pre-mint trim (both ends together) + loudness gain.
-    const mintArgs: string[] = ['--audio', opts.audioPath, '--loop', opts.loop];
-    if (
-        typeof opts.trimStartMs === 'number' &&
-        typeof opts.trimEndMs === 'number' &&
-        opts.trimEndMs > opts.trimStartMs
-    ) {
-        mintArgs.push(
-            '--trim-start', String(Math.round(opts.trimStartMs)),
-            '--trim-end', String(Math.round(opts.trimEndMs))
-        );
-    }
-    if (typeof opts.gainDb === 'number' && Number.isFinite(opts.gainDb) && opts.gainDb !== 0) {
-        mintArgs.push('--gain-db', opts.gainDb.toFixed(2));
-    }
-
-    const clips = (opts.clipPaths ?? []).map(toVsndcEntry).filter(Boolean);
-    const assignments = (opts.assignments ?? [])
-        .map(({ clipPath, audioPath }) => ({ clipPath: toVsndcEntry(clipPath), audioPath }))
-        .filter(({ clipPath, audioPath }) => Boolean(clipPath && audioPath));
+    const mintAudio = await prepareAudioForMint(opts.audioPath);
+    const assignmentAudio: Array<{ clipPath: string; audioPath: string; mint: typeof mintAudio }> = [];
     try {
+        // Prepare sequentially so a failed later conversion can still clean up
+        // every earlier temporary output.
+        for (const assignment of opts.assignments ?? []) {
+            assignmentAudio.push({ ...assignment, mint: await prepareAudioForMint(assignment.audioPath) });
+        }
+
+        // Shared mint options for either mode: the source audio, loop handling, and
+        // the optional pre-mint trim (both ends together) + loudness gain.
+        const mintArgs: string[] = ['--audio', mintAudio.path, '--loop', opts.loop];
+        if (
+            typeof opts.trimStartMs === 'number' &&
+            typeof opts.trimEndMs === 'number' &&
+            opts.trimEndMs > opts.trimStartMs
+        ) {
+            mintArgs.push(
+                '--trim-start', String(Math.round(opts.trimStartMs)),
+                '--trim-end', String(Math.round(opts.trimEndMs))
+            );
+        }
+        if (typeof opts.gainDb === 'number' && Number.isFinite(opts.gainDb) && opts.gainDb !== 0) {
+            mintArgs.push('--gain-db', opts.gainDb.toFixed(2));
+        }
+
+        const clips = (opts.clipPaths ?? []).map(toVsndcEntry).filter(Boolean);
+        const assignments = assignmentAudio
+            .map(({ clipPath, mint }) => ({ clipPath: toVsndcEntry(clipPath), audioPath: mint.path }))
+            .filter(({ clipPath, audioPath }) => Boolean(clipPath && audioPath));
         if (assignments.length > 0) {
             // Pool-editor mode. One minted part per explicit write means every
             // selected target keeps its own donor metadata while potentially
@@ -337,6 +345,9 @@ export async function buildHeroSoundSwapVpk(
     } catch (err) {
         await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
         throw err;
+    } finally {
+        await mintAudio.cleanup();
+        await Promise.all(assignmentAudio.map(({ mint }) => mint.cleanup()));
     }
     return { vpkPath, soundCodename };
 }

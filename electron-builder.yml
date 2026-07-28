@@ -24,16 +24,21 @@ files:
   - node_modules/node-7z/**/*
   - node_modules/node-unrar-js/**/*
   - node_modules/7zip-bin/**/*
+  - node_modules/ffmpeg-static/**/*
   - node_modules/cross-spawn/**/*
   - node_modules/shebang-command/**/*
   - node_modules/shebang-regex/**/*
   - node_modules/which/**/*
   - node_modules/isexe/**/*
   - node_modules/path-key/**/*
+  # Ghostery resolves this package dynamically at runtime to register its
+  # cosmetic-filter preload, so Rollup cannot discover and bundle it.
+  - node_modules/@ghostery/adblocker-electron-preload/**/*
 asarUnpack:
   - node_modules/better-sqlite3/**/*
   - node_modules/node-unrar-js/**/*
   - node_modules/7zip-bin/**/*
+  - node_modules/ffmpeg-static/**/*
 # vpkmerge CLI binary (fetched via scripts/fetch-vpkmerge.mjs) ships outside
 # the asar so the OS can execute it directly. Resolved at runtime via
 # process.resourcesPath.
@@ -60,6 +65,14 @@ win:
     - nsis
     - portable
   icon: resources/icon.ico
+mac:
+  # Deadlock and the bundled vpkmerge sidecar currently support Apple Silicon.
+  # The release workflow deliberately builds arm64 only; do not advertise an
+  # Intel artifact until the sidecar adds darwin-x64 support.
+  target:
+    - dmg
+    - zip
+  icon: resources/icon.png
 nsis:
   oneClick: false
   perMachine: false

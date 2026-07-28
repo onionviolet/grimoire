@@ -22,6 +22,11 @@ jobs:
             platform: linux
           - os: windows-latest
             platform: win
+          # macos-14 is an Apple Silicon runner. The application sidecar only
+          # supports darwin-arm64, so packaging an Intel or universal app would
+          # create an installer whose core mod engine cannot run.
+          - os: macos-14
+            platform: mac
 
     runs-on: ${{ matrix.os }}
 
@@ -72,6 +77,13 @@ jobs:
         working-directory: grimoire
         run: pnpm install --frozen-lockfile
 
+      # electron-updater throws in the main process when the packaged app
+      # version is not SemVer. Reject bad or mismatched release tags before
+      # spending time building artifacts that users cannot launch safely.
+      - name: Verify release version
+        working-directory: grimoire
+        run: node scripts/verify-release-version.mjs
+
       - name: Clean previous builds
         working-directory: grimoire
         shell: bash
@@ -92,9 +104,19 @@ jobs:
           # updater UI honest and ensures these artifacts identify their own
           # GitHub release channel rather than looking like stock builds.
           GRIMOIRE_FORK_BUILD: '1'
+          # These secrets are intentionally optional: a fork can produce a
+          # testable unsigned build before it has an Apple Developer account.
+          # When configured, electron-builder signs and notarizes mac artifacts.
+          CSC_LINK: ${{ secrets.MACOS_CERTIFICATE }}
+          CSC_KEY_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           if [ "${{ matrix.platform }}" = "linux" ]; then
             pnpm exec electron-vite build && pnpm exec electron-builder --linux --publish never
+          elif [ "${{ matrix.platform }}" = "mac" ]; then
+            pnpm exec electron-vite build && pnpm exec electron-builder --mac --arm64 --publish never
           else
             pnpm exec electron-vite build && pnpm exec electron-builder --win --publish never
           fi
@@ -121,12 +143,16 @@ jobs:
           cd release
           # Hash user-facing artifacts only (skip auto-update metadata and blockmaps).
           shopt -s nullglob
-          files=(*.exe *.AppImage *.deb)
+          files=(*.exe *.AppImage *.deb *.dmg *.zip)
           if [ ${#files[@]} -eq 0 ]; then
             echo "ERROR: no artifact files found to hash"
             exit 1
           fi
-          sha256sum "${files[@]}" > "SHA256SUMS-${{ matrix.platform }}.txt"
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "${files[@]}" > "SHA256SUMS-${{ matrix.platform }}.txt"
+          else
+            shasum -a 256 "${files[@]}" > "SHA256SUMS-${{ matrix.platform }}.txt"
+          fi
           echo "=== SHA256SUMS-${{ matrix.platform }}.txt ==="
           cat "SHA256SUMS-${{ matrix.platform }}.txt"
 
@@ -137,6 +163,8 @@ jobs:
             grimoire/release/*.exe
             grimoire/release/*.AppImage
             grimoire/release/*.deb
+            grimoire/release/*.dmg
+            grimoire/release/*.zip
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7

@@ -857,13 +857,8 @@ function SwapPanel({
     const accept = useCallback(
         (file: File | undefined | null) => {
             if (!file) return;
-            if (!file.name.toLowerCase().endsWith('.mp3')) {
-                showToast(t('foundry.sound.swap.mp3only', 'Audio must be an MP3 file.'), {
-                    tone: 'error',
-                });
-                return;
-            }
             const path = window.electronAPI.getDroppedFilePath(file);
+            if (!path) return;
             setAudioPath(path);
             setAudioName(file.name);
             setAudioFile(file);
@@ -876,7 +871,6 @@ function SwapPanel({
 
     const addLibraryFiles = useCallback((files: FileList | File[]) => {
         const next = Array.from(files).flatMap((file) => {
-            if (!file.name.toLowerCase().endsWith('.mp3')) return [];
             const path = window.electronAPI.getDroppedFilePath(file);
             return path ? [{ path, name: file.name }] : [];
         });
@@ -943,7 +937,7 @@ function SwapPanel({
                 throw new Error(t('foundry.sound.swap.originalUnavailable', 'Could not read the original clip.'));
             }
             if (!assignments.length) {
-                throw new Error(poolMode === 'n-to-n' ? 'N-to-N needs exactly one audio file for each selected clip.' : 'Select at least one target and MP3.');
+                throw new Error(poolMode === 'n-to-n' ? 'N-to-N needs exactly one audio file for each selected clip.' : 'Select at least one target and audio file.');
             }
             // A preflight makes the choice visible before work starts. The main
             // process repeats inspection over the *generated* VPK write-set,
@@ -1035,13 +1029,13 @@ function SwapPanel({
                         {audioName}
                     </span>
                 ) : (
-                    <Tx k="foundry.sound.swap.drop" fallback="Drop an MP3 here, or click to pick" />
+                    <Tx k="foundry.sound.swap.drop" fallback="Drop audio here, or click to pick (MP3, WAV, FLAC, M4A, OGG, and more)" />
                 )}
             </button>
             <input
                 ref={inputRef}
                 type="file"
-                accept=".mp3,audio/mpeg"
+                accept="audio/*,.mp3,.wav,.flac,.m4a,.aac,.ogg,.opus"
                 className="hidden"
                 onChange={(e) => {
                     accept(e.target.files?.[0]);
@@ -1061,8 +1055,8 @@ function SwapPanel({
                         </select>
                         {(poolMode === 'n-to-n' || poolMode === 'seeded-library') && (
                             <label className="cursor-pointer rounded-sm border border-border px-2 py-1 hover:text-text-primary">
-                                Add MP3s
-                                <input type="file" accept=".mp3,audio/mpeg" multiple className="hidden" onChange={(e) => { addLibraryFiles(e.target.files ?? []); e.target.value = ''; }} />
+                                Add audio files
+                                <input type="file" accept="audio/*,.mp3,.wav,.flac,.m4a,.aac,.ogg,.opus" multiple className="hidden" onChange={(e) => { addLibraryFiles(e.target.files ?? []); e.target.value = ''; }} />
                             </label>
                         )}
                         {poolMode === 'seeded-library' && (

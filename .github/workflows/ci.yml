@@ -56,6 +56,10 @@ jobs:
         working-directory: grimoire
         run: pnpm install --frozen-lockfile
 
+      - name: Verify app version
+        working-directory: grimoire
+        run: node scripts/verify-release-version.mjs
+
       - name: Lint
         working-directory: grimoire
         run: pnpm lint

@@ -21,6 +21,13 @@ upstream pull request.
 - Do not keep duplicate "-upstream" branches after the fork has an equivalent
   implementation in `main`.
 
+## Releases
+
+Use the [release maintenance workflow](release-maintenance.md) to merge
+upstream fixes, validate and package a version, retain a rollback artifact, and
+archive older local builds. GitHub Releases remain the permanent archive; the
+local `release/` folder is only a short-term build cache.
+
 ## Engine policy
 
 The sibling `../vpkmerge` checkout is also a fork dependency. Its `main` carries

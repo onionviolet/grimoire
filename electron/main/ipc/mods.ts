@@ -1385,8 +1385,8 @@ ipcMain.handle('foundry:inspectSoundConflicts', async (_, writeSet: string[]): P
 // import-soul-container-glb's build -> allocate -> copy -> metadata flow. Event
 // mode with --pool all: every clip in the event's randomizer pool is overridden
 // with the user audio, so the swapped sound always plays. Tagged with lockerHero
-// so it groups under the hero in the Locker. v1 takes MP3 only (the mint path
-// parses the rate/channels from MP3 frame headers, no ffmpeg).
+// so it groups under the hero in the Locker. Other formats are converted
+// locally to MP3 before the mint path parses MP3 frame headers.
 //
 // Also serves non-hero sounds (UI, music, ambience, NPC, shop items): those pass
 // `soundeventsEntry` instead of a hero, land untagged, and so file under the
@@ -1430,17 +1430,11 @@ ipcMain.handle(
         if (!audioPath || !existsSync(audioPath)) {
             throw new Error('Audio file not found');
         }
-        if (!audioPath.toLowerCase().endsWith('.mp3')) {
-            throw new Error('Audio must be an MP3 file (other formats are not supported yet).');
-        }
         const explicitAssignments = Array.isArray(assignments) ? assignments : [];
         if (explicitAssignments.length > 0) {
             for (const assignment of explicitAssignments) {
                 if (!assignment?.clipPath?.trim() || !assignment.audioPath || !existsSync(assignment.audioPath)) {
-                    throw new Error('Each pool target needs an existing MP3 file');
-                }
-                if (!assignment.audioPath.toLowerCase().endsWith('.mp3')) {
-                    throw new Error('Pool audio must be MP3 (other formats are not supported yet).');
+                    throw new Error('Each pool target needs an existing audio file');
                 }
             }
         }

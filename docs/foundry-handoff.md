@@ -131,6 +131,67 @@ before a fork package until onionviolet/vpkmerge publishes a pinned release.
   vpkmerge; the first costs roughly 80 MB on the packaged app, so it is a
   packaging decision rather than a code one.
 
+## Sound workflow gaps (next iteration)
+
+The current sound forge is intentionally a one-shot mint flow: it creates a
+new, enabled local VPK for every swap. The normal mod list can later toggle
+that VPK, but the Foundry does not show an event's current override, let the
+user toggle it in place, or detect an existing sound-mod override before
+forging. This is unsafe and confusing when a user already has a downloaded or
+locally authored sound mod.
+
+Annotations are local labels, notes, and (proposed) key terms, keyed by event
+plus the first clip path. They render on the row, but catalog search only uses
+the engine's labels, event identifiers, and clip names. A rename therefore
+cannot be searched. The generated catalog label is useful and should remain
+visible as the **base-game label**; a personal label describes the user's own
+meaning for that sound rather than replacing its identity. The pencil control
+is also too easy to miss and its inline panel has no explicit disclosure or
+keyboard-oriented interaction.
+
+Randomizer pools are only partly exposed: repeated audition cycles their stock
+clips, while a swap currently uses `--pool all` and replaces every clip in that
+event with one imported MP3. There is no way to preserve a pool, target one
+clip, assign multiple replacement clips, or randomize a selected set.
+
+### Proposed sound-workbench slice
+
+1. Add an **active override inspector** before Forge. Build the intended VPK
+   write-set first, compare its entries against every enabled and disabled
+   installed VPK, and report the owner, load order, affected event/clip paths,
+   and whether Grimoire has `soundSwap` provenance. Treat third-party and
+   untracked mods as conflicts too; metadata alone is insufficient.
+2. Offer a deliberate resolution for every detected overlap: cancel, disable
+   the existing mod, forge below/above it with the winning precedence shown, or
+   replace an existing Grimoire-managed swap while preserving a reversible
+   source record. Never silently layer a new swap over an unknown mod.
+3. Add a persistent **My sound changes** view, grouped by hero/global scope and
+   event. It should support enable/disable, rename, note, edit/re-forge,
+   delete, and jump-to-conflict. Keep the normal Locker toggle as the single
+   source of truth, but expose the same state in Foundry.
+4. Make annotation an explicit, toggleable row detail (`Details` / `Edit label
+   & note`) with an `Annotated` state. Always show the generated **base-game
+   label** and event identifier; render the personal label separately as
+   `My label` so it is clear what the user is describing. Add optional hashtag
+   / key-term chips (for example `#ult`, `#loud`, `#favorite`) and include the
+   personal label, note, and chips in the client-side search index. Search
+   results should identify whether the match came from the catalog or a
+   personal annotation, and allow filtering to annotated rows.
+5. Replace the implicit `pool: all` behavior with a pool editor: audition all
+   source clips, select individual target clips, choose **replace all**,
+   **replace selected**, or **map N uploaded clips to N targets**, and show the
+   resulting randomization behavior before building. A separate randomize
+   action should shuffle a user-chosen library with a recorded seed, never
+   silently randomize live game sounds.
+6. Add bulk selection for compatible sounds, but stage every target in the
+   build tray with a collision summary, per-event volume/trim/loop settings,
+   and a clear rollback path. Include the final write-set and winner in the
+   confirmation screen.
+7. Test annotated-name search, managed and unmanaged collision detection,
+   enabled/disabled toggle synchronization, all pool modes, build ordering,
+   and cancellation/rollback. Manually verify a third-party sound mod plus a
+   Foundry swap targeting the same event in game.
+
 ## Delivery checklist (active)
 
 This is the ordered delivery plan for the Foundry, merge-engine, and browser

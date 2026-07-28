@@ -3,6 +3,7 @@ const { autoUpdater } = pkg;
 import type { UpdateInfo } from 'electron-updater';
 import { app, BrowserWindow } from 'electron';
 import log from 'electron-log';
+import { isValidSemver } from './version';
 
 export type InstallSource = 'managed' | 'appimage' | 'standard' | 'fork';
 
@@ -36,7 +37,7 @@ export function getInstallSource(): InstallSource {
 const installSource = getInstallSource();
 // 'managed': in-app updates would fail (root-owned install dir).
 // 'fork': safe now — publish feed targets onionviolet/grimoire, not upstream.
-const updaterDisabled = installSource === 'managed';
+let updaterDisabled = installSource === 'managed';
 
 // Configure logging
 autoUpdater.logger = log;
@@ -85,6 +86,18 @@ export function initUpdater(window: BrowserWindow) {
     mainWindow = window;
     if (updaterDisabled) {
         log.info('[Updater] System package install detected; in-app updater disabled.');
+        return;
+    }
+
+    const appVersion = app.getVersion();
+    if (!isValidSemver(appVersion)) {
+        updaterDisabled = true;
+        currentStatus = {
+            ...currentStatus,
+            error: `Updates are disabled because this installation has an invalid version (${appVersion}). Please reinstall a current release.`,
+        };
+        log.error(`[Updater] Updates disabled: installed app version is not strict SemVer: ${appVersion}`);
+        sendStatusToRenderer();
         return;
     }
 
