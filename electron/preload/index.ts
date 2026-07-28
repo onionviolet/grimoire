@@ -711,6 +711,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
             ipcRenderer.invoke('stats:getPlayerMatchHistory', accountId, limit, minMatchId),
         getPlayerSteamProfiles: (accountIds: number[]) =>
             ipcRenderer.invoke('stats:getPlayerSteamProfiles', accountIds),
+        refreshTrackedProfiles: (maxAgeSeconds?: number) =>
+            ipcRenderer.invoke('stats:refreshTrackedProfiles', maxAgeSeconds),
 
         // Local Database
         getLocalMMRHistory: (accountId: number, limit?: number) =>
