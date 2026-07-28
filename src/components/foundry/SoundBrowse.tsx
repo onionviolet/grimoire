@@ -768,10 +768,12 @@ function SwapPanel({
         if (!targetClip || loadingOriginal) return;
         setLoadingOriginal(true);
         try {
-            const [path, url] = await Promise.all([
-                foundryVoiceclipFile(targetClip),
-                foundryVoiceclip(targetClip),
-            ]);
+            // Sequential on purpose. Both calls land in `ensureVoiceclipFile`,
+            // which extracts to one fingerprint-keyed path; run in parallel on a
+            // cold cache they both miss, and two vpkmerge processes write the
+            // same MP3 at once. The first call warms the cache the second reads.
+            const path = await foundryVoiceclipFile(targetClip);
+            const url = path ? await foundryVoiceclip(targetClip) : null;
             if (!path || !url) {
                 showToast(
                     t('foundry.sound.swap.originalUnavailable', 'Could not read the original clip.'),
