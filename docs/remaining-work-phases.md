@@ -35,19 +35,25 @@ was wrong in the doc's favour (the Locker missing-source warning).
 
 Re-run the audit after any release that touches Foundry or the Locker.
 
-## Phase 1 — Release integrity **[verified: no smoke record exists]**
+## Phase 1 — Release integrity **[not a gate; post-release verification]**
+
+Ungated 2026-07-28: releases no longer wait on this. It is still worth doing,
+and it is still true that nothing here has been validated against the game.
 
 1. Packaged Windows smoke test: open Global sounds, confirm
    `catalog globalsounds`, replace a normal icon and a DXT5-YCoCg icon, read the
    engine version in Settings.
-2. Promote the YCoCg icon fix from the fork engine into the packaged engine
+2. Stage one sound and one texture, forge them into a single VPK, and confirm
+   the exported VPK mounts and both edits appear in game. This is the newest and
+   least-exercised path; it has never been run end to end by a human.
+3. Promote the YCoCg icon fix from the fork engine into the packaged engine
    ([foundry-handoff.md](./foundry-handoff.md):85) so a packaged replace does not
    garble depending on which icon was picked.
 
-Exit gate: a recorded smoke run naming the exact packaged build and engine
-version. Until then nothing here is "game-validated".
+Do this whenever a build and the game are both in front of you, and fix forward
+if it finds something.
 
-Depends on: nothing. Run first, run in parallel with everything.
+Depends on: nothing. Blocks: nothing.
 
 ## Phase 2 — Foundry combined output (slice F) **[verified: largely shipped]**
 

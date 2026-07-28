@@ -67,9 +67,15 @@ required before a release.
 ## Release follow-up
 
 The forked `vpkmerge` sidecar workflow shipped in the published
-`v1.25.170` release. The remaining release-integrity evidence is the
-packaged Windows smoke record; do not represent this as game-validated until
-that record exists.
+`v1.25.170` release.
+
+**The packaged Windows smoke record no longer blocks a release** (decided
+2026-07-28). It is tracked as post-release verification, not as a gate. The
+factual position is unchanged and should not be overstated in user-facing copy:
+no packaged build has been exercised against the game for this line of work, and
+the combined Foundry forge in particular has never been run end to end by a
+human. Run the checklist in section 1 below when a build and the game are both
+in front of you, and fix forward if it finds something.
 
 ## Next-version implementation plan
 

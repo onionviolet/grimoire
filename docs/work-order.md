@@ -93,9 +93,10 @@ Do not start all three. In descending order of recommendation:
 ### Parked alongside (human-gated, not code-gated)
 
 - **Release integrity.** The packaged Windows smoke test is a human sitting in
-  front of the game. Write the checklist during step 0, run it whenever a build
-  exists. Nothing downstream waits on it, but no release is game-validated until
-  it exists.
+  front of the game. Ungated 2026-07-28: **it does not block a release.** Run it
+  whenever a build exists and fix forward. It remains the only thing that would
+  catch a packaging or in-game regression, so shipping without it means shipping
+  on the strength of unit tests and types alone.
 - **VFX in-game confirmations.** The outstanding Paige and Celeste checks are
   screenshots, not code. Do them next time the game is open.
 
