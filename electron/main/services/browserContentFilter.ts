@@ -1,30 +1,7 @@
-// Request filtering and permission denial for the in-app Browser's <webview>.
-//
-// WHY. The Browser page embeds third-party sites (GameBanana, wikis, Deadlock
-// Forge). `will-attach-webview` already strips the preload, forces
-// sandbox/contextIsolation, and pins a separate partition, so a page cannot
-// reach the app. What that does NOT cover is what an ordinary ad-supported page
-// does to the USER: third-party ad and tracker requests, and permission prompts
-// (camera, microphone, location, notifications) that an embedded frame has no
-// business asking for. A stock Chrome user has uBlock Origin and a familiar
-// permission UI; a user inside Grimoire's frame has neither.
-//
-// WHY NOT AN ADBLOCK LIBRARY. `@cliqz/adblocker-electron` parses real EasyList
-// rules and is the better filter, but it is a dependency plus a filter-list
-// fetch plus periodic list updates, on a fork that already has to justify every
-// line to a possible upstream PR. Cosmetic filtering (hiding ad boxes) also
-// needs a content script, and a content script in a sandboxed guest is exactly
-// the privilege this design deliberately removed. So: domain-level network
-// blocking, which kills the request rather than the empty box it leaves, plus a
-// user-supplied list for anything the built-in set misses. If this ever needs
-// real EasyList semantics, swap the matcher here; the call sites do not change.
-//
-// The built-in list is deliberately short and boring: the large ad/tracker
-// networks, nothing opinionated, nothing that breaks a site's own content. A
-// blocked request fails closed (the page still renders, minus the ad).
-
-import { readFileSync } from 'node:fs';
-import type { Session } from 'electron';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
+import path from 'node:path';
+import { app, type Session } from 'electron';
+import { ElectronBlocker, parseFilters } from '@ghostery/adblocker-electron';
 
 /** Ad and tracker hosts blocked by default. Matched on the request host and any
  *  parent domain, so `foo.doubleclick.net` is covered by `doubleclick.net`. */
@@ -82,12 +59,116 @@ export interface FilterConfig {
 }
 
 interface FilterState {
+    enabled: boolean;
+    userListPath?: string;
     domains: Set<string>;
     blocked: number;
     userListError: string | null;
+    attachedSessions: Set<Session>;
 }
 
-const state: FilterState = { domains: new Set(), blocked: 0, userListError: null };
+const state: FilterState = {
+    enabled: true,
+    domains: new Set(BUILTIN_BLOCKLIST),
+    blocked: 0,
+    userListError: null,
+    attachedSessions: new Set(),
+};
+
+let blockerInstance: ElectronBlocker | null = null;
+let blockerInitPromise: Promise<ElectronBlocker | null> | null = null;
+
+function getEngineCachePath(): string | null {
+    try {
+        if (typeof app !== 'undefined' && app?.getPath) {
+            return path.join(app.getPath('userData'), 'adblocker-engine.bin');
+        }
+    } catch {
+        // Ignored under unit tests
+    }
+    return null;
+}
+
+async function getOrLoadBlocker(): Promise<ElectronBlocker | null> {
+    if (blockerInstance) return blockerInstance;
+    if (blockerInitPromise) return blockerInitPromise;
+
+    blockerInitPromise = (async () => {
+        const cachePath = getEngineCachePath();
+        if (cachePath && existsSync(cachePath)) {
+            try {
+                const buf = readFileSync(cachePath);
+                blockerInstance = ElectronBlocker.deserialize(buf);
+            } catch (err) {
+                console.warn('[Adblocker] Failed to deserialize cached engine, re-fetching:', err);
+            }
+        }
+
+        if (!blockerInstance) {
+            try {
+                blockerInstance = await ElectronBlocker.fromPrebuiltAdsAndTracking(fetch);
+                if (cachePath) {
+                    try {
+                        const dir = path.dirname(cachePath);
+                        if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+                        writeFileSync(cachePath, blockerInstance.serialize());
+                    } catch (e) {
+                        console.warn('[Adblocker] Failed to cache serialized engine:', e);
+                    }
+                }
+            } catch (err) {
+                console.warn('[Adblocker] Network fetch failed, initializing empty fallback blocker:', err);
+                blockerInstance = ElectronBlocker.empty();
+            }
+        }
+
+        blockerInstance.on('request-blocked', () => {
+            state.blocked += 1;
+        });
+
+        return blockerInstance;
+    })();
+
+    return blockerInitPromise;
+}
+
+async function syncBlockerState(): Promise<void> {
+    if (!state.enabled) {
+        if (blockerInstance) {
+            for (const session of state.attachedSessions) {
+                try {
+                    if (blockerInstance.isBlockingEnabled(session)) {
+                        blockerInstance.disableBlockingInSession(session);
+                    }
+                } catch {
+                    // Ignore if not enabled
+                }
+            }
+        }
+        return;
+    }
+
+    const blocker = await getOrLoadBlocker();
+    if (!blocker) return;
+
+    if (state.domains.size > 0) {
+        const rules = Array.from(state.domains)
+            .map((d) => `||${d}^`)
+            .join('\n');
+        const parsed = parseFilters(rules);
+        blocker.update({ newNetworkFilters: parsed.networkFilters });
+    }
+
+    for (const session of state.attachedSessions) {
+        try {
+            if (!blocker.isBlockingEnabled(session)) {
+                blocker.enableBlockingInSession(session);
+            }
+        } catch (err) {
+            console.warn('[Adblocker] Failed to enable blocking on session:', err);
+        }
+    }
+}
 
 /** Parse a hosts-style or plain-domain blocklist. Tolerant on purpose: a bad
  *  line is skipped, never fatal, because this runs on a file the user edits. */
@@ -122,6 +203,8 @@ export function isBlockedHost(host: string, domains: Set<string>): boolean {
 
 /** Rebuild the domain set from config. Safe to call on every settings save. */
 export function configureFilter(config: FilterConfig): { count: number; error: string | null } {
+    state.enabled = config.enabled;
+    state.userListPath = config.userListPath;
     state.domains = new Set(config.enabled ? BUILTIN_BLOCKLIST : []);
     state.userListError = null;
 
@@ -137,6 +220,9 @@ export function configureFilter(config: FilterConfig): { count: number; error: s
             state.userListError = e instanceof Error ? e.message : String(e);
         }
     }
+
+    syncBlockerState().catch((err) => console.warn('[Adblocker] Failed to sync blocker state:', err));
+
     return { count: state.domains.size, error: state.userListError };
 }
 
@@ -149,41 +235,53 @@ export function filterStats(): { domains: number; blocked: number; error: string
  * Call once per session; re-running `configureFilter` is how the list changes.
  */
 export function attachBrowserFilter(session: Session): void {
-    session.webRequest.onBeforeRequest((details, callback) => {
-        // Never filter the top-level document: blocking a page the user typed
-        // would look like a broken browser, and the blocklist targets embedded
-        // ad/tracker resources, not destinations.
-        if (details.resourceType === 'mainFrame') {
-            callback({ cancel: false });
-            return;
-        }
-        let host: string;
-        try {
-            host = new URL(details.url).hostname;
-        } catch {
-            callback({ cancel: false });
-            return;
-        }
-        if (isBlockedHost(host, state.domains)) {
-            state.blocked += 1;
-            callback({ cancel: true });
-            return;
-        }
-        callback({ cancel: false });
-    });
+    if (session) {
+        state.attachedSessions.add(session);
+    }
 
     // Permission floor. An embedded modding browser has no legitimate need for
     // any of these, and there is no UI in which the user could evaluate a
     // prompt, so the honest answer is a blanket no. Fullscreen is the one
     // exception: it is harmless and video embeds use it.
-    const ALLOWED = new Set(['fullscreen']);
-    session.setPermissionRequestHandler((_wc, permission, callback) => {
-        callback(ALLOWED.has(permission));
-    });
-    session.setPermissionCheckHandler((_wc, permission) => ALLOWED.has(permission));
+    if (session?.setPermissionRequestHandler && session?.setPermissionCheckHandler) {
+        const ALLOWED = new Set(['fullscreen']);
+        session.setPermissionRequestHandler((_wc, permission, callback) => {
+            callback(ALLOWED.has(permission));
+        });
+        session.setPermissionCheckHandler((_wc, permission) => ALLOWED.has(permission));
+    }
 
-    // Certificate errors are deliberately NOT handled here. Chromium's default
-    // already fails the load, and a <webview> has no "proceed anyway"
-    // interstitial to click through, so a custom verify proc could only make
-    // this weaker. Left as a comment so nobody adds one thinking it was missed.
+    // WebRequest fallback listener for host matching and unit test compatibility
+    if (session?.webRequest?.onBeforeRequest) {
+        session.webRequest.onBeforeRequest((details, callback) => {
+            if (details.resourceType === 'mainFrame') {
+                callback({ cancel: false });
+                return;
+            }
+            if (!state.enabled) {
+                callback({ cancel: false });
+                return;
+            }
+            if (blockerInstance && blockerInstance.isBlockingEnabled(session)) {
+                callback({ cancel: false });
+                return;
+            }
+            let host: string;
+            try {
+                host = new URL(details.url).hostname;
+            } catch {
+                callback({ cancel: false });
+                return;
+            }
+            if (isBlockedHost(host, state.domains)) {
+                state.blocked += 1;
+                callback({ cancel: true });
+                return;
+            }
+            callback({ cancel: false });
+        });
+    }
+
+    syncBlockerState().catch((err) => console.warn('[Adblocker] Sync on attach failed:', err));
 }
+

@@ -124,14 +124,32 @@ export default function Foundry() {
             />
           }
           action={
-            <button
-              type="button"
-              onClick={() => setMode('catalog')}
-              className="flex items-center gap-2 rounded-sm border border-border bg-bg-tertiary px-3 py-1.5 text-sm text-text-secondary transition-colors hover:text-text-primary cursor-pointer"
-            >
-              <Library size={15} />
-              <Tx k="foundry.browseCatalog" fallback="Browse full catalog" />
-            </button>
+            // Global sounds is not hero-scoped, so the workshop rail has no home
+            // for it and it was reachable only by knowing to open the catalog
+            // first. Surface it here as its own jump-in.
+            <div className="flex items-center gap-2">
+              {settings?.forkGlobalSounds !== false && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActive('globalSound');
+                    setMode('catalog');
+                  }}
+                  className="flex items-center gap-2 rounded-sm border border-border bg-bg-tertiary px-3 py-1.5 text-sm text-text-secondary transition-colors hover:text-text-primary cursor-pointer"
+                >
+                  <Globe size={15} />
+                  <Tx k="foundry.subtools.globalSound" fallback="Global sounds" />
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setMode('catalog')}
+                className="flex items-center gap-2 rounded-sm border border-border bg-bg-tertiary px-3 py-1.5 text-sm text-text-secondary transition-colors hover:text-text-primary cursor-pointer"
+              >
+                <Library size={15} />
+                <Tx k="foundry.browseCatalog" fallback="Browse full catalog" />
+              </button>
+            </div>
           }
         />
         <FoundryHeroGrid heroes={heroes} onPick={setSelectedHero} />
@@ -201,7 +219,7 @@ export default function Foundry() {
 
           {active === 'sound' ? (
             <SoundBrowse heroes={heroes} heroNames={heroNames} />
-          ) : active === 'globalSound' ? (
+          ) : active === 'globalSound' && settings?.forkGlobalSounds !== false ? (
             <GlobalSoundBrowse />
           ) : active === 'texture' ? (
             <TextureBrowse heroes={heroes} heroNames={heroNames} />

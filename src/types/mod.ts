@@ -1144,6 +1144,8 @@ export interface AppSettings {
    *  own pak via the bundled vpkmerge sidecar, and (later slices) swap/forge
    *  edits into the mod list. */
   experimentalFoundry?: boolean;
+  /** Chat Wheel: edit and install ChatLane chat wheels as managed add-ons. */
+  experimentalChatWheel?: boolean;
 
   // --- Local fork additions (branch feat/local-switchers-and-browser) --------
   /** In-app web browser page: browse mod sites (GameBanana, Deadlock Forge,

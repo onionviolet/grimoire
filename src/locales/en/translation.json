@@ -77,7 +77,8 @@
     "autoexec": "Autoexec",
     "stats": "Stats",
     "settings": "Settings",
-    "browser": "Browser"
+    "browser": "Browser",
+    "chatWheel": "Chat Wheel"
   },
   "saved": {
     "title": "Saved Mods",
@@ -884,7 +885,8 @@
       "deadworksServers": "Deadworks Servers",
       "performanceConfig": "Performance Config",
       "foundry": "Door Stuck",
-      "browser": "In-app browser"
+      "browser": "In-app browser",
+      "chatWheel": "Chat Wheel"
     },
     "support": {
       "reportBuildFailed": "Failed to build report: {{error}}",
@@ -956,7 +958,8 @@
       "vpkImprint": "Give each newly installed mod a small identity imprint so an orphaned file can be recognized offline. Adds an Imprint installed mods button on the Installed page to imprint mods you already have.",
       "deadworks": "Add a Servers tab to browse and join Deadworks community servers. Required content downloads before connecting.",
       "performanceConfig": "One-click fps boost using Sqooky's community preset. Mods keep working. Remove any time.",
-      "browser": "Adds a Browser page for mod sites. Pages run isolated from the app, with downloads and popups handed to your real browser."
+      "browser": "Adds a Browser page for mod sites. Pages run isolated from the app, with downloads and popups handed to your real browser.",
+      "chatWheel": "Edit ChatLane YAML and install custom chat wheel VPKs as managed Deadlock add-ons."
     },
     "forkBuild": {
       "description": "This build carries patches that are not in the official release. Switch them off to compare against stock behaviour without rebuilding."
@@ -2357,7 +2360,8 @@
       "stats": "Match history and personal stats.",
       "conflicts": "Mods that overwrite the same game files.",
       "profiles": "Save and swap sets of enabled mods.",
-      "browser": "Browse mod sites without leaving Grimoire"
+      "browser": "Browse mod sites without leaving Grimoire",
+      "chatWheel": "Edit ChatLane chat wheels"
     },
     "launch": {
       "noPath": "Configure your Deadlock path in Settings first",
@@ -2850,5 +2854,21 @@
       "title": "Browser is off",
       "description": "Enable the in-app browser in Settings to use this page."
     }
+  },
+  "chatWheel": {
+    "title": "Chat Wheel",
+    "subtitle": "Edit ChatLane YAML and install it as a managed Deadlock add-on. Saving replaces the selected wheel in-place; Grimoire never changes gameinfo.gi here.",
+    "binaryMissingTitle": "ChatLane converter unavailable",
+    "binaryMissing": "The ChatLane converter binary is unavailable on this system. You can view installed wheels, but building or reading VPKs requires the ChatLane executable in resources/chatlane.",
+    "installedWheels": "Installed wheels",
+    "newWheel": "New chat wheel",
+    "loadSelected": "Load selected",
+    "openVpk": "Open VPK…",
+    "helpNote": "Only VPKs made by ChatLane can be opened. The embedded chatlane.yml is preserved on every save.",
+    "nameLabel": "Name",
+    "yamlLabel": "ChatLane YAML",
+    "validationNote": "Validation happens in ChatLane before any add-on is installed.",
+    "saveAndInstall": "Save & install",
+    "dialogTitle": "Open ChatLane VPK"
   }
 }

@@ -1443,3 +1443,8 @@ export async function foundrySwapSound(
 ): Promise<import('../types/mod').Mod[]> {
   return window.electronAPI.foundry.swapSound(req);
 }
+
+export async function getChatWheelStatus(): Promise<{ available: boolean; path?: string; error?: string }> {
+  return window.electronAPI.chatWheelStatus();
+}
+

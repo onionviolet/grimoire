@@ -26,6 +26,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     experimentalStats: false,
     experimentalCrosshair: false,
     experimentalSocial: false,
+    experimentalChatWheel: false,
     experimentalUnknownModMatching: false,
     experimentalVpkImprinting: false,
     hasCompletedSetup: false,

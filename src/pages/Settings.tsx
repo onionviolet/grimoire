@@ -1331,6 +1331,15 @@ export default function Settings() {
             />
 
             {settings?.experimentalBrowser && <BrowserFilterControls />}
+
+            <div className="h-px bg-white/5" />
+
+            <Toggle
+              checked={settings?.experimentalChatWheel ?? false}
+              onChange={(checked) => settings && saveSettings({ ...settings, experimentalChatWheel: checked })}
+              label={<Tx k="settings.experimental.chatWheel" fallback="Chat Wheel" />}
+              description={<Tx k="settings.toggles.chatWheel" fallback="Edit ChatLane YAML and install custom chat wheel VPKs as managed Deadlock add-ons." />}
+            />
           </div>
         </Card>
 

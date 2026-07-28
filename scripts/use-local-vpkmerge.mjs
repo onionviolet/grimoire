@@ -9,8 +9,12 @@
 // `pnpm dev` does not need it (modMerger.ts auto-detects the sibling build),
 // but `electron-builder` packages whatever sits in resources/.
 //
-// Note `postinstall` (fetch-vpkmerge.mjs) verifies a sha256 against the pinned
-// release, so any `pnpm install` will overwrite this copy. Re-run afterwards:
+// This also writes a `.local-build` marker beside the binary (see the bottom of
+// this file). `postinstall` (fetch-vpkmerge.mjs) checks for that marker and
+// leaves the copy alone, so a later `pnpm install` no longer clobbers it. To go
+// back to the pinned release, delete the marker and run `pnpm fetch-vpkmerge`.
+//
+// Packaging is therefore just:
 //
 //     pnpm use-local-vpkmerge && pnpm package:win
 //
