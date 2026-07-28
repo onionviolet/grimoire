@@ -10,13 +10,36 @@ Requirements:
 - [pnpm](https://pnpm.io/) 9+
 - [Git](https://git-scm.com/)
 
+Grimoire shares its social API types with
+[grimoire-social](https://github.com/Slush97/grimoire-social) via the
+`@grimoire/social-types` workspace dependency, which resolves to a **sibling
+checkout**. Clone both into the same parent directory:
+
 ```bash
+git clone https://github.com/Slush97/grimoire-social.git
+cd grimoire-social && pnpm install && cd ..
+
 git clone https://github.com/Slush97/grimoire.git
 cd grimoire
 pnpm install
 pnpm exec electron-rebuild -f -w better-sqlite3
 pnpm dev
 ```
+
+The layout `pnpm install` expects:
+
+```
+parent/
+├── grimoire/          # this repo
+└── grimoire-social/   # sibling, with its own `pnpm install` run
+```
+
+`grimoire-social` needs its own install because the shared package declares
+`zod` as a peer dependency and resolves it from its own `node_modules`.
+
+If the sibling is missing, `preinstall` (`pnpm check-siblings`) fails with the
+clone command. Skipping that check leaves you with a `pnpm install` that
+reports success and a `pnpm typecheck` that fails with unresolved-module errors.
 
 ## Code style
 

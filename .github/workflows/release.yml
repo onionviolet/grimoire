@@ -36,9 +36,11 @@ jobs:
         with:
           path: grimoire
 
-      # pnpm-workspace.yaml resolves @grimoire/social-types from
-      # ../grimoire-social/packages/*. Without this sibling checkout the
-      # workspace dep fails to resolve and pnpm install bails out.
+      # pnpm-lock.yaml resolves @grimoire/social-types to
+      # link:../grimoire-social/packages/social-types. Without this sibling
+      # checkout the link dangles: pnpm install still exits 0, and the build
+      # then fails on unresolved social imports.
+      # scripts/check-sibling-repos.mjs (preinstall) enforces the layout.
       - name: Checkout grimoire-social (sibling for shared types)
         uses: actions/checkout@v6
         with:
