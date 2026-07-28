@@ -5,7 +5,7 @@ import { scanMods, allocateEnabledVpkPath, runExclusiveModMutation } from '../se
 import { metaKeyFor } from '../services/deadlock';
 import { setModMetadataWithHash } from '../services/metadata';
 import { assertCanMoveLoadedGameMod } from '../services/gameSessionMods';
-import { buildChatWheelVpk, readChatWheelVpk, chatLaneBinaryPath } from '../services/chatWheel';
+import { buildChatWheelVpk, readChatWheelStarter, readChatWheelVpk, chatLaneBinaryPath } from '../services/chatWheel';
 
 interface ChatWheelSaveArgs { yaml: string; name: string; replaceModId?: string; }
 
@@ -19,6 +19,8 @@ ipcMain.handle('chat-wheel:status', async (): Promise<{ available: boolean; path
 });
 
 ipcMain.handle('chat-wheel:read', async (_, vpkPath: string): Promise<string> => readChatWheelVpk(vpkPath));
+
+ipcMain.handle('chat-wheel:starter', async (): Promise<string> => readChatWheelStarter());
 
 ipcMain.handle('chat-wheel:save', async (_, args: ChatWheelSaveArgs) => {
     const deadlockPath = getActiveDeadlockPath();

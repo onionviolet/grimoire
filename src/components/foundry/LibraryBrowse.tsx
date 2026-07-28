@@ -3,7 +3,9 @@ import { Library, Search, Loader2, AlertTriangle, Users } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { EmptyState } from '../common/PageComponents';
 import Tx from '../translation/Tx';
-import { foundryThumbnails } from '../../lib/api';
+import { foundryReplaceTexture, foundryThumbnails } from '../../lib/api';
+import { showToast } from '../../stores/toastStore';
+import { useAppStore } from '../../stores/appStore';
 import type { TextureCategory, TextureGridItem } from '../../types/foundry';
 import TextureGrid from './TextureGrid';
 import TextureLightbox from './TextureLightbox';
@@ -36,6 +38,28 @@ export default function LibraryBrowse({ heroNames, initialCategory = 'ability-ic
   const [search, setSearch] = useState('');
   const [heroFilter, setHeroFilter] = useState('all');
   const [lightbox, setLightbox] = useState<TextureGridItem | null>(null);
+  const [replacingPath, setReplacingPath] = useState<string | null>(null);
+  const loadMods = useAppStore((s) => s.loadMods);
+
+  const replace = useCallback(async (item: TextureGridItem, file: File) => {
+    const imagePath = window.electronAPI.getDroppedFilePath(file);
+    if (!imagePath) return;
+    setReplacingPath(item.path);
+    try {
+      await foundryReplaceTexture({
+        entryPath: item.path,
+        imagePath,
+        name: t('foundry.texture.defaultReplacementName', '{{label}} replacement', { label: item.label || 'Texture' }),
+        category: item.category,
+      });
+      await loadMods({ silent: true });
+      showToast(t('foundry.texture.replaceDone', 'Installed texture replacement. Enable it in Installed.'), { tone: 'success', duration: 6000 });
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : String(e), { tone: 'error', duration: 8000 });
+    } finally {
+      setReplacingPath(null);
+    }
+  }, [loadMods, t]);
 
   const loadCategory = useCallback(async (cat: TextureCategory) => {
     setLoading(true);
@@ -135,6 +159,7 @@ export default function LibraryBrowse({ heroNames, initialCategory = 'ability-ic
           search={search}
           heroFilter={heroFilter}
           onOpen={setLightbox}
+          onReplace={replacingPath ? undefined : replace}
         />
       )}
 

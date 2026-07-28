@@ -11,6 +11,7 @@ interface TextureGridProps {
   heroFilter: string;
   /** Open the lightbox for an asset (enlarge-on-click). */
   onOpen: (item: TextureGridItem) => void;
+  onReplace?: (item: TextureGridItem, file: File) => void;
 }
 
 /**
@@ -19,7 +20,7 @@ interface TextureGridProps {
  * narrowing happen client-side here so typing is instant and does not re-spawn
  * the sidecar.
  */
-export default function TextureGrid({ items, heroNames, search, heroFilter, onOpen }: TextureGridProps) {
+export default function TextureGrid({ items, heroNames, search, heroFilter, onOpen, onReplace }: TextureGridProps) {
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
     return items.filter((it) => {
@@ -37,6 +38,7 @@ export default function TextureGrid({ items, heroNames, search, heroFilter, onOp
           item={it}
           heroName={it.hero ? heroNames.get(it.hero) : undefined}
           onOpen={() => onOpen(it)}
+          onReplace={onReplace}
         />
       ))}
     </div>

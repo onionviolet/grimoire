@@ -131,6 +131,54 @@ before a fork package until onionviolet/vpkmerge publishes a pinned release.
   vpkmerge; the first costs roughly 80 MB on the packaged app, so it is a
   packaging decision rather than a code one.
 
+## Delivery checklist (active)
+
+This is the ordered delivery plan for the Foundry, merge-engine, and browser
+work. Do not mark an item complete until its automated checks and the stated
+manual proof are both recorded. Existing user work in the tree is not part of
+this plan and must remain untouched.
+
+- [ ] **Sound Foundry reliability.** Resolve a stock clip again immediately
+  before Forge instead of retaining a fingerprinted cache path across a game
+  update. Cover the resolution branch with a test, then click-test cold cache,
+  retune, install, enable, and in-game playback.
+- [ ] **Version the engine dependency.** Build the forked `vpkmerge`, verify
+  the YCoCg item-icon round trip, and promote a checksum-pinned packaged
+  engine. Confirm a packaged Grimoire build reports that engine version.
+- [ ] **Texture and item replacement.** Add PNG drop/pick to catalog cards,
+  call `vpkmerge icon`, install a tracked local mod, and verify normal and
+  YCoCg source icons in game.
+- [ ] **Foundry build tray.** Stage sound, texture, recolor, and model edits;
+  show file-level collisions and selected precedence; bake one named VPK.
+  Verify rebuild, source removal, and unmerge preserve original mods.
+- [ ] **Merge-engine safety UX.** Surface write-set previews, conflict winners,
+  stale-game-build warnings, and one-click rebuild where the authored inputs
+  still exist. Exercise failure paths without modifying source mods.
+- [ ] **Mod-focused browser.** Respect the existing NSFW setting for shortcuts,
+  localize labels, and add only confirmed handoffs for recognized mod downloads
+  (never unattended downloads). Verify sandbox, popup, and tracker-blocking
+  behavior remain intact.
+- [ ] **Release gate.** Run `pnpm typecheck`, `pnpm lint`, `pnpm test`, and
+  `pnpm i18n:check`; record manual in-game evidence for every Foundry change;
+  package once on Windows before release.
+
+### Sound Forge manual validation (required before release)
+
+1. With Deadlock closed, open Foundry > Sound, choose a hero or global event,
+   select **Use original**, adjust the manual dB control, Forge, and confirm the
+   resulting local mod is installed, enabled, and audible in the matching
+   in-game event.
+2. Repeat with **Match the original volume** enabled and a trimmed selection;
+   confirm the gain readout and preview change, then confirm the authored trim
+   and gain are audible in game without clipping.
+3. Force a catalog/voiceclip cache refresh by updating or changing the game
+   build, reopen the pending original donor, and Forge. It must re-extract the
+   selected stock clip immediately before build, rather than use the old
+   fingerprinted cache path.
+4. Simulate an unavailable original clip (missing game files or failed
+   extraction). Forge must fail with an error and must not create or enable a
+   partial mod.
+
 ## Key reuse patterns
 
 - Spawn engine: `runVpkmerge` / `runVpkmergeStdout` (`services/modMerger.ts`);

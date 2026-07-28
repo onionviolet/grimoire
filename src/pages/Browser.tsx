@@ -10,16 +10,18 @@
 // hands those to the real browser), no extensions. It is a shortcut to the
 // handful of sites that matter while modding.
 
-import { createElement, useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, RotateCw, Home, ExternalLink, Globe, X } from 'lucide-react';
+import { createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowLeft, ArrowRight, RotateCw, Home, ExternalLink, Globe, X, Download } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../stores/appStore';
 import { EmptyState } from '../components/common/PageComponents';
 import Tx from '../components/translation/Tx';
+import { getGameBananaImportHandoff } from '../lib/browserImportHandoff';
 
 /** Shortcut destinations. These are a deliberately small set of useful and
  *  community-loved Deadlock stops, rather than a general bookmark manager. */
-const SHORTCUTS: { label: string; url: string }[] = [
+const SHORTCUTS: { label: string; url: string; nsfw?: boolean }[] = [
     { label: 'GameBanana', url: 'https://gamebanana.com/games/20948' },
     { label: 'Deadlock Forge', url: 'https://deadlockforge.net/' },
     { label: 'Deadlock Wiki', url: 'https://deadlocked.wiki/' },
@@ -28,7 +30,7 @@ const SHORTCUTS: { label: string; url: string }[] = [
     { label: 'Deadlocker', url: 'https://www.deadlocker.gg/' },
     { label: 'r/DeadlockTheGame', url: 'https://www.reddit.com/r/DeadlockTheGame/' },
     { label: 'Deadlock Daily (memes)', url: 'https://www.deadlockdaily.com/' },
-    { label: 'Goonlock (18+)', url: 'https://goonlock.com/' },
+    { label: 'Goonlock (18+)', url: 'https://goonlock.com/', nsfw: true },
 ];
 
 const HOME_URL = SHORTCUTS[0].url;
@@ -65,6 +67,7 @@ interface WebviewEl extends HTMLElement {
 
 export default function Browser() {
     const { t } = useTranslation();
+    const navigate = useNavigate();
     const settings = useAppStore((s) => s.settings);
     const ref = useRef<WebviewEl | null>(null);
 
@@ -74,6 +77,13 @@ export default function Browser() {
     const [failure, setFailure] = useState<string | null>(null);
     const [canBack, setCanBack] = useState(false);
     const [canForward, setCanForward] = useState(false);
+    const handoff = useMemo(() => getGameBananaImportHandoff(current), [current]);
+    // Keep browser shortcuts consistent with the Browse content preference.
+    // "Blur" leaves the optional adult destination visible; "hide" removes it.
+    const visibleShortcuts = useMemo(
+        () => SHORTCUTS.filter((shortcut) => !shortcut.nsfw || settings?.browseNsfwContentMode !== 'hide'),
+        [settings?.browseNsfwContentMode],
+    );
 
     const go = useCallback((url: string) => {
         const normalized = normalizeUrl(url);
@@ -217,7 +227,7 @@ export default function Browser() {
             </div>
 
             <div className="flex flex-wrap gap-1.5">
-                {SHORTCUTS.map((s) => (
+                {visibleShortcuts.map((s) => (
                     <button
                         key={s.url}
                         type="button"
@@ -233,6 +243,20 @@ export default function Browser() {
                 <p className="rounded-sm border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-text-secondary">
                     {failure}
                 </p>
+            )}
+
+            {handoff && (
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-sm border border-accent/30 bg-accent/10 px-3 py-2 text-xs text-text-secondary">
+                    <span><Tx k="browser.importHandoff.note" fallback="This GameBanana item can be reviewed and installed from Grimoire." /></span>
+                    <button
+                        type="button"
+                        onClick={() => navigate(handoff.route)}
+                        className="flex items-center gap-1.5 rounded-sm border border-accent/40 bg-bg-tertiary px-2 py-1 text-xs text-text-primary transition-colors hover:border-accent/70"
+                    >
+                        <Download size={13} />
+                        <Tx k="browser.importHandoff.action" fallback="Review in Browse" />
+                    </button>
+                </div>
             )}
 
             <div className="min-h-0 flex-1 overflow-hidden rounded-sm border border-border bg-bg-secondary">

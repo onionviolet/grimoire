@@ -105,6 +105,10 @@ export async function readChatWheel(vpkPath: string): Promise<string> {
   return window.electronAPI.chatWheelRead(vpkPath);
 }
 
+export async function getChatWheelStarter(): Promise<string> {
+  return window.electronAPI.chatWheelStarter();
+}
+
 export async function saveChatWheel(args: import('../types/electron').ChatWheelSaveArgs): Promise<Mod | null> {
   return withGameRunningWarning(() => window.electronAPI.chatWheelSave(args));
 }
@@ -1442,6 +1446,13 @@ export async function foundrySwapSound(
   req: import('../types/foundry').HeroSoundSwapRequest
 ): Promise<import('../types/mod').Mod[]> {
   return window.electronAPI.foundry.swapSound(req);
+}
+
+/** Bake one PNG onto a catalog texture and install it as a managed local mod. */
+export async function foundryReplaceTexture(
+  req: import('../types/foundry').TextureReplacementRequest
+): Promise<import('../types/mod').Mod[]> {
+  return window.electronAPI.foundry.replaceTexture(req);
 }
 
 export async function getChatWheelStatus(): Promise<{ available: boolean; path?: string; error?: string }> {

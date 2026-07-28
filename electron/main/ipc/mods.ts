@@ -54,13 +54,14 @@ import {
 import { parseAddonInfo, readEmbeddedAddonInfoText, readEmbeddedAddonInfo, carryForwardOriginalIdentity } from '../services/vpkIdentity';
 import { readEmbeddedModinfo, readLegacyGrimoireMergeMeta, hasLegacyGrimoireMergeMetaEntry } from '../services/modinfoFormat';
 import { buildHeroSoundSwapVpk, cleanupHeroSoundSwapBuild } from '../services/foundryCatalog';
+import { buildTextureReplacementVpk, cleanupTextureReplacementBuild } from '../services/foundryTextureReplace';
 import { buildSoulContainerVpk, cleanupSoulContainerBuild, previewSoulContainerGlb } from '../services/soulContainerImport';
 import { buildSpiritUrnVpk, cleanupSpiritUrnBuild, previewSpiritUrnGlb } from '../services/spiritUrnImport';
 import { resolveModVpk, clearSoulModelCache } from '../services/soulContainerModels';
 import { exportVpkViaDialog, exportVpkFileName } from '../services/foundryExport';
 import { getMainWindow } from '../index';
 import type { ImportCustomModArgs, ImportCustomModsBatchArgs, ImportCustomModsBatchResult, ImportCustomModResult, ImportCustomModsProgress, ImportSoulContainerGlbArgs, PreviewSoulContainerGlbArgs, SoulContainerPreview, ImportSpiritUrnGlbArgs, PreviewSpiritUrnGlbArgs, SpiritUrnPreview } from '../../../src/types/electron';
-import type { VpkExportResult, HeroSoundSwapRequest } from '../../../src/types/foundry';
+import type { VpkExportResult, HeroSoundSwapRequest, TextureReplacementRequest } from '../../../src/types/foundry';
 import type { AbilitySoundClassification, AddMergeSourcesResult, ApplyUnknownCustomModArgs, ApplyUnknownModMatchArgs, AssociateUnknownModArgs, EditLocalModArgs, GlobalModType, LockerHeroSource, MergeAnalysisResult, MergeModsArgs, Mod as WireMod, SoulContainerImportInfo, SoundSwapInfo, UrnImportInfo, UnmergeModResult, ExtractMergeSourceResult, UnknownModFileList, ImprintPreflightResult, ImprintDetails, PeekImprintResult, ModelCompatibilityReport } from '../../../src/types/mod';
 
 const unknownDetectionControllers = new Map<string, AbortController>();
@@ -1465,6 +1466,50 @@ ipcMain.handle(
             // 4. Always remove the temp staging dir (the installed copy is
             //    byte-identical, so nothing is lost).
             await cleanupHeroSoundSwapBuild(built.vpkPath);
+        }
+    }
+);
+
+// foundry:replaceTexture -- bake one catalog texture/icon replacement and
+// register it like every other local mod. The source pak is never changed:
+// `vpkmerge icon` writes a one-entry override to a temporary VPK, which is then
+// copied into an allocated addon slot. Normal mod deletion removes both the VPK
+// and this provenance metadata through the existing local-mod lifecycle.
+ipcMain.handle(
+    'foundry:replaceTexture',
+    async (_, args: TextureReplacementRequest): Promise<WireMod[]> => {
+        const deadlockPath = getActiveDeadlockPath();
+        if (!deadlockPath) throw new Error('No Deadlock path configured');
+        if (!args.name?.trim()) throw new Error('A name is required');
+
+        const built = await buildTextureReplacementVpk(
+            deadlockPath,
+            args.entryPath,
+            args.imagePath
+        );
+        try {
+            const destPath = await allocateEnabledVpkPath(deadlockPath);
+            const destMetaKey = metaKeyFor(destPath);
+            await copyIntoModSlot(built.vpkPath, destPath, true);
+            removeModMetadata(destMetaKey);
+            await setModMetadataWithHash(
+                destMetaKey,
+                {
+                    modName: args.name.trim(),
+                    thumbnailUrl: args.thumbnailDataUrl,
+                    sourceSection: 'Mod',
+                    categoryName: 'Foundry texture replacement',
+                    textureReplacement: {
+                        entryPath: args.entryPath,
+                        imageFileName: basename(args.imagePath),
+                        category: args.category,
+                    },
+                },
+                destPath
+            );
+            return (await scanMods(deadlockPath)).map(enrichMod);
+        } finally {
+            await cleanupTextureReplacementBuild(built.vpkPath);
         }
     }
 );

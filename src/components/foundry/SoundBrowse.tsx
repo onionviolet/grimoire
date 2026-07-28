@@ -24,6 +24,7 @@ import { EmptyState } from '../common/PageComponents';
 import Tx from '../translation/Tx';
 import { SoundImportEditor, type SoundImportEdits } from './SoundImportEditor';
 import { useClipPlayer, type ClipPlayer, type RowState } from './useClipPlayer';
+import { resolveForgeAudioPath } from './resolveForgeAudio';
 import {
     foundryHeroSounds,
     foundryVoicelines,
@@ -810,6 +811,10 @@ function SwapPanel({
     const [audioPath, setAudioPath] = useState<string | null>(null);
     const [audioName, setAudioName] = useState('');
     const [audioFile, setAudioFile] = useState<File | null>(null);
+    // A stock clip lives under a game-build fingerprinted cache directory. Keep
+    // its UI File for the editor, but never assume its path will survive until
+    // Forge: a Deadlock update can prune that cache in between.
+    const [usingOriginal, setUsingOriginal] = useState(false);
     const [edits, setEdits] = useState<SoundImportEdits>({});
     // Default mod name: "<Hero> <Sound>" for a hero swap, just the sound's label
     // for a global one (there is no hero to lead with).
@@ -832,6 +837,7 @@ function SwapPanel({
             setAudioPath(path);
             setAudioName(file.name);
             setAudioFile(file);
+            setUsingOriginal(false);
             setEdits({});
         },
         [t]
@@ -864,6 +870,7 @@ function SwapPanel({
             setAudioPath(path);
             setAudioName(fileName);
             setAudioFile(new File([blob], fileName, { type: 'audio/mpeg' }));
+            setUsingOriginal(true);
             setEdits({});
         } catch (e) {
             showToast(e instanceof Error ? e.message : String(e), { tone: 'error' });
@@ -877,13 +884,25 @@ function SwapPanel({
         const finalName = name.trim() || defaultName;
         setBusy(true);
         try {
+            // Re-resolve only stock donors. Imported user files are expected to
+            // remain at their selected path; a stock cache is intentionally
+            // invalidated when the installed game build changes.
+            const forgeAudioPath = await resolveForgeAudioPath({
+                audioPath,
+                usingOriginal,
+                targetClip,
+                resolveOriginal: foundryVoiceclipFile,
+            });
+            if (!forgeAudioPath) {
+                throw new Error(t('foundry.sound.swap.originalUnavailable', 'Could not read the original clip.'));
+            }
             await foundrySwapSound({
                 heroCodename: hero,
                 heroName,
                 soundeventsEntry,
                 event,
                 clipPaths,
-                audioPath,
+                audioPath: forgeAudioPath,
                 name: finalName,
                 loop,
                 trimStartMs: edits.trimStartMs,
@@ -905,7 +924,7 @@ function SwapPanel({
         }
     }, [
         audioPath, busy, name, defaultName, heroName, hero, soundeventsEntry,
-        event, clipPaths, loop, edits, t, onClose,
+        event, clipPaths, loop, edits, t, onClose, usingOriginal, targetClip,
     ]);
 
     return (

@@ -195,7 +195,26 @@
       "decoding": "Decoding full size...",
       "nativeSize": "Native size"
     },
+    "buildTray": {
+      "title": "Build tray",
+      "description": "Staged edits stay in this window until you explicitly forge a tracked local mod.",
+      "outputName": "Output name",
+      "defaultName": "Foundry mod",
+      "willCreate": "Will create: {{name}}.vpk",
+      "summary": "{{edits}} staged edits · {{files}} affected files",
+      "empty": "Future sound, texture, recolor, and model edits will appear here before any build occurs.",
+      "editSummary": "{{files}} files · precedence {{precedence}}",
+      "collisions_one": "{{count}} collision",
+      "collisions_other": "{{count}} collisions",
+      "collisionWinner": "{{file}}: {{winner}} wins",
+      "rebuild": "Rebuild will use the staged authored inputs.",
+      "unmerge": "Unmerge will remove only the future forged output; originals remain untouched."
+    },
     "texture": {
+      "replace": "Replace PNG",
+      "replaceHint": "Drop a PNG here, or click to choose one",
+      "replaceDone": "Installed texture replacement. Enable it in Installed.",
+      "defaultReplacementName": "{{label}} replacement",
       "categories": {
         "heroModel": "Hero models",
         "abilityVfx": "Ability VFX"
@@ -2850,6 +2869,10 @@
     "openExternalLabel": "Open externally",
     "badUrl": "That does not look like a web address. Try gamebanana.com.",
     "loadFailed": "Page failed to load.",
+    "importHandoff": {
+      "note": "This GameBanana item can be reviewed and installed from Grimoire.",
+      "action": "Review in Browse"
+    },
     "disabled": {
       "title": "Browser is off",
       "description": "Enable the in-app browser in Settings to use this page."
@@ -2863,6 +2886,7 @@
     "installedWheels": "Installed wheels",
     "newWheel": "New chat wheel",
     "loadSelected": "Load selected",
+    "startNew": "Start a new wheel",
     "openVpk": "Open VPK…",
     "helpNote": "Only VPKs made by ChatLane can be opened. The embedded chatlane.yml is preserved on every save.",
     "nameLabel": "Name",

@@ -77,6 +77,10 @@ await writeFile(
     join(dirname(dest), '.local-build'),
     `${built}\n${new Date().toISOString()}\n`
 );
+// This fork build also carries the YCoCg encode fix used by Foundry's icon
+// replacement path. Keep a separate capability marker: the stock release can
+// otherwise produce garbled colours for a mixed subset of item icons.
+await writeFile(join(dirname(dest), '.ycocg-icon-safe'), `${built}\n`);
 
 console.log(`[use-local-vpkmerge] ${built}\n  -> ${dest}`);
 console.log('[use-local-vpkmerge] marked local; postinstall will not overwrite it.');

@@ -675,6 +675,13 @@ export interface MergeModsArgs {
   strict?: boolean;
 }
 
+/** Provenance for a one-entry Foundry texture/icon replacement local mod. */
+export interface TextureReplacementInfo {
+  entryPath: string;
+  imageFileName: string;
+  category: import('./foundry').TextureCategory;
+}
+
 /** Read-only preflight for a prospective merge. Kept separate from
  * MergeModsArgs so it cannot alter legacy merge callers or persisted merges. */
 export interface MergeAnalysisSource {

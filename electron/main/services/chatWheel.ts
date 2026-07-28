@@ -14,6 +14,14 @@ export function chatLaneBinaryPath(): string {
     return binary;
 }
 
+/** The bundled, valid starting point for creating a wheel without a YAML file. */
+export async function readChatWheelStarter(): Promise<string> {
+    const root = app.isPackaged ? process.resourcesPath : join(app.getAppPath(), 'resources');
+    const templatePath = join(root, 'chatlane', 'starter.yml');
+    if (!existsSync(templatePath)) throw new Error(`Chat Wheel starter template is unavailable: ${templatePath}`);
+    return fs.readFile(templatePath, 'utf8');
+}
+
 async function runChatLane(input: string, output: string): Promise<void> {
     const binary = chatLaneBinaryPath();
     await new Promise<void>((resolve, reject) => {

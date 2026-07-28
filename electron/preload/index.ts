@@ -10,6 +10,7 @@ import type {
     HeroEffectExportRequest,
     HeroSoundFilters,
     HeroSoundSwapRequest,
+    TextureReplacementRequest,
     TextureCategory,
     TextureFilters,
     VoicelineFilters,
@@ -100,6 +101,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
 
     chatWheelRead: (vpkPath: string) => ipcRenderer.invoke('chat-wheel:read', vpkPath),
+    chatWheelStarter: () => ipcRenderer.invoke('chat-wheel:starter'),
     chatWheelSave: (args: ChatWheelSaveArgs) => ipcRenderer.invoke('chat-wheel:save', args),
     chatWheelStatus: () => ipcRenderer.invoke('chat-wheel:status'),
 
@@ -661,6 +663,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
             ipcRenderer.invoke('foundry:exportHeroEffect', req),
         swapSound: (req: HeroSoundSwapRequest) =>
             ipcRenderer.invoke('foundry:swapSound', req),
+        replaceTexture: (req: TextureReplacementRequest) =>
+            ipcRenderer.invoke('foundry:replaceTexture', req),
     },
 
     // In-app browser: read-only view of the ad/tracker filter's state.

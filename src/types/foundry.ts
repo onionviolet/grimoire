@@ -243,6 +243,16 @@ export interface HeroSoundSwapRequest {
     gainDb?: number;
 }
 
+/** Request to replace one catalog texture with a user-selected PNG and install
+ * the generated VPK as a managed local mod. */
+export interface TextureReplacementRequest {
+    entryPath: string;
+    imagePath: string;
+    name: string;
+    category: TextureCategory;
+    thumbnailDataUrl?: string;
+}
+
 /** Which vpkmerge engine the app is actually running, for the Settings card.
  *  `bundled` is false when settings.vpkmergeBinaryPath overrides it. A non-null
  *  `error` with a non-null `path` means the binary resolved but would not run. */

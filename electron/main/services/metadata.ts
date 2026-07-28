@@ -93,6 +93,9 @@ export interface ModMetadata {
      *  MP3 onto a hero sound event). Labels the mod and records what was swapped;
      *  presence marks the slot as a local sound swap. */
     soundSwap?: import('../../../src/types/mod').SoundSwapInfo;
+    /** One-entry Foundry texture/icon replacement, retained for local-mod
+     * tracking and clean deletion through the normal Installed workflow. */
+    textureReplacement?: import('../../../src/types/mod').TextureReplacementInfo;
     /** Load-order slot this mod last held while enabled. Disabled mods now
      *  get free-form filenames (no pakNN), so the priority is no longer encoded
      *  in the name; we stash it here on disable and try to restore it on enable

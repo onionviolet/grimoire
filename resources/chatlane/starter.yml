@@ -1,0 +1,14 @@
+# A working ChatLane configuration for first-time users. Edit the name and
+# commands, then Grimoire will build and install it as a managed VPK.
+name: My Chat Wheel
+
+override_bindable: {}
+override_ping_wheel_bindable: {}
+
+custom_menus:
+  - name: My Messages
+    icon: quick
+    items:
+      - On My Way
+      - Help
+      - Thanks

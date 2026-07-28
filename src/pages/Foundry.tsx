@@ -21,6 +21,8 @@ import TextureBrowse from '../components/foundry/TextureBrowse';
 import RecolorTool from '../components/foundry/RecolorTool';
 import FoundryHeroGrid from '../components/foundry/FoundryHeroGrid';
 import HeroWorkshop from '../components/foundry/HeroWorkshop';
+import FoundryBuildTray from '../components/foundry/FoundryBuildTray';
+import type { FoundryStagedEdit } from '../components/foundry/buildTray';
 
 // Sub-tools shown in the left rail of the Catalog (tool-first) mode. Library /
 // Sound / Global sounds / Texture / Recolor are live; Items rides the Library
@@ -48,6 +50,10 @@ export default function Foundry() {
   const [selectedHero, setSelectedHero] = useState<HeroInfo | null>(null);
   const [active, setActive] = useState<SubtoolId>('library');
   const [heroes, setHeroes] = useState<HeroInfo[]>([]);
+  // The tray is intentionally ephemeral until all forge flows can hand a single
+  // typed build request to main. Merely browsing Foundry never mutates a mod.
+  const [stagedEdits] = useState<FoundryStagedEdit[]>([]);
+  const [outputName, setOutputName] = useState('Foundry mod');
 
   // Roster (codename -> name) loads once; warm the catalog cache opportunistically
   // so the Sound tool opens without the cold voice-line rescan.
@@ -232,6 +238,7 @@ export default function Foundry() {
           )}
         </div>
       </div>
+      <FoundryBuildTray edits={stagedEdits} outputName={outputName} onOutputNameChange={setOutputName} />
     </div>
   );
 }

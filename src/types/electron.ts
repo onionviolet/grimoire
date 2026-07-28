@@ -14,6 +14,7 @@ import type {
     UnmergeModResult,
     ExtractMergeSourceResult,
     AddMergeSourcesResult,
+    MergeAnalysisResult,
     ImprintAllInstalledResult,
     ImprintInstalledProgress,
     ImprintPreflightResult,
@@ -835,6 +836,7 @@ export interface ElectronAPI {
         surface: AppearanceSurface
     ) => Promise<LockerImageEdit | null>;
     mergeMods: (args: MergeModsArgs) => Promise<Mod>;
+    analyzeMerge: (modIds: string[]) => Promise<MergeAnalysisResult>;
     unmergeMod: (mergedModId: string) => Promise<UnmergeModResult>;
     extractMergeSource: (mergedModId: string, sourceFileName: string) => Promise<ExtractMergeSourceResult>;
     addMergeSources: (mergedModId: string, addModIds: string[], strict?: boolean) => Promise<AddMergeSourcesResult>;
@@ -1120,6 +1122,9 @@ export interface ElectronAPI {
         ) => Promise<import('./foundry').VpkExportResult>;
         swapSound: (
             req: import('./foundry').HeroSoundSwapRequest
+        ) => Promise<import('./mod').Mod[]>;
+        replaceTexture: (
+            req: import('./foundry').TextureReplacementRequest
         ) => Promise<import('./mod').Mod[]>;
     };
     browser: {

@@ -1,23 +1,22 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AlertTriangle, FileUp, Save, Sparkles } from 'lucide-react';
-import { getMods, readChatWheel, saveChatWheel, getChatWheelStatus } from '../lib/api';
+import { getMods, readChatWheel, saveChatWheel, getChatWheelStarter, getChatWheelStatus } from '../lib/api';
 import { useAppStore } from '../stores/appStore';
 import { Button } from '../components/common/ui';
 import Tx from '../components/translation/Tx';
 import type { Mod } from '../types/mod';
 
-const STARTER_YAML = `# ChatLane configuration\n# Load a compatible VPK to edit its exact YAML, or paste a configuration here.\n`;
-
 export default function ChatWheel() {
   const { t } = useTranslation();
-  const [yaml, setYaml] = useState(STARTER_YAML);
+  const [yaml, setYaml] = useState('');
   const [name, setName] = useState('My Chat Wheel');
   const [wheels, setWheels] = useState<Mod[]>([]);
   const [selectedId, setSelectedId] = useState<string>('');
   const [busy, setBusy] = useState<'load' | 'save' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [converterAvailable, setConverterAvailable] = useState<boolean | null>(null);
+  const [starterLoading, setStarterLoading] = useState(true);
   const loadMods = useAppStore((state) => state.loadMods);
 
   const selected = useMemo(() => wheels.find((wheel) => wheel.id === selectedId), [selectedId, wheels]);
@@ -29,10 +28,30 @@ export default function ChatWheel() {
 
   useEffect(() => {
     void refreshWheels().catch((err) => setError(err instanceof Error ? err.message : String(err)));
+    void getChatWheelStarter()
+      .then(setYaml)
+      .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+      .finally(() => setStarterLoading(false));
     void getChatWheelStatus()
       .then((res) => setConverterAvailable(res.available))
       .catch(() => setConverterAvailable(false));
   }, []);
+
+  const startNewWheel = async () => {
+    setError(null);
+    setBusy('load');
+    setStarterLoading(true);
+    try {
+      setYaml(await getChatWheelStarter());
+      setName('My Chat Wheel');
+      setSelectedId('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
+      setStarterLoading(false);
+    }
+  };
 
   const loadFromDisk = async () => {
     setError(null);
@@ -126,7 +145,10 @@ export default function ChatWheel() {
           </label>
           <select
             value={selectedId}
-            onChange={(event) => setSelectedId(event.target.value)}
+            onChange={(event) => {
+              if (event.target.value) setSelectedId(event.target.value);
+              else void startNewWheel();
+            }}
             className="w-full rounded border border-border bg-bg-tertiary px-2 py-2 text-sm text-text-primary"
           >
             <option value="">{t('chatWheel.newWheel', 'New chat wheel')}</option>
@@ -145,6 +167,16 @@ export default function ChatWheel() {
             isLoading={busy === 'load'}
           >
             <Tx k="chatWheel.loadSelected" fallback="Load selected" />
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            className="w-full"
+            onClick={startNewWheel}
+            disabled={busy !== null || converterAvailable === false}
+            isLoading={busy === 'load'}
+          >
+            <Tx k="chatWheel.startNew" fallback="Start a new wheel" />
           </Button>
           <Button
             variant="secondary"
@@ -191,7 +223,7 @@ export default function ChatWheel() {
             </span>
             <Button
               onClick={save}
-              disabled={busy !== null || converterAvailable === false}
+              disabled={busy !== null || starterLoading || converterAvailable === false}
               isLoading={busy === 'save'}
             >
               <Save className="mr-1 h-4 w-4" />

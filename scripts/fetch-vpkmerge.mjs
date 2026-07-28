@@ -10,7 +10,7 @@
 
 import { createHash } from 'node:crypto';
 import { createWriteStream } from 'node:fs';
-import { chmod, mkdir, readFile, stat, unlink } from 'node:fs/promises';
+import { chmod, mkdir, readFile, rm, stat, unlink } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { get as httpsGet } from 'node:https';
@@ -112,6 +112,7 @@ async function main() {
     }
 
     if (await fileExistsWithHash(destPath, asset.sha256)) {
+        await rm(join(outDir, '.ycocg-icon-safe'), { force: true });
         console.log(`[fetch-vpkmerge] ${asset.name} already present and matches sha256; skipping download.`);
         return;
     }
@@ -129,6 +130,10 @@ async function main() {
         }
         const { rename } = await import('node:fs/promises');
         await rename(tempPath, destPath);
+        // A restored pinned release must not inherit the fork-only YCoCg
+        // capability marker. The Foundry replacement guard treats this marker
+        // as an explicit packaging attestation.
+        await rm(join(outDir, '.ycocg-icon-safe'), { force: true });
         if (process.platform !== 'win32') {
             await chmod(destPath, 0o755);
         }

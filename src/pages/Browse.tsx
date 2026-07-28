@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useTranslation } from 'react-i18next';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Check,
   Search,
@@ -102,6 +103,7 @@ import ImportProfileDialog from '../components/profiles/ImportProfileDialog';
 import { inferHeroFromTitle, getHeroRenderPath, getHeroFacePosition, getHeroChipIconPath, findCategoryByName } from '../lib/lockerUtils';
 import { formatAbsoluteDate, formatRelativeDate } from '../lib/dates';
 import { showToast } from '../stores/toastStore';
+import { parseGameBananaImportHandoff } from '../lib/browserImportHandoff';
 
 const DEFAULT_PER_PAGE = 36;
 // Row count below which the local catalog mirror is treated as unusable. A
@@ -1097,6 +1099,12 @@ function BrowseViewOptionControl<T extends string>({
 
 export default function Browse() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const browserHandoffItem = useMemo(
+    () => parseGameBananaImportHandoff(searchParams.get('item')),
+    [searchParams],
+  );
   const settings = useAppStore((s) => s.settings);
   const loadSettings = useAppStore((s) => s.loadSettings);
   const saveSettings = useAppStore((s) => s.saveSettings);
@@ -2594,6 +2602,16 @@ export default function Browse() {
       }
     }
   });
+
+  // The in-app browser only offers this route after an explicit user click.
+  // Consume it once so refresh/navigation cannot repeat an install-adjacent
+  // action; this merely opens the existing details view, which still requires
+  // another explicit file-install choice.
+  useEffect(() => {
+    if (!browserHandoffItem) return;
+    void handleOpenGameBananaItem(browserHandoffItem);
+    navigate('/browse', { replace: true });
+  }, [browserHandoffItem, handleOpenGameBananaItem, navigate]);
 
   // Stable identity (useStableCallback) so the memoized ModDetailsModal does
   // not re-render every time this large component does (e.g. on every
