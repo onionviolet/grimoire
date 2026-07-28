@@ -1964,10 +1964,10 @@ ipcMain.handle(
 // unmerge can either re-enable the originals or fall back to the share code.
 // Read-only and additive: newer renderers may preview collisions while older
 // clients continue to call merge-mods exactly as before.
-ipcMain.handle('analyze-merge', async (_, modIds: string[]): Promise<MergeAnalysisResult> => {
+ipcMain.handle('analyze-merge', async (_, modIds: string[], respectOrder = false): Promise<MergeAnalysisResult> => {
     const deadlockPath = getActiveDeadlockPath();
     if (!deadlockPath) throw new Error('No Deadlock path configured');
-    return analyzeMerge(deadlockPath, modIds);
+    return analyzeMerge(deadlockPath, modIds, { respectOrder: !!respectOrder });
 });
 
 ipcMain.handle('merge-mods', async (_, args: MergeModsArgs): Promise<Mod> => {
@@ -1979,6 +1979,7 @@ ipcMain.handle('merge-mods', async (_, args: MergeModsArgs): Promise<Mod> => {
         name: args.name,
         thumbnailDataUrl: args.thumbnailDataUrl,
         strict: args.strict,
+        sourceOrder: args.sourceOrder,
     });
     return enrichMod(result.mod);
 });

@@ -2744,13 +2744,15 @@ export default function Installed() {
     modIds,
     name,
     strict,
+    sourceOrder,
   }: {
     modIds: string[];
     name: string;
     strict: boolean;
+    sourceOrder?: string[];
   }) => {
     if (!mergeSources) return;
-    await mergeMods({ modIds, name, strict });
+    await mergeMods({ modIds, name, strict, sourceOrder });
     setMergeSources(null);
     await loadMods();
     exitSelectMode();

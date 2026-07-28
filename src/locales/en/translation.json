@@ -2318,6 +2318,7 @@
       "unreadable_one": "{{count}} VPK could not be read, so collisions and winners are incomplete.",
       "unreadable_other": "{{count}} VPKs could not be read, so collisions and winners are incomplete.",
       "reorderBlocked": "Reordering is unavailable until every selected VPK can be read.",
+      "reorderBlockedMerged": "Reordering is unavailable because a merged mod is selected. Merged mods are flattened into sources this review cannot show, so an order chosen here would not be the order that gets built.",
       "winner": "Wins: {{name}}",
       "overridden": "Overridden here",
       "sourceEntries": "{{count}} entries",

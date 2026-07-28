@@ -329,4 +329,30 @@ describe('analyzeMerge', () => {
         expect(result.warnings).toContain('One or more VPKs could not be read; collision results are incomplete.');
         expect(result.sources.find((source) => source.modId === high.id)?.entryCount).toBeNull();
     });
+
+    it('honours a reviewed winner-first order instead of re-deriving it from priority', async () => {
+        // `high` has the weaker (higher) pakNN, so priority ordering would make
+        // `low` the winner. A reviewed order that names `high` first must flip it.
+        const high = { ...sourceA, enabled: true, priority: 20, path: '/game/high.vpk' };
+        const low = { ...sourceB, enabled: true, priority: 4, path: '/game/low.vpk' };
+        modMocks.scanMods.mockResolvedValue([high, low]);
+        vpkMocks.parseVpkDirectoriesAsync.mockResolvedValue(new Map([
+            [high.path, ['models/shared.vmdl_c']],
+            [low.path, ['models/shared.vmdl_c']],
+        ]));
+
+        const byPriority = await analyzeMerge('/game', [high.id, low.id]);
+        expect(byPriority.collisions[0].winnerModId).toBe(low.id);
+
+        const reviewed = await analyzeMerge('/game', [high.id, low.id], { respectOrder: true });
+        expect(reviewed.collisions).toEqual([{
+            path: 'models/shared.vmdl_c',
+            category: 'models',
+            sourceModIds: [low.id, high.id],
+            winnerModId: high.id,
+        }]);
+        // Still read-only, whichever ordering was requested.
+        expect(processMocks.spawnArgs).toEqual([]);
+        expect(fsMocks.rename).not.toHaveBeenCalled();
+    });
 });

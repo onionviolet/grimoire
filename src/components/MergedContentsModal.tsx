@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Layers, X, Share2, Scissors, Check, PackageOpen, Loader2, AlertTriangle, Plus } from 'lucide-react';
+import { Layers, X, Share2, Scissors, Check, PackageOpen, Loader2, AlertTriangle, Plus, ListTree } from 'lucide-react';
 import type { Mod, MergedModSource } from '../types/mod';
 import ModThumbnail from './ModThumbnail';
+import MergeReviewPanel from './MergeReviewPanel';
 import { Button, Tag } from './common/ui';
 import { Modal } from './common/Modal';
 import { formatRelativeDate } from '../lib/dates';
@@ -45,6 +46,10 @@ export default function MergedContentsModal({
   const [selectedAddIds, setSelectedAddIds] = useState<Set<string>>(new Set());
   const [strict, setStrict] = useState(false);
   const [addingSources, setAddingSources] = useState(false);
+  // Read-only preflight over "this merge plus the picked sources". Add-sources
+  // deliberately keeps its existing ordering, so the review here only shows what
+  // would collide and who would win; it never offers a reorder.
+  const [addReviewOpen, setAddReviewOpen] = useState(false);
   const merged = mod.merged;
   // Render nothing if the prop is malformed rather than throwing; the parent
   // only opens this modal when `mod.merged` is truthy so this is defensive.
@@ -282,6 +287,21 @@ export default function MergedContentsModal({
                       </li>
                     ))}
                   </ul>
+                )}
+                {selectedAddIds.size > 0 && (
+                  <div className="space-y-2">
+                    <button
+                      type="button"
+                      onClick={() => setAddReviewOpen((open) => !open)}
+                      className="flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary cursor-pointer"
+                    >
+                      <ListTree className="w-4 h-4" />
+                      {addReviewOpen ? t('mergeMods.review.hide') : t('mergeMods.review.button')}
+                    </button>
+                    {addReviewOpen && (
+                      <MergeReviewPanel order={[mod.id, ...selectedAddIds]} respectOrder={false} />
+                    )}
+                  </div>
                 )}
                 <label className="flex items-start gap-2 text-sm text-text-primary cursor-pointer select-none">
                   <input

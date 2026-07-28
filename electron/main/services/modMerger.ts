@@ -479,6 +479,11 @@ export interface MergeOptions {
      *  instead of silently picking a winner. Off by default to match Deadlock's
      *  runtime model, where the LOWER pakNN wins a file collision. */
     strict?: boolean;
+    /** Composition order chosen in the merge review, winner first. Absent on
+     *  the legacy merge path, which keeps ordering purely by pak priority.
+     *  Rejected when any selected mod is a parent merge, because those are
+     *  flattened into leaves the reviewer never saw or ordered. */
+    sourceOrder?: string[];
 }
 
 export interface MergeResult {
@@ -514,7 +519,11 @@ function mergeCollisionCategory(entryPath: string): MergeCollisionCategory {
  * will flatten them to their leaves, so callers receive a warning rather than
  * a misleading claim that this preliminary view is the final build plan.
  */
-export async function analyzeMerge(deadlockPath: string, modIds: string[]): Promise<MergeAnalysisResult> {
+export async function analyzeMerge(
+    deadlockPath: string,
+    modIds: string[],
+    options: { respectOrder?: boolean } = {}
+): Promise<MergeAnalysisResult> {
     if (modIds.length < 2) throw new Error('Select at least two mods to analyze a merge.');
     if (new Set(modIds).size !== modIds.length) throw new Error('The same mod was selected more than once.');
 
@@ -525,8 +534,13 @@ export async function analyzeMerge(deadlockPath: string, modIds: string[]): Prom
         return mod;
     });
     // Match mergeModsLocked: lower pak priority wins in Deadlock and therefore
-    // must be passed last to vpkmerge's last-input-wins merge.
-    const ordered = [...selected].sort((a, b) => b.priority - a.priority);
+    // must be passed last to vpkmerge's last-input-wins merge. With
+    // `respectOrder`, `modIds` is already a reviewed winner-first order, so it
+    // is only reversed into argv order and never re-sorted by priority. Both
+    // branches leave `ordered` in argv order, last-wins.
+    const ordered = options.respectOrder
+        ? [...selected].reverse()
+        : [...selected].sort((a, b) => b.priority - a.priority);
     const parsed = await parseVpkDirectoriesAsync(ordered.map((mod) => mod.path));
     const pathSources = new Map<string, string[]>();
     const unreadableModIds: string[] = [];
@@ -700,9 +714,32 @@ async function mergeModsLocked(
     // so the lowest-priority-number leaf must be last for vpkmerge's
     // last-input-wins behavior. Parent merge VPKs never enter this list, which
     // also prevents their embedded modinfo.json/addoninfo.txt from nesting.
-    locatedSources.sort(
-        (a, b) => b.snapshot.priorityAtMergeTime - a.snapshot.priorityAtMergeTime
-    );
+    if (options.sourceOrder) {
+        // A reviewed composition order. It is only honoured when it names
+        // exactly the selected mods and none of them was a parent merge: a
+        // flattened parent contributes leaves that were never on screen, so
+        // there is no honest way to place them in an order the user approved.
+        if (parentMerges.length > 0) {
+            throw new Error(
+                'A reviewed source order cannot be applied to a selection that includes a merged mod, '
+                + 'because merged mods are flattened into sources the review never showed. '
+                + 'Unmerge it first, or merge without a reviewed order.'
+            );
+        }
+        const requested = options.sourceOrder;
+        const known = new Set(locatedSources.map((source) => source.mod.id));
+        if (requested.length !== known.size || new Set(requested).size !== requested.length
+            || requested.some((id) => !known.has(id))) {
+            throw new Error('The reviewed source order no longer matches the selected mods. Review the merge again.');
+        }
+        const rank = new Map(requested.map((id, index) => [id, index]));
+        // Winner first on screen, so winner last on the command line.
+        locatedSources.sort((a, b) => rank.get(b.mod.id)! - rank.get(a.mod.id)!);
+    } else {
+        locatedSources.sort(
+            (a, b) => b.snapshot.priorityAtMergeTime - a.snapshot.priorityAtMergeTime
+        );
+    }
     const sources = locatedSources.map((source) => source.mod);
 
     mergeTrace(

@@ -1486,9 +1486,10 @@ export async function foundryCheckAudioPaths(paths: string[]): Promise<string[]>
 /** Read-only merge preflight: grouped collisions and the effective winner for
  *  each collided path, for the given source order. */
 export async function analyzeMerge(
-  modIds: string[]
+  modIds: string[],
+  respectOrder = false
 ): Promise<import('../types/mod').MergeAnalysisResult> {
-  return window.electronAPI.analyzeMerge(modIds);
+  return window.electronAPI.analyzeMerge(modIds, respectOrder);
 }
 
 /** Bake one PNG onto a catalog texture and install it as a managed local mod. */

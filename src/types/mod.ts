@@ -695,6 +695,9 @@ export interface MergeModsArgs {
   name: string;
   thumbnailDataUrl?: string;
   strict?: boolean;
+  /** Composition order from the merge review, winner first. Omitted by the
+   *  legacy merge path, which orders purely by pak priority. */
+  sourceOrder?: string[];
 }
 
 /** Provenance for a one-entry Foundry texture/icon replacement local mod. */

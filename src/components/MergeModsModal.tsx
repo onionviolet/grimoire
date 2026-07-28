@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Layers, X, AlertTriangle, Info } from 'lucide-react';
+import { Layers, X, AlertTriangle, Info, ListTree } from 'lucide-react';
 import type { Mod } from '../types/mod';
 import ModThumbnail from './ModThumbnail';
+import MergeReviewPanel from './MergeReviewPanel';
 import { Button } from './common/ui';
 import { FormField, Input } from './common/forms';
 import { Modal } from './common/Modal';
@@ -11,7 +12,14 @@ interface Props {
   sources: Mod[];
   hideNsfw?: boolean;
   onCancel: () => void;
-  onConfirm: (args: { modIds: string[]; name: string; strict: boolean }) => Promise<void>;
+  onConfirm: (args: {
+    modIds: string[];
+    name: string;
+    strict: boolean;
+    /** Winner-first composition order, only when the user reordered it in the
+     *  review. Absent leaves the legacy priority ordering untouched. */
+    sourceOrder?: string[];
+  }) => Promise<void>;
 }
 
 /**
@@ -52,6 +60,17 @@ export default function MergeModsModal({ sources, hideNsfw, onCancel, onConfirm 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // The merge review. `reviewOrder` is winner-first and null until the user
+  // actually reorders, which is what keeps an unreviewed merge on exactly the
+  // legacy priority ordering. Changing the variant picks invalidates it, since
+  // an order over a different set of sources means nothing.
+  const [reviewOpen, setReviewOpen] = useState(false);
+  // Tagged with the source set it was chosen for, so changing a variant pick
+  // invalidates it by derivation rather than by an effect that resets state.
+  const [review, setReview] = useState<{ key: string; order: string[] } | null>(null);
+  const effectiveIdKey = effectiveSources.map((source) => source.id).join(',');
+  const reviewOrder = review?.key === effectiveIdKey ? review.order : null;
+
   const collageSources = effectiveSources.map((src) => ({
     fileName: src.fileName,
     modName: src.name,
@@ -65,6 +84,20 @@ export default function MergeModsModal({ sources, hideNsfw, onCancel, onConfirm 
   ).length;
   const mergedSourceCount = effectiveSources.filter((source) => !!source.merged).length;
 
+  // Flattening a parent merge contributes leaves the review never showed, so a
+  // reviewed order could not be applied honestly. Say so instead of offering a
+  // control that the merge would then reject.
+  const reorderBlockedReason = mergedSourceCount > 0
+    ? t('mergeMods.review.reorderBlockedMerged')
+    : null;
+
+  // Default review order: highest priority (lowest pakNN) first, which is the
+  // same source the legacy merge derives its argv order from.
+  const priorityOrder = useMemo(
+    () => [...effectiveSources].sort((a, b) => a.priority - b.priority).map((source) => source.id),
+    [effectiveSources]
+  );
+
   const canSubmit = !!liveName.trim() && !submitting && effectiveSources.length >= 2;
 
   const handleSubmit = async () => {
@@ -76,6 +109,7 @@ export default function MergeModsModal({ sources, hideNsfw, onCancel, onConfirm 
         modIds: effectiveSources.map((s) => s.id),
         name: liveName.trim(),
         strict,
+        sourceOrder: reviewOrder ?? undefined,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -248,6 +282,26 @@ export default function MergeModsModal({ sources, hideNsfw, onCancel, onConfirm 
               </div>
             </div>
           )}
+
+          <div className="space-y-2">
+            <button
+              type="button"
+              onClick={() => setReviewOpen((open) => !open)}
+              className="flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary cursor-pointer"
+            >
+              <ListTree className="w-4 h-4" />
+              {reviewOpen ? t('mergeMods.review.hide') : t('mergeMods.review.button')}
+            </button>
+            {reviewOpen && effectiveSources.length >= 2 && (
+              <MergeReviewPanel
+                order={reviewOrder ?? priorityOrder}
+                respectOrder={reviewOrder !== null}
+                onReorder={(next) => setReview({ key: effectiveIdKey, order: next })}
+                onResetOrder={() => setReview(null)}
+                reorderBlockedReason={reorderBlockedReason}
+              />
+            )}
+          </div>
 
           <label className="flex items-start gap-2 text-sm text-text-primary cursor-pointer select-none">
             <input

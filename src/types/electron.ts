@@ -838,7 +838,9 @@ export interface ElectronAPI {
         surface: AppearanceSurface
     ) => Promise<LockerImageEdit | null>;
     mergeMods: (args: MergeModsArgs) => Promise<Mod>;
-    analyzeMerge: (modIds: string[]) => Promise<MergeAnalysisResult>;
+    /** `respectOrder` treats `modIds` as a reviewed winner-first composition
+     *  order instead of re-deriving the order from pak priority. */
+    analyzeMerge: (modIds: string[], respectOrder?: boolean) => Promise<MergeAnalysisResult>;
     unmergeMod: (mergedModId: string) => Promise<UnmergeModResult>;
     extractMergeSource: (mergedModId: string, sourceFileName: string) => Promise<ExtractMergeSourceResult>;
     addMergeSources: (mergedModId: string, addModIds: string[], strict?: boolean) => Promise<AddMergeSourcesResult>;
