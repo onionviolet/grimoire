@@ -848,7 +848,7 @@ export default function Settings() {
                 >
                   <Tx k="settings.updates.whatsNew" fallback="What's New" />
                 </Button>
-                {installSource === 'managed' || installSource === 'fork' ? null : updateStatus?.downloaded ? (
+                {installSource === 'managed' ? null : updateStatus?.downloaded ? (
                   <Button
                     onClick={handleInstallUpdate}
                     icon={ArrowDownCircle}
@@ -888,7 +888,7 @@ export default function Settings() {
                 <p>
                   <Tx
                     k="settings.updates.forkBuildInstructions"
-                    fallback="In-app updates are turned off. The official release would install cleanly over this build and remove the patches it carries, so updates come from rebuilding it instead."
+                    fallback="In-app updates are delivered from this fork's GitHub Releases. Check for updates here at any time."
                   />
                 </p>
               </div>

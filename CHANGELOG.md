@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented here. Format is loosely based on [Keep a Changelog](https://keepachangelog.com/), and the project adheres to semantic versioning.
 
-## [1.25.168] - 2026-07-28
+## [1.25.169] - 2026-07-28
 
 ### Added
 - **Fork in-app update channel.** Packaged fork builds now identify the
@@ -25,6 +25,8 @@ All notable changes to this project are documented here. Format is loosely based
   **Annotate** is enabled.
 - Release packaging currently targets Windows only while the cross-platform
   signing and artifact paths are completed.
+- Fork builds now expose **Check for Updates**, download, and install controls
+  in Settings instead of waiting for the next startup check.
 
 ## [1.10.0] - 2026-05
 

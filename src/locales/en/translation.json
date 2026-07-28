@@ -823,7 +823,7 @@
       "checkForUpdates": "Check for Updates",
       "managed": "Updates are managed by your package manager.",
       "forkBuild": "This is a custom build.",
-      "forkBuildInstructions": "In-app updates are turned off. The official release would install cleanly over this build and remove the patches it carries, so updates come from rebuilding it instead.",
+      "forkBuildInstructions": "In-app updates are delivered from this fork's GitHub Releases. Check for updates here at any time.",
       "managedInstructions": "Grimoire was installed via a system package. Update with your distro's tools: <arch>yay -Syu grimoire-bin</arch> on Arch, or <apt>sudo apt update && sudo apt upgrade</apt> on Debian/Ubuntu.",
       "installedDeb": "Installed the <deb>.deb</deb> manually? Add the apt repository for automatic updates (instructions at <url>grimoiremods.com/download</url>).",
       "downloading": "Downloading update...",

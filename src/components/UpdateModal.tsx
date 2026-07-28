@@ -218,7 +218,7 @@ export default function UpdateModal({ onClose }: Props) {
                                 </div>
                             )}
                         </>
-                    ) : installSource !== 'managed' && installSource !== 'fork' && !status?.available && !status?.checking && (
+                    ) : installSource !== 'managed' && !status?.available && !status?.checking && (
                         <p className="text-sm text-text-secondary">
                             {t('updateModal.deliveredViaGithub')}
                         </p>
