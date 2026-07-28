@@ -116,7 +116,10 @@ both CI gates and both husky pre-push gates.
 
 ---
 
-## 3. Finish the README fork notice
+## 3. Finish the README fork notice (DONE)
+
+Lines 7, 12, 96, and 117 now point at `onionviolet/grimoire`. Line 16 was left
+alone, as planned. Original writeup kept below for context.
 
 **Priority: medium.** Cheap, visible, and currently self-contradictory.
 
@@ -248,7 +251,7 @@ stored state. Worth doing while the feature is already open.
 
 | Budget | Do |
 |---|---|
-| One short session | Item 3 (README, 15 min) + item 1 (NSFW gate) |
+| One short session | Item 1 (NSFW gate) |
 | Two sessions | Add item 2 (i18n labels), fold into the same `Browser.tsx` commit |
 | Have a game install | Item 5 first - it is the only item that can invalidate merged work |
 | Chore time | Item 4 (unused keys), timed just after a `translations/*` merge |

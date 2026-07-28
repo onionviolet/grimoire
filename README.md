@@ -4,12 +4,12 @@
   <p>A mod manager for Deadlock.</p>
 
   [![Website](https://img.shields.io/badge/grimoiremods.com-f97316)](https://grimoiremods.com)
-  [![Release](https://img.shields.io/github/v/release/Slush97/grimoire?label=release)](../../releases/latest)
+  [![Release](https://img.shields.io/github/v/release/onionviolet/grimoire?label=release)](../../releases/latest)
   [![GitHub downloads](https://img.shields.io/endpoint?url=https%3A%2F%2Fgrimoiremods.com%2Fapi%2Fdownloads-badge.json)](../../releases)
   [![GameBanana downloads](https://img.shields.io/endpoint?url=https%3A%2F%2Fgrimoiremods.com%2Fapi%2Fgamebanana-badge.json)](https://gamebanana.com/tools/22583)
   [![apt installs](https://img.shields.io/endpoint?url=https%3A%2F%2Fgrimoiremods.com%2Fapi%2Fapt-badge.json)](https://apt.grimoiremods.com)
   [![AUR](https://img.shields.io/aur/version/grimoire-bin?label=aur)](https://aur.archlinux.org/packages/grimoire-bin)
-  [![CI](https://img.shields.io/github/actions/workflow/status/Slush97/grimoire/ci.yml?branch=main&label=ci)](../../actions/workflows/ci.yml)
+  [![CI](https://img.shields.io/github/actions/workflow/status/onionviolet/grimoire/ci.yml?branch=main&label=ci)](../../actions/workflows/ci.yml)
   [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 </div>
 
@@ -93,7 +93,7 @@ Please keep backups of important mod profiles and game configuration files, test
 ## Development
 
 ```bash
-git clone https://github.com/Slush97/grimoire.git
+git clone https://github.com/onionviolet/grimoire.git
 cd grimoire
 pnpm install
 pnpm exec electron-rebuild -f -w better-sqlite3
@@ -114,7 +114,7 @@ installer. Verify a download with `sha256sum -c SHA256SUMS` (Linux) or
 `Get-FileHash <file>` (PowerShell) and compare against the listing.
 Releases also publish [build provenance attestations](https://docs.github.com/en/actions/security-guides/using-artifact-attestations-to-establish-provenance-for-builds)
 that tie each artifact back to the exact commit and workflow run that
-produced it; verify with `gh attestation verify <file> --owner Slush97`.
+produced it; verify with `gh attestation verify <file> --owner onionviolet`.
 
 Windows installers are not yet code-signed, so SmartScreen will show an
 "Unknown Publisher" warning on first run: click **More info → Run
