@@ -1,7 +1,7 @@
 <div align="center">
  <img width="684" height="214" alt="image" src="https://github.com/user-attachments/assets/fc1917ed-b8a0-4671-ad2c-9389e8b830d9" />
   <h1>Grimoire</h1>
-  <p>A mod manager for Deadlock.</p>
+  <p>A personal Deadlock mod manager and customization workshop.</p>
 
   [![Website](https://img.shields.io/badge/grimoiremods.com-f97316)](https://grimoiremods.com)
   [![Release](https://img.shields.io/github/v/release/onionviolet/grimoire?label=release)](../../releases/latest)
@@ -13,7 +13,22 @@
   [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 </div>
 
-> **Independent fork.** Please support the original Grimoire project through [GitHub](https://github.com/Slush97/grimoire), [grimoiremods.com](https://grimoiremods.com), or its [Discord community](https://discord.gg/KgYGHEMq2P).
+> **Personal independent fork.** This is maintained primarily for its author's own Deadlock setup and experimentation, but anyone is welcome to use, inspect, adapt, or contribute to it under the MIT license. It remains built on the work of the original Grimoire project; please support its creator through [GitHub](https://github.com/Slush97/grimoire), [grimoiremods.com](https://grimoiremods.com), or its [Discord community](https://discord.gg/KgYGHEMq2P).
+
+## Project direction
+
+Grimoire remains a mod manager first: it should make discovering, installing, organizing, updating, and launching Deadlock mods straightforward and safe.
+
+This fork deliberately follows the player workflow beyond installation. Its aim is to be a local customization workshop: a place to personalize a setup, understand mod interactions, make approachable no-code edits, combine them safely, and share the result when useful.
+
+That means new work should normally help players do one or more of the following:
+
+- **Play confidently** — manage mods, profiles, launches, updates, conflicts, and recovery.
+- **Make a setup personal** — use cosmetics, sounds, HUD and performance controls, crosshairs, and launch presets.
+- **Create approachable mods** — make constrained, visual, reversible changes without requiring specialist creator tools.
+- **Understand and share** — preview outcomes, see consequences before applying changes, and exchange profiles or creations.
+
+The goal is not to replace a full SDK, Blender, or specialist asset-authoring software. Features belong here when Grimoire can make a common player customization workflow substantially simpler and safer.
 
 ## Install
 

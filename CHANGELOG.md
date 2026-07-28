@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here. Format is loosely based on [Keep a Changelog](https://keepachangelog.com/), and the project adheres to semantic versioning.
 
+## [1.25.1] - 2026-07
+
+### Changed
+- Clarified the fork's direction: Grimoire remains a Deadlock mod manager first, while expanding into a personal, player-focused customization workshop for safe organization, personalization, approachable creation, and sharing.
+- Documented that this is a personal independent fork that remains open for others to use or contribute to, while encouraging support for the original Grimoire project and its creator.
+
 ## [1.10.0] - 2026-05
 
 ### Added
