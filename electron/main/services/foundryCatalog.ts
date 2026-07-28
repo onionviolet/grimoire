@@ -200,6 +200,9 @@ export interface BuildHeroSoundSwapOptions {
     clipPaths?: string[];
     /** Absolute path to the user's MP3 (validated by the caller). */
     audioPath: string;
+    /** Exact writes requested by the pool editor. This deliberately bypasses
+     *  event `--pool all`: callers have already selected the entry paths. */
+    assignments?: Array<{ clipPath: string; audioPath: string }>;
     /** Loop handling for the minted clip. */
     loop: SoundSwapLoop;
     /** Optional trim window in milliseconds (frame-snapped, ~26 ms). Both ends
@@ -269,8 +272,32 @@ export async function buildHeroSoundSwapVpk(
     }
 
     const clips = (opts.clipPaths ?? []).map(toVsndcEntry).filter(Boolean);
+    const assignments = (opts.assignments ?? [])
+        .map(({ clipPath, audioPath }) => ({ clipPath: toVsndcEntry(clipPath), audioPath }))
+        .filter(({ clipPath, audioPath }) => Boolean(clipPath && audioPath));
     try {
-        if (clips.length > 0) {
+        if (assignments.length > 0) {
+            // Pool-editor mode. One minted part per explicit write means every
+            // selected target keeps its own donor metadata while potentially
+            // using a different user MP3. Merge only happens after all parts
+            // succeed, so callers never receive a partial VPK.
+            const seen = new Set<string>();
+            const parts: string[] = [];
+            for (let i = 0; i < assignments.length; i++) {
+                const assignment = assignments[i];
+                if (seen.has(assignment.clipPath)) throw new Error(`Duplicate pool target: ${assignment.clipPath}`);
+                seen.add(assignment.clipPath);
+                const part = join(dir, `part-${i}_dir.vpk`);
+                await runVpkmerge([
+                    'soundswap', '--from-vpk', pak01Path(deadlockPath),
+                    '--clip', assignment.clipPath, '--audio', assignment.audioPath,
+                    ...mintArgs.slice(2), '--encode-vpk', part,
+                ]);
+                parts.push(part);
+            }
+            if (parts.length === 1) await fs.rename(parts[0], vpkPath);
+            else await runVpkmerge([vpkPath, ...parts]);
+        } else if (clips.length > 0) {
             // Clip mode (voice lines): override each clip `.vsnd_c` in place. One
             // soundswap per clip; merge the per-clip override VPKs (disjoint entry
             // paths) when a line carries a multi-clip randomizer pool.

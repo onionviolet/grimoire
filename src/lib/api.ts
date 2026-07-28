@@ -1449,6 +1449,12 @@ export async function foundrySwapSound(
   return window.electronAPI.foundry.swapSound(req);
 }
 
+export async function foundryInspectSoundConflicts(
+  writeSet: string[]
+): Promise<import('../types/foundry').FoundrySoundConflictInspection> {
+  return window.electronAPI.foundry.inspectSoundConflicts(writeSet);
+}
+
 /** Bake one PNG onto a catalog texture and install it as a managed local mod. */
 export async function foundryReplaceTexture(
   req: import('../types/foundry').TextureReplacementRequest

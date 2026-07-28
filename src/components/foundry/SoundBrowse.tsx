@@ -28,6 +28,7 @@ import { resolveForgeAudioPath } from './resolveForgeAudio';
 import { planSoundPool, type PoolAudio, type SoundPoolMode } from './soundPoolPlan';
 import {
     foundryHeroSounds,
+    foundryInspectSoundConflicts,
     foundryVoicelines,
     foundrySwapSound,
     foundryVoiceclip,
@@ -41,7 +42,7 @@ import { describeSound, primaryClipName } from '../../lib/soundDescribe';
 import { isAnnotated, matchSoundWithAnnotation } from '../../lib/soundAnnotationSearch';
 import { showToast } from '../../stores/toastStore';
 import { useAppStore } from '../../stores/appStore';
-import type { HeroInfo, HeroSound, HeroSoundCategory, VoiceLine, SoundAnnotation } from '../../types/foundry';
+import type { HeroInfo, HeroSound, HeroSoundCategory, VoiceLine, SoundAnnotation, FoundrySoundConflictInspection, SoundConflictResolution } from '../../types/foundry';
 import type { HeroAbilitySlot } from '../../types/mod';
 
 /** Context threaded to a row so it can offer an inline sound-swap (drop your own
@@ -838,6 +839,8 @@ function SwapPanel({
     const [poolMode, setPoolMode] = useState<SoundPoolMode>('replace-all');
     const [selectedTargets, setSelectedTargets] = useState<Set<string>>(() => new Set(sourceClipPaths));
     const [poolSeed, setPoolSeed] = useState(() => Math.floor(Math.random() * 0x7fffffff));
+    const [conflicts, setConflicts] = useState<FoundrySoundConflictInspection | null>(null);
+    const [resolution, setResolution] = useState<SoundConflictResolution['action'] | null>(null);
     // A stock clip lives under a game-build fingerprinted cache directory. Keep
     // its UI File for the editor, but never assume its path will survive until
     // Forge: a Deadlock update can prune that cache in between.
@@ -942,6 +945,14 @@ function SwapPanel({
             if (!assignments.length) {
                 throw new Error(poolMode === 'n-to-n' ? 'N-to-N needs exactly one audio file for each selected clip.' : 'Select at least one target and MP3.');
             }
+            // A preflight makes the choice visible before work starts. The main
+            // process repeats inspection over the *generated* VPK write-set,
+            // which is authoritative (and catches event sidecars too).
+            const inspection = await foundryInspectSoundConflicts(assignments.map((assignment) => assignment.clipPath));
+            if (inspection.unreadableMods.length || inspection.conflicts.length) {
+                setConflicts(inspection);
+                if (!resolution) return;
+            }
             await foundrySwapSound({
                 heroCodename: hero,
                 heroName,
@@ -957,6 +968,7 @@ function SwapPanel({
                 })),
                 poolMode,
                 poolSeed: poolMode === 'seeded-library' ? poolSeed : undefined,
+                conflictResolution: conflicts?.conflicts.length ? { action: resolution!, conflictModIds: conflicts.conflicts.map((conflict) => conflict.modId) } : undefined,
                 name: finalName,
                 loop,
                 trimStartMs: edits.trimStartMs,
@@ -978,7 +990,7 @@ function SwapPanel({
         }
     }, [
         audioPath, busy, name, defaultName, heroName, hero, soundeventsEntry,
-        event, clipPaths, loop, edits, t, onClose, usingOriginal, targetClip, assignments, poolMode, poolSeed,
+        event, clipPaths, loop, edits, t, onClose, usingOriginal, targetClip, assignments, poolMode, poolSeed, resolution, conflicts,
     ]);
 
     return (
@@ -1093,6 +1105,13 @@ function SwapPanel({
                     onChange={setEdits}
                 />
             )}
+
+            {conflicts && <div className="mt-2 rounded-sm border border-yellow-500/50 bg-yellow-500/10 p-2 text-xs text-text-secondary">
+                <p className="font-medium text-text-primary">Resolve VPK entry-path conflicts before forging</p>
+                {conflicts.unreadableMods.length > 0 && <p className="mt-1 text-red-300">Cannot safely continue: {conflicts.unreadableMods.map((mod) => mod.modName).join(', ')} could not be inspected.</p>}
+                {conflicts.conflicts.map((conflict) => <p key={conflict.modId} className="mt-1 break-all">{conflict.modName} ({conflict.enabled ? 'enabled' : 'disabled'}) owns {conflict.entries.join(', ')}</p>)}
+                {conflicts.conflicts.length > 0 && conflicts.unreadableMods.length === 0 && <div className="mt-2 flex flex-wrap gap-2"><select aria-label="Conflict resolution" value={resolution ?? ''} onChange={(event) => setResolution(event.target.value as SoundConflictResolution['action'])} className="rounded-sm border border-border bg-bg-secondary px-2 py-1 text-xs text-text-primary"><option value="">Choose a resolution</option><option value="disable-conflicts">Disable conflicting mods, then forge</option><option value="replace-managed" disabled={conflicts.conflicts.some((conflict) => !conflict.managed)}>Replace managed changes</option></select><button type="button" disabled={!resolution} onClick={() => void forge()} className="rounded-sm bg-accent px-2 py-1 text-xs text-bg-primary disabled:opacity-40">Confirm resolution & forge</button><button type="button" onClick={() => { setConflicts(null); setResolution(null); }} className="rounded-sm border border-border px-2 py-1 text-xs">Cancel</button></div>}
+            </div>}
 
             <div className="mt-2 flex flex-wrap items-center gap-2">
                 <input

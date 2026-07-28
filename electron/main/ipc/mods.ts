@@ -20,6 +20,7 @@ import { metaKeyFor } from '../services/deadlock';
 import { getModMetadata, setModMetadata, setModMetadataWithHash, removeModMetadata, pruneOrphanMetadata } from '../services/metadata';
 import { inferHeroFromTitle } from '@grimoire/social-types/heroes';
 import { inferHeroFromVpk, classifyGlobalModFromVpk, GLOBAL_CLASSIFIER_VERSION, parseVpkDirectory, parseVpkDirectoriesAsync } from '../services/vpk';
+import { inspectFoundrySoundWriteSet } from '../services/foundrySoundConflicts';
 import { classifyAbilitySoundsFromVpk } from '../services/abilitySounds';
 import { migrateIgnoredConflictKeysForMods } from '../services/conflicts';
 import { isLockerManaged } from '../services/lockerVpk';
@@ -61,7 +62,7 @@ import { resolveModVpk, clearSoulModelCache } from '../services/soulContainerMod
 import { exportVpkViaDialog, exportVpkFileName } from '../services/foundryExport';
 import { getMainWindow } from '../index';
 import type { ImportCustomModArgs, ImportCustomModsBatchArgs, ImportCustomModsBatchResult, ImportCustomModResult, ImportCustomModsProgress, ImportSoulContainerGlbArgs, PreviewSoulContainerGlbArgs, SoulContainerPreview, ImportSpiritUrnGlbArgs, PreviewSpiritUrnGlbArgs, SpiritUrnPreview } from '../../../src/types/electron';
-import type { VpkExportResult, HeroSoundSwapRequest, TextureReplacementRequest } from '../../../src/types/foundry';
+import type { VpkExportResult, HeroSoundSwapRequest, TextureReplacementRequest, FoundrySoundConflictInspection } from '../../../src/types/foundry';
 import type { AbilitySoundClassification, AddMergeSourcesResult, ApplyUnknownCustomModArgs, ApplyUnknownModMatchArgs, AssociateUnknownModArgs, EditLocalModArgs, GlobalModType, LockerHeroSource, MergeAnalysisResult, MergeModsArgs, Mod as WireMod, SoulContainerImportInfo, SoundSwapInfo, UrnImportInfo, UnmergeModResult, ExtractMergeSourceResult, UnknownModFileList, ImprintPreflightResult, ImprintDetails, PeekImprintResult, ModelCompatibilityReport } from '../../../src/types/mod';
 
 const unknownDetectionControllers = new Map<string, AbortController>();
@@ -318,6 +319,7 @@ function enrichMod(mod: Mod): WireMod {
             abilitySounds: abilitySounds ?? undefined,
             soulImport: metadata.soulImport,
             urnImport: metadata.urnImport,
+            soundSwap: metadata.soundSwap,
             ignoreUpdates: metadata.ignoreUpdates,
             imprinted: metadata.imprinted,
             imprintStale: metadata.imprintStale,
@@ -1352,6 +1354,31 @@ ipcMain.handle(
     }
 );
 
+/** Inspect every installed VPK (enabled and disabled) by its directory-tree
+ * paths. This intentionally does not use soundSwap metadata as the source of
+ * truth: locally dropped and third-party VPKs are first-class owners. */
+async function inspectInstalledSoundWriteSet(
+    deadlockPath: string,
+    writeSet: string[]
+): Promise<FoundrySoundConflictInspection> {
+    const mods = await scanMods(deadlockPath);
+    const entriesByPath = await parseVpkDirectoriesAsync(mods.map((mod) => mod.path));
+    return inspectFoundrySoundWriteSet(writeSet, mods.map((mod) => ({
+        mod: { id: mod.id, name: enrichMod(mod).name, metaKey: mod.metaKey, enabled: mod.enabled, priority: mod.priority },
+        entries: entriesByPath.get(mod.path) ?? null,
+        soundSwap: getModMetadata(mod.metaKey)?.soundSwap,
+    })));
+}
+
+ipcMain.handle('foundry:inspectSoundConflicts', async (_, writeSet: string[]): Promise<FoundrySoundConflictInspection> => {
+    const deadlockPath = getActiveDeadlockPath();
+    if (!deadlockPath) throw new Error('No Deadlock path configured');
+    if (!Array.isArray(writeSet) || writeSet.some((entry) => typeof entry !== 'string')) {
+        throw new Error('A sound conflict inspection requires VPK entry paths');
+    }
+    return inspectInstalledSoundWriteSet(deadlockPath, writeSet);
+});
+
 // foundry:swapSound
 // Build a hero sound-swap addon VPK (drop your own MP3 onto a hero gameplay
 // sound event) and install it as a tracked local mod, mirroring
@@ -1378,6 +1405,9 @@ ipcMain.handle(
             event,
             clipPaths,
             audioPath,
+            assignments,
+            poolMode,
+            poolSeed,
             name,
             loop,
             thumbnailDataUrl,
@@ -1403,6 +1433,17 @@ ipcMain.handle(
         if (!audioPath.toLowerCase().endsWith('.mp3')) {
             throw new Error('Audio must be an MP3 file (other formats are not supported yet).');
         }
+        const explicitAssignments = Array.isArray(assignments) ? assignments : [];
+        if (explicitAssignments.length > 0) {
+            for (const assignment of explicitAssignments) {
+                if (!assignment?.clipPath?.trim() || !assignment.audioPath || !existsSync(assignment.audioPath)) {
+                    throw new Error('Each pool target needs an existing MP3 file');
+                }
+                if (!assignment.audioPath.toLowerCase().endsWith('.mp3')) {
+                    throw new Error('Pool audio must be MP3 (other formats are not supported yet).');
+                }
+            }
+        }
 
         // 1. Build the swap VPK to a temp staging path. Gameplay rows pass an
         //    event (event mode); voice lines pass clipPaths (clip mode), which
@@ -1413,16 +1454,51 @@ ipcMain.handle(
             event: event?.trim(),
             clipPaths: hasClips ? clipPaths : undefined,
             audioPath,
+            assignments: explicitAssignments,
             loop: loop ?? 'auto',
             trimStartMs,
             trimEndMs,
             gainDb,
         });
 
+        let destPath: string | undefined;
+        let destMetaKey: string | undefined;
+        const disabledForResolution: string[] = [];
         try {
+            // Build output, rather than event names or mod metadata, is the
+            // only authoritative write-set. This catches untracked third-party
+            // VPKs and disabled VPKs just as reliably as managed swaps.
+            const writeSet = parseVpkDirectory(built.vpkPath);
+            if (!writeSet) throw new Error('Could not inspect the generated sound VPK write-set');
+            const inspection = await inspectInstalledSoundWriteSet(deadlockPath, writeSet);
+            if (inspection.unreadableMods.length) {
+                throw new Error(`Cannot safely forge: ${inspection.unreadableMods.map((mod) => mod.modName).join(', ')} could not be inspected for entry-path conflicts.`);
+            }
+            if (inspection.conflicts.length) {
+                const expectedIds = inspection.conflicts.map((conflict) => conflict.modId).sort();
+                const resolution = args.conflictResolution;
+                const resolvedIds = [...(resolution?.conflictModIds ?? [])].sort();
+                if (!resolution || expectedIds.join('\0') !== resolvedIds.join('\0') || resolution.action === 'cancel') {
+                    throw new Error(`Sound VPK conflicts require an explicit resolution: ${JSON.stringify(inspection)}`);
+                }
+                if (resolution.action === 'replace-managed' && inspection.conflicts.some((conflict) => !conflict.managed)) {
+                    throw new Error('Only Grimoire-managed sound changes can be replaced; resolve third-party VPK conflicts explicitly.');
+                }
+                if (resolution.action === 'disable-conflicts') {
+                    for (const conflict of inspection.conflicts) {
+                        if (conflict.enabled) {
+                            await disableMod(deadlockPath, conflict.modId);
+                            disabledForResolution.push(conflict.modId);
+                        }
+                    }
+                }
+                // forge-above / forge-below are an acknowledged precedence
+                // choice. A caller must select one; this handler never layers
+                // a collision by default.
+            }
             // 2. Allocate the next free ENABLED slot (same as import-custom-mod).
-            const destPath = await allocateEnabledVpkPath(deadlockPath);
-            const destMetaKey = metaKeyFor(destPath);
+            destPath = await allocateEnabledVpkPath(deadlockPath);
+            destMetaKey = metaKeyFor(destPath);
 
             await copyIntoModSlot(built.vpkPath, destPath, true);
 
@@ -1431,7 +1507,11 @@ ipcMain.handle(
                 event: event?.trim() || clipPaths?.[0] || '',
                 audioFileName: basename(audioPath),
                 loop: loop ?? 'auto',
-                pool: 'all',
+                pool: poolMode === 'selected-targets' ? 'selected'
+                    : poolMode === 'n-to-n' ? 'mapped'
+                    : poolMode === 'seeded-library' ? 'randomized' : 'all',
+                poolMode,
+                poolSeed,
             };
 
             // 3. Scrub orphan metadata, then write the local-import entry. Tag it
@@ -1462,6 +1542,18 @@ ipcMain.handle(
 
             const mods = await scanMods(deadlockPath);
             return mods.map(enrichMod);
+        } catch (err) {
+            // The output VPK and its metadata form one observable install.  Do
+            // not leave a half-installed override behind if metadata/scanning
+            // fails after the copy, and never touch a source VPK on rollback.
+            if (destMetaKey) removeModMetadata(destMetaKey);
+            if (destPath) await fs.unlink(destPath).catch(() => {});
+            // Disabling a conflicting source is part of this transaction, not a
+            // side effect to strand if allocation/copy/metadata fails.
+            for (const modId of disabledForResolution.reverse()) {
+                await enableMod(deadlockPath, modId).catch(() => {});
+            }
+            throw err;
         } finally {
             // 4. Always remove the temp staging dir (the installed copy is
             //    byte-identical, so nothing is lost).

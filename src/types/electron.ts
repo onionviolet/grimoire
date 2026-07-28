@@ -1124,6 +1124,7 @@ export interface ElectronAPI {
         swapSound: (
             req: import('./foundry').HeroSoundSwapRequest
         ) => Promise<import('./mod').Mod[]>;
+        inspectSoundConflicts: (writeSet: string[]) => Promise<import('./foundry').FoundrySoundConflictInspection>;
         replaceTexture: (
             req: import('./foundry').TextureReplacementRequest
         ) => Promise<import('./mod').Mod[]>;

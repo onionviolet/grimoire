@@ -584,8 +584,12 @@ export interface SoundSwapInfo {
   audioFileName: string;
   /** Loop handling chosen in the swap UI. */
   loop: 'auto' | 'on' | 'off';
-  /** How the event's randomizer pool was handled. v1 always 'all'. */
-  pool: 'all' | 'collapse';
+  /** How the event's randomizer pool was handled. */
+  pool: 'all' | 'collapse' | 'selected' | 'mapped' | 'randomized';
+  /** Explicit Foundry pool-editor mode, absent on legacy one-shot swaps. */
+  poolMode?: 'replace-all' | 'selected-targets' | 'n-to-n' | 'seeded-library';
+  /** Reproduces a seeded user-library shuffle. */
+  poolSeed?: number;
 }
 
 export interface Mod {
@@ -653,6 +657,9 @@ export interface Mod {
    *  Carries the orientation/span transform so the build is reproducible and the
    *  UI can label it as a local urn import. */
   urnImport?: UrnImportInfo;
+  /** Provenance for a Foundry-managed sound override. This is projected from
+   * local metadata so Foundry and the Locker share the exact same enabled state. */
+  soundSwap?: SoundSwapInfo;
   /** User opted out of the "update available" flag for this mod. Persisted
    *  in metadata; toggled from the mod details modal. */
   ignoreUpdates?: boolean;

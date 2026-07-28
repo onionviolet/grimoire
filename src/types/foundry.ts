@@ -233,6 +233,14 @@ export interface HeroSoundSwapRequest {
      *  VO has no per-hero soundevents file, so event mode does not apply. */
     clipPaths?: string[];
     audioPath: string;
+    /** Exact clip-to-audio write set from the pool editor. When supplied it
+     *  takes precedence over `audioPath` / event pool expansion, so selected,
+     *  N-to-N, and seeded-library edits never accidentally affect another clip. */
+    assignments?: Array<{ clipPath: string; audioPath: string }>;
+    /** Pool editor intent, retained in managed provenance for re-forge. */
+    poolMode?: 'replace-all' | 'selected-targets' | 'n-to-n' | 'seeded-library';
+    /** Recorded only for seeded-library mode; permits a reproducible shuffle. */
+    poolSeed?: number;
     name: string;
     loop?: 'auto' | 'on' | 'off';
     thumbnailDataUrl?: string;
@@ -244,6 +252,30 @@ export interface HeroSoundSwapRequest {
     /** Optional loudness gain (dB) from the "match volume" normalizer, applied
      *  losslessly before minting. Omitted / 0 = no change. */
     gainDb?: number;
+    conflictResolution?: SoundConflictResolution;
+}
+
+/** Deliberate disposition of every VPK whose actual entry paths overlap. */
+export interface SoundConflictResolution {
+    action: 'cancel' | 'forge-above' | 'forge-below' | 'disable-conflicts' | 'replace-managed';
+    conflictModIds: string[];
+}
+
+export interface FoundrySoundConflict {
+    modId: string;
+    modName: string;
+    metaKey: string;
+    enabled: boolean;
+    priority: number;
+    entries: string[];
+    managed: boolean;
+    soundSwap?: import('./mod').SoundSwapInfo;
+}
+
+export interface FoundrySoundConflictInspection {
+    writeSet: string[];
+    conflicts: FoundrySoundConflict[];
+    unreadableMods: Array<{ modId: string; modName: string; enabled: boolean }>;
 }
 
 /** Request to replace one catalog texture with a user-selected PNG and install

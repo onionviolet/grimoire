@@ -1,5 +1,5 @@
 import { CheckSquare, Layers3, RefreshCw, Square, Undo2 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { FoundryStagedEdit } from './buildTray';
 import { normalizeOutputName, reviewStagedEdits } from './buildTray';
@@ -17,16 +17,14 @@ interface FoundryBuildTrayProps {
  */
 export default function FoundryBuildTray({ edits, outputName, onOutputNameChange }: FoundryBuildTrayProps) {
   const { t } = useTranslation();
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
-  useEffect(() => {
-    // Newly staged work is selected; removed work is never retained in a stale
-    // selection. This is state only, and does not change mod enablement.
-    setSelectedIds((current) => new Set(edits.filter((edit) => current.size === 0 || current.has(edit.id)).map((edit) => edit.id)));
-  }, [edits]);
-  const review = useMemo(() => reviewStagedEdits(edits, selectedIds), [edits, selectedIds]);
+  // `null` means the natural default: every staged edit, including a later
+  // addition. Once the user touches selection, it becomes explicit.
+  const [selectedIds, setSelectedIds] = useState<Set<string> | null>(null);
+  const effectiveSelection = useMemo(() => selectedIds ?? new Set(edits.map((edit) => edit.id)), [edits, selectedIds]);
+  const review = useMemo(() => reviewStagedEdits(edits, effectiveSelection), [edits, effectiveSelection]);
   const allSelected = edits.length > 0 && review.selected.length === edits.length;
   const toggle = (id: string) => setSelectedIds((current) => {
-    const next = new Set(current);
+    const next = new Set(current ?? edits.map((edit) => edit.id));
     if (next.has(id)) next.delete(id); else next.add(id);
     return next;
   });
@@ -42,7 +40,7 @@ export default function FoundryBuildTray({ edits, outputName, onOutputNameChange
       <p className="mt-1 text-[11px] text-text-secondary">{t('foundry.buildTray.willCreate', { name: normalizeOutputName(outputName) })}</p>
       <div className="mt-4 space-y-2 text-xs text-text-secondary">
         <div className="flex items-center justify-between"><p>{t('foundry.buildTray.summary', { edits: review.selected.length, files: review.writeSet.length })}</p>{edits.length > 0 && <button type="button" onClick={toggleAll} className="text-accent hover:underline">{allSelected ? 'Clear selection' : 'Select all'}</button>}</div>
-        {edits.length === 0 ? <p className="rounded-sm border border-dashed border-border p-2">{t('foundry.buildTray.empty')}</p> : edits.map((edit) => <label key={edit.id} className="flex cursor-pointer gap-2 rounded-sm border border-border p-2 hover:bg-bg-tertiary"><input type="checkbox" checked={selectedIds.has(edit.id)} onChange={() => toggle(edit.id)} className="sr-only" /><span className="mt-0.5 text-accent">{selectedIds.has(edit.id) ? <CheckSquare size={14} /> : <Square size={14} />}</span><span><strong className="text-text-primary">{edit.title}</strong><br />{t('foundry.buildTray.editSummary', { files: edit.affectedFiles.length, precedence: edit.precedence })}</span></label>)}
+        {edits.length === 0 ? <p className="rounded-sm border border-dashed border-border p-2">{t('foundry.buildTray.empty')}</p> : edits.map((edit) => <label key={edit.id} className="flex cursor-pointer gap-2 rounded-sm border border-border p-2 hover:bg-bg-tertiary"><input type="checkbox" checked={effectiveSelection.has(edit.id)} onChange={() => toggle(edit.id)} className="sr-only" /><span className="mt-0.5 text-accent">{effectiveSelection.has(edit.id) ? <CheckSquare size={14} /> : <Square size={14} />}</span><span><strong className="text-text-primary">{edit.title}</strong><br />{t('foundry.buildTray.editSummary', { files: edit.affectedFiles.length, precedence: edit.precedence })}</span></label>)}
       </div>
       {review.collisions.length > 0 && <div className="mt-4 rounded-sm border border-yellow-500/40 bg-yellow-500/10 p-2 text-xs text-text-secondary"><strong className="text-text-primary">{t('foundry.buildTray.collisions', { count: review.collisions.length })}</strong>{review.collisions.map((collision) => <p key={collision.file} className="mt-1 break-all">{t('foundry.buildTray.collisionWinner', { file: collision.file, winner: collision.winner.title })}</p>)}</div>}
       {review.writeSet.length > 0 && <details className="mt-3 text-xs text-text-secondary"><summary className="cursor-pointer text-text-primary">Final write-set ({review.writeSet.length})</summary><ul className="mt-1 max-h-32 overflow-auto break-all pl-4">{review.writeSet.map((file) => <li key={file}>{file}</li>)}</ul><p className="mt-2">Forge confirmation must show these paths, collision winners, and the selected load precedence. Cancelling leaves installed mods and staged sources unchanged.</p></details>}

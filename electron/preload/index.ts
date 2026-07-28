@@ -663,6 +663,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
             ipcRenderer.invoke('foundry:exportHeroEffect', req),
         swapSound: (req: HeroSoundSwapRequest) =>
             ipcRenderer.invoke('foundry:swapSound', req),
+        inspectSoundConflicts: (writeSet: string[]) =>
+            ipcRenderer.invoke('foundry:inspectSoundConflicts', writeSet),
         replaceTexture: (req: TextureReplacementRequest) =>
             ipcRenderer.invoke('foundry:replaceTexture', req),
     },
