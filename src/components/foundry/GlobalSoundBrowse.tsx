@@ -21,7 +21,8 @@ import { SoundRow, type SwapContext } from './SoundBrowse';
 import { useClipPlayer, type ClipPlayer } from './useClipPlayer';
 import { foundryGlobalSounds, foundrySoundAnnotations, foundrySoundAnnotationKey, saveFoundrySoundAnnotation, exportFoundrySoundAnnotations, importFoundrySoundAnnotations } from '../../lib/api';
 import { showToast } from '../../stores/toastStore';
-import { describeSound, matchesSound, primaryClipName } from '../../lib/soundDescribe';
+import { describeSound, primaryClipName } from '../../lib/soundDescribe';
+import { isAnnotated, matchSoundWithAnnotation } from '../../lib/soundAnnotationSearch';
 import type { GlobalSound, GlobalSoundCategory, SoundAnnotation } from '../../types/foundry';
 
 // Display order: what a modder reaches for first (UI clicks, music) leads, then
@@ -86,6 +87,7 @@ export default function GlobalSoundBrowse() {
     const { t } = useTranslation();
     const [search, setSearch] = useState('');
     const [category, setCategory] = useState<GlobalSoundCategory | 'all'>('all');
+    const [annotatedOnly, setAnnotatedOnly] = useState(false);
     const [data, setData] = useState<{ sounds: GlobalSound[]; error: string | null } | null>(null);
     const [annotations, setAnnotations] = useState<Record<string, SoundAnnotation>>({});
     const importRef = useRef<HTMLInputElement | null>(null);
@@ -102,8 +104,8 @@ export default function GlobalSoundBrowse() {
         };
     }, []);
 
-    const saveAnnotation = async (key: string, name: string, note: string) => {
-        const saved = await saveFoundrySoundAnnotation(key, name, note);
+    const saveAnnotation = async (key: string, name: string, note: string, tags: string[]) => {
+        const saved = await saveFoundrySoundAnnotation(key, name, note, tags);
         setAnnotations((current) => {
             const next = { ...current };
             if (saved) next[key] = saved.annotation;
@@ -153,7 +155,7 @@ export default function GlobalSoundBrowse() {
     const sounds = data?.sounds ?? NO_SOUNDS;
 
     const player = useClipPlayer();
-    const sections = useMemo(() => groupSounds(sounds, search, category), [sounds, search, category]);
+    const sections = useMemo(() => groupSounds(sounds, search, category, annotations, annotatedOnly), [sounds, search, category, annotations, annotatedOnly]);
     const totalShown = sections.reduce((n, s) => n + s.total, 0);
 
     // Only offer the categories the installed pak actually carries, so a game
@@ -182,6 +184,7 @@ export default function GlobalSoundBrowse() {
                     />
                 </div>
                 <div className="flex items-center gap-1.5">
+                    <button type="button" aria-pressed={annotatedOnly} onClick={() => setAnnotatedOnly((value) => !value)} className={`rounded-sm border px-2 py-1.5 text-xs ${annotatedOnly ? 'border-accent bg-accent/15 text-accent' : 'border-border text-text-secondary'}`}>Annotated only</button>
                     <button type="button" onClick={exportAnnotations} className="flex items-center gap-1.5 rounded-sm border border-border px-2 py-1.5 text-xs text-text-secondary hover:text-text-primary" title="Export your sound names and notes"><Download size={13} />Export notes</button>
                     <button type="button" onClick={() => importRef.current?.click()} className="flex items-center gap-1.5 rounded-sm border border-border px-2 py-1.5 text-xs text-text-secondary hover:text-text-primary" title="Import sound names and notes"><Upload size={13} />Import notes</button>
                     <input ref={importRef} type="file" accept="application/json,.json" className="hidden" onChange={(event) => { void importAnnotations(event.target.files?.[0]); event.target.value = ''; }} />
@@ -282,7 +285,7 @@ function FilterChip({
     );
 }
 
-function CategorySection({ section, player, annotations, onSaveAnnotation }: { section: Section; player: ClipPlayer; annotations: Record<string, SoundAnnotation>; onSaveAnnotation: (key: string, name: string, note: string) => Promise<void> }) {
+function CategorySection({ section, player, annotations, onSaveAnnotation }: { section: Section; player: ClipPlayer; annotations: Record<string, SoundAnnotation>; onSaveAnnotation: (key: string, name: string, note: string, tags: string[]) => Promise<void> }) {
     const { t } = useTranslation();
     const Icon = CATEGORY_ICON[section.category];
     const title = t(
@@ -344,15 +347,20 @@ function swapContextFor(row: GlobalSound): SwapContext {
 function groupSounds(
     sounds: GlobalSound[],
     search: string,
-    category: GlobalSoundCategory | 'all'
+    category: GlobalSoundCategory | 'all',
+    annotations: Record<string, SoundAnnotation>,
+    annotatedOnly: boolean
 ): Section[] {
     // Clip filenames and paths are part of the match surface, not just the
     // event/label/source triple. A modder holds a clip name (`charged_melee_full`)
     // far more often than an event name, and pasting one used to return nothing.
     // See lib/soundDescribe.ts for why, and its test for the pinned case.
     const q = search.trim();
-    const matches = (s: GlobalSound) =>
-        (category === 'all' || s.category === category) && matchesSound(s, q);
+    const matches = (s: GlobalSound) => {
+        const annotation = annotations[foundrySoundAnnotationKey(s.event, s.vsnd[0] ?? '')];
+        return (category === 'all' || s.category === category) && (!annotatedOnly || isAnnotated(annotation))
+            && matchSoundWithAnnotation([s.label, s.event, s.source, ...s.vsnd], annotation, q) !== null;
+    };
 
     const byCategory = new Map<GlobalSoundCategory, Map<string, GlobalSound[]>>();
     for (const s of sounds) {

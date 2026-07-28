@@ -646,8 +646,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
         globalSounds: (filters?: GlobalSoundFilters) =>
             ipcRenderer.invoke('foundry:globalSounds', filters ?? {}),
         listSoundAnnotations: () => ipcRenderer.invoke('foundry:listSoundAnnotations'),
-        saveSoundAnnotation: (key: string, name: string, note: string) =>
-            ipcRenderer.invoke('foundry:saveSoundAnnotation', key, name, note),
+        saveSoundAnnotation: (key: string, name: string, note: string, tags: string[] = []) =>
+            ipcRenderer.invoke('foundry:saveSoundAnnotation', key, name, note, tags),
         exportSoundAnnotations: () => ipcRenderer.invoke('foundry:exportSoundAnnotations'),
         importSoundAnnotations: (content: string) =>
             ipcRenderer.invoke('foundry:importSoundAnnotations', content),

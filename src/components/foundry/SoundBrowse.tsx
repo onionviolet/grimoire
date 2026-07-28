@@ -36,7 +36,8 @@ import {
     foundrySoundAnnotationKey,
     saveFoundrySoundAnnotation,
 } from '../../lib/api';
-import { describeSound, matchesSound, primaryClipName } from '../../lib/soundDescribe';
+import { describeSound, primaryClipName } from '../../lib/soundDescribe';
+import { isAnnotated, matchSoundWithAnnotation } from '../../lib/soundAnnotationSearch';
 import { showToast } from '../../stores/toastStore';
 import { useAppStore } from '../../stores/appStore';
 import type { HeroInfo, HeroSound, HeroSoundCategory, VoiceLine, SoundAnnotation } from '../../types/foundry';
@@ -115,6 +116,7 @@ export default function SoundBrowse({ heroes, heroNames, only }: SoundBrowseProp
     // option so the tab opens with content (no synchronous default-set effect).
     const [picked, setPicked] = useState('');
     const [search, setSearch] = useState('');
+    const [annotatedOnly, setAnnotatedOnly] = useState(false);
     const hero = picked || heroOptions[0]?.code || '';
     const heroName = heroOptions.find((h) => h.code === hero)?.name ?? hero;
     const swapContext = useMemo<SwapContext>(() => ({ hero, heroName }), [hero, heroName]);
@@ -191,8 +193,8 @@ export default function SoundBrowse({ heroes, heroNames, only }: SoundBrowseProp
         };
     }, []);
 
-    const saveAnnotation = useCallback(async (key: string, name: string, note: string) => {
-        const saved = await saveFoundrySoundAnnotation(key, name, note);
+    const saveAnnotation = useCallback(async (key: string, name: string, note: string, tags: string[]) => {
+        const saved = await saveFoundrySoundAnnotation(key, name, note, tags);
         setAnnotations((current) => {
             const next = { ...current };
             if (saved) next[key] = saved.annotation;
@@ -203,7 +205,7 @@ export default function SoundBrowse({ heroes, heroNames, only }: SoundBrowseProp
 
     // Filter + group gameplay sounds by category (and, within abilities, by
     // ability name ordered by slot).
-    const sections = useMemo(() => groupSounds(sounds, search), [sounds, search]);
+    const sections = useMemo(() => groupSounds(sounds, search, annotations, annotatedOnly), [sounds, search, annotations, annotatedOnly]);
     const totalShown = sections.reduce((n, s) => n + s.total, 0);
 
     return (
@@ -236,6 +238,9 @@ export default function SoundBrowse({ heroes, heroNames, only }: SoundBrowseProp
                         className="w-full rounded-sm border border-border bg-bg-tertiary py-2 pl-9 pr-3 text-sm text-text-primary placeholder:text-text-secondary/60 focus:border-accent/50 focus:outline-none"
                     />
                 </div>
+                <button type="button" aria-pressed={annotatedOnly} onClick={() => setAnnotatedOnly((value) => !value)} className={`rounded-sm border px-3 py-2 text-sm ${annotatedOnly ? 'border-accent bg-accent/15 text-accent' : 'border-border text-text-secondary'}`}>
+                    Annotated only
+                </button>
             </div>
 
             {showGameplay &&
@@ -325,12 +330,15 @@ interface CategorySectionData {
     groups: AbilityGroup[];
 }
 
-function groupSounds(sounds: HeroSound[], search: string): CategorySectionData[] {
+function groupSounds(sounds: HeroSound[], search: string, annotations: Record<string, SoundAnnotation>, annotatedOnly: boolean): CategorySectionData[] {
     // Same match surface as the global tab, clip names included: every hero's
     // charged-melee pool lives in sounds/player/melee/shared/, so searching a
     // clip name is often the only way to reach the row you mean.
     const q = search.trim();
-    const matches = (s: HeroSound) => matchesSound(s, q);
+    const matches = (s: HeroSound) => {
+        const annotation = annotations[foundrySoundAnnotationKey(s.event, s.vsnd[0] ?? '')];
+        return (!annotatedOnly || isAnnotated(annotation)) && (matchSoundWithAnnotation([s.label, s.event, ...s.vsnd], annotation, q) !== null);
+    };
 
     const byCategory = new Map<HeroSoundCategory, HeroSound[]>();
     for (const s of sounds) {
@@ -407,7 +415,7 @@ function CategorySection({
     swap: SwapContext;
     slotMeta: Map<number, HeroAbilitySlot>;
     annotations: Record<string, SoundAnnotation>;
-    onSaveAnnotation: (key: string, name: string, note: string) => Promise<void>;
+    onSaveAnnotation: (key: string, name: string, note: string, tags: string[]) => Promise<void>;
 }) {
     const { t } = useTranslation();
     const Icon = CATEGORY_ICON[section.category];
@@ -504,7 +512,7 @@ function VoiceLinesSection({
     /** Hero context so each voice line offers a Swap (clip mode). */
     swap?: SwapContext;
     annotations: Record<string, SoundAnnotation>;
-    onSaveAnnotation: (key: string, name: string, note: string) => Promise<void>;
+    onSaveAnnotation: (key: string, name: string, note: string, tags: string[]) => Promise<void>;
 }) {
     const { t } = useTranslation();
     const [open, setOpen] = useState(standalone);
@@ -532,8 +540,8 @@ function VoiceLinesSection({
 
     const visible = useMemo(() => {
         const q = search.trim();
-        return q ? lines.filter((l) => matchesSound(l, q)) : lines;
-    }, [lines, search]);
+        return lines.filter((line) => matchSoundWithAnnotation([line.label, line.event, ...line.vsnd], annotations[foundrySoundAnnotationKey(line.event, line.vsnd[0] ?? '')], q) !== null);
+    }, [lines, search, annotations]);
     const shown = visible.slice(0, VO_ROW_CAP);
 
     return (
@@ -652,7 +660,7 @@ interface SoundRowProps {
     clipName?: string | null;
     annotationKey?: string;
     annotation?: SoundAnnotation;
-    onSaveAnnotation?: (key: string, name: string, note: string) => Promise<void>;
+    onSaveAnnotation?: (key: string, name: string, note: string, tags: string[]) => Promise<void>;
 }
 
 export function SoundRow({ label, event, clips, duration, state, onToggle, poolIndex = 0, swap, targetClip, clipPaths, description, clipName, annotationKey, annotation, onSaveAnnotation }: SoundRowProps) {
@@ -661,11 +669,13 @@ export function SoundRow({ label, event, clips, duration, state, onToggle, poolI
     const [annotationOpen, setAnnotationOpen] = useState(false);
     const [annotationName, setAnnotationName] = useState(annotation?.name ?? '');
     const [annotationNote, setAnnotationNote] = useState(annotation?.note ?? '');
+    const [annotationTags, setAnnotationTags] = useState((annotation?.tags ?? []).join(', '));
     const [annotationBusy, setAnnotationBusy] = useState(false);
     useEffect(() => {
         setAnnotationName(annotation?.name ?? '');
         setAnnotationNote(annotation?.note ?? '');
-    }, [annotation?.name, annotation?.note]);
+        setAnnotationTags((annotation?.tags ?? []).join(', '));
+    }, [annotation?.name, annotation?.note, annotation?.tags]);
     const seconds = duration && duration > 0 ? `${duration.toFixed(1)}s` : null;
     // Randomizer pool: name which clip the next press auditions, so repeated
     // presses read as walking the pool rather than as a stuck button.
@@ -695,9 +705,10 @@ export function SoundRow({ label, event, clips, duration, state, onToggle, poolI
                     )}
                 </button>
                 <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm text-text-primary" title={annotation?.name || label}>
-                        {annotation?.name || label || event}
+                    <p className="truncate text-sm text-text-primary" title={label || event}>
+                        <span className="text-text-secondary">Base-game label: </span>{label || event}
                     </p>
+                    {annotation?.name && <p className="truncate text-[11px] text-accent" title={annotation.name}>My label: {annotation.name}</p>}
                     {(annotation?.note || description) && (
                         <p className="truncate text-[11px] text-text-secondary" title={annotation?.note || description || undefined}>
                             {annotation?.note || description}
@@ -718,7 +729,9 @@ export function SoundRow({ label, event, clips, duration, state, onToggle, poolI
                     <button
                         type="button"
                         onClick={() => setAnnotationOpen((open) => !open)}
-                        title={t('foundry.sound.annotation.edit', 'Rename or annotate')}
+                        aria-expanded={annotationOpen}
+                        aria-controls={`annotation-${annotationKey.replace(/[^a-z0-9]/gi, '-')}`}
+                        title={t('foundry.sound.annotation.edit', 'Edit label, note, and tags')}
                         className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-sm border transition-colors ${annotationOpen || annotation ? 'border-accent/50 bg-accent/15 text-accent' : 'border-border text-text-secondary hover:text-text-primary'}`}
                     >
                         <Pencil size={14} />
@@ -759,12 +772,14 @@ export function SoundRow({ label, event, clips, duration, state, onToggle, poolI
                 />
             )}
             {annotationOpen && annotationKey && onSaveAnnotation && (
-                <div className="mt-1.5 rounded-sm border border-border bg-bg-tertiary/40 p-3">
+                <div id={`annotation-${annotationKey.replace(/[^a-z0-9]/gi, '-')}`} className="mt-1.5 rounded-sm border border-border bg-bg-tertiary/40 p-3">
+                    <p className="mb-2 text-xs text-text-secondary">Personal annotations describe this base-game sound; they do not rename it.</p>
                     <div className="flex flex-wrap gap-2">
-                        <input value={annotationName} onChange={(e) => setAnnotationName(e.target.value)} placeholder={t('foundry.sound.annotation.name', 'Your name for this sound')} className="min-w-[180px] flex-1 rounded-sm border border-border bg-bg-secondary px-2 py-1.5 text-sm text-text-primary placeholder:text-text-secondary/60 focus:border-accent/50 focus:outline-none" />
-                        <button type="button" disabled={annotationBusy} onClick={async () => { setAnnotationBusy(true); try { await onSaveAnnotation(annotationKey, annotationName, annotationNote); setAnnotationOpen(false); } finally { setAnnotationBusy(false); } }} className="flex items-center gap-1.5 rounded-sm bg-accent px-3 py-1.5 text-sm font-medium text-bg-primary disabled:opacity-40"><Check size={14} />{t('common.actions.save', 'Save')}</button>
+                        <input aria-label="My label" value={annotationName} onChange={(e) => setAnnotationName(e.target.value)} placeholder="My label (optional)" className="min-w-[180px] flex-1 rounded-sm border border-border bg-bg-secondary px-2 py-1.5 text-sm text-text-primary placeholder:text-text-secondary/60 focus:border-accent/50 focus:outline-none" />
+                        <button type="button" disabled={annotationBusy} onClick={async () => { setAnnotationBusy(true); try { await onSaveAnnotation(annotationKey, annotationName, annotationNote, annotationTags.split(',').map((tag) => tag.trim()).filter(Boolean)); setAnnotationOpen(false); } finally { setAnnotationBusy(false); } }} className="flex items-center gap-1.5 rounded-sm bg-accent px-3 py-1.5 text-sm font-medium text-bg-primary disabled:opacity-40"><Check size={14} />{t('common.actions.save', 'Save')}</button>
                     </div>
                     <textarea value={annotationNote} onChange={(e) => setAnnotationNote(e.target.value)} placeholder={t('foundry.sound.annotation.note', 'What this sound is, or where you found it')} rows={2} className="mt-2 w-full resize-y rounded-sm border border-border bg-bg-secondary px-2 py-1.5 text-sm text-text-primary placeholder:text-text-secondary/60 focus:border-accent/50 focus:outline-none" />
+                    <input aria-label="Searchable tags" value={annotationTags} onChange={(e) => setAnnotationTags(e.target.value)} placeholder="#ult, #loud, #favorite (comma-separated)" className="mt-2 w-full rounded-sm border border-border bg-bg-secondary px-2 py-1.5 text-sm text-text-primary placeholder:text-text-secondary/60 focus:border-accent/50 focus:outline-none" />
                 </div>
             )}
         </div>

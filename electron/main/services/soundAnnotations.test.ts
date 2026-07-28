@@ -32,6 +32,7 @@ describe('sound annotations', () => {
             annotation: {
                 name: 'Menu click',
                 note: 'Short and sharp',
+                tags: [],
                 updatedAt: expect.any(String),
             },
         });
@@ -68,6 +69,14 @@ describe('sound annotations', () => {
         expect(listSoundAnnotations()).toEqual([]);
     });
 
+    it('upgrades v1 imports and normalizes searchable tags', () => {
+        const key = soundAnnotationKey('UI.Click', 'sounds/ui/click.vsnd_c');
+        importSoundAnnotations(JSON.stringify({ version: 1, entries: { [key]: { name: 'Click', note: '', updatedAt: new Date().toISOString() } } }));
+        expect(listSoundAnnotations()[0].annotation.tags).toEqual([]);
+        expect(saveSoundAnnotation(key, { name: '', note: '', tags: [' #ult ', 'favorite', '#ult', 'two words'] })?.annotation.tags)
+            .toEqual(['ult', 'favorite', 'two-words']);
+    });
+
     it('rejects malformed JSON, unsupported shapes, invalid keys, and oversized files', () => {
         expect(() => importSoundAnnotations('{')).toThrow('not valid JSON');
         expect(() => importSoundAnnotations('null')).toThrow('Unsupported');
@@ -82,6 +91,6 @@ describe('sound annotations', () => {
         const key = soundAnnotationKey('UI.Click', 'sounds/ui/click.vsnd_c');
         saveSoundAnnotation(key, { name: 'Menu click', note: '' });
         const file = readFileSync(join(harness.userData, 'foundry-sound-annotations.json'), 'utf8');
-        expect(JSON.parse(file).version).toBe(1);
+        expect(JSON.parse(file).version).toBe(2);
     });
 });

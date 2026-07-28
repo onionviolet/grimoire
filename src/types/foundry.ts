@@ -152,8 +152,11 @@ export interface GlobalSoundFilters {
 
 /** A user-authored name or note for one catalog event and one clip path. */
 export interface SoundAnnotation {
+    /** Personal label; never replaces the catalog/base-game label. */
     name: string | null;
     note: string | null;
+    /** Searchable personal key terms, stored without a required # prefix. */
+    tags: string[];
     updatedAt: string;
 }
 
@@ -163,7 +166,7 @@ export interface SoundAnnotationEntry {
 }
 
 export interface SoundAnnotationsFile {
-    version: 1;
+    version: 2;
     entries: Record<string, SoundAnnotation>;
 }
 

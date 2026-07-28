@@ -3,7 +3,7 @@ import { dirname, join } from 'path';
 import { app } from 'electron';
 import type { SoundAnnotation, SoundAnnotationEntry, SoundAnnotationsFile } from '../../../src/types/foundry';
 
-const FILE_VERSION = 1;
+const FILE_VERSION = 2;
 const MAX_IMPORT_BYTES = 2 * 1024 * 1024;
 const MAX_ENTRIES = 10_000;
 const MAX_KEY_LENGTH = 1_024;
@@ -32,7 +32,9 @@ function readFile(): SoundAnnotationsFile {
 
     try {
         const parsed = JSON.parse(readFileSync(path, 'utf8')) as Partial<SoundAnnotationsFile>;
-        if (parsed.version !== FILE_VERSION || !parsed.entries || typeof parsed.entries !== 'object') {
+        // v1 did not have tags. It remains a supported import/on-disk format.
+        const version = (parsed as { version?: number }).version;
+        if ((version !== 1 && version !== FILE_VERSION) || !parsed.entries || typeof parsed.entries !== 'object') {
             return emptyFile();
         }
         return { version: FILE_VERSION, entries: normalizeEntries(parsed.entries) };
@@ -51,13 +53,19 @@ function normalizeEntries(value: unknown): Record<string, SoundAnnotation> {
         const item = candidate as Partial<SoundAnnotation>;
         const name = typeof item.name === 'string' ? item.name.trim().slice(0, 200) : '';
         const note = typeof item.note === 'string' ? item.note.trim().slice(0, 2000) : '';
-        if (!name && !note) continue;
+        const tags = Array.isArray(item.tags)
+            ? [...new Set(item.tags.filter((tag): tag is string => typeof tag === 'string')
+                .map((tag) => tag.trim().replace(/^#/, '').replace(/\s+/g, '-').slice(0, 64))
+                .filter(Boolean))].slice(0, 32)
+            : [];
+        if (!name && !note && tags.length === 0) continue;
         const updatedAt = typeof item.updatedAt === 'string' && !Number.isNaN(Date.parse(item.updatedAt))
             ? item.updatedAt
             : new Date(0).toISOString();
         entries[key] = {
             name: name || null,
             note: note || null,
+            tags,
             updatedAt,
         };
     }
@@ -88,7 +96,7 @@ export function listSoundAnnotations(): SoundAnnotationEntry[] {
 
 export function saveSoundAnnotation(
     key: string,
-    annotation: Pick<SoundAnnotation, 'name' | 'note'>
+    annotation: Pick<SoundAnnotation, 'name' | 'note'> & Partial<Pick<SoundAnnotation, 'tags'>>
 ): SoundAnnotationEntry | null {
     if (!isValidKey(key)) throw new Error('Invalid sound annotation key.');
     const data = readFile();
@@ -120,7 +128,7 @@ export function importSoundAnnotations(content: string): SoundAnnotationEntry[] 
     if (
         !parsed ||
         typeof parsed !== 'object' ||
-        (parsed as Partial<SoundAnnotationsFile>).version !== FILE_VERSION ||
+        ((parsed as { version?: number }).version !== 1 && (parsed as { version?: number }).version !== FILE_VERSION) ||
         !(parsed as Partial<SoundAnnotationsFile>).entries ||
         typeof (parsed as Partial<SoundAnnotationsFile>).entries !== 'object' ||
         Array.isArray((parsed as Partial<SoundAnnotationsFile>).entries)

@@ -1100,7 +1100,8 @@ export interface ElectronAPI {
         saveSoundAnnotation: (
             key: string,
             name: string,
-            note: string
+            note: string,
+            tags?: string[]
         ) => Promise<import('./foundry').SoundAnnotationEntry | null>;
         exportSoundAnnotations: () => Promise<string>;
         importSoundAnnotations: (

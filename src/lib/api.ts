@@ -1395,9 +1395,10 @@ export function foundrySoundAnnotationKey(event: string, clipPath: string): stri
 export async function saveFoundrySoundAnnotation(
   key: string,
   name: string,
-  note: string
+  note: string,
+  tags: string[] = []
 ): Promise<import('../types/foundry').SoundAnnotationEntry | null> {
-  return window.electronAPI.foundry.saveSoundAnnotation(key, name, note);
+  return window.electronAPI.foundry.saveSoundAnnotation(key, name, note, tags);
 }
 
 export async function exportFoundrySoundAnnotations(): Promise<string> {

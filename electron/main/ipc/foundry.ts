@@ -92,8 +92,8 @@ ipcMain.handle(
 );
 
 ipcMain.handle('foundry:listSoundAnnotations', async () => listSoundAnnotations());
-ipcMain.handle('foundry:saveSoundAnnotation', async (_e, key: string, name: string, note: string) =>
-    saveSoundAnnotation(key, { name, note })
+ipcMain.handle('foundry:saveSoundAnnotation', async (_e, key: string, name: string, note: string, tags: string[] = []) =>
+    saveSoundAnnotation(key, { name, note, tags })
 );
 ipcMain.handle('foundry:exportSoundAnnotations', async () => exportSoundAnnotations());
 ipcMain.handle('foundry:importSoundAnnotations', async (_e, content: string) =>
