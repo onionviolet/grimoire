@@ -25,6 +25,7 @@ export interface HeroInfo {
 export type TextureCategory =
     | 'ability-icon'
     | 'item-icon'
+    /** Hero cards, portraits, and other hero-facing panorama images. */
     | 'hero-image'
     | 'hero-model'
     | 'ability-vfx'

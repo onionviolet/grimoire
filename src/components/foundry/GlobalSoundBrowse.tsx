@@ -13,6 +13,7 @@ import {
     MessageSquare,
     Download,
     Upload,
+    Pencil,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { EmptyState } from '../common/PageComponents';
@@ -87,6 +88,7 @@ export default function GlobalSoundBrowse() {
     const { t } = useTranslation();
     const [search, setSearch] = useState('');
     const [category, setCategory] = useState<GlobalSoundCategory | 'all'>('all');
+    const [annotationsVisible, setAnnotationsVisible] = useState(false);
     const [annotatedOnly, setAnnotatedOnly] = useState(false);
     const [data, setData] = useState<{ sounds: GlobalSound[]; error: string | null } | null>(null);
     const [annotations, setAnnotations] = useState<Record<string, SoundAnnotation>>({});
@@ -184,10 +186,13 @@ export default function GlobalSoundBrowse() {
                     />
                 </div>
                 <div className="flex items-center gap-1.5">
-                    <button type="button" aria-pressed={annotatedOnly} onClick={() => setAnnotatedOnly((value) => !value)} className={`rounded-sm border px-2 py-1.5 text-xs ${annotatedOnly ? 'border-accent bg-accent/15 text-accent' : 'border-border text-text-secondary'}`}>Annotated only</button>
-                    <button type="button" onClick={exportAnnotations} className="flex items-center gap-1.5 rounded-sm border border-border px-2 py-1.5 text-xs text-text-secondary hover:text-text-primary" title="Export your sound names and notes"><Download size={13} />Export notes</button>
-                    <button type="button" onClick={() => importRef.current?.click()} className="flex items-center gap-1.5 rounded-sm border border-border px-2 py-1.5 text-xs text-text-secondary hover:text-text-primary" title="Import sound names and notes"><Upload size={13} />Import notes</button>
-                    <input ref={importRef} type="file" accept="application/json,.json" className="hidden" onChange={(event) => { void importAnnotations(event.target.files?.[0]); event.target.value = ''; }} />
+                    <button type="button" aria-pressed={annotationsVisible} onClick={() => { setAnnotationsVisible((value) => !value); setAnnotatedOnly(false); }} className={`flex items-center gap-1.5 rounded-sm border px-2 py-1.5 text-xs ${annotationsVisible ? 'border-accent bg-accent/15 text-accent' : 'border-border text-text-secondary'}`}><Pencil size={13} />Annotate</button>
+                    {annotationsVisible && <>
+                        <button type="button" aria-pressed={annotatedOnly} onClick={() => setAnnotatedOnly((value) => !value)} className={`rounded-sm border px-2 py-1.5 text-xs ${annotatedOnly ? 'border-accent bg-accent/15 text-accent' : 'border-border text-text-secondary'}`}>Annotated only</button>
+                        <button type="button" onClick={exportAnnotations} className="flex items-center gap-1.5 rounded-sm border border-border px-2 py-1.5 text-xs text-text-secondary hover:text-text-primary" title="Export your sound names and notes"><Download size={13} />Export notes</button>
+                        <button type="button" onClick={() => importRef.current?.click()} className="flex items-center gap-1.5 rounded-sm border border-border px-2 py-1.5 text-xs text-text-secondary hover:text-text-primary" title="Import sound names and notes"><Upload size={13} />Import notes</button>
+                        <input ref={importRef} type="file" accept="application/json,.json" className="hidden" onChange={(event) => { void importAnnotations(event.target.files?.[0]); event.target.value = ''; }} />
+                    </>}
                 </div>
             </div>
 
@@ -250,7 +255,7 @@ export default function GlobalSoundBrowse() {
                         {t('foundry.globalSound.count', '{{count}} sounds', { count: totalShown })}
                     </p>
                     {sections.map((section) => (
-                        <CategorySection key={section.category} section={section} player={player} annotations={annotations} onSaveAnnotation={saveAnnotation} />
+                        <CategorySection key={section.category} section={section} player={player} annotations={annotations} onSaveAnnotation={saveAnnotation} annotationsVisible={annotationsVisible} />
                     ))}
                 </div>
             )}
@@ -285,7 +290,7 @@ function FilterChip({
     );
 }
 
-function CategorySection({ section, player, annotations, onSaveAnnotation }: { section: Section; player: ClipPlayer; annotations: Record<string, SoundAnnotation>; onSaveAnnotation: (key: string, name: string, note: string, tags: string[]) => Promise<void> }) {
+function CategorySection({ section, player, annotations, onSaveAnnotation, annotationsVisible }: { section: Section; player: ClipPlayer; annotations: Record<string, SoundAnnotation>; onSaveAnnotation: (key: string, name: string, note: string, tags: string[]) => Promise<void>; annotationsVisible: boolean }) {
     const { t } = useTranslation();
     const Icon = CATEGORY_ICON[section.category];
     const title = t(
@@ -330,6 +335,7 @@ function CategorySection({ section, player, annotations, onSaveAnnotation }: { s
                                 annotationKey={foundrySoundAnnotationKey(row.event, row.vsnd[0] ?? '')}
                                 annotation={annotations[foundrySoundAnnotationKey(row.event, row.vsnd[0] ?? '')]}
                                 onSaveAnnotation={onSaveAnnotation}
+                                annotationsVisible={annotationsVisible}
                             />
                         ))}
                     </div>

@@ -118,6 +118,7 @@ export default function SoundBrowse({ heroes, heroNames, only }: SoundBrowseProp
     // option so the tab opens with content (no synchronous default-set effect).
     const [picked, setPicked] = useState('');
     const [search, setSearch] = useState('');
+    const [annotationsVisible, setAnnotationsVisible] = useState(false);
     const [annotatedOnly, setAnnotatedOnly] = useState(false);
     const hero = picked || heroOptions[0]?.code || '';
     const heroName = heroOptions.find((h) => h.code === hero)?.name ?? hero;
@@ -240,9 +241,12 @@ export default function SoundBrowse({ heroes, heroNames, only }: SoundBrowseProp
                         className="w-full rounded-sm border border-border bg-bg-tertiary py-2 pl-9 pr-3 text-sm text-text-primary placeholder:text-text-secondary/60 focus:border-accent/50 focus:outline-none"
                     />
                 </div>
-                <button type="button" aria-pressed={annotatedOnly} onClick={() => setAnnotatedOnly((value) => !value)} className={`rounded-sm border px-3 py-2 text-sm ${annotatedOnly ? 'border-accent bg-accent/15 text-accent' : 'border-border text-text-secondary'}`}>
-                    Annotated only
+                <button type="button" aria-pressed={annotationsVisible} onClick={() => { setAnnotationsVisible((value) => !value); setAnnotatedOnly(false); }} className={`flex items-center gap-1.5 rounded-sm border px-3 py-2 text-sm ${annotationsVisible ? 'border-accent bg-accent/15 text-accent' : 'border-border text-text-secondary'}`}>
+                    <Pencil size={14} /> Annotate
                 </button>
+                {annotationsVisible && <button type="button" aria-pressed={annotatedOnly} onClick={() => setAnnotatedOnly((value) => !value)} className={`rounded-sm border px-3 py-2 text-sm ${annotatedOnly ? 'border-accent bg-accent/15 text-accent' : 'border-border text-text-secondary'}`}>
+                    Annotated only
+                </button>}
             </div>
 
             {showGameplay &&
@@ -293,6 +297,7 @@ export default function SoundBrowse({ heroes, heroNames, only }: SoundBrowseProp
                                         slotMeta={slotMeta}
                                         annotations={annotations}
                                         onSaveAnnotation={saveAnnotation}
+                                        annotationsVisible={annotationsVisible}
                                     />
                                 ))}
                             </>
@@ -310,6 +315,7 @@ export default function SoundBrowse({ heroes, heroNames, only }: SoundBrowseProp
                     swap={swapContext}
                     annotations={annotations}
                     onSaveAnnotation={saveAnnotation}
+                    annotationsVisible={annotationsVisible}
                 />
             )}
         </>
@@ -411,6 +417,7 @@ function CategorySection({
     slotMeta,
     annotations,
     onSaveAnnotation,
+    annotationsVisible,
 }: {
     section: CategorySectionData;
     player: ClipPlayer;
@@ -418,6 +425,7 @@ function CategorySection({
     slotMeta: Map<number, HeroAbilitySlot>;
     annotations: Record<string, SoundAnnotation>;
     onSaveAnnotation: (key: string, name: string, note: string, tags: string[]) => Promise<void>;
+    annotationsVisible: boolean;
 }) {
     const { t } = useTranslation();
     const Icon = CATEGORY_ICON[section.category];
@@ -472,6 +480,7 @@ function CategorySection({
                                 annotationKey={foundrySoundAnnotationKey(row.event, row.vsnd[0] ?? '')}
                                 annotation={annotations[foundrySoundAnnotationKey(row.event, row.vsnd[0] ?? '')]}
                                 onSaveAnnotation={onSaveAnnotation}
+                                annotationsVisible={annotationsVisible}
                             />
                         ))}
                     </div>
@@ -505,6 +514,7 @@ function VoiceLinesSection({
     swap,
     annotations,
     onSaveAnnotation,
+    annotationsVisible,
 }: {
     hero: string;
     search: string;
@@ -516,6 +526,7 @@ function VoiceLinesSection({
     swap?: SwapContext;
     annotations: Record<string, SoundAnnotation>;
     onSaveAnnotation: (key: string, name: string, note: string, tags: string[]) => Promise<void>;
+    annotationsVisible: boolean;
 }) {
     const { t } = useTranslation();
     const [open, setOpen] = useState(standalone);
@@ -618,6 +629,7 @@ function VoiceLinesSection({
                                     annotationKey={foundrySoundAnnotationKey(line.event, line.vsnd[0] ?? '')}
                                     annotation={annotations[foundrySoundAnnotationKey(line.event, line.vsnd[0] ?? '')]}
                                     onSaveAnnotation={onSaveAnnotation}
+                                    annotationsVisible={annotationsVisible}
                                 />
                             ))}
                             {visible.length > VO_ROW_CAP && (
@@ -667,9 +679,11 @@ interface SoundRowProps {
     annotationKey?: string;
     annotation?: SoundAnnotation;
     onSaveAnnotation?: (key: string, name: string, note: string, tags: string[]) => Promise<void>;
+    /** Keeps personal note controls out of the normal browse flow. */
+    annotationsVisible?: boolean;
 }
 
-export function SoundRow({ label, event, clips, duration, state, onToggle, poolIndex = 0, swap, targetClip, clipPaths, sourceClipPaths, description, clipName, annotationKey, annotation, onSaveAnnotation }: SoundRowProps) {
+export function SoundRow({ label, event, clips, duration, state, onToggle, poolIndex = 0, swap, targetClip, clipPaths, sourceClipPaths, description, clipName, annotationKey, annotation, onSaveAnnotation, annotationsVisible = false }: SoundRowProps) {
     const { t } = useTranslation();
     const [swapOpen, setSwapOpen] = useState(false);
     const [annotationOpen, setAnnotationOpen] = useState(false);
@@ -682,7 +696,15 @@ export function SoundRow({ label, event, clips, duration, state, onToggle, poolI
         setAnnotationNote(annotation?.note ?? '');
         setAnnotationTags((annotation?.tags ?? []).join(', '));
     }, [annotation?.name, annotation?.note, annotation?.tags]);
+    useEffect(() => {
+        if (!annotationsVisible) setAnnotationOpen(false);
+    }, [annotationsVisible]);
     const seconds = duration && duration > 0 ? `${duration.toFixed(1)}s` : null;
+    // The catalog returns source `.vsnd` names, whereas VPK entries and sound
+    // mod override targets are the compiled `.vsnd_c` files.
+    const compiledClipName = clipName
+        ? `${clipName.replace(/\.vsnd(_c)?$/i, '')}.vsnd_c`
+        : null;
     // Randomizer pool: name which clip the next press auditions, so repeated
     // presses read as walking the pool rather than as a stuck button.
     const poolNote =
@@ -714,24 +736,24 @@ export function SoundRow({ label, event, clips, duration, state, onToggle, poolI
                     <p className="truncate text-sm text-text-primary" title={label || event}>
                         <span className="text-text-secondary">Base-game label: </span>{label || event}
                     </p>
-                    {annotation?.name && <p className="truncate text-[11px] text-accent" title={annotation.name}>My label: {annotation.name}</p>}
-                    {(annotation?.note || description) && (
-                        <p className="truncate text-[11px] text-text-secondary" title={annotation?.note || description || undefined}>
-                            {annotation?.note || description}
+                    {annotationsVisible && annotation?.name && <p className="truncate text-[11px] text-accent" title={annotation.name}>My label: {annotation.name}</p>}
+                    {(annotationsVisible && annotation?.note ? annotation.note : description) && (
+                        <p className="truncate text-[11px] text-text-secondary" title={(annotationsVisible && annotation?.note) || description || undefined}>
+                            {(annotationsVisible && annotation?.note) || description}
                         </p>
                     )}
                     {/* Engine identifiers last and dimmer: they are what you
                         search and swap by, but not what tells you what a row is. */}
                     <p
                         className="truncate text-[11px] text-text-secondary/70"
-                        title={clipName ? `${event}\n${clipName}` : event}
+                        title={compiledClipName ? `Event: ${event}\nBase-game file: ${compiledClipName}` : `Event: ${event}`}
                     >
-                        {event}
-                        {clipName ? ` · ${clipName}` : ''}
+                        <span>Event: {event}</span>
+                        {compiledClipName ? ` · Base-game file: ${compiledClipName}` : ''}
                         {poolNote}
                     </p>
                 </div>
-                {annotationKey && onSaveAnnotation && (
+                {annotationsVisible && annotationKey && onSaveAnnotation && (
                     <button
                         type="button"
                         onClick={() => setAnnotationOpen((open) => !open)}

@@ -21,7 +21,9 @@ interface LibraryBrowseProps {
 const CATEGORIES: { value: TextureCategory; labelKey: string; fallback: string }[] = [
   { value: 'ability-icon', labelKey: 'foundry.categories.abilityIcon', fallback: 'Ability icons' },
   { value: 'item-icon', labelKey: 'foundry.categories.itemIcon', fallback: 'Item icons' },
-  { value: 'hero-image', labelKey: 'foundry.categories.heroImage', fallback: 'Hero images' },
+  // This catalog family includes hero cards and portrait textures as well as
+  // other hero-facing panorama art, so name the thing a modder is looking for.
+  { value: 'hero-image', labelKey: 'foundry.categories.heroImage', fallback: 'Portraits & hero images' },
 ];
 
 /**

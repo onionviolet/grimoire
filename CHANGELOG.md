@@ -2,17 +2,27 @@
 
 All notable changes to this project are documented here. Format is loosely based on [Keep a Changelog](https://keepachangelog.com/), and the project adheres to semantic versioning.
 
-## [1.25.1] - 2026-07
+## [1.25.167] - 2026-07-28
 
 ### Added
 - **Fork in-app update channel.** Packaged fork builds now identify the
   Onionviolet GitHub Releases feed as their update source, so future fork
   releases can download and install in-app without switching users to the
   official Grimoire channel.
+- **Foundry sound workbench.** Browse and audition hero and global base-game
+  sounds, forge replacement audio, inspect exact VPK conflicts, and manage
+  multi-clip randomizer pools without leaving Grimoire.
+- **Foundry portrait discovery.** Hero cards and portrait textures are included
+  in the Foundry asset catalog as **Portraits & hero images**, alongside the
+  existing Locker portrait-picker and launch-time card shuffle.
 
 ### Changed
 - Clarified the fork's direction: Grimoire remains a Deadlock mod manager first, while expanding into a personal, player-focused customization workshop for safe organization, personalization, approachable creation, and sharing.
 - Documented that this is a personal independent fork that remains open for others to use or contribute to, while encouraging support for the original Grimoire project and its creator.
+- Foundry sound rows now identify both the engine event and the compiled
+  base-game VPK target (for example, `charged_melee_full.vsnd_c`).
+- Sound annotations are opt-in: the regular browse view stays uncluttered until
+  **Annotate** is enabled.
 
 ## [1.10.0] - 2026-05
 
