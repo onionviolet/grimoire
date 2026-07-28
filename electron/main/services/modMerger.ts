@@ -16,7 +16,7 @@ import {
 } from './mods';
 import { getModMetadata, setModMetadata, removeModMetadata } from './metadata';
 import { resolveVpkIdentity, type OriginalIdentity } from './vpkIdentity';
-import { parseVpkEntryStats } from './vpk';
+import { parseVpkDirectoriesAsync, parseVpkEntryStats } from './vpk';
 import {
     computeOriginalIdentity,
     serializeAddonInfo,
@@ -50,6 +50,8 @@ import type {
     UnmergeModResult,
     ExtractMergeSourceResult,
     AddMergeSourcesResult,
+    MergeAnalysisResult,
+    MergeCollisionCategory,
 } from '../../../src/types/mod';
 
 const DEADLOCK_STEAM_APP_ID = 1422450;
@@ -482,6 +484,103 @@ export interface MergeOptions {
 export interface MergeResult {
     mod: Mod;
     disabledSources: Mod[];
+}
+
+/** Inert metadata injected by Grimoire should not make a proposed merge appear
+ * conflicting merely because both sources were imprinted. */
+const MERGE_ANALYSIS_IGNORED_ENTRIES = new Set([
+    ADDONINFO_ENTRY,
+    MODINFO_ENTRY,
+    LEGACY_GRIMOIRE_META_ENTRY,
+]);
+
+function mergeCollisionCategory(entryPath: string): MergeCollisionCategory {
+    if (entryPath.startsWith('models/')) return 'models';
+    if (entryPath.startsWith('materials/skybox/')) return 'maps';
+    if (entryPath.startsWith('materials/')) return 'materials';
+    if (entryPath.startsWith('particles/')) return 'particles';
+    if (entryPath.startsWith('sounds/') || entryPath.startsWith('soundevents/')) return 'sounds';
+    if (entryPath.startsWith('panorama/')) return 'ui';
+    if (entryPath.startsWith('maps/')) return 'maps';
+    return 'other';
+}
+
+/**
+ * Read-only merge preflight. It intentionally does not acquire the mutation
+ * lock, reserve a priority slot, write metadata, or move a source. Existing
+ * merge callers remain on mergeMods and need no protocol migration.
+ *
+ * Selected parent merges are analyzed as their current packed VPK. mergeMods
+ * will flatten them to their leaves, so callers receive a warning rather than
+ * a misleading claim that this preliminary view is the final build plan.
+ */
+export async function analyzeMerge(deadlockPath: string, modIds: string[]): Promise<MergeAnalysisResult> {
+    if (modIds.length < 2) throw new Error('Select at least two mods to analyze a merge.');
+    if (new Set(modIds).size !== modIds.length) throw new Error('The same mod was selected more than once.');
+
+    const installed = await scanMods(deadlockPath);
+    const selected = modIds.map((id) => {
+        const mod = installed.find((candidate) => candidate.id === id);
+        if (!mod) throw new Error(`Selected mod not found (id: ${id}).`);
+        return mod;
+    });
+    // Match mergeModsLocked: lower pak priority wins in Deadlock and therefore
+    // must be passed last to vpkmerge's last-input-wins merge.
+    const ordered = [...selected].sort((a, b) => b.priority - a.priority);
+    const parsed = await parseVpkDirectoriesAsync(ordered.map((mod) => mod.path));
+    const pathSources = new Map<string, string[]>();
+    const unreadableModIds: string[] = [];
+    let totalEntries = 0;
+
+    for (const mod of ordered) {
+        const entries = parsed.get(mod.path);
+        if (entries === null || entries === undefined) {
+            unreadableModIds.push(mod.id);
+            continue;
+        }
+        totalEntries += entries.length;
+        for (const entry of entries) {
+            const normalized = entry.replace(/\\/g, '/').toLowerCase();
+            if (MERGE_ANALYSIS_IGNORED_ENTRIES.has(normalized)) continue;
+            const sourceIds = pathSources.get(normalized) ?? [];
+            sourceIds.push(mod.id);
+            pathSources.set(normalized, sourceIds);
+        }
+    }
+
+    const collisions = Array.from(pathSources, ([path, sourceModIds]) => ({
+        path,
+        category: mergeCollisionCategory(path),
+        sourceModIds,
+        winnerModId: sourceModIds[sourceModIds.length - 1],
+    })).filter((collision) => collision.sourceModIds.length > 1)
+      .sort((a, b) => a.path.localeCompare(b.path));
+    const warnings: string[] = [];
+    if (unreadableModIds.length > 0) warnings.push('One or more VPKs could not be read; collision results are incomplete.');
+    if (selected.some((mod) => !!getModMetadata(mod.metaKey)?.merged)) {
+        warnings.push('Selected merged mods are analyzed as packed VPKs; the final merge flattens their recorded sources.');
+    }
+
+    return {
+        sources: ordered.map((mod) => {
+            const entries = parsed.get(mod.path);
+            return {
+                modId: mod.id,
+                fileName: mod.fileName,
+                name: mod.name,
+                priority: mod.priority,
+                enabled: mod.enabled,
+                size: mod.size,
+                entryCount: entries === null || entries === undefined ? null : entries.length,
+                winsCollisions: collisions.some((collision) => collision.winnerModId === mod.id),
+            };
+        }),
+        collisions,
+        totalInputSize: selected.reduce((sum, mod) => sum + mod.size, 0),
+        totalEntries,
+        unreadableModIds,
+        warnings,
+    };
 }
 
 export async function mergeMods(

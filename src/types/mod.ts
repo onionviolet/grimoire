@@ -675,6 +675,38 @@ export interface MergeModsArgs {
   strict?: boolean;
 }
 
+/** Read-only preflight for a prospective merge. Kept separate from
+ * MergeModsArgs so it cannot alter legacy merge callers or persisted merges. */
+export interface MergeAnalysisSource {
+  modId: string;
+  fileName: string;
+  name: string;
+  priority: number;
+  enabled: boolean;
+  size: number;
+  entryCount: number | null;
+  winsCollisions: boolean;
+}
+
+export type MergeCollisionCategory = 'models' | 'materials' | 'particles' | 'sounds' | 'ui' | 'maps' | 'other';
+
+export interface MergeAnalysisCollision {
+  path: string;
+  category: MergeCollisionCategory;
+  /** Source IDs in vpkmerge input order. The final item wins by default. */
+  sourceModIds: string[];
+  winnerModId: string;
+}
+
+export interface MergeAnalysisResult {
+  sources: MergeAnalysisSource[];
+  collisions: MergeAnalysisCollision[];
+  totalInputSize: number;
+  totalEntries: number;
+  unreadableModIds: string[];
+  warnings: string[];
+}
+
 export interface UnmergeModResult {
   recovered: Mod[];
   /** Source filenames that were no longer on disk at unmerge time. The

@@ -102,15 +102,17 @@ const sessionMocks = vi.hoisted(() => ({
     syncRunningGameModSnapshotFromMods: vi.fn(),
 }));
 vi.mock('./gameSessionMods', () => sessionMocks);
-vi.mock('./vpk', () => ({
+const vpkMocks = vi.hoisted(() => ({
     parseVpkEntryStats: vi.fn(() => [{ path: 'materials/example.vmat_c', size: 12 }]),
+    parseVpkDirectoriesAsync: vi.fn(),
 }));
+vi.mock('./vpk', () => vpkMocks);
 const portableMocks = vi.hoisted(() => ({
     encodeShareCode: vi.fn((_payload: string) => 'mp1:updated'),
 }));
 vi.mock('./portableProfile', () => portableMocks);
 
-import { addMergeSources } from './modMerger';
+import { addMergeSources, analyzeMerge } from './modMerger';
 
 const hash = (letter: string) => letter.repeat(64);
 const target = {
@@ -283,5 +285,48 @@ describe('addMergeSources', () => {
         expect(modMocks.enableModUnlocked).toHaveBeenCalledWith('/game', disabledAddition.id);
         expect(fsMocks.rename).not.toHaveBeenCalledWith(expect.any(String), target.path);
         expect(metadataMocks.setModMetadata).not.toHaveBeenCalled();
+    });
+});
+
+describe('analyzeMerge', () => {
+    it('is read-only, ignores imprint entries, and reports the same priority winner order as merge', async () => {
+        const high = { ...sourceA, enabled: true, priority: 20, path: '/game/high.vpk' };
+        const low = { ...sourceB, enabled: true, priority: 4, path: '/game/low.vpk' };
+        modMocks.scanMods.mockResolvedValue([high, low]);
+        vpkMocks.parseVpkDirectoriesAsync.mockResolvedValue(new Map([
+            [high.path, ['models/shared.vmdl_c', 'addoninfo.txt', 'materials/high.vmat_c']],
+            [low.path, ['models/shared.vmdl_c', 'modinfo.json', 'particles/low.vpcf_c']],
+        ]));
+
+        const result = await analyzeMerge('/game', [high.id, low.id]);
+
+        expect(result.collisions).toEqual([{
+            path: 'models/shared.vmdl_c',
+            category: 'models',
+            sourceModIds: [high.id, low.id],
+            winnerModId: low.id,
+        }]);
+        expect(result.sources.map((source) => source.modId)).toEqual([high.id, low.id]);
+        expect(result.totalEntries).toBe(6);
+        expect(processMocks.spawnArgs).toEqual([]);
+        expect(modMocks.disableModUnlocked).not.toHaveBeenCalled();
+        expect(metadataMocks.setModMetadata).not.toHaveBeenCalled();
+        expect(fsMocks.rename).not.toHaveBeenCalled();
+    });
+
+    it('marks unreadable VPKs without failing the read-only analysis', async () => {
+        const high = { ...sourceA, enabled: true, path: '/game/high.vpk' };
+        const low = { ...sourceB, enabled: true, path: '/game/low.vpk' };
+        modMocks.scanMods.mockResolvedValue([high, low]);
+        vpkMocks.parseVpkDirectoriesAsync.mockResolvedValue(new Map([
+            [high.path, null],
+            [low.path, ['sounds/voice.vsnd_c']],
+        ]));
+
+        const result = await analyzeMerge('/game', [high.id, low.id]);
+
+        expect(result.unreadableModIds).toEqual([high.id]);
+        expect(result.warnings).toContain('One or more VPKs could not be read; collision results are incomplete.');
+        expect(result.sources.find((source) => source.modId === high.id)?.entryCount).toBeNull();
     });
 });

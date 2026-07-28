@@ -328,6 +328,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getAppearanceImageEdit: (surface: AppearanceSurface) =>
         ipcRenderer.invoke('get-appearance-image-edit', surface),
     mergeMods: (args: MergeModsArgs) => ipcRenderer.invoke('merge-mods', args),
+    analyzeMerge: (modIds: string[]) => ipcRenderer.invoke('analyze-merge', modIds),
     unmergeMod: (mergedModId: string) => ipcRenderer.invoke('unmerge-mod', mergedModId),
     extractMergeSource: (mergedModId: string, sourceFileName: string) =>
         ipcRenderer.invoke('extract-merge-source', mergedModId, sourceFileName),

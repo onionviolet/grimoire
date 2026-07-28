@@ -605,6 +605,7 @@ export interface ElectronAPI {
     };
 
     chatWheelRead: (vpkPath: string) => Promise<string>;
+    chatWheelStarter: () => Promise<string>;
     chatWheelSave: (args: ChatWheelSaveArgs) => Promise<Mod | null>;
     chatWheelStatus: () => Promise<{ available: boolean; path?: string; error?: string }>;
 
