@@ -3,186 +3,142 @@
 Picking up the Grimoire **Foundry** tab. Read [foundry-tab-design.md](./foundry-tab-design.md)
 for the full vision. This file is the "where we are / what's next" snippet.
 
-## Branch + state (both repos, NOT pushed)
+Refreshed against `main` at v1.24.0. Everything below was re-verified against the
+code rather than carried forward; the previous revision described a pre-merge
+world (unpushed branches, three sub-tabs still `soon`, an engine binary without
+`catalog`) that main had long since overtaken.
 
-- **vpkmerge** `feat/foundry-catalog-voiceline` (rebased onto current main; the broken
-  pre-rebase tip is preserved as `feat/foundry-catalog-voiceline-prerebase`).
-  Catalog engine is complete and CI-green: `vpkmerge catalog voiceline|herosounds|texture|cache|heroes [--json]`.
-  Two texture-decode bugs fixed + committed (`d9a7a48`): non-power-of-two cropping
-  and YCoCg DXT5 (both verified pixel-perfect vs the VRF oracle, regression fixture
-  `morphic/fixtures/dxt5/radiant_regeneration_psd_ycocg`).
-  - **Uncommitted (this session):** two decode-only CLI additions, both verified against the
-    live pak:
-    1. `catalog texture --path <ENTRY>` exact-match filter, so `--thumbs`/`--thumb-size` can
-       decode a *single* entry on demand (backbone for the lightbox, ask 2). Reuses the
-       existing thumbnail pipeline.
-    2. `catalog voiceclip --vpk <pak> --entry <vsnd_c> --out <mp3>` slices the appended MP3
-       out of a VO `.vsnd_c` (backbone for Sound-tab audition, ask 1). New
-       `morphic::extract_vsnd_mp3` (inverse of `encode_vsnd_c`, MP3 = final `m_nStreamingSize`
-       bytes, MP3-sync gated) + `vpkmerge_core::extract_voiceclip_mp3` (also normalizes the
-       index's `.vsnd` path to the packed `.vsnd_c`). Verified: real Abrams/bebop clips decode
-       to valid MP3 with duration matching the index.
-    3. `catalog herosounds --vpk <pak> [--hero <code>] [--category <cat>] [--search] [--json]`
-       indexes the **non-VO** hero gameplay sounds (abilities + gun + movement + melee) from
-       `soundevents/hero/<code>.vsndevts_c`. New `vpkmerge_core::build_hero_sound_index` +
-       `HeroSound`/`HeroSoundCategory` in `catalog.rs`. Each row carries `{ event, hero
-       (sound-path codename), category, ability, slot, label, vsnd[], duration }`; category +
-       ability/slot are derived from the event name's grouping segment (`Haze.Finesse.Dagger
-       .Cast` -> ability "Finesse"; `Abrams.A1.SiphonLife.Cast` -> slot 1) with the slot
-       backfilled from the clip path's `aN` folder when the event name doesn't carry it. The
-       clips audition through the same `catalog voiceclip` slicer (verified: weapon clips
-       decode to valid MP3). 5 new unit tests; clippy clean.
-    RELEASE GATE: all three are new CLI affordances, so shipping the lightbox + Sound tab in a
-    packaged Grimoire build requires releasing vpkmerge once and bumping the pin in
-    `scripts/fetch-vpkmerge.mjs` (the standing "release vpkmerge first, then bump the pin"
-    rule). Dev works today via `$VPKMERGE_BINARY`.
-- **grimoire** `feat/foundry-catalog-voiceline`. Tier-1 **Library** + **Sound** tabs live,
-  plus the **lightbox** (enlarge-on-click) on Library. (This session added Sound + the
-  lightbox; see asks 1 and 2 below.)
-  - UI: `src/pages/Foundry.tsx` is the shell (left rail `SUBTOOLS`; `library` + `sound`
-    enabled, `texture`/`items`/`recolor` still `soon`); browse bodies are
-    `src/components/foundry/{LibraryBrowse,SoundBrowse}.tsx`;
-    `{TextureGrid,TextureCard,TextureLightbox}.tsx`, `src/types/foundry.ts`.
-  - Bridge: `electron/main/services/foundryCatalog.ts` spawns the bundled `vpkmerge
-    catalog ... --json` (via `runVpkmergeStdout` / `runVpkmerge` in `services/modMerger.ts`),
-    caches thumbnails under `userData/foundry-thumbs/<fingerprint>/<category>/`, serves
-    them over the `grimoire-foundry:` protocol scheme. IPC in `electron/main/ipc/foundry.ts`,
-    renderer wrappers in `src/lib/api.ts` (`foundryHeroes/foundryThumbnails/foundryWarmCache`).
-  - Dev run: the engine binary is resolved from `$VPKMERGE_BINARY` first (set it to a
-    locally-built catalog-capable CLI: `…/vpkmerge/target/release/vpkmerge`), else the
-    bundled `resources/vpkmerge/`. The shipped/bundled binary on `main` does NOT have the
-    `catalog` subcommand yet, so dev needs the env override or a fresh `cargo build
-    --release -p vpkmerge-cli` on the foundry branch.
+## State
 
-## The three asks
+**Engine.** `vpkmerge` v0.19.0 is the pinned release (`VPKMERGE_VERSION` in
+`scripts/fetch-vpkmerge.mjs`), and it ships the whole catalog + replace surface:
 
-### 1. Expand to other sub-tabs (Sound / Texture / Items / Recolor)
+```
+vpkmerge catalog voiceline|herosounds|texture|voiceclip|heroes|cache [--json]
+vpkmerge soundswap --from-vpk <pak> (--clip <ENTRY> | --event <NAME> (--hero <CODE> | --soundevents <ENTRY>))
+                   --audio <mp3> [--trim-start/--trim-end] [--gain-db] [--loop] [--pool] --encode-vpk <OUT>
+vpkmerge icon --template-vpk <pak> --set <ENTRY>=<user.png> --encode-vpk <OUT>
+vpkmerge recolor-hero | prism | vmat | trippy-*
+```
 
-The catalog engine already backs all of these; this is mostly UI wiring mirroring `library`.
+There is no longer a release gate on any shipped Foundry feature: the bundled
+binary has everything the GUI calls. A locally built CLI still overrides via
+`$VPKMERGE_BINARY`, and `pnpm dev` also auto-detects a sibling
+`../vpkmerge/target/release/vpkmerge` build.
 
-- **Sound: BUILT (gameplay-led rework this session; pending the vpkmerge release gate
-  above).** The Sound tab now leads with a hero's **gameplay sounds** (abilities + gun +
-  movement + melee) grouped by category, with the VO voice-line corpus demoted to a
-  supplementary collapsible section. Live-verified end to end via a throwaway CDP instance:
-  Abrams rendered 25 gameplay sounds across Abilities(11, sub-grouped Siphon Life #1 / Charge
-  #2 / Leap ULT) / Weapon(7) / Movement(3) / Melee(2) / Other(2); a Haze weapon clip
-  extracted to a valid `data:audio/mpeg` URL. Architecture:
-  - `Foundry.tsx` is the shell that switches sub-tools (`active` state, clickable rail);
-    `LibraryBrowse.tsx` holds the texture flow, `SoundBrowse.tsx` is the Sound tab.
-  - Engine (gameplay): `getHeroSounds({hero})` -> `catalog herosounds --hero <sound_code>`.
-    The renderer picks by **roster** codename (`atlas`), so `foundryCatalog.ts`'s
-    `rosterToSoundCodename` bridges roster -> sound-path codename (`atlas` -> "Abrams" ->
-    `abrams`) via the roster display name + `heroSoundCodenames.ts`, memoized per game path.
-    `SoundBrowse` groups rows by category (order: ability, weapon, movement, melee, other) and,
-    within abilities, by `ability` name ordered by `slot` (slot 4 shows "ULT").
-  - Engine (VO, supplementary): unchanged `getVoicelines(hero)` -> `catalog voiceline --hero`
-    (76K corpus, always hero-scoped; client search/cap, VO_ROW_CAP=500). `VoiceLinesSection` is
-    keyed by hero and lazy-fetches only on first expand.
-  - Audition (shared): `ensureVoiceclip(vsndPath)` runs `catalog voiceclip`, caches the MP3 under
-    `userData/foundry-voiceclips/<fp>/<sha1>.mp3` (pruned on game update), returns a
-    `data:audio/mpeg` URL. One shared `<audio>` (`useClipPlayer`) plays at most one clip across
-    BOTH gameplay and VO rows; clips load lazily on first play. **CSP:** `data:` is in
-    `media-src` (prod-only CSP, `electron/main/index.ts`) or audition breaks in packaged builds.
-  - i18n under `foundry.sound.*` (category labels, slot/ult chips, `voiceLines.*`).
-  - Still open: randomizer pools audition only `vsnd[0]`; events that only inherit a `base`
-    template (no own `vsnd_files`, e.g. `Abrams.Wpn.Whizby`) are skipped (not auditionable at
-    this layer); ability display names are the soundevent group codeword (`Finesse`), not the
-    in-game localized name (needs the vdata join, see catalog "still open"); no swap/stage yet
-    (that's the Sound *swap* flow: drop audio -> mint/swap -> install as a local mod, mirroring
-    the Locker sound picker in `{abilitySounds,heroSounds}.ts`).
-- **Texture / Items**: same `catalog texture` index, filtered by category
-  (`ability-icon`, `item-icon`, `hero-image`, `hero-model`, `ability-vfx`, `other`). The
-  Library tab already renders the bounded thumbnailable categories; Items is just the
-  `item-icon` slice with the replace flow (see ask 3).
-- **Recolor**: engine is `vpkmerge recolor-hero` / `prism` / `vmat` (already shipped in
-  core+CLI; GUI prototype exists in the old vpkmerge `gui/`). This is a heavier tab; do it
-  after the simpler browse/replace tabs.
+**GUI.** All five sub-tools in `SUBTOOLS` (`src/pages/Foundry.tsx`) are
+`enabled: true`. The rail is the tool-first *Catalog* mode; the default landing
+is now hero-first (`HeroWorkshop.tsx`).
 
-Wiring checklist per tab: add a `catalog <kind>` JSON method to `foundryCatalog.ts` +
-`ipc/foundry.ts` + `api.ts`, flip the `SUBTOOLS` entry `enabled: true`, render a grid/list.
+| Sub-tool | Browse | Replace |
+|---|---|---|
+| Library | yes, grid + lightbox | n/a |
+| Sound | yes, hero gameplay + VO | yes, `foundry:swapSound` (drop MP3, mint, install as a tracked local mod) |
+| Texture | yes, `TextureBrowse` grid + lightbox | **no, the remaining work** |
+| Items | yes, `item-icon` slice | no, same |
+| Recolor | n/a | yes, `RecolorTool` wraps the Locker's `HeroEffectsPanel`, bakes and applies |
 
-### 2. Click an image to view it bigger (lightbox) — for textures AND assets
+So browse is finished everywhere and the sound half of replace is finished. The
+one genuinely unbuilt thing is **drag-and-drop texture/item replace**, ask 3.
 
-**Texture lightbox: BUILT (this session; pending the vpkmerge release gate above).** Verified:
-the `--path` single-entry decode against the live pak, plus `pnpm typecheck` / `lint` /
-`i18n:check` all green. Not yet done: a live click-through screenshot (no dev session was up).
-- Engine: `catalog texture --path <ENTRY> --thumbs DIR --thumb-size 1024` decodes the one
-  clicked entry (never upscales, so it caps at native res).
-- Main: `ensureFullImage(deadlockPath, category, entryPath)` in `foundryCatalog.ts` runs that,
-  caches one PNG per entry under `foundry-thumbs/<fp>/<category>@full/` (durable entry->file
-  `index.json`; pruned with the rest on a game update), and returns a `grimoire-foundry:` URL.
-  IPC `foundry:fullImage` -> `api.ts` `foundryFullImage`.
-- Renderer: `TextureCard` is now a clickable button; `TextureGrid` threads `onOpen`;
-  `Foundry.tsx` hosts the `TextureLightbox` (reuses the `common/Modal` primitive). While the
-  full decode is in flight the 128px grid thumb stands in; a decode failure falls back to it.
-  i18n keys under `foundry.lightbox.*`.
+Key files: `src/pages/Foundry.tsx` (shell) ·
+`src/components/foundry/{LibraryBrowse,SoundBrowse,TextureBrowse,RecolorTool,SoundImportEditor,TextureGrid,TextureCard,TextureLightbox}.tsx`
+· `src/components/foundry/useClipPlayer.ts` (shared audition) ·
+`electron/main/services/foundryCatalog.ts` (engine bridge, thumbnail cache,
+`grimoire-foundry:` protocol) · `electron/main/ipc/foundry.ts` ·
+`electron/main/ipc/mods.ts` (`foundry:swapSound`) · `src/lib/api.ts` ·
+`src/types/foundry.ts`.
 
-Still open (asset lightbox): models/sounds want their own preview. The 3D preview already
-exists in the Locker (`HeroPoseViewer` / R3F on `main`); a Foundry model lightbox can reuse it
-via `vpkmerge model export ... --glb`. Sounds want an inline `<audio>` of the decoded clip
-(needs the appended-MP3 extraction noted under ask 1's Sound tab).
+## Ask 3: drag-and-drop replace for textures and items, the remaining work
 
-### 3. Drag-and-drop replace for textures — WE ARE CLOSE
-
-The engine is **already built and in-game-proven**:
+The engine verb is built and in-game-proven:
 
 ```
 vpkmerge icon --template-vpk <pak01_dir.vpk> --set <ENTRY>=<user.png> --encode-vpk <OUT_dir.vpk>
 ```
 
-`vpkmerge-core/src/icon.rs` reads the template `.vtex_c` for its format+dims, resizes the
-user PNG, and splices via `morphic::replace_mip_chain` **in the template's own format**
-(BC7/DXT5, not inline PNG), packing it at the entry path so it overrides in place. This is
-exactly the Locker custom hero-card upload path (`electron/main/services/customHeroCards.ts`).
+`vpkmerge-core/src/icon.rs` reads the template `.vtex_c` for its format + dims,
+resizes the user PNG, and splices via `morphic::replace_mip_chain` **in the
+template's own format** (BC7/DXT5, not inline PNG), packing it at the entry path
+so it overrides in place. This is exactly the Locker custom hero-card upload
+path (`electron/main/services/customHeroCards.ts`, the only `icon --set` caller
+in the main process today).
 
-To ship drag-drop in Foundry, reuse the existing "build VPK -> install as tracked local mod"
-pattern: see `electron/main/ipc/mods.ts` handler `import-soul-container-glb` (~line 951) and
-the soul/urn import services (`buildXVpk` -> stage temp VPK -> allocate ENABLED slot ->
-install as a `Mod` with a thumbnail). Mirror it as `forge-texture-replace`: drop PNG on a
-TextureCard -> `vpkmerge icon --set <card.entry>=<png>` -> install as local mod.
+To ship it, reuse the existing build-VPK-then-install-as-tracked-mod pattern:
+`electron/main/ipc/mods.ts` `import-soul-container-glb` and the sound-swap
+handler both do build, allocate ENABLED slot, copy, write metadata. Mirror it as
+`forge-texture-replace`: drop PNG on a `TextureCard`, run `vpkmerge icon --set
+<card.entry>=<png>`, install as a local mod.
 
-**BLOCKER to resolve first (important):** the icons being browsed (`item-icon` /
-`ability-icon`) are largely **DXT5-YCoCg**. `icon` re-encodes the new pixels as raw DXT5 but
-keeps the template's `RED2` block (which still carries the `YCoCg Conversion`
-special-dependency). In-engine the YCoCg flag + non-YCoCg data => garbled colors. So a naive
-drag-drop replace of a YCoCg icon will render wrong in-game. Fix one of:
-  1. YCoCg-**encode** on the write path (inverse of the new `morphic::apply_ycocg`), or
-  2. strip the YCoCg special-dependency from `RED2` on re-encode (so the engine treats it as
-     plain DXT5), or
-  3. re-encode the replacement to a non-YCoCg format and clear the flag.
-Detection is already done: `morphic::TextureInfo.ycocg` (set from `RED2`). Reuse it to decide
-the write path. (Locker hero-card replace likely dodged this because card art isn't YCoCg —
-verify before assuming the existing path is safe for icons.)
+**BLOCKER, still open on this repo's pinned engine:** the icons being browsed
+(`item-icon` / `ability-icon`) include **DXT5-YCoCg** textures. `icon` re-encodes
+new pixels as raw DXT5 but keeps the template's `RED2` block, which still carries
+the `YCoCg Conversion` special-dependency. In-engine, YCoCg flag + non-YCoCg data
+renders garbled colors, so a naive drag-drop replace of a YCoCg icon looks wrong.
 
-## Key reuse patterns / files
+What makes this nastier than "some textures need a fix": YCoCg is **mixed inside
+the item-icon category**, not absent from it. A pak-wide scan found 197 YCoCg
+textures out of 12,561, and among item icons
+`panorama/images/items/brawl/aerial_mastery_psd.vtex_c` is uncompressed
+`Bgra8888` while `panorama/images/items/spirit/suppressor_psd.vtex_c` is
+DXT5-YCoCg. An unfixed replace therefore works or garbles depending on which icon
+the user happens to drop on, which is harder to debug than uniformly broken.
 
-- Spawn engine: `runVpkmerge` / `runVpkmergeStdout` (`services/modMerger.ts`); honors
-  `$VPKMERGE_BINARY`.
+Detection already exists (`morphic::TextureInfo.ycocg`, set from `RED2`). Fixes,
+in preference order: YCoCg-**encode** on the write path (inverse of
+`morphic::apply_ycocg`); strip the YCoCg special-dependency from `RED2` on
+re-encode; or re-encode to a non-YCoCg format and clear the flag.
+[Slush97/vpkmerge#43](https://github.com/Slush97/vpkmerge/pull/43) proposes the
+first. It is **open, not merged**, so treat this blocker as live until that lands
+and the pin here is bumped.
+
+## Still open (smaller)
+
+- **Randomizer pools audition only `vsnd[0]`.** `useClipPlayer` plays the first
+  clip of the pool. 35% of indexed global events carry more than one clip (max
+  58), so this hides most of what a pool actually sounds like. The *swap* is
+  unaffected: it runs `--pool all` and overrides every clip.
+- **Events that only inherit a `base` template are skipped.** The catalog drops
+  any event with no own `vsnd_files`, so e.g. `Abrams.Wpn.Whizby` is absent
+  entirely while `Yamato.Wpn.Whizby` (which overrides) is present. Not
+  auditionable or swappable at this layer; needs `base` inheritance resolved in
+  `vpkmerge-core/src/catalog.rs`.
+- **Ability display names are the soundevent codeword.** `Finesse`, not the
+  localized in-game name. Needs the vdata join.
+- **Asset lightbox for models and sounds.** Textures have one; models could reuse
+  the Locker's `HeroPoseViewer` (R3F) via `vpkmerge model export ... --glb`.
+- **Non-power-of-two display paths still uncropped** on the engine side:
+  `vpkmerge-core/src/portrait.rs`, `recolor_texture_preview_png`, the old `gui/`
+  preview. `morphic::crop_to_actual` exists; apply it there too.
+- **Non-MP3 audio input.** `foundry:swapSound` rejects anything but `.mp3`
+  (`soundswap` parses MP3 frame headers natively, no decoder). wav/ogg/flac needs
+  either a bundled `ffmpeg-static` in Electron or a Rust decode crate in
+  vpkmerge; the first costs roughly 80 MB on the packaged app, so it is a
+  packaging decision rather than a code one.
+
+## Key reuse patterns
+
+- Spawn engine: `runVpkmerge` / `runVpkmergeStdout` (`services/modMerger.ts`);
+  honors `$VPKMERGE_BINARY`, then a sibling dev build, then the bundled binary.
 - Build-VPK-then-install-as-local-mod: `ipc/mods.ts` (`import-soul-container-glb`,
-  `import-custom-mod` allocate/copy/metadata flow).
-- Serve generated images to the sandboxed renderer: custom protocol scheme, mirror
+  `import-custom-mod`, `foundry:swapSound`).
+- Serve generated images to the sandboxed renderer: custom protocol scheme, see
   `registerFoundryThumbnailProtocol` / `grimoire-soul:`.
-- Decode correctness (just fixed): `morphic::inspect` now exposes `actual_width/height`
-  (non-pow2) and `ycocg`; `morphic::crop_to_actual` for display crop. Re-encoders
-  (`recolor`/`icon`) intentionally keep the padded canvas and do NOT YCoCg-encode — that's
-  the ask-3 blocker.
-
-## Open caveats carried over
-
-- Recolor-of-YCoCg re-encode mismatch (same root as the ask-3 blocker).
-- Other display paths still uncropped for non-pow2: `vpkmerge-core/src/portrait.rs`,
-  `recolor_texture_preview_png`, the old `gui/` preview. Apply `crop_to_actual` there too.
-- Stashed WIP on both repos' `main` (vpkmerge music-pack; grimoire locker dev panel) — restore
-  when done.
+- Audition: `ensureVoiceclip(vsndPath)` runs `catalog voiceclip`, caches under
+  `userData/foundry-voiceclips/<fingerprint>/<sha1>.mp3`, returns a
+  `data:audio/mpeg` URL. It accepts the index's `.vsnd` path directly (the CLI
+  normalizes to the packed `.vsnd_c`). **CSP:** `data:` must stay in `media-src`
+  (prod-only CSP, `electron/main/index.ts`) or audition breaks in packaged builds.
 
 ## Verify quickly
 
-```
-# catalog-capable CLI
+```bash
+# The bundled binary already has catalog; build only if you're changing the engine.
 cd vpkmerge && cargo build --release -p vpkmerge-cli
 PAK=~/.local/share/Steam/steamapps/common/Deadlock/game/citadel/pak01_dir.vpk
 target/release/vpkmerge catalog texture --vpk "$PAK" --category item-icon --thumbs /tmp/t --thumb-size 128
-# grimoire dev pointed at it
-cd ../grimoire && VPKMERGE_BINARY=$PWD/../vpkmerge/target/release/vpkmerge pnpm dev
+
+# grimoire dev (auto-detects the sibling build above; $VPKMERGE_BINARY overrides)
+cd ../grimoire && pnpm dev
 # (experimentalFoundry is already enabled in ~/.config/grimoire/settings.json)
 ```
