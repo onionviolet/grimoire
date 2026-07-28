@@ -20,8 +20,10 @@ base event, or the shared melee clip pool. QOL Lock content remains out of scope
 
 ## State
 
-**Engine.** `vpkmerge` v0.19.0 is the pinned release (`VPKMERGE_VERSION` in
-`scripts/fetch-vpkmerge.mjs`), and it ships the whole catalog + replace surface:
+**Engine.** The stock `vpkmerge` v0.19.0 bootstrap release remains pinned in
+`scripts/fetch-vpkmerge.mjs`, while the fork uses the sibling
+`onionviolet/vpkmerge` `main` build for fork-only catalog and texture behavior.
+The fork engine ships the catalog + replace surface:
 
 ```
 vpkmerge catalog voiceline|herosounds|texture|voiceclip|heroes|cache [--json]
@@ -80,7 +82,7 @@ handler both do build, allocate ENABLED slot, copy, write metadata. Mirror it as
 `forge-texture-replace`: drop PNG on a `TextureCard`, run `vpkmerge icon --set
 <card.entry>=<png>`, install as a local mod.
 
-**BLOCKER, still open on this repo's pinned engine:** the icons being browsed
+**Resolved in the fork engine, pending packaged-engine promotion:** the icons being browsed
 (`item-icon` / `ability-icon`) include **DXT5-YCoCg** textures. `icon` re-encodes
 new pixels as raw DXT5 but keeps the template's `RED2` block, which still carries
 the `YCoCg Conversion` special-dependency. In-engine, YCoCg flag + non-YCoCg data
@@ -94,13 +96,16 @@ textures out of 12,561, and among item icons
 DXT5-YCoCg. An unfixed replace therefore works or garbles depending on which icon
 the user happens to drop on, which is harder to debug than uniformly broken.
 
-Detection already exists (`morphic::TextureInfo.ycocg`, set from `RED2`). Fixes,
-in preference order: YCoCg-**encode** on the write path (inverse of
-`morphic::apply_ycocg`); strip the YCoCg special-dependency from `RED2` on
-re-encode; or re-encode to a non-YCoCg format and clear the flag.
-[Slush97/vpkmerge#43](https://github.com/Slush97/vpkmerge/pull/43) proposes the
-first. It is **open, not merged**, so treat this blocker as live until that lands
-and the pin here is bumped.
+Detection already exists (`morphic::TextureInfo.ycocg`, set from `RED2`). The
+forked engine now applies the preferred fix: it YCoCg-**encodes** pixels on the
+write path (the inverse of `morphic::apply_ycocg`) whenever the template carries
+the `YCoCg Conversion` dependency. The regression test is
+`morphic/tests/ycocg_icon_roundtrip.rs` in the sibling `vpkmerge` checkout.
+
+The remaining release task is operational, not a codec blocker: package a
+verified fork-engine build. The stock `v0.19.0` asset fetched by
+`scripts/fetch-vpkmerge.mjs` predates this fix; use `pnpm use-local-vpkmerge`
+before a fork package until onionviolet/vpkmerge publishes a pinned release.
 
 ## Still open (smaller)
 

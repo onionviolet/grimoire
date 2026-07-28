@@ -1,4 +1,6 @@
-// LOCAL BUILD ONLY (branch `local/all-features`). Not for upstream.
+// Fork-engine packaging. This repository deliberately consumes the sibling
+// onionviolet/vpkmerge checkout while its fork-only engine changes await a
+// published fork release.
 //
 // Copies the sibling `../vpkmerge` release build into `resources/vpkmerge/`,
 // so a packaged app ships OUR engine instead of the pinned upstream release.
@@ -18,8 +20,8 @@
 //
 //     pnpm use-local-vpkmerge && pnpm package:win
 //
-// When the engine changes land upstream and the pin is bumped, delete this
-// script and the branch that carries it.
+// Once onionviolet/vpkmerge publishes a pinned release containing these engine
+// changes, replace this packaging step with that release's verified assets.
 
 import { copyFile, mkdir, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
