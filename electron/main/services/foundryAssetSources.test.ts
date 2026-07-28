@@ -25,7 +25,23 @@ describe('Foundry asset sources', () => {
         expect(result.winners).toEqual({ 'materials/icons/a.vtex_c': 'forged' });
         expect(result.sources.map((source) => [source.modId, source.provenance, source.wins]))
             .toEqual([['forged', 'Forged', ['materials/icons/a.vtex_c']], ['downloaded', 'Downloaded', []], ['third-party', 'Third-party', []]]);
+        expect(result.sources.map((source) => source.managed)).toEqual([true, true, false]);
         expect(result.unreadableMods).toEqual([{ modId: 'opaque', modName: 'opaque', enabled: true }]);
+    });
+
+    it('offers an audition only for compiled sound entries', () => {
+        const result = inspectFoundryAssetSources([
+            'sounds/hero/a.vsnd_c',
+            'soundevents/hero/x.vsndevts_c',
+            'materials/icons/a.vtex_c',
+        ], [
+            {
+                mod: mod('swap', true, 4),
+                entries: ['SOUNDS/HERO/A.VSND_C', 'soundevents/hero/x.vsndevts_c', 'materials/icons/a.vtex_c'],
+                metadata: { soundSwap: {} },
+            },
+        ]);
+        expect(result.sources[0].auditionable).toEqual(['sounds/hero/a.vsnd_c']);
     });
 
     it('uses normalized paths as the serialized ownership key, including duplicate VPK spellings', () => {
@@ -55,6 +71,8 @@ describe('Foundry asset sources', () => {
                 provenance: 'Third-party',
                 entries: ['materials/icons/a.vtex_c', 'materials/icons/b.vtex_c'],
                 wins: ['materials/icons/a.vtex_c', 'materials/icons/b.vtex_c'],
+                managed: false,
+                auditionable: [],
             }],
             winners: {
                 'materials/icons/a.vtex_c': 'third-party',

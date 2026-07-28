@@ -5,6 +5,7 @@
  * rather than a raw spawn failure.
  */
 import { ipcMain } from 'electron';
+import { stat } from 'fs/promises';
 import { getActiveDeadlockPath, loadSettings } from '../services/settings';
 import {
     getGlobalSounds,
@@ -16,8 +17,11 @@ import {
     ensureFullImage,
     ensureVoiceclip,
     ensureVoiceclipFile,
+    ensureModClip,
+    pruneModClips,
     warmCache,
 } from '../services/foundryCatalog';
+import { scanMods } from '../services/mods';
 import { buildHeroEffectVpkForExport } from '../services/heroColors';
 import { exportVpkViaDialog } from '../services/foundryExport';
 import { buildFoundryForgeVpk } from '../services/foundryForge';
@@ -131,6 +135,41 @@ ipcMain.handle(
         return ensureVoiceclip(requireDeadlockPath(), vsndPath);
     }
 );
+
+// Audition the clip an installed addon actually writes at an exact entry path.
+// Read-only in every sense: it extracts to a cache, and never touches the
+// inspected VPK, its enabled state, or its priority. The mod is resolved by id
+// against the live scan rather than trusting a renderer-supplied path, so this
+// can only ever read a VPK the manager already owns.
+ipcMain.handle(
+    'foundry:auditionSourceClip',
+    async (_e, modId: string, entryPath: string): Promise<string | null> => {
+        if (typeof modId !== 'string' || !modId.trim()) {
+            throw new Error('An audition needs the mod that owns the entry');
+        }
+        if (typeof entryPath !== 'string' || !entryPath.trim()) {
+            throw new Error('An audition needs an exact VPK entry path');
+        }
+        const mods = await scanMods(requireDeadlockPath());
+        const owner = mods.find((mod) => mod.id === modId);
+        if (!owner) throw new Error('That mod is no longer installed.');
+        void pruneModClips();
+        return ensureModClip(owner.path, entryPath);
+    }
+);
+
+// Which recorded audio files are still on disk. A re-forge needs every source
+// file it was originally built from, so the renderer asks first and blocks with
+// the missing names rather than failing partway through a build.
+ipcMain.handle('foundry:checkAudioPaths', async (_e, paths: string[]): Promise<string[]> => {
+    if (!Array.isArray(paths) || paths.some((path) => typeof path !== 'string')) {
+        throw new Error('An audio-path check requires a list of file paths');
+    }
+    const checked = await Promise.all(
+        [...new Set(paths)].map(async (path) => (await stat(path).catch(() => null)) ? path : null)
+    );
+    return checked.filter((path): path is string => path !== null);
+});
 
 // The extracted clip's path on disk, for retuning a stock sound through the
 // swap path (which mints from a file, not from a data URL).

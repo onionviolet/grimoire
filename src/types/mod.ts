@@ -590,6 +590,21 @@ export interface SoundSwapInfo {
   poolMode?: 'replace-all' | 'selected-targets' | 'n-to-n' | 'seeded-library';
   /** Reproduces a seeded user-library shuffle. */
   poolSeed?: number;
+  /** Everything needed to rebuild this exact change without re-authoring it.
+   *  Recorded on forge; absent on legacy swaps, which simply cannot re-forge.
+   *  The audio paths are the user's own files and may since have moved, so a
+   *  re-forge must check they still exist before it starts a build. */
+  reforge?: {
+    heroName: string;
+    soundeventsEntry?: string;
+    event?: string;
+    clipPaths?: string[];
+    audioPath: string;
+    assignments: Array<{ clipPath: string; audioPath: string }>;
+    trimStartMs?: number;
+    trimEndMs?: number;
+    gainDb?: number;
+  };
 }
 
 export interface Mod {

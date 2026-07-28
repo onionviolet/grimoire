@@ -296,6 +296,11 @@ export interface FoundryAssetSource {
     provenance: FoundryAssetSourceProvenance;
     entries: string[];
     wins: string[];
+    /** Grimoire minted or downloaded this VPK. A third-party VPK is opaque and
+     *  is only ever layered over, never edited in place. */
+    managed: boolean;
+    /** Matched entries that can actually be extracted and played. */
+    auditionable: string[];
 }
 
 export interface FoundryAssetSourcesInspection {

@@ -68,7 +68,7 @@ import {
   ExternalLink,
   Star,
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { MenuContent, MenuItem, MenuRoot, MenuSeparator, MenuTrigger } from '../components/common/menu';
 import { showToast } from '../stores/toastStore';
 import { useAppStore, type BrowseArtistRef } from '../stores/appStore';
@@ -951,6 +951,20 @@ export default function Installed() {
     void refreshLockerOverrideCount();
   }, [refreshLockerOverrideCount]);
   const [search, setSearch] = useState('');
+  // Deep link from elsewhere in the app ("open the owner of this asset path in
+  // Installed"). The list has no per-row anchors, so the honest way to land the
+  // user on one mod is to narrow the list to its name. The param is consumed on
+  // arrival so a later manual search is not clobbered by a stale URL.
+  const [focusParams, setFocusParams] = useSearchParams();
+  const focusModId = focusParams.get('focusMod');
+  useEffect(() => {
+    // Wait for the first scan: clearing the param against an empty list would
+    // silently drop the link before the target could ever be found.
+    if (!focusModId || mods.length === 0) return;
+    const target = mods.find((mod) => mod.id === focusModId);
+    if (target) setSearch(target.name);
+    setFocusParams({}, { replace: true });
+  }, [focusModId, mods, setFocusParams]);
   // Sort + filter popover (the SlidersHorizontal button in the top bar). Sort
   // and source persist across launches; hero/tag selections are library-specific
   // so they reset per session. A non-default sort or any active filter turns the

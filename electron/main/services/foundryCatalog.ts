@@ -529,6 +529,83 @@ function voiceclipsRoot(): string {
     return join(app.getPath('userData'), 'foundry-voiceclips');
 }
 
+function modClipsRoot(): string {
+    return join(app.getPath('userData'), 'foundry-modclips');
+}
+
+/**
+ * Audition what an installed addon actually writes at an exact entry path, by
+ * extracting from that addon's own VPK instead of the game paks.
+ *
+ * This is the only honest answer to "what do I hear right now": the base-game
+ * clip is what the pak ships, which is precisely what an override replaces. The
+ * cache is keyed by the VPK's size and mtime as well as its path, so re-forging
+ * a managed swap into the same slot never serves the previous build's audio.
+ *
+ * Returns null when the entry is absent or its codec cannot be decoded; the
+ * renderer hides the affordance rather than reporting a failure.
+ */
+export async function ensureModClip(
+    vpkPath: string,
+    entryPath: string
+): Promise<string | null> {
+    const stat = await fs.stat(vpkPath).catch(() => null);
+    if (!stat) return null;
+    const key = createHash('sha1')
+        .update(`${vpkPath} ${stat.size} ${Math.trunc(stat.mtimeMs)} ${entryPath}`)
+        .digest('hex');
+    const dir = modClipsRoot();
+    const file = join(dir, `${key}.mp3`);
+
+    try {
+        await fs.access(file);
+    } catch {
+        await fs.mkdir(dir, { recursive: true });
+        try {
+            await runVpkmerge([
+                'catalog',
+                'voiceclip',
+                '--vpk',
+                vpkPath,
+                '--entry',
+                entryPath,
+                '--out',
+                file,
+            ]);
+            await fs.access(file);
+        } catch {
+            return null; // missing entry or unsupported codec; no audition
+        }
+    }
+    const mp3 = await fs.readFile(file).catch(() => null);
+    return mp3 ? `data:audio/mpeg;base64,${mp3.toString('base64')}` : null;
+}
+
+/** Drop every cached addon-clip audition. Called opportunistically so the cache
+ *  cannot grow without bound across a long session of re-forging. */
+export async function pruneModClips(keepBytes = 32 * 1024 * 1024): Promise<void> {
+    try {
+        const dir = modClipsRoot();
+        const names = await fs.readdir(dir);
+        const stats = await Promise.all(
+            names.map(async (name) => {
+                const path = join(dir, name);
+                const stat = await fs.stat(path).catch(() => null);
+                return stat ? { path, size: stat.size, atime: stat.mtimeMs } : null;
+            })
+        );
+        const live = stats.filter((entry): entry is NonNullable<typeof entry> => !!entry)
+            .sort((a, b) => b.atime - a.atime);
+        let total = 0;
+        for (const entry of live) {
+            total += entry.size;
+            if (total > keepBytes) await fs.rm(entry.path, { force: true });
+        }
+    } catch {
+        /* best-effort: a missing cache root is fine */
+    }
+}
+
 /**
  * Extract a VO clip's MP3 on demand and return it as a `data:audio/mpeg` URL the
  * renderer can drop straight into an `<audio>` element. Deadlock VO clips are a

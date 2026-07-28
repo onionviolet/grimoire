@@ -26,6 +26,13 @@ export interface FoundryAssetSource {
     entries: string[];
     /** True when this enabled owner is the runtime winner for at least one path. */
     wins: string[];
+    /** Grimoire minted or downloaded this VPK, so a replacement can be described
+     *  honestly as superseding a known change. A third-party VPK is opaque: it
+     *  is never edited in place, only layered over. */
+    managed: boolean;
+    /** The matched entries a player can actually hear, so the panel offers an
+     *  audition only where extraction can succeed. */
+    auditionable: string[];
 }
 
 export interface FoundryAssetSourcesInspection {
@@ -75,14 +82,17 @@ export function inspectFoundryAssetSources(
                 .filter((entry) => wanted.has(entry)),
         )].sort((a, b) => a.localeCompare(b));
         if (!entries.length) continue;
+        const kind = provenance(candidate);
         sources.push({
             modId: candidate.mod.id,
             modName: candidate.mod.name,
             enabled: candidate.mod.enabled,
             priority: candidate.mod.priority,
-            provenance: provenance(candidate),
+            provenance: kind,
             entries,
             wins: [],
+            managed: kind !== 'Third-party',
+            auditionable: entries.filter((entry) => entry.endsWith('.vsnd_c')),
         });
     }
     // Deadlock loads lower pakNN later, so the lowest priority enabled writer wins.

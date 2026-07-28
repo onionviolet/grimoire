@@ -1535,6 +1535,20 @@ ipcMain.handle(
                     : poolMode === 'seeded-library' ? 'randomized' : 'all',
                 poolMode,
                 poolSeed,
+                // Enough to rebuild this change byte-for-byte later, minus the
+                // conflict resolution (which is a decision about the library at
+                // one moment in time, not a property of the edit).
+                reforge: {
+                    heroName: heroName?.trim() ?? '',
+                    soundeventsEntry: globalEntry,
+                    event: event?.trim(),
+                    clipPaths: hasClips ? clipPaths : undefined,
+                    audioPath,
+                    assignments: explicitAssignments,
+                    trimStartMs,
+                    trimEndMs,
+                    gainDb,
+                },
             };
 
             // 3. Scrub orphan metadata, then write the local-import entry. Tag it

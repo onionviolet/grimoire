@@ -19,6 +19,7 @@ import {
     Pencil,
     Check,
     Layers,
+    Shuffle,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { EmptyState } from '../common/PageComponents';
@@ -708,6 +709,29 @@ interface SoundRowProps {
 export function SoundRow({ label, event, clips, duration, state, onToggle, poolIndex = 0, swap, targetClip, clipPaths, sourceClipPaths, eventSourcePath, description, clipName, annotationKey, annotation, onSaveAnnotation, annotationsVisible = false, onStage }: SoundRowProps) {
     const { t } = useTranslation();
     const [swapOpen, setSwapOpen] = useState(false);
+    // Lifted out of SwapPanel so the sources panel can add or remove a shuffle
+    // target while the swap panel is open, and so the selection survives the
+    // panel being collapsed and reopened.
+    const rowClipPaths = useMemo(
+        () => sourceClipPaths ?? clipPaths ?? (targetClip ? [targetClip] : []),
+        [sourceClipPaths, clipPaths, targetClip]
+    );
+    const [selectedTargets, setSelectedTargets] = useState<Set<string>>(() => new Set(rowClipPaths));
+    const togglePoolTarget = useCallback((clipPath: string) => {
+        setSelectedTargets((current) => {
+            const next = new Set(current);
+            if (next.has(clipPath)) next.delete(clipPath);
+            else next.add(clipPath);
+            return next;
+        });
+    }, []);
+    // The sources panel speaks in normalized compiled entries; the pool editor
+    // speaks in the catalog's source clip paths. Map one back to the other so
+    // pool membership is keyed on exactly one string.
+    const poolTargetForEntry = useCallback(
+        (entry: string) => rowClipPaths.find((path) => compiledSoundEntry(path).toLowerCase() === entry.toLowerCase()) ?? null,
+        [rowClipPaths]
+    );
     const [annotationOpen, setAnnotationOpen] = useState(false);
     const [annotationName, setAnnotationName] = useState(annotation?.name ?? '');
     const [annotationNote, setAnnotationNote] = useState(annotation?.note ?? '');
@@ -732,10 +756,10 @@ export function SoundRow({ label, event, clips, duration, state, onToggle, poolI
     // its event container where the catalog can name one. This is an inspection
     // request only; it never changes enabled state or precedence.
     const sourcePaths = useMemo(() => {
-        const paths = (sourceClipPaths ?? clipPaths ?? (targetClip ? [targetClip] : [])).map(compiledSoundEntry);
+        const paths = rowClipPaths.map(compiledSoundEntry);
         if (eventSourcePath ?? swap?.soundeventsEntry) paths.push(eventSourcePath ?? swap!.soundeventsEntry!);
         return [...new Set(paths)];
-    }, [sourceClipPaths, clipPaths, targetClip, eventSourcePath, swap]);
+    }, [rowClipPaths, eventSourcePath, swap]);
     // Randomizer pool: name which clip the next press auditions, so repeated
     // presses read as walking the pool rather than as a stuck button.
     const poolNote =
@@ -838,7 +862,9 @@ export function SoundRow({ label, event, clips, duration, state, onToggle, poolI
                     soundeventsEntry={swap.soundeventsEntry}
                     event={event}
                     clipPaths={clipPaths}
-                    sourceClipPaths={sourceClipPaths ?? clipPaths ?? (targetClip ? [targetClip] : [])}
+                    sourceClipPaths={rowClipPaths}
+                    selectedTargets={selectedTargets}
+                    onToggleTarget={togglePoolTarget}
                     label={label}
                     clips={clips}
                     targetClip={targetClip}
@@ -847,7 +873,15 @@ export function SoundRow({ label, event, clips, duration, state, onToggle, poolI
                 />
             )}
             {sourcesOpen && (
-                <AssetSourcesPanel paths={sourcePaths} />
+                <AssetSourcesPanel
+                    paths={sourcePaths}
+                    // Creating a replacement is exactly the swap flow: it mints a
+                    // new managed mod. Nothing here edits the inspected VPK.
+                    onCreateReplacement={swap ? () => { setSwapOpen(true); setSourcesOpen(false); } : undefined}
+                    poolTargets={selectedTargets}
+                    onTogglePoolTarget={rowClipPaths.length > 1 ? togglePoolTarget : undefined}
+                    poolTargetForEntry={poolTargetForEntry}
+                />
             )}
             {annotationOpen && annotationKey && onSaveAnnotation && (
                 <div id={`annotation-${annotationKey.replace(/[^a-z0-9]/gi, '-')}`} className="mt-1.5 rounded-sm border border-border bg-bg-tertiary/40 p-3">
@@ -880,6 +914,8 @@ function SwapPanel({
     event,
     clipPaths,
     sourceClipPaths,
+    selectedTargets,
+    onToggleTarget,
     label,
     clips,
     targetClip,
@@ -895,6 +931,10 @@ function SwapPanel({
      *  set, the swap targets these clips instead of the soundevents tree. */
     clipPaths?: string[];
     sourceClipPaths: string[];
+    /** Owned by the row so the sources panel can edit the pool alongside this
+     *  editor, rather than the two surfaces keeping separate selections. */
+    selectedTargets: Set<string>;
+    onToggleTarget: (clipPath: string) => void;
     label: string;
     clips: number;
     /** A clip of the sound being replaced, decoded as the normalizer's loudness
@@ -910,7 +950,6 @@ function SwapPanel({
     const [audioFile, setAudioFile] = useState<File | null>(null);
     const [library, setLibrary] = useState<PoolAudio[]>([]);
     const [poolMode, setPoolMode] = useState<SoundPoolMode>('replace-all');
-    const [selectedTargets, setSelectedTargets] = useState<Set<string>>(() => new Set(sourceClipPaths));
     const [poolSeed, setPoolSeed] = useState(() => Math.floor(Math.random() * 0x7fffffff));
     const [conflicts, setConflicts] = useState<FoundrySoundConflictInspection | null>(null);
     const [resolution, setResolution] = useState<SoundConflictResolution['action'] | null>(null);
@@ -1171,15 +1210,43 @@ function SwapPanel({
                             </label>
                         )}
                         {poolMode === 'seeded-library' && (
-                            <label className="flex items-center gap-1">Seed <input type="number" value={poolSeed} onChange={(e) => setPoolSeed(Number(e.target.value) || 1)} className="w-24 rounded-sm border border-border bg-bg-secondary px-1 py-0.5 text-text-primary" /></label>
+                            <>
+                                <label className="flex items-center gap-1">Seed <input type="number" value={poolSeed} onChange={(e) => setPoolSeed(Number(e.target.value) || 1)} className="w-24 rounded-sm border border-border bg-bg-secondary px-1 py-0.5 text-text-primary" /></label>
+                                {/* A preview, not a build: it redraws the seed so
+                                    the assignment list below re-plans. The seed
+                                    that is shown is the one that gets recorded. */}
+                                <button type="button" onClick={() => setPoolSeed(Math.floor(Math.random() * 0x7fffffff) || 1)} className="flex items-center gap-1 rounded-sm border border-border px-2 py-1 hover:text-text-primary">
+                                    <Shuffle size={11} /> Shuffle now
+                                </button>
+                            </>
                         )}
                     </div>
                     {poolMode !== 'replace-all' && (
                         <div className="mt-2 max-h-28 space-y-1 overflow-auto">
-                            {sourceClipPaths.map((path, index) => <label key={path} className="flex items-center gap-2"><input type="checkbox" checked={selectedTargets.has(path)} onChange={(e) => setSelectedTargets((current) => { const next = new Set(current); if (e.target.checked) next.add(path); else next.delete(path); return next; })} className="accent-accent" />{index + 1}. <span className="truncate" title={path}>{path.split('/').pop()}</span></label>)}
+                            {sourceClipPaths.map((path, index) => <label key={path} className="flex items-center gap-2"><input type="checkbox" checked={selectedTargets.has(path)} onChange={() => onToggleTarget(path)} className="accent-accent" />{index + 1}. <span className="truncate" title={path}>{path.split('/').pop()}</span></label>)}
                         </div>
                     )}
-                    <p className="mt-2">{assignments.length} exact clip write{assignments.length === 1 ? '' : 's'}{poolMode === 'n-to-n' && assignments.length === 0 ? ' — add one MP3 per selected target.' : ''}</p>
+                    {/* The exact write set, shown before Forge rather than a bare
+                        count: every row below is one clip this build overwrites. */}
+                    <div className="mt-2 max-h-32 space-y-0.5 overflow-auto rounded-sm border border-border/60 bg-bg-primary/40 p-1.5">
+                        {assignments.length === 0 ? (
+                            <p className="text-text-secondary/80">
+                                {poolMode === 'n-to-n'
+                                    ? 'No writes planned: N-to-N needs exactly one audio file per selected target.'
+                                    : 'No writes planned: select at least one target and one audio file.'}
+                            </p>
+                        ) : assignments.map((assignment) => (
+                            <p key={assignment.clipPath} className="flex gap-1 truncate" title={`${compiledSoundEntry(assignment.clipPath)} <- ${assignment.audioPath}`}>
+                                <span className="truncate text-text-primary">{compiledSoundEntry(assignment.clipPath)}</span>
+                                <span className="shrink-0">&lt;-</span>
+                                <span className="truncate">{assignment.audioPath.split(/[\\/]/).pop()}</span>
+                            </p>
+                        ))}
+                    </div>
+                    <p className="mt-1">
+                        {assignments.length} exact clip write{assignments.length === 1 ? '' : 's'}
+                        {poolMode === 'seeded-library' ? ` · seed ${poolSeed} is recorded with the forged mod` : ''}
+                    </p>
                 </div>
             )}
             {targetClip && (
