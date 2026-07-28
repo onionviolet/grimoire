@@ -25,6 +25,7 @@ import { showToast } from '../../stores/toastStore';
 import { describeSound, primaryClipName } from '../../lib/soundDescribe';
 import { isAnnotated, matchSoundWithAnnotation } from '../../lib/soundAnnotationSearch';
 import type { GlobalSound, GlobalSoundCategory, SoundAnnotation } from '../../types/foundry';
+import type { FoundryStagedSoundEdit } from './soundStagedEdit';
 
 // Display order: what a modder reaches for first (UI clicks, music) leads, then
 // the world layers, then the odds-and-ends bucket.
@@ -84,7 +85,7 @@ interface Section {
  * hero to resolve it from), so the built mod lands in the Locker's global Sounds
  * bucket rather than under a hero.
  */
-export default function GlobalSoundBrowse() {
+export default function GlobalSoundBrowse({ onStage }: { onStage?: (edit: FoundryStagedSoundEdit) => void }) {
     const { t } = useTranslation();
     const [search, setSearch] = useState('');
     const [category, setCategory] = useState<GlobalSoundCategory | 'all'>('all');
@@ -255,7 +256,7 @@ export default function GlobalSoundBrowse() {
                         {t('foundry.globalSound.count', '{{count}} sounds', { count: totalShown })}
                     </p>
                     {sections.map((section) => (
-                        <CategorySection key={section.category} section={section} player={player} annotations={annotations} onSaveAnnotation={saveAnnotation} annotationsVisible={annotationsVisible} />
+                        <CategorySection key={section.category} section={section} player={player} annotations={annotations} onSaveAnnotation={saveAnnotation} annotationsVisible={annotationsVisible} onStage={onStage} />
                     ))}
                 </div>
             )}
@@ -290,7 +291,7 @@ function FilterChip({
     );
 }
 
-function CategorySection({ section, player, annotations, onSaveAnnotation, annotationsVisible }: { section: Section; player: ClipPlayer; annotations: Record<string, SoundAnnotation>; onSaveAnnotation: (key: string, name: string, note: string, tags: string[]) => Promise<void>; annotationsVisible: boolean }) {
+function CategorySection({ section, player, annotations, onSaveAnnotation, annotationsVisible, onStage }: { section: Section; player: ClipPlayer; annotations: Record<string, SoundAnnotation>; onSaveAnnotation: (key: string, name: string, note: string, tags: string[]) => Promise<void>; annotationsVisible: boolean; onStage?: (edit: FoundryStagedSoundEdit) => void }) {
     const { t } = useTranslation();
     const Icon = CATEGORY_ICON[section.category];
     const title = t(
@@ -336,6 +337,7 @@ function CategorySection({ section, player, annotations, onSaveAnnotation, annot
                                 annotation={annotations[foundrySoundAnnotationKey(row.event, row.vsnd[0] ?? '')]}
                                 onSaveAnnotation={onSaveAnnotation}
                                 annotationsVisible={annotationsVisible}
+                                onStage={onStage}
                             />
                         ))}
                     </div>

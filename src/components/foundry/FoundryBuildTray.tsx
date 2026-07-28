@@ -1,13 +1,25 @@
-import { CheckSquare, Layers3, RefreshCw, Square, Undo2 } from 'lucide-react';
+import { CheckSquare, Hammer, Layers3, RefreshCw, Square, Undo2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { FoundryStagedEdit } from './buildTray';
 import { normalizeOutputName, reviewStagedEdits } from './buildTray';
+import type { FoundryForgeRequest } from '../../types/foundry';
+import type { FoundryStagedSoundEdit } from './soundStagedEdit';
+import type { VisualStagedEdit } from './visualEdits';
 
 interface FoundryBuildTrayProps {
   edits: readonly FoundryStagedEdit[];
   outputName: string;
   onOutputNameChange: (name: string) => void;
+  onForge: (request: FoundryForgeRequest) => Promise<void>;
+}
+
+function isSoundEdit(edit: FoundryStagedEdit): edit is FoundryStagedSoundEdit {
+  return edit.kind === 'sound' && 'request' in edit;
+}
+
+function isTextureEdit(edit: FoundryStagedEdit): edit is VisualStagedEdit {
+  return edit.kind === 'texture' && 'source' in edit;
 }
 
 /**
@@ -15,7 +27,7 @@ interface FoundryBuildTrayProps {
  * not exist: users first stage authored edits, then deliberately select exactly
  * what is going into this named VPK and inspect its complete write-set.
  */
-export default function FoundryBuildTray({ edits, outputName, onOutputNameChange }: FoundryBuildTrayProps) {
+export default function FoundryBuildTray({ edits, outputName, onOutputNameChange, onForge }: FoundryBuildTrayProps) {
   const { t } = useTranslation();
   // `null` means the natural default: every staged edit, including a later
   // addition. Once the user touches selection, it becomes explicit.
@@ -29,6 +41,27 @@ export default function FoundryBuildTray({ edits, outputName, onOutputNameChange
     return next;
   });
   const toggleAll = () => setSelectedIds(allSelected ? new Set() : new Set(edits.map((edit) => edit.id)));
+  const [forging, setForging] = useState(false);
+  const forge = async () => {
+    if (!review.selected.length || forging) return;
+    const collisionWinners = review.collisions.map(({ file, winner }) => ({ file, editId: winner.id }));
+    if (!window.confirm(`Forge one VPK named “${normalizeOutputName(outputName)}”?\n\nThis contains ${review.writeSet.length} exact path${review.writeSet.length === 1 ? '' : 's'}${collisionWinners.length ? ` and ${collisionWinners.length} reviewed collision winner${collisionWinners.length === 1 ? '' : 's'}` : ''}. Cancelling the save dialog changes nothing in Installed.`)) return;
+    setForging(true);
+    try {
+      await onForge({
+        name: normalizeOutputName(outputName),
+        edits: review.selected.map((edit) => {
+          if (isSoundEdit(edit)) return { id: edit.id, kind: 'sound' as const, precedence: edit.precedence, request: edit.request };
+          if (isTextureEdit(edit)) return { id: edit.id, kind: 'texture' as const, precedence: edit.precedence, request: edit.source };
+          throw new Error(`Unsupported staged edit: ${edit.kind}`);
+        }),
+        confirmation: {
+          writeSet: review.writeSet.map((file) => file.replace(/\\/g, '/').replace(/^\/+/, '').toLowerCase()),
+          collisionWinners: collisionWinners.map((winner) => ({ ...winner, file: winner.file.replace(/\\/g, '/').replace(/^\/+/, '').toLowerCase() })),
+        },
+      });
+    } finally { setForging(false); }
+  };
   return (
     <aside className="w-72 shrink-0 border-l border-border bg-bg-secondary/40 p-3">
       <div className="flex items-center gap-2 text-sm font-semibold text-text-primary"><Layers3 size={16} /> {t('foundry.buildTray.title')}</div>
@@ -44,7 +77,8 @@ export default function FoundryBuildTray({ edits, outputName, onOutputNameChange
       </div>
       {review.collisions.length > 0 && <div className="mt-4 rounded-sm border border-yellow-500/40 bg-yellow-500/10 p-2 text-xs text-text-secondary"><strong className="text-text-primary">{t('foundry.buildTray.collisions', { count: review.collisions.length })}</strong>{review.collisions.map((collision) => <p key={collision.file} className="mt-1 break-all">{t('foundry.buildTray.collisionWinner', { file: collision.file, winner: collision.winner.title })}</p>)}</div>}
       {review.writeSet.length > 0 && <details className="mt-3 text-xs text-text-secondary"><summary className="cursor-pointer text-text-primary">Final write-set ({review.writeSet.length})</summary><ul className="mt-1 max-h-32 overflow-auto break-all pl-4">{review.writeSet.map((file) => <li key={file}>{file}</li>)}</ul><p className="mt-2">Forge confirmation must show these paths, collision winners, and the selected load precedence. Cancelling leaves installed mods and staged sources unchanged.</p></details>}
-      <div className="mt-4 border-t border-border pt-3 text-[11px] text-text-secondary"><p><RefreshCw size={12} className="mr-1 inline" />{t('foundry.buildTray.rebuild')}</p><p className="mt-1"><Undo2 size={12} className="mr-1 inline" />{t('foundry.buildTray.unmerge')}</p><p className="mt-2">Sound builds accept MP3 only. WAV, OGG, and FLAC need a decoder/transcoder that is not bundled.</p></div>
+      <button type="button" onClick={() => void forge()} disabled={!review.selected.length || forging} className="mt-4 flex w-full items-center justify-center gap-2 rounded-sm bg-accent px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"><Hammer size={15} />{forging ? 'Forging…' : 'Confirm & forge VPK'}</button>
+      <div className="mt-4 border-t border-border pt-3 text-[11px] text-text-secondary"><p><RefreshCw size={12} className="mr-1 inline" />{t('foundry.buildTray.rebuild')}</p><p className="mt-1"><Undo2 size={12} className="mr-1 inline" />{t('foundry.buildTray.unmerge')}</p></div>
     </aside>
   );
 }

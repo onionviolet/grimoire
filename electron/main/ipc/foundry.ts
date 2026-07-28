@@ -20,6 +20,7 @@ import {
 } from '../services/foundryCatalog';
 import { buildHeroEffectVpkForExport } from '../services/heroColors';
 import { exportVpkViaDialog } from '../services/foundryExport';
+import { buildFoundryForgeVpk } from '../services/foundryForge';
 import { runVpkmergeStdout, vpkmergeBinaryPath } from '../services/modMerger';
 import {
     exportSoundAnnotations,
@@ -42,6 +43,7 @@ import type {
     VoiceLine,
     VoicelineFilters,
     VpkExportResult,
+    FoundryForgeRequest,
 } from '../../../src/types/foundry';
 
 function requireDeadlockPath(): string {
@@ -94,6 +96,22 @@ ipcMain.handle(
 ipcMain.handle('foundry:listSoundAnnotations', async () => listSoundAnnotations());
 ipcMain.handle('foundry:saveSoundAnnotation', async (_e, key: string, name: string, note: string, tags: string[] = []) =>
     saveSoundAnnotation(key, { name, note, tags })
+);
+
+// Combined Foundry output is deliberately export-only for its first release:
+// build parts never enter Installed, and a cancelled save dialog leaves both
+// the installed library and staged sources exactly as they were.
+ipcMain.handle(
+    'foundry:forge',
+    async (_e, request: FoundryForgeRequest): Promise<VpkExportResult> => {
+        const built = await buildFoundryForgeVpk(requireDeadlockPath(), request);
+        try {
+            const safe = request.name.trim().replace(/[\\/:*?"<>|]/g, '-').replace(/\s+/g, ' ') || 'Foundry mod';
+            return await exportVpkViaDialog(built.vpkPath, `${safe}_dir.vpk`);
+        } finally {
+            await built.cleanup();
+        }
+    }
 );
 ipcMain.handle('foundry:exportSoundAnnotations', async () => exportSoundAnnotations());
 ipcMain.handle('foundry:importSoundAnnotations', async (_e, content: string) =>

@@ -45,6 +45,7 @@ import { isAnnotated, matchSoundWithAnnotation } from '../../lib/soundAnnotation
 import { showToast } from '../../stores/toastStore';
 import { useAppStore } from '../../stores/appStore';
 import type { HeroInfo, HeroSound, HeroSoundCategory, VoiceLine, SoundAnnotation, FoundrySoundConflictInspection, SoundConflictResolution } from '../../types/foundry';
+import { serializeSoundStagedEdit, type FoundryStagedSoundEdit } from './soundStagedEdit';
 import type { HeroAbilitySlot } from '../../types/mod';
 
 /** Context threaded to a row so it can offer an inline sound-swap (drop your own
@@ -74,6 +75,7 @@ interface SoundBrowseProps {
      *  catalog tool-first rail). The hero-first workshop splits them across its
      *  Abilities (gameplay) and Voice (VO) sections. */
     only?: 'gameplay' | 'voice';
+    onStage?: (edit: FoundryStagedSoundEdit) => void;
 }
 
 // Cap on rendered VO rows: a hero has ~1600 voice-line events, so the
@@ -109,7 +111,7 @@ const CATEGORY_ICON: Record<HeroSoundCategory, typeof Sparkles> = {
  * demand (cached), and a single shared <audio> element plays at most one clip at
  * a time. The same extractor backs both gameplay clips and voice lines.
  */
-export default function SoundBrowse({ heroes, heroNames, only }: SoundBrowseProps) {
+export default function SoundBrowse({ heroes, heroNames, only, onStage }: SoundBrowseProps) {
     const { t } = useTranslation();
     const showGameplay = only !== 'voice';
     const showVoice = only !== 'gameplay';
@@ -306,6 +308,7 @@ export default function SoundBrowse({ heroes, heroNames, only }: SoundBrowseProp
                                         annotations={annotations}
                                         onSaveAnnotation={saveAnnotation}
                                         annotationsVisible={annotationsVisible}
+                                        onStage={onStage}
                                     />
                                 ))}
                             </>
@@ -324,6 +327,7 @@ export default function SoundBrowse({ heroes, heroNames, only }: SoundBrowseProp
                     annotations={annotations}
                     onSaveAnnotation={saveAnnotation}
                     annotationsVisible={annotationsVisible}
+                    onStage={onStage}
                 />
             )}
         </>
@@ -426,6 +430,7 @@ function CategorySection({
     annotations,
     onSaveAnnotation,
     annotationsVisible,
+    onStage,
 }: {
     section: CategorySectionData;
     player: ClipPlayer;
@@ -434,6 +439,7 @@ function CategorySection({
     annotations: Record<string, SoundAnnotation>;
     onSaveAnnotation: (key: string, name: string, note: string, tags: string[]) => Promise<void>;
     annotationsVisible: boolean;
+    onStage?: (edit: FoundryStagedSoundEdit) => void;
 }) {
     const { t } = useTranslation();
     const Icon = CATEGORY_ICON[section.category];
@@ -490,6 +496,7 @@ function CategorySection({
                                 annotation={annotations[foundrySoundAnnotationKey(row.event, row.vsnd[0] ?? '')]}
                                 onSaveAnnotation={onSaveAnnotation}
                                 annotationsVisible={annotationsVisible}
+                                onStage={onStage}
                             />
                         ))}
                     </div>
@@ -524,6 +531,7 @@ function VoiceLinesSection({
     annotations,
     onSaveAnnotation,
     annotationsVisible,
+    onStage,
 }: {
     hero: string;
     search: string;
@@ -536,6 +544,7 @@ function VoiceLinesSection({
     annotations: Record<string, SoundAnnotation>;
     onSaveAnnotation: (key: string, name: string, note: string, tags: string[]) => Promise<void>;
     annotationsVisible: boolean;
+    onStage?: (edit: FoundryStagedSoundEdit) => void;
 }) {
     const { t } = useTranslation();
     const [open, setOpen] = useState(standalone);
@@ -639,6 +648,7 @@ function VoiceLinesSection({
                                     annotation={annotations[foundrySoundAnnotationKey(line.event, line.vsnd[0] ?? '')]}
                                     onSaveAnnotation={onSaveAnnotation}
                                     annotationsVisible={annotationsVisible}
+                                    onStage={onStage}
                                 />
                             ))}
                             {visible.length > VO_ROW_CAP && (
@@ -692,9 +702,10 @@ interface SoundRowProps {
     onSaveAnnotation?: (key: string, name: string, note: string, tags: string[]) => Promise<void>;
     /** Keeps personal note controls out of the normal browse flow. */
     annotationsVisible?: boolean;
+    onStage?: (edit: FoundryStagedSoundEdit) => void;
 }
 
-export function SoundRow({ label, event, clips, duration, state, onToggle, poolIndex = 0, swap, targetClip, clipPaths, sourceClipPaths, eventSourcePath, description, clipName, annotationKey, annotation, onSaveAnnotation, annotationsVisible = false }: SoundRowProps) {
+export function SoundRow({ label, event, clips, duration, state, onToggle, poolIndex = 0, swap, targetClip, clipPaths, sourceClipPaths, eventSourcePath, description, clipName, annotationKey, annotation, onSaveAnnotation, annotationsVisible = false, onStage }: SoundRowProps) {
     const { t } = useTranslation();
     const [swapOpen, setSwapOpen] = useState(false);
     const [annotationOpen, setAnnotationOpen] = useState(false);
@@ -832,6 +843,7 @@ export function SoundRow({ label, event, clips, duration, state, onToggle, poolI
                     clips={clips}
                     targetClip={targetClip}
                     onClose={() => setSwapOpen(false)}
+                    onStage={onStage}
                 />
             )}
             {sourcesOpen && (
@@ -872,6 +884,7 @@ function SwapPanel({
     clips,
     targetClip,
     onClose,
+    onStage,
 }: {
     hero: string;
     heroName: string;
@@ -888,6 +901,7 @@ function SwapPanel({
      *  target in the import editor. */
     targetClip?: string;
     onClose: () => void;
+    onStage?: (edit: FoundryStagedSoundEdit) => void;
 }) {
     const { t } = useTranslation();
     const inputRef = useRef<HTMLInputElement | null>(null);
@@ -998,6 +1012,62 @@ function SwapPanel({
             if (!assignments.length) {
                 throw new Error(poolMode === 'n-to-n' ? 'N-to-N needs exactly one audio file for each selected clip.' : 'Select at least one target and audio file.');
             }
+            const request = {
+                heroCodename: hero,
+                heroName,
+                soundeventsEntry,
+                event,
+                clipPaths,
+                audioPath: forgeAudioPath,
+                assignments: assignments.map((assignment) => ({
+                    ...assignment,
+                    audioPath: assignment.audioPath === audioPath ? forgeAudioPath : assignment.audioPath,
+                })),
+                poolMode,
+                poolSeed: poolMode === 'seeded-library' ? poolSeed : undefined,
+                name: finalName,
+                loop,
+                trimStartMs: edits.trimStartMs,
+                trimEndMs: edits.trimEndMs,
+                gainDb: edits.gainDb,
+            };
+            if (onStage) {
+                // Staging defers the build, but it is still the authoring
+                // decision, so it runs the same exact-path preflight the visual
+                // flow runs before it stages (LibraryBrowse). Nothing is
+                // installed here, so the install path's disable/replace
+                // resolutions deliberately do not apply: staging must never
+                // change enabled state or precedence. An uninspectable VPK
+                // blocks; an enabled owner only needs an explicit
+                // acknowledgement that this becomes a separate replacement.
+                const preflight = await foundryInspectSoundConflicts(assignments.map((assignment) => compiledSoundEntry(assignment.clipPath)));
+                if (preflight.unreadableMods.length) {
+                    throw new Error(t(
+                        'foundry.sound.swap.stageUnreadable',
+                        'Cannot stage this sound while {{mods}} cannot be inspected. Resolve those VPKs and try again.',
+                        { mods: preflight.unreadableMods.map((mod) => mod.modName).join(', ') }
+                    ));
+                }
+                const enabledOwners = preflight.conflicts.filter((conflict) => conflict.enabled);
+                if (enabledOwners.length && !window.confirm(t(
+                    'foundry.sound.swap.stageConflictConfirm',
+                    'Existing enabled sources: {{mods}}. Continue to stage a separate managed replacement?',
+                    { mods: enabledOwners.map((conflict) => conflict.modName).join(', ') }
+                ))) {
+                    return;
+                }
+                onStage(serializeSoundStagedEdit({
+                    id: `sound:${event}:${assignments.map((assignment) => compiledSoundEntry(assignment.clipPath)).sort().join(',')}`,
+                    title: finalName,
+                    precedence: 0,
+                    request,
+                }));
+                // Distinct from `done`: nothing is installed on this path, so it
+                // must not reuse the install path's "enable it in Installed".
+                showToast(t('foundry.sound.swap.staged', 'Added "{{name}}" to the Foundry build tray. Nothing has been installed.', { name: finalName }), { tone: 'success', duration: 6000 });
+                onClose();
+                return;
+            }
             // A preflight makes the choice visible before work starts. The main
             // process repeats inspection over the *generated* VPK write-set,
             // which is authoritative (and catches event sidecars too).
@@ -1007,26 +1077,8 @@ function SwapPanel({
                 if (!resolution) return;
             }
             await foundrySwapSound({
-                heroCodename: hero,
-                heroName,
-                soundeventsEntry,
-                event,
-                clipPaths,
-                audioPath: forgeAudioPath,
-                assignments: assignments.map((assignment) => ({
-                    ...assignment,
-                    // The active original donor may have been refreshed right
-                    // before Forge; make the generated write set use it too.
-                    audioPath: assignment.audioPath === audioPath ? forgeAudioPath : assignment.audioPath,
-                })),
-                poolMode,
-                poolSeed: poolMode === 'seeded-library' ? poolSeed : undefined,
+                ...request,
                 conflictResolution: conflicts?.conflicts.length ? { action: resolution!, conflictModIds: conflicts.conflicts.map((conflict) => conflict.modId) } : undefined,
-                name: finalName,
-                loop,
-                trimStartMs: edits.trimStartMs,
-                trimEndMs: edits.trimEndMs,
-                gainDb: edits.gainDb,
             });
             await useAppStore.getState().loadMods({ silent: true });
             showToast(
@@ -1043,7 +1095,7 @@ function SwapPanel({
         }
     }, [
         audioPath, busy, name, defaultName, heroName, hero, soundeventsEntry,
-        event, clipPaths, loop, edits, t, onClose, usingOriginal, targetClip, assignments, poolMode, poolSeed, resolution, conflicts,
+        event, clipPaths, loop, edits, t, onClose, onStage, usingOriginal, targetClip, assignments, poolMode, poolSeed, resolution, conflicts,
     ]);
 
     return (

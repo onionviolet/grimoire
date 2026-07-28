@@ -3,9 +3,8 @@ import { Library, Search, Loader2, AlertTriangle, Users } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { EmptyState } from '../common/PageComponents';
 import Tx from '../translation/Tx';
-import { foundryInspectAssetSources, foundryReplaceTexture, foundryThumbnails } from '../../lib/api';
+import { foundryInspectAssetSources, foundryThumbnails } from '../../lib/api';
 import { showToast } from '../../stores/toastStore';
-import { useAppStore } from '../../stores/appStore';
 import type { TextureCategory, TextureGridItem } from '../../types/foundry';
 import TextureGrid from './TextureGrid';
 import TextureLightbox from './TextureLightbox';
@@ -16,6 +15,7 @@ interface LibraryBrowseProps {
   heroNames: Map<string, string>;
   /** Category the grid opens on (the Items sub-tool lands on item icons). */
   initialCategory?: TextureCategory;
+  onStage?: (edit: ReturnType<typeof serializeVisualReplacement>) => void;
 }
 
 // The bounded, thumbnailable categories the browse grid surfaces this pass.
@@ -32,7 +32,7 @@ const CATEGORIES: { value: TextureCategory; labelKey: string; fallback: string }
  * client-side hero/search narrowing and an enlarge-on-click lightbox. One IPC
  * call per category (thumbnails decoded once and cached); filtering is local.
  */
-export default function LibraryBrowse({ heroNames, initialCategory = 'ability-icon' }: LibraryBrowseProps) {
+export default function LibraryBrowse({ heroNames, initialCategory = 'ability-icon', onStage }: LibraryBrowseProps) {
   const { t } = useTranslation();
   const [category, setCategory] = useState<TextureCategory>(initialCategory);
   const [items, setItems] = useState<TextureGridItem[]>([]);
@@ -42,7 +42,6 @@ export default function LibraryBrowse({ heroNames, initialCategory = 'ability-ic
   const [heroFilter, setHeroFilter] = useState('all');
   const [lightbox, setLightbox] = useState<TextureGridItem | null>(null);
   const [replacingPath, setReplacingPath] = useState<string | null>(null);
-  const loadMods = useAppStore((s) => s.loadMods);
 
   const replace = useCallback(async (item: TextureGridItem, file: File) => {
     const imagePath = window.electronAPI.getDroppedFilePath(file);
@@ -63,18 +62,15 @@ export default function LibraryBrowse({ heroNames, initialCategory = 'ability-ic
       if (enabled.length > 0 && !window.confirm(`Existing enabled sources: ${enabled.map((source) => source.modName).join(', ')}. Continue to create a separate managed replacement?`)) {
         return;
       }
-      // The serializer is the supported handoff for a future combined Forge;
-      // this current action still installs a distinct managed replacement.
-      serializeVisualReplacement(draft);
-      await foundryReplaceTexture(draft);
-      await loadMods({ silent: true });
-      showToast(t('foundry.texture.replaceDone', 'Installed texture replacement. Enable it in Installed.'), { tone: 'success', duration: 6000 });
+      if (!onStage) throw new Error('Foundry staging is unavailable.');
+      onStage(serializeVisualReplacement(draft));
+      showToast(t('foundry.texture.replaceDone', 'Added to the Foundry build tray. Nothing has been installed.'), { tone: 'success', duration: 6000 });
     } catch (e) {
       showToast(e instanceof Error ? e.message : String(e), { tone: 'error', duration: 8000 });
     } finally {
       setReplacingPath(null);
     }
-  }, [items, loadMods, t]);
+  }, [items, onStage, t]);
 
   const loadCategory = useCallback(async (cat: TextureCategory) => {
     setLoading(true);

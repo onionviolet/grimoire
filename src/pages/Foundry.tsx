@@ -12,7 +12,8 @@ import {
 import { EmptyState, PageHeader } from '../components/common/PageComponents';
 import Tx from '../components/translation/Tx';
 import { useAppStore } from '../stores/appStore';
-import { foundryHeroes, foundryWarmCache } from '../lib/api';
+import { foundryForge, foundryHeroes, foundryWarmCache } from '../lib/api';
+import { showToast } from '../stores/toastStore';
 import type { HeroInfo } from '../types/foundry';
 import LibraryBrowse from '../components/foundry/LibraryBrowse';
 import SoundBrowse from '../components/foundry/SoundBrowse';
@@ -54,8 +55,15 @@ export default function Foundry() {
   const [heroes, setHeroes] = useState<HeroInfo[]>([]);
   // The tray is intentionally ephemeral until all forge flows can hand a single
   // typed build request to main. Merely browsing Foundry never mutates a mod.
-  const [stagedEdits] = useState<FoundryStagedEdit[]>([]);
+  const [stagedEdits, setStagedEdits] = useState<FoundryStagedEdit[]>([]);
   const [outputName, setOutputName] = useState('Foundry mod');
+  const stageEdit = (edit: FoundryStagedEdit) => setStagedEdits((current) => [...current.filter((item) => item.id !== edit.id), { ...edit, precedence: current.length }]);
+  const forge = async (request: import('../types/foundry').FoundryForgeRequest) => {
+    try {
+      const result = await foundryForge(request);
+      if (result.exported) { setStagedEdits([]); showToast(`Exported ${result.path}`, { tone: 'success', duration: 6000 }); }
+    } catch (error) { showToast(error instanceof Error ? error.message : String(error), { tone: 'error', duration: 8000 }); }
+  };
 
   // Roster (codename -> name) loads once; warm the catalog cache opportunistically
   // so the Sound tool opens without the cold voice-line rescan.
@@ -226,23 +234,23 @@ export default function Foundry() {
           />
 
           {active === 'sound' ? (
-            <SoundBrowse heroes={heroes} heroNames={heroNames} />
+            <SoundBrowse heroes={heroes} heroNames={heroNames} onStage={stageEdit} />
           ) : active === 'mySounds' ? (
             <MySoundChanges />
           ) : active === 'globalSound' && settings?.forkGlobalSounds !== false ? (
-            <GlobalSoundBrowse />
+            <GlobalSoundBrowse onStage={stageEdit} />
           ) : active === 'texture' ? (
             <TextureBrowse heroes={heroes} heroNames={heroNames} />
           ) : active === 'recolor' ? (
             <RecolorTool heroes={heroes} />
           ) : active === 'items' ? (
-            <LibraryBrowse heroNames={heroNames} initialCategory="item-icon" />
+            <LibraryBrowse heroNames={heroNames} initialCategory="item-icon" onStage={stageEdit} />
           ) : (
-            <LibraryBrowse heroNames={heroNames} />
+            <LibraryBrowse heroNames={heroNames} onStage={stageEdit} />
           )}
         </div>
       </div>
-      <FoundryBuildTray edits={stagedEdits} outputName={outputName} onOutputNameChange={setOutputName} />
+      <FoundryBuildTray edits={stagedEdits} outputName={outputName} onOutputNameChange={setOutputName} onForge={forge} />
     </div>
   );
 }

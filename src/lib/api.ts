@@ -1474,6 +1474,14 @@ export async function foundryReplaceTexture(
   return window.electronAPI.foundry.replaceTexture(req);
 }
 
+/** Build all confirmed Foundry edits into one named VPK. Cancellation is a
+ * normal `{ exported: false }` result and does not alter Installed. */
+export async function foundryForge(
+  req: import('../types/foundry').FoundryForgeRequest
+): Promise<import('../types/foundry').VpkExportResult> {
+  return window.electronAPI.foundry.forge(req);
+}
+
 export async function getChatWheelStatus(): Promise<{ available: boolean; path?: string; error?: string }> {
   return window.electronAPI.chatWheelStatus();
 }

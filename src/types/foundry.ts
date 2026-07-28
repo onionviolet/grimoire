@@ -315,6 +315,24 @@ export interface TextureReplacementRequest {
     thumbnailDataUrl?: string;
 }
 
+/** A deferred Foundry edit. It contains the authoring input, not a generated
+ * VPK, so reviewing or cancelling a tray never changes the mod library. */
+export type FoundryForgeEdit =
+    | { id: string; kind: 'sound'; precedence: number; request: HeroSoundSwapRequest }
+    | { id: string; kind: 'texture'; precedence: number; request: TextureReplacementRequest };
+
+/** The renderer repeats its reviewed result here. Main derives it again from
+ * the requests and rejects stale/tampered confirmation rather than trusting a
+ * displayed label or a client supplied VPK path. */
+export interface FoundryForgeRequest {
+    name: string;
+    edits: FoundryForgeEdit[];
+    confirmation: {
+        writeSet: string[];
+        collisionWinners: Array<{ file: string; editId: string }>;
+    };
+}
+
 /** Which vpkmerge engine the app is actually running, for the Settings card.
  *  `bundled` is false when settings.vpkmergeBinaryPath overrides it. A non-null
  *  `error` with a non-null `path` means the binary resolved but would not run. */

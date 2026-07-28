@@ -6,6 +6,8 @@
  * allocate -> copy -> metadata install flow (see ipc/mods.ts).
  */
 import { promises as fs } from 'fs';
+import { basename, dirname, join } from 'path';
+import { randomUUID } from 'crypto';
 import { dialog } from 'electron';
 import type { VpkExportResult } from '../../../src/types/foundry';
 
@@ -45,6 +47,15 @@ export async function exportVpkViaDialog(
         dest = `${dest.replace(/\.vpk$/i, '')}_dir.vpk`;
     }
 
-    await fs.copyFile(builtVpkPath, dest);
+    // Never expose a partially copied VPK at the selected name. The temporary
+    // sits beside the final file so rename is one filesystem operation.
+    const temporary = join(dirname(dest), `.${basename(dest)}.${randomUUID()}.tmp`);
+    try {
+        await fs.copyFile(builtVpkPath, temporary);
+        await fs.rename(temporary, dest);
+    } catch (error) {
+        await fs.unlink(temporary).catch(() => {});
+        throw error;
+    }
     return { exported: true, path: dest };
 }

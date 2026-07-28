@@ -54,7 +54,7 @@ export function reviewStagedEdits(
 }
 
 export function normalizeEntryPath(file: string): string {
-  return file.replace(/\\/g, '/').replace(/^\/+/, '');
+  return file.replace(/\\/g, '/').replace(/^\/+/, '').toLowerCase();
 }
 
 export function normalizeOutputName(name: string): string {

@@ -671,6 +671,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
             ipcRenderer.invoke('foundry:inspectAssetSources', paths),
         replaceTexture: (req: TextureReplacementRequest) =>
             ipcRenderer.invoke('foundry:replaceTexture', req),
+        forge: (req: import('../../src/types/foundry').FoundryForgeRequest) =>
+            ipcRenderer.invoke('foundry:forge', req),
     },
 
     // In-app browser: read-only view of the ad/tracker filter's state.
