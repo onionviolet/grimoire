@@ -8,7 +8,7 @@ protocols:
 # GitHub auto-update configuration
 publish:
   provider: github
-  owner: Slush97
+  owner: onionviolet
   repo: grimoire
 directories:
   output: release

@@ -65,6 +65,9 @@ interface FilterState {
     blocked: number;
     userListError: string | null;
     attachedSessions: Set<Session>;
+    /** Rules previously injected into the Ghostery engine. `update()` is
+     * additive unless we explicitly provide these as removals. */
+    injectedNetworkFilterIds: number[];
 }
 
 const state: FilterState = {
@@ -73,6 +76,7 @@ const state: FilterState = {
     blocked: 0,
     userListError: null,
     attachedSessions: new Set(),
+    injectedNetworkFilterIds: [],
 };
 
 let blockerInstance: ElectronBlocker | null = null;
@@ -151,13 +155,21 @@ async function syncBlockerState(): Promise<void> {
     const blocker = await getOrLoadBlocker();
     if (!blocker) return;
 
-    if (state.domains.size > 0) {
-        const rules = Array.from(state.domains)
+    // The settings UI promises that a replacement or cleared custom list takes
+    // effect immediately. FiltersEngine.update is additive by default, so pass
+    // the prior injection as removals before adding the current complete set;
+    // otherwise a domain removed from a user's file remains blocked until the
+    // next app restart.
+    const nextNetworkFilters = state.domains.size > 0
+        ? parseFilters(Array.from(state.domains)
             .map((d) => `||${d}^`)
-            .join('\n');
-        const parsed = parseFilters(rules);
-        blocker.update({ newNetworkFilters: parsed.networkFilters });
-    }
+            .join('\n')).networkFilters
+        : [];
+    blocker.update({
+        newNetworkFilters: nextNetworkFilters,
+        removedNetworkFilters: state.injectedNetworkFilterIds,
+    });
+    state.injectedNetworkFilterIds = nextNetworkFilters.map((filter) => filter.getId());
 
     for (const session of state.attachedSessions) {
         try {

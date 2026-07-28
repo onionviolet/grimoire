@@ -38,7 +38,7 @@ import { HiddenCreatorsManager, HiddenCreatorsModal } from '../components/Hidden
 // GitHub Releases is the source of truth for changelogs. When we have local
 // release notes (an update is pending) we show them in-app; otherwise we link
 // out to the release page so users can read "what's new" even when up to date.
-const GITHUB_RELEASES_URL = 'https://github.com/Slush97/grimoire/releases';
+const GITHUB_RELEASES_URL = 'https://github.com/onionviolet/grimoire/releases';
 const releaseTagUrl = (version?: string | null) =>
   version ? `${GITHUB_RELEASES_URL}/tag/v${version}` : GITHUB_RELEASES_URL;
 
@@ -491,7 +491,7 @@ export default function Settings() {
       '```',
     ].join('\n');
     const q = `?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;
-    return `https://github.com/Slush97/grimoire/issues/new${q}`;
+    return `https://github.com/onionviolet/grimoire/issues/new${q}`;
   }, [bugDescription, t]);
 
   // Load sync status
@@ -1406,7 +1406,7 @@ export default function Settings() {
               </p>
               <div className="flex flex-col sm:flex-row gap-2">
                 <a
-                  href="https://github.com/Slush97/grimoire/issues"
+                  href="https://github.com/onionviolet/grimoire/issues"
                   target="_blank"
                   rel="noreferrer noopener"
                   className="inline-flex items-center justify-center gap-2 rounded-sm px-4 py-2 text-sm font-medium border border-border bg-bg-tertiary/40 text-text-primary hover:bg-bg-tertiary/70 hover:border-text-secondary/60 transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-text-secondary/60 whitespace-nowrap"

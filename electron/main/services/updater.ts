@@ -10,13 +10,11 @@ export type InstallSource = 'managed' | 'appimage' | 'standard' | 'fork';
 // In-app updates would fail on these because /opt and /usr are root-owned, so
 // we route those users to their package manager instead.
 //
-// 'fork' is the local-build case and it is a DATA-LOSS guard, not a cosmetic
-// one. electron-builder.yml publishes to `Slush97/grimoire`, so the updater
-// feed points at upstream's releases. A fork build carries the same version
-// number as the upstream release it was branched from, so the next upstream
-// release reads as "an update is available" — and accepting it installs stock
-// Grimoire over this build, silently removing every patch in it. The engine
-// binary in resources/ goes with it. So a fork build never talks to the feed.
+// 'fork' used to be disabled because the publish feed pointed at upstream
+// (Slush97/grimoire) and accepting an update would silently overwrite every
+// patch in this build. Now that electron-builder.yml publishes to
+// onionviolet/grimoire, a fork build only sees its own releases and can safely
+// self-update.
 export function getInstallSource(): InstallSource {
     if (process.env.GRIMOIRE_FORK_BUILD) return 'fork';
     if (process.platform === 'linux') {
@@ -37,8 +35,8 @@ export function getInstallSource(): InstallSource {
 
 const installSource = getInstallSource();
 // 'managed': in-app updates would fail (root-owned install dir).
-// 'fork': in-app updates would SUCCEED, and that is the problem (see above).
-const updaterDisabled = installSource === 'managed' || installSource === 'fork';
+// 'fork': safe now — publish feed targets onionviolet/grimoire, not upstream.
+const updaterDisabled = installSource === 'managed';
 
 // Configure logging
 autoUpdater.logger = log;
