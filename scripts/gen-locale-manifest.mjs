@@ -85,9 +85,14 @@ const languages = codes.map((code) => {
 const manifest = { sourceLanguage: SOURCE_LANGUAGE, totalKeys, languages };
 const serialized = JSON.stringify(manifest, null, 2) + '\n';
 
+// Compare content, not line endings. Git's autocrlf checks the manifest out
+// with CRLF on Windows while this script always serializes LF, so a raw string
+// compare fails on every Windows clone even when the manifest is correct.
+const stripCr = (s) => s.replace(/\r\n/g, '\n');
+
 if (process.argv.includes('--check')) {
   const current = existsSync(manifestPath) ? readFileSync(manifestPath, 'utf8') : '';
-  if (current !== serialized) {
+  if (stripCr(current) !== stripCr(serialized)) {
     console.error('locales/manifest.json is out of date. Run: pnpm i18n:manifest');
     process.exit(1);
   }
