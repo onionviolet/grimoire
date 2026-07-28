@@ -4761,15 +4761,31 @@ export default function Installed() {
                 This cannot repair a compiled model whose skeleton, bone weights, or animation bindings changed after a Deadlock update. Those need an author rebuild/re-export.
               </p>
               {modelCompatibilityReport.unreadableMods.length > 0 && (
-                <p className="text-xs text-text-secondary">Could not inspect {modelCompatibilityReport.unreadableMods.length} unreadable VPK{modelCompatibilityReport.unreadableMods.length === 1 ? '' : 's'}.</p>
+                <div className="space-y-1 text-xs text-text-secondary">
+                  <p>
+                    Could not inspect {modelCompatibilityReport.unreadableMods.length} VPK{modelCompatibilityReport.unreadableMods.length === 1 ? '' : 's'}, so {modelCompatibilityReport.unreadableMods.length === 1 ? 'it is' : 'they are'} not covered by anything above. Re-download or reinstall {modelCompatibilityReport.unreadableMods.length === 1 ? 'it' : 'them'} if a model looks wrong:
+                  </p>
+                  <ul className="max-h-20 list-disc space-y-1 overflow-y-auto pl-5">
+                    {modelCompatibilityReport.unreadableMods.map((name) => (
+                      <li key={name}>{name}</li>
+                    ))}
+                  </ul>
+                </div>
               )}
             </div>
           )
         }
-        confirmLabel={modelCompatibilityReport?.canFixLoadOrder ? 'Apply load-order fix' : 'Close'}
+        confirmLabel={
+          modelCompatibilityReport?.overlappingModels.length
+            ? 'Choose model winner'
+            : modelCompatibilityReport?.canFixLoadOrder ? 'Apply load-order fix' : 'Close'
+        }
         cancelLabel="Cancel"
         onConfirm={() => {
-          if (modelCompatibilityReport?.canFixLoadOrder) void handleModelCompatibilityFix();
+          if (modelCompatibilityReport?.overlappingModels.length) {
+            setModelCompatibilityReport(null);
+            navigate('/conflicts');
+          } else if (modelCompatibilityReport?.canFixLoadOrder) void handleModelCompatibilityFix();
           else setModelCompatibilityReport(null);
         }}
         onCancel={() => setModelCompatibilityReport(null)}
