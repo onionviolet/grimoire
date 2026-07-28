@@ -278,8 +278,8 @@ export default function Autoexec() {
                                 <Toggle
                                     checked={newHealthBarsEnabled}
                                     onChange={handleNewHealthBarsChange}
-                                    label="New Health Bars"
-                                    description="Use the alternate unit-status health bars for heroes, NPCs, and other units."
+                                    label={t('autoexec.newHealthBars.label')}
+                                    description={t('autoexec.newHealthBars.description')}
                                 />
 
                                 <div className="flex gap-2">
