@@ -66,10 +66,6 @@ Requires Deadlock installed via Steam.
 - Save and swap sets of enabled mods, and share them as short `mp1:` codes or `.modprofile.json` files (Grimoire-only format)
 - Advanced `gameinfo.gi` HUD controls and a ChatLane chat-wheel editor
 
-**Built-in Browser**
-
-- An in-app modding browser with privacy-oriented tracker/ad blocking, denied site permissions, and shortcuts to Deadlock community resources
-
 **Experimental** (opt in under Settings)
 
 - Discover: sign in with Steam to publish your profiles and browse uploads from other players
@@ -80,7 +76,7 @@ Offline-first and no telemetry: a fresh install phones home for nothing.
 
 ## Current development status
 
-This fork is under active development and includes newer features that have not yet received broad real-world testing. In particular, saved-mod workflows, engine switching, the built-in browser, Foundry/Locker sound features, launch shuffling, chat-wheel editing, and advanced HUD controls may still have rough edges or compatibility issues with particular game builds and mods.
+This fork is under active development and includes newer features that have not yet received broad real-world testing. In particular, saved-mod workflows, engine switching, Foundry/Locker sound features, launch shuffling, chat-wheel editing, and advanced HUD controls may still have rough edges or compatibility issues with particular game builds and mods.
 
 Please keep backups of important mod profiles and game configuration files, test changes with a small mod set first, and report reproducible problems through [Issues](../../issues) or [Discord](https://discord.gg/KgYGHEMq2P). The detailed release history is in [CHANGELOG.md](CHANGELOG.md).
 
