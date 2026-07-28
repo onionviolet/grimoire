@@ -269,6 +269,9 @@ export interface FoundrySoundConflict {
     enabled: boolean;
     priority: number;
     entries: string[];
+    /** How this VPK arrived in the library. This is provenance only; it never
+     * changes the expected load order. */
+    provenance: 'Downloaded' | 'Imported' | 'Forged' | 'Third-party';
     managed: boolean;
     soundSwap?: import('./mod').SoundSwapInfo;
 }
@@ -276,6 +279,29 @@ export interface FoundrySoundConflict {
 export interface FoundrySoundConflictInspection {
     writeSet: string[];
     conflicts: FoundrySoundConflict[];
+    /** Expected enabled-VPK owner for each exact entry path. An absent mod id
+     * means that no installed VPK owns the path, so the base-game asset wins. */
+    expectedWinners: Array<{ entry: string; modId?: string; modName?: string; priority?: number }>;
+    unreadableMods: Array<{ modId: string; modName: string; enabled: boolean }>;
+}
+
+export type FoundryAssetSourceProvenance = 'Downloaded' | 'Imported' | 'Forged' | 'Third-party';
+
+/** Exact-directory ownership for a visual asset. Disabled contenders never win. */
+export interface FoundryAssetSource {
+    modId: string;
+    modName: string;
+    enabled: boolean;
+    priority: number;
+    provenance: FoundryAssetSourceProvenance;
+    entries: string[];
+    wins: string[];
+}
+
+export interface FoundryAssetSourcesInspection {
+    paths: string[];
+    sources: FoundryAssetSource[];
+    winners: Record<string, string | null>;
     unreadableMods: Array<{ modId: string; modName: string; enabled: boolean }>;
 }
 

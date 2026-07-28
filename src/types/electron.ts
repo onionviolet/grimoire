@@ -607,6 +607,8 @@ export interface ElectronAPI {
 
     chatWheelRead: (vpkPath: string) => Promise<string>;
     chatWheelStarter: () => Promise<string>;
+    /** Non-mutating ChatLane conversion used for inline YAML diagnostics. */
+    chatWheelValidate: (yaml: string) => Promise<void>;
     chatWheelSave: (args: ChatWheelSaveArgs) => Promise<Mod | null>;
     chatWheelStatus: () => Promise<{ available: boolean; path?: string; error?: string }>;
 
@@ -1125,6 +1127,7 @@ export interface ElectronAPI {
             req: import('./foundry').HeroSoundSwapRequest
         ) => Promise<import('./mod').Mod[]>;
         inspectSoundConflicts: (writeSet: string[]) => Promise<import('./foundry').FoundrySoundConflictInspection>;
+        inspectAssetSources: (paths: string[]) => Promise<import('./foundry').FoundryAssetSourcesInspection>;
         replaceTexture: (
             req: import('./foundry').TextureReplacementRequest
         ) => Promise<import('./mod').Mod[]>;

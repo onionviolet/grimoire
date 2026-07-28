@@ -18,11 +18,13 @@ import {
     X,
     Pencil,
     Check,
+    Layers,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { EmptyState } from '../common/PageComponents';
 import Tx from '../translation/Tx';
 import { SoundImportEditor, type SoundImportEdits } from './SoundImportEditor';
+import AssetSourcesPanel from './AssetSourcesPanel';
 import { useClipPlayer, type ClipPlayer, type RowState } from './useClipPlayer';
 import { resolveForgeAudioPath } from './resolveForgeAudio';
 import { planSoundPool, type PoolAudio, type SoundPoolMode } from './soundPoolPlan';
@@ -56,6 +58,12 @@ export interface SwapContext {
      *  `GlobalSound.soundevents`). When set, `hero`/`heroName` are empty and the
      *  built mod is filed under the Locker's global Sounds bucket. */
     soundeventsEntry?: string;
+}
+
+/** Catalog rows name the source `.vsnd`, while VPK directories contain the
+ * compiled `.vsnd_c` entry that an addon actually overrides. */
+function compiledSoundEntry(path: string): string {
+    return path.replace(/\\/g, '/').replace(/\.vsnd(?:_c)?$/i, '.vsnd_c');
 }
 
 interface SoundBrowseProps {
@@ -475,6 +483,7 @@ function CategorySection({
                                 swap={swap}
                                 targetClip={row.vsnd[0]}
                                 sourceClipPaths={row.vsnd}
+                                eventSourcePath={`soundevents/hero/${row.hero}.vsndevts_c`}
                                 description={describeSound(row)}
                                 clipName={primaryClipName(row.vsnd)}
                                 annotationKey={foundrySoundAnnotationKey(row.event, row.vsnd[0] ?? '')}
@@ -670,6 +679,8 @@ interface SoundRowProps {
     clipPaths?: string[];
     /** Complete source pool, including gameplay/global event pools. */
     sourceClipPaths?: string[];
+    /** Exact soundevents directory entry for gameplay rows. */
+    eventSourcePath?: string;
     /** Plain-English "what this actually is", from lib/soundDescribe. Null when
      *  nothing honest can be derived, in which case the row just omits it. */
     description?: string | null;
@@ -683,7 +694,7 @@ interface SoundRowProps {
     annotationsVisible?: boolean;
 }
 
-export function SoundRow({ label, event, clips, duration, state, onToggle, poolIndex = 0, swap, targetClip, clipPaths, sourceClipPaths, description, clipName, annotationKey, annotation, onSaveAnnotation, annotationsVisible = false }: SoundRowProps) {
+export function SoundRow({ label, event, clips, duration, state, onToggle, poolIndex = 0, swap, targetClip, clipPaths, sourceClipPaths, eventSourcePath, description, clipName, annotationKey, annotation, onSaveAnnotation, annotationsVisible = false }: SoundRowProps) {
     const { t } = useTranslation();
     const [swapOpen, setSwapOpen] = useState(false);
     const [annotationOpen, setAnnotationOpen] = useState(false);
@@ -691,6 +702,7 @@ export function SoundRow({ label, event, clips, duration, state, onToggle, poolI
     const [annotationNote, setAnnotationNote] = useState(annotation?.note ?? '');
     const [annotationTags, setAnnotationTags] = useState((annotation?.tags ?? []).join(', '));
     const [annotationBusy, setAnnotationBusy] = useState(false);
+    const [sourcesOpen, setSourcesOpen] = useState(false);
     useEffect(() => {
         setAnnotationName(annotation?.name ?? '');
         setAnnotationNote(annotation?.note ?? '');
@@ -705,6 +717,14 @@ export function SoundRow({ label, event, clips, duration, state, onToggle, poolI
     const compiledClipName = clipName
         ? `${clipName.replace(/\.vsnd(_c)?$/i, '')}.vsnd_c`
         : null;
+    // Include every member of a pool—not only the currently auditioned clip—and
+    // its event container where the catalog can name one. This is an inspection
+    // request only; it never changes enabled state or precedence.
+    const sourcePaths = useMemo(() => {
+        const paths = (sourceClipPaths ?? clipPaths ?? (targetClip ? [targetClip] : [])).map(compiledSoundEntry);
+        if (eventSourcePath ?? swap?.soundeventsEntry) paths.push(eventSourcePath ?? swap!.soundeventsEntry!);
+        return [...new Set(paths)];
+    }, [sourceClipPaths, clipPaths, targetClip, eventSourcePath, swap]);
     // Randomizer pool: name which clip the next press auditions, so repeated
     // presses read as walking the pool rather than as a stuck button.
     const poolNote =
@@ -770,6 +790,20 @@ export function SoundRow({ label, event, clips, duration, state, onToggle, poolI
                         {seconds}
                     </span>
                 )}
+                {sourcePaths.length > 0 && (
+                    <button
+                        type="button"
+                        onClick={() => setSourcesOpen((open) => !open)}
+                        aria-expanded={sourcesOpen}
+                        title="Inspect installed VPKs that write these exact sound paths"
+                        className={`flex h-8 shrink-0 items-center gap-1.5 rounded-sm border px-2 text-xs transition-colors ${
+                            sourcesOpen ? 'border-accent/50 bg-accent/15 text-accent' : 'border-border bg-bg-tertiary text-text-secondary hover:text-text-primary'
+                        }`}
+                    >
+                        <Layers size={14} />
+                        Existing sources
+                    </button>
+                )}
                 {swap && (
                     <button
                         type="button"
@@ -799,6 +833,9 @@ export function SoundRow({ label, event, clips, duration, state, onToggle, poolI
                     targetClip={targetClip}
                     onClose={() => setSwapOpen(false)}
                 />
+            )}
+            {sourcesOpen && (
+                <AssetSourcesPanel paths={sourcePaths} />
             )}
             {annotationOpen && annotationKey && onSaveAnnotation && (
                 <div id={`annotation-${annotationKey.replace(/[^a-z0-9]/gi, '-')}`} className="mt-1.5 rounded-sm border border-border bg-bg-tertiary/40 p-3">
@@ -888,7 +925,7 @@ function SwapPanel({
             setUsingOriginal(false);
             setEdits({});
         },
-        [t]
+        []
     );
 
     const addLibraryFiles = useCallback((files: FileList | File[]) => {
@@ -964,7 +1001,7 @@ function SwapPanel({
             // A preflight makes the choice visible before work starts. The main
             // process repeats inspection over the *generated* VPK write-set,
             // which is authoritative (and catches event sidecars too).
-            const inspection = await foundryInspectSoundConflicts(assignments.map((assignment) => assignment.clipPath));
+            const inspection = await foundryInspectSoundConflicts(assignments.map((assignment) => compiledSoundEntry(assignment.clipPath)));
             if (inspection.unreadableMods.length || inspection.conflicts.length) {
                 setConflicts(inspection);
                 if (!resolution) return;
@@ -1093,7 +1130,6 @@ function SwapPanel({
                     <p className="mt-2">{assignments.length} exact clip write{assignments.length === 1 ? '' : 's'}{poolMode === 'n-to-n' && assignments.length === 0 ? ' — add one MP3 per selected target.' : ''}</p>
                 </div>
             )}
-
             {targetClip && (
                 <button
                     type="button"

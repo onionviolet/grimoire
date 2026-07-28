@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented here. Format is loosely based on [Keep a Changelog](https://keepachangelog.com/), and the project adheres to semantic versioning.
 
+## [1.25.170] - 2026-07-28
+
+### Fixed
+- **Forked vpkmerge release packaging.** Windows release builds now compile and
+  bundle the pinned `onionviolet/vpkmerge` revision (`798f3a7`) rather than the
+  upstream fallback engine. This restores Foundry's Global sounds catalog and
+  safe YCoCg icon replacement in packaged builds.
+
 ## [1.25.169] - 2026-07-28
 
 ### Added

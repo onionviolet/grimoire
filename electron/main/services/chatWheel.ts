@@ -64,3 +64,13 @@ export async function buildChatWheelVpk(yaml: string): Promise<{ vpkPath: string
         throw err;
     }
 }
+
+/**
+ * Run ChatLane against the current YAML without installing or retaining the
+ * generated VPK. This intentionally uses the same converter path as Save so
+ * inline feedback cannot disagree with the eventual install result.
+ */
+export async function validateChatWheelYaml(yaml: string): Promise<void> {
+    const built = await buildChatWheelVpk(yaml);
+    await built.cleanup();
+}

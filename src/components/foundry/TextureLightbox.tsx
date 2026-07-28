@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Modal } from '../common/Modal';
 import { foundryFullImage } from '../../lib/api';
 import type { TextureGridItem } from '../../types/foundry';
+import AssetSourcesPanel from './AssetSourcesPanel';
 
 interface TextureLightboxProps {
   /** The asset to enlarge, or null when closed. Drives the Modal open state so
@@ -12,6 +13,7 @@ interface TextureLightboxProps {
   /** Resolved hero display name for item.hero, when the codename maps to one. */
   heroName?: string;
   onClose: () => void;
+  sourcePaths?: string[];
 }
 
 /**
@@ -21,7 +23,7 @@ interface TextureLightboxProps {
  * full-res decode is in flight the 128px thumb stands in (scaled up, so the
  * modal never flashes empty); a decode failure falls back to that thumb too.
  */
-export default function TextureLightbox({ item, heroName, onClose }: TextureLightboxProps) {
+export default function TextureLightbox({ item, heroName, onClose, sourcePaths }: TextureLightboxProps) {
   const { t } = useTranslation();
   // The full-res result is tagged with the path it belongs to, so `loading` and
   // `fullUrl` derive from whether it matches the open asset. This keeps the
@@ -105,6 +107,9 @@ export default function TextureLightbox({ item, heroName, onClose }: TextureLigh
               {t('foundry.lightbox.nativeSize', 'Native size')}: {dims}
             </div>
           )}
+          <div className="px-4 pb-3">
+            <AssetSourcesPanel paths={sourcePaths ?? [item.path]} />
+          </div>
         </>
       )}
     </Modal>

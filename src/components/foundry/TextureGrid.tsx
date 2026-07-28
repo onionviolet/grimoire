@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import type { TextureGridItem } from '../../types/foundry';
 import TextureCard from './TextureCard';
+import { visualAssetInspectionPaths } from './visualEdits';
 
 interface TextureGridProps {
   items: TextureGridItem[];
@@ -39,6 +40,7 @@ export default function TextureGrid({ items, heroNames, search, heroFilter, onOp
           heroName={it.hero ? heroNames.get(it.hero) : undefined}
           onOpen={() => onOpen(it)}
           onReplace={onReplace}
+          sourcePaths={visualAssetInspectionPaths(it, items)}
         />
       ))}
     </div>

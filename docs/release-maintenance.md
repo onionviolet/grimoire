@@ -67,9 +67,17 @@ repeatable while preserving a usable rollback path.
    Expected outputs are `release/Grimoire-Setup-<version>.exe`,
    `release/Grimoire-Portable-<version>.exe`, and the installer blockmap.
 
-6. The GitHub workflow produces the Windows, Linux, and Apple Silicon macOS
-   artifacts automatically when a `v<version>` tag is pushed. Before the first
-   macOS release, add these repository secrets so Gatekeeper accepts the app:
+6. The GitHub workflow currently produces Windows artifacts automatically when
+   a `v<version>` tag is pushed. It checks out the pinned `onionviolet/vpkmerge`
+   revision, builds it, and copies that engine into the app before packaging.
+   This is required for Foundry's global-sound catalog and safe icon replacement.
+   Advance the pinned revision in `.github/workflows/release.yml` deliberately,
+   after validating the engine change locally.
+
+   The cross-platform publishing blocks remain retained below for a future
+   release expansion; do not describe Linux or macOS artifacts as shipped until
+   their build matrix is re-enabled. Before the first macOS release, add these
+   repository secrets so Gatekeeper accepts the app:
 
    - `MACOS_CERTIFICATE` â€” base64-encoded Developer ID Application `.p12`;
    - `MACOS_CERTIFICATE_PASSWORD`;
@@ -88,13 +96,16 @@ repeatable while preserving a usable rollback path.
    ```
 
    Smoke-test the portable build with an existing profile: launch it, open the
-   Locker (including Global), Browse, and Foundry, then confirm the version in
-   Settings. Install the setup executable only when its upgrade path also needs
-   testing.
+   Locker (including Global), Browse, and Foundry. In Foundry, open **Global
+   sounds** and confirm its catalog loads, then replace one ordinary icon and
+   one YCoCg icon. Record the app version and the vpkmerge version shown in
+   Settings (the pinned fork build currently reports `vpkmerge 0.19.0
+   (798f3a7)`). Install the setup executable only when its upgrade path also
+   needs testing.
 
 8. Push the release commit and an immutable version tag; the Release workflow
-   creates the GitHub Release and uploads all Windows, Linux, and macOS assets,
-   update metadata, checksums, and generated release notes:
+   creates the GitHub Release and uploads the Windows assets, checksums, and
+   generated release notes:
 
    ```powershell
    git push origin main

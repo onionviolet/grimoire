@@ -46,6 +46,22 @@ jobs:
           path: grimoire-social
           ref: main
 
+      # Foundry's global-sound catalog and icon replacement path depend on
+      # unreleased vpkmerge work from this fork.  Keep this SHA pinned: a
+      # release must be reproducible and must not silently change merely
+      # because the engine's main branch advanced.
+      - name: Checkout forked vpkmerge
+        uses: actions/checkout@v6
+        with:
+          repository: onionviolet/vpkmerge
+          ref: 798f3a7d28f3ef314d8f6ebf51ced0d9fe049445
+          path: vpkmerge
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable-x86_64-pc-windows-msvc
+
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
         with:
@@ -69,6 +85,14 @@ jobs:
       - name: Install dependencies
         working-directory: grimoire
         run: pnpm install --frozen-lockfile
+
+      - name: Build the forked vpkmerge sidecar
+        working-directory: vpkmerge
+        run: cargo +stable-x86_64-pc-windows-msvc build --locked --release -p vpkmerge-cli
+
+      - name: Bundle the forked vpkmerge sidecar
+        working-directory: grimoire
+        run: pnpm use-local-vpkmerge
 
       # electron-updater throws in the main process when the packaged app
       # version is not SemVer. Reject bad or mismatched release tags before

@@ -10,6 +10,7 @@ export interface FoundrySoundConflict {
     enabled: boolean;
     priority: number;
     entries: string[];
+    provenance: 'Downloaded' | 'Imported' | 'Forged' | 'Third-party';
     managed: boolean;
     soundSwap?: SoundSwapInfo;
 }
@@ -17,13 +18,14 @@ export interface FoundrySoundConflict {
 export interface FoundrySoundConflictInspection {
     writeSet: string[];
     conflicts: FoundrySoundConflict[];
+    expectedWinners: Array<{ entry: string; modId?: string; modName?: string; priority?: number }>;
     /** VPKs whose directory could not be read. They are deliberately not
      * treated as harmless: the caller must surface this uncertainty. */
     unreadableMods: Array<{ modId: string; modName: string; enabled: boolean }>;
 }
 
 export interface InstalledSoundConflictCandidate {
-    mod: Pick<Mod, 'id' | 'name' | 'metaKey' | 'enabled' | 'priority'>;
+    mod: Pick<Mod, 'id' | 'name' | 'metaKey' | 'enabled' | 'priority' | 'gameBananaId' | 'isUnknown'>;
     entries: string[] | null;
     soundSwap?: SoundSwapInfo;
 }
@@ -57,9 +59,27 @@ export function inspectFoundrySoundWriteSet(
             enabled: candidate.mod.enabled,
             priority: candidate.mod.priority,
             entries: [...new Set(entries)].sort(),
+            provenance: candidate.soundSwap
+                ? 'Forged'
+                : candidate.mod.gameBananaId
+                    ? 'Downloaded'
+                    : candidate.mod.isUnknown
+                        ? 'Third-party'
+                        : 'Imported',
             managed: !!candidate.soundSwap,
             soundSwap: candidate.soundSwap,
         });
     }
-    return { writeSet: [...wanted.values()].sort(), conflicts, unreadableMods };
+    // Load priority only applies to enabled addons. Keep this path-by-path:
+    // one VPK can own just one member of a randomizer pool, so a single global
+    // "winner" would be misleading.
+    const expectedWinners = [...wanted.entries()].map(([normalized, entry]) => {
+        const owner = conflicts
+            .filter((conflict) => conflict.enabled && conflict.entries.some((candidate) => canonical(candidate) === normalized))
+            .sort((a, b) => a.priority - b.priority || a.modName.localeCompare(b.modName))[0];
+        return owner
+            ? { entry, modId: owner.modId, modName: owner.modName, priority: owner.priority }
+            : { entry };
+    }).sort((a, b) => a.entry.localeCompare(b.entry));
+    return { writeSet: [...wanted.values()].sort(), conflicts, expectedWinners, unreadableMods };
 }

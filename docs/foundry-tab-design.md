@@ -1,6 +1,9 @@
 # Foundry tab (design / vision)
 
-Status: design only, not yet built. Target home: a new first-class **Foundry** tab in the
+Status: historical design document. A first-class **Foundry** tab and its core
+catalog/sound/texture slices are now built; this document retains the original
+vision and deferred ideas. See [feature-status.md](./feature-status.md) for the
+current implementation inventory. Target home: a new first-class **Foundry** tab in the
 Grimoire desktop client (Electron). Engine: `vpkmerge-core` (+ `morphic`), the same crates
 that already back the vpkmerge GUI prototype. Authored 2026-06-20.
 

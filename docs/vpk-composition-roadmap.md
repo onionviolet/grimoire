@@ -27,15 +27,16 @@ non-strict merge).
 
 ## Milestones
 
-### 1. Read-only merge analysis (in progress)
+### 1. Read-only merge analysis (complete)
 
 Add an additive `analyze-merge` IPC endpoint. It reports source order, parsed
 entry counts, total input size, collision paths, and which source wins under the
 same priority ordering used by the current merge. It must distinguish unreadable
 VPKs from an empty VPK and omit inert imprint metadata from collision totals.
 
-No existing merge invocation changes in this milestone. The UI integration is
-feature-gated and can fall back to today's merge modal when the endpoint is absent.
+No existing merge invocation changes in this milestone. The `analyze-merge`
+endpoint and its focused service tests now exist; renderer review integration
+remains the next user-visible step.
 
 ### 2. Review UI and ordering
 

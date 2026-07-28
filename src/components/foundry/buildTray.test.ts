@@ -27,4 +27,12 @@ describe('Foundry build tray model', () => {
     expect(normalizeOutputName('  My: Foundry / Mod  ')).toBe('My- Foundry - Mod');
     expect(normalizeOutputName('')).toBe('Foundry mod');
   });
+
+  it('does not report a staged edit as colliding with itself when its path is duplicated', () => {
+    const edit = {
+      id: 'icon', kind: 'texture' as const, title: 'Icon',
+      affectedFiles: ['panorama\\icon.vtex_c', 'panorama/icon.vtex_c'], precedence: 1,
+    };
+    expect(analyzeStagedEdits([edit])).toEqual([]);
+  });
 });

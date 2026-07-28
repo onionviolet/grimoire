@@ -3,12 +3,13 @@ import { Library, Search, Loader2, AlertTriangle, Users } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { EmptyState } from '../common/PageComponents';
 import Tx from '../translation/Tx';
-import { foundryReplaceTexture, foundryThumbnails } from '../../lib/api';
+import { foundryInspectAssetSources, foundryReplaceTexture, foundryThumbnails } from '../../lib/api';
 import { showToast } from '../../stores/toastStore';
 import { useAppStore } from '../../stores/appStore';
 import type { TextureCategory, TextureGridItem } from '../../types/foundry';
 import TextureGrid from './TextureGrid';
 import TextureLightbox from './TextureLightbox';
+import { serializeVisualReplacement, visualAssetInspectionPaths } from './visualEdits';
 
 interface LibraryBrowseProps {
   /** codename -> display name, resolved once by the Foundry shell. */
@@ -48,12 +49,24 @@ export default function LibraryBrowse({ heroNames, initialCategory = 'ability-ic
     if (!imagePath) return;
     setReplacingPath(item.path);
     try {
-      await foundryReplaceTexture({
+      const draft = {
         entryPath: item.path,
         imagePath,
         name: t('foundry.texture.defaultReplacementName', '{{label}} replacement', { label: item.label || 'Texture' }),
         category: item.category,
-      });
+      } as const;
+      const sources = await foundryInspectAssetSources(visualAssetInspectionPaths(item, items));
+      if (sources.unreadableMods.length > 0) {
+        throw new Error('Cannot replace this asset while installed VPK sources are unreadable. Resolve those VPKs and inspect again.');
+      }
+      const enabled = sources.sources.filter((source) => source.enabled);
+      if (enabled.length > 0 && !window.confirm(`Existing enabled sources: ${enabled.map((source) => source.modName).join(', ')}. Continue to create a separate managed replacement?`)) {
+        return;
+      }
+      // The serializer is the supported handoff for a future combined Forge;
+      // this current action still installs a distinct managed replacement.
+      serializeVisualReplacement(draft);
+      await foundryReplaceTexture(draft);
       await loadMods({ silent: true });
       showToast(t('foundry.texture.replaceDone', 'Installed texture replacement. Enable it in Installed.'), { tone: 'success', duration: 6000 });
     } catch (e) {
@@ -61,7 +74,7 @@ export default function LibraryBrowse({ heroNames, initialCategory = 'ability-ic
     } finally {
       setReplacingPath(null);
     }
-  }, [loadMods, t]);
+  }, [items, loadMods, t]);
 
   const loadCategory = useCallback(async (cat: TextureCategory) => {
     setLoading(true);
@@ -168,6 +181,7 @@ export default function LibraryBrowse({ heroNames, initialCategory = 'ability-ic
       <TextureLightbox
         item={lightbox}
         heroName={lightbox?.hero ? heroNames.get(lightbox.hero) : undefined}
+        sourcePaths={lightbox ? visualAssetInspectionPaths(lightbox, items) : undefined}
         onClose={() => setLightbox(null)}
       />
     </>

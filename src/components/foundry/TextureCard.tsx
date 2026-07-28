@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { ImageOff, Upload } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { TextureGridItem } from '../../types/foundry';
+import AssetSourcesPanel from './AssetSourcesPanel';
 
 interface TextureCardProps {
   item: TextureGridItem;
@@ -11,6 +12,8 @@ interface TextureCardProps {
   onOpen?: () => void;
   /** PNG drop/pick from the catalog card; the parent owns the Forge action. */
   onReplace?: (item: TextureGridItem, file: File) => void;
+  /** Exact asset family paths to inspect; portraits may have state variants. */
+  sourcePaths?: string[];
 }
 
 /**
@@ -20,7 +23,7 @@ interface TextureCardProps {
  * grid cheap to lay out (the same trick used on the Installed/Browse grids).
  * Clicking the tile enlarges it (decoded at full size on demand).
  */
-export default function TextureCard({ item, heroName, onOpen, onReplace }: TextureCardProps) {
+export default function TextureCard({ item, heroName, onOpen, onReplace, sourcePaths = [item.path] }: TextureCardProps) {
   const { t } = useTranslation();
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
@@ -70,6 +73,7 @@ export default function TextureCard({ item, heroName, onOpen, onReplace }: Textu
             <input ref={inputRef} type="file" accept=".png,image/png" className="hidden" onChange={(e) => { accept(e.target.files?.[0]); e.target.value = ''; }} />
           </>
         )}
+        <AssetSourcesPanel paths={sourcePaths} />
       </div>
     </div>
   );

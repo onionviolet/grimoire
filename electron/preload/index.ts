@@ -10,6 +10,7 @@ import type {
     HeroEffectExportRequest,
     HeroSoundFilters,
     HeroSoundSwapRequest,
+    FoundryAssetSourcesInspection,
     TextureReplacementRequest,
     TextureCategory,
     TextureFilters,
@@ -102,6 +103,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     chatWheelRead: (vpkPath: string) => ipcRenderer.invoke('chat-wheel:read', vpkPath),
     chatWheelStarter: () => ipcRenderer.invoke('chat-wheel:starter'),
+    chatWheelValidate: (yaml: string) => ipcRenderer.invoke('chat-wheel:validate', yaml),
     chatWheelSave: (args: ChatWheelSaveArgs) => ipcRenderer.invoke('chat-wheel:save', args),
     chatWheelStatus: () => ipcRenderer.invoke('chat-wheel:status'),
 
@@ -665,6 +667,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
             ipcRenderer.invoke('foundry:swapSound', req),
         inspectSoundConflicts: (writeSet: string[]) =>
             ipcRenderer.invoke('foundry:inspectSoundConflicts', writeSet),
+        inspectAssetSources: (paths: string[]): Promise<FoundryAssetSourcesInspection> =>
+            ipcRenderer.invoke('foundry:inspectAssetSources', paths),
         replaceTexture: (req: TextureReplacementRequest) =>
             ipcRenderer.invoke('foundry:replaceTexture', req),
     },

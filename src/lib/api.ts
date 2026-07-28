@@ -109,6 +109,11 @@ export async function getChatWheelStarter(): Promise<string> {
   return window.electronAPI.chatWheelStarter();
 }
 
+/** Validate with ChatLane without installing or otherwise changing any mod. */
+export async function validateChatWheel(yaml: string): Promise<void> {
+  return window.electronAPI.chatWheelValidate(yaml);
+}
+
 export async function saveChatWheel(args: import('../types/electron').ChatWheelSaveArgs): Promise<Mod | null> {
   return withGameRunningWarning(() => window.electronAPI.chatWheelSave(args));
 }
@@ -1453,6 +1458,13 @@ export async function foundryInspectSoundConflicts(
   writeSet: string[]
 ): Promise<import('../types/foundry').FoundrySoundConflictInspection> {
   return window.electronAPI.foundry.inspectSoundConflicts(writeSet);
+}
+
+/** Inspect installed VPK writers for exact catalog asset entry paths. */
+export async function foundryInspectAssetSources(
+  paths: string[]
+): Promise<import('../types/foundry').FoundryAssetSourcesInspection> {
+  return window.electronAPI.foundry.inspectAssetSources(paths);
 }
 
 /** Bake one PNG onto a catalog texture and install it as a managed local mod. */

@@ -21,6 +21,7 @@ import { getModMetadata, setModMetadata, setModMetadataWithHash, removeModMetada
 import { inferHeroFromTitle } from '@grimoire/social-types/heroes';
 import { inferHeroFromVpk, classifyGlobalModFromVpk, GLOBAL_CLASSIFIER_VERSION, parseVpkDirectory, parseVpkDirectoriesAsync } from '../services/vpk';
 import { inspectFoundrySoundWriteSet } from '../services/foundrySoundConflicts';
+import { inspectFoundryAssetSources } from '../services/foundryAssetSources';
 import { classifyAbilitySoundsFromVpk } from '../services/abilitySounds';
 import { migrateIgnoredConflictKeysForMods } from '../services/conflicts';
 import { isLockerManaged } from '../services/lockerVpk';
@@ -62,7 +63,7 @@ import { resolveModVpk, clearSoulModelCache } from '../services/soulContainerMod
 import { exportVpkViaDialog, exportVpkFileName } from '../services/foundryExport';
 import { getMainWindow } from '../index';
 import type { ImportCustomModArgs, ImportCustomModsBatchArgs, ImportCustomModsBatchResult, ImportCustomModResult, ImportCustomModsProgress, ImportSoulContainerGlbArgs, PreviewSoulContainerGlbArgs, SoulContainerPreview, ImportSpiritUrnGlbArgs, PreviewSpiritUrnGlbArgs, SpiritUrnPreview } from '../../../src/types/electron';
-import type { VpkExportResult, HeroSoundSwapRequest, TextureReplacementRequest, FoundrySoundConflictInspection } from '../../../src/types/foundry';
+import type { VpkExportResult, HeroSoundSwapRequest, TextureReplacementRequest, FoundrySoundConflictInspection, FoundryAssetSourcesInspection } from '../../../src/types/foundry';
 import type { AbilitySoundClassification, AddMergeSourcesResult, ApplyUnknownCustomModArgs, ApplyUnknownModMatchArgs, AssociateUnknownModArgs, EditLocalModArgs, GlobalModType, LockerHeroSource, MergeAnalysisResult, MergeModsArgs, Mod as WireMod, SoulContainerImportInfo, SoundSwapInfo, UrnImportInfo, UnmergeModResult, ExtractMergeSourceResult, UnknownModFileList, ImprintPreflightResult, ImprintDetails, PeekImprintResult, ModelCompatibilityReport } from '../../../src/types/mod';
 
 const unknownDetectionControllers = new Map<string, AbortController>();
@@ -1364,7 +1365,18 @@ async function inspectInstalledSoundWriteSet(
     const mods = await scanMods(deadlockPath);
     const entriesByPath = await parseVpkDirectoriesAsync(mods.map((mod) => mod.path));
     return inspectFoundrySoundWriteSet(writeSet, mods.map((mod) => ({
-        mod: { id: mod.id, name: enrichMod(mod).name, metaKey: mod.metaKey, enabled: mod.enabled, priority: mod.priority },
+        mod: (() => {
+            const enriched = enrichMod(mod);
+            return {
+                id: mod.id,
+                name: enriched.name,
+                metaKey: mod.metaKey,
+                enabled: mod.enabled,
+                priority: mod.priority,
+                gameBananaId: enriched.gameBananaId,
+                isUnknown: enriched.isUnknown,
+            };
+        })(),
         entries: entriesByPath.get(mod.path) ?? null,
         soundSwap: getModMetadata(mod.metaKey)?.soundSwap,
     })));
@@ -1377,6 +1389,23 @@ ipcMain.handle('foundry:inspectSoundConflicts', async (_, writeSet: string[]): P
         throw new Error('A sound conflict inspection requires VPK entry paths');
     }
     return inspectInstalledSoundWriteSet(deadlockPath, writeSet);
+});
+
+// Read-only exact-path inspection for visual catalog assets. Both enabled and
+// disabled VPKs are scanned; display labels are never used as ownership proof.
+ipcMain.handle('foundry:inspectAssetSources', async (_, paths: string[]): Promise<FoundryAssetSourcesInspection> => {
+    const deadlockPath = getActiveDeadlockPath();
+    if (!deadlockPath) throw new Error('No Deadlock path configured');
+    if (!Array.isArray(paths) || paths.length === 0 || paths.some((path) => typeof path !== 'string')) {
+        throw new Error('Asset source inspection requires one or more VPK entry paths');
+    }
+    const mods = await scanMods(deadlockPath);
+    const entriesByPath = await parseVpkDirectoriesAsync(mods.map((mod) => mod.path));
+    return inspectFoundryAssetSources(paths, mods.map((mod) => ({
+        mod: { id: mod.id, name: enrichMod(mod).name, enabled: mod.enabled, priority: mod.priority },
+        entries: entriesByPath.get(mod.path) ?? null,
+        metadata: getModMetadata(mod.metaKey),
+    })));
 });
 
 // foundry:swapSound

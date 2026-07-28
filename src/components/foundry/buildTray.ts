@@ -66,9 +66,10 @@ export function normalizeOutputName(name: string): string {
 export function analyzeStagedEdits(edits: readonly FoundryStagedEdit[]): BuildTrayCollision[] {
   const writers = new Map<string, FoundryStagedEdit[]>();
   for (const edit of edits) {
-    for (const rawFile of edit.affectedFiles) {
-      const file = normalizeEntryPath(rawFile);
-      if (!file) continue;
+    // An authoring flow may list the same logical entry with slash variants.
+    // That is one writer, not a collision with itself.
+    const files = new Set(edit.affectedFiles.map(normalizeEntryPath).filter(Boolean));
+    for (const file of files) {
       writers.set(file, [...(writers.get(file) ?? []), edit]);
     }
   }

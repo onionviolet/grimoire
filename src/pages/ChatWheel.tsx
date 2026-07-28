@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AlertTriangle, FileUp, Save, Sparkles } from 'lucide-react';
-import { getMods, readChatWheel, saveChatWheel, getChatWheelStarter, getChatWheelStatus } from '../lib/api';
+import { getMods, readChatWheel, saveChatWheel, getChatWheelStarter, getChatWheelStatus, validateChatWheel } from '../lib/api';
 import { useAppStore } from '../stores/appStore';
 import { Button } from '../components/common/ui';
 import Tx from '../components/translation/Tx';
@@ -17,6 +17,10 @@ export default function ChatWheel() {
   const [error, setError] = useState<string | null>(null);
   const [converterAvailable, setConverterAvailable] = useState<boolean | null>(null);
   const [starterLoading, setStarterLoading] = useState(true);
+  const [savedYaml, setSavedYaml] = useState('');
+  const [savedName, setSavedName] = useState('My Chat Wheel');
+  const [validation, setValidation] = useState<{ state: 'checking' | 'valid' | 'invalid'; message?: string } | null>(null);
+  const validationRequest = useRef(0);
   const loadMods = useAppStore((state) => state.loadMods);
 
   const selected = useMemo(() => wheels.find((wheel) => wheel.id === selectedId), [selectedId, wheels]);
@@ -29,7 +33,10 @@ export default function ChatWheel() {
   useEffect(() => {
     void refreshWheels().catch((err) => setError(err instanceof Error ? err.message : String(err)));
     void getChatWheelStarter()
-      .then(setYaml)
+      .then((starter) => {
+        setYaml(starter);
+        setSavedYaml(starter);
+      })
       .catch((err) => setError(err instanceof Error ? err.message : String(err)))
       .finally(() => setStarterLoading(false));
     void getChatWheelStatus()
@@ -37,14 +44,41 @@ export default function ChatWheel() {
       .catch(() => setConverterAvailable(false));
   }, []);
 
-  const startNewWheel = async () => {
+  const dirty = yaml !== savedYaml || name !== savedName;
+
+  useEffect(() => {
+    const request = ++validationRequest.current;
+    if (starterLoading || converterAvailable !== true) {
+      setValidation(null);
+      return;
+    }
+    setValidation({ state: 'checking' });
+    const timer = window.setTimeout(() => {
+      void validateChatWheel(yaml)
+        .then(() => {
+          if (validationRequest.current === request) setValidation({ state: 'valid' });
+        })
+        .catch((err) => {
+          if (validationRequest.current === request) {
+            setValidation({ state: 'invalid', message: err instanceof Error ? err.message : String(err) });
+          }
+        });
+    }, 450);
+    return () => window.clearTimeout(timer);
+  }, [yaml, starterLoading, converterAvailable]);
+
+  const createNewWheel = async () => {
+    if (dirty && !window.confirm(t('chatWheel.confirmDiscard', 'Discard unsaved changes and create a new chat wheel?'))) return;
     setError(null);
     setBusy('load');
     setStarterLoading(true);
     try {
-      setYaml(await getChatWheelStarter());
+      const starter = await getChatWheelStarter();
+      setYaml(starter);
       setName('My Chat Wheel');
       setSelectedId('');
+      setSavedYaml(starter);
+      setSavedName('My Chat Wheel');
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -62,10 +96,15 @@ export default function ChatWheel() {
     if (!path) return;
     setBusy('load');
     try {
-      setYaml(await readChatWheel(path));
+      const loadedYaml = await readChatWheel(path);
+      setYaml(loadedYaml);
+      setSavedYaml(loadedYaml);
       const wheel = wheels.find((item) => item.path === path);
       setSelectedId(wheel?.id ?? '');
-      if (wheel?.name) setName(wheel.name);
+      if (wheel?.name) {
+        setName(wheel.name);
+        setSavedName(wheel.name);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -78,8 +117,11 @@ export default function ChatWheel() {
     setError(null);
     setBusy('load');
     try {
-      setYaml(await readChatWheel(selected.path));
+      const loadedYaml = await readChatWheel(selected.path);
+      setYaml(loadedYaml);
+      setSavedYaml(loadedYaml);
       setName(selected.name);
+      setSavedName(selected.name);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -92,6 +134,8 @@ export default function ChatWheel() {
     setBusy('save');
     try {
       await saveChatWheel({ yaml, name, replaceModId: selectedId || undefined });
+      setSavedYaml(yaml);
+      setSavedName(name);
       await Promise.all([refreshWheels(), loadMods()]);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -147,11 +191,11 @@ export default function ChatWheel() {
             value={selectedId}
             onChange={(event) => {
               if (event.target.value) setSelectedId(event.target.value);
-              else void startNewWheel();
+              else void createNewWheel();
             }}
             className="w-full rounded border border-border bg-bg-tertiary px-2 py-2 text-sm text-text-primary"
           >
-            <option value="">{t('chatWheel.newWheel', 'New chat wheel')}</option>
+            <option value="">{t('chatWheel.createNew', 'Create new wheel')}</option>
             {wheels.map((wheel) => (
               <option key={wheel.id} value={wheel.id}>
                 {wheel.name}
@@ -172,11 +216,11 @@ export default function ChatWheel() {
             variant="secondary"
             size="sm"
             className="w-full"
-            onClick={startNewWheel}
+            onClick={createNewWheel}
             disabled={busy !== null || converterAvailable === false}
             isLoading={busy === 'load'}
           >
-            <Tx k="chatWheel.startNew" fallback="Start a new wheel" />
+            <Tx k="chatWheel.createNew" fallback="Create new wheel" />
           </Button>
           <Button
             variant="secondary"
@@ -191,12 +235,20 @@ export default function ChatWheel() {
           <p className="text-xs leading-relaxed text-text-secondary">
             <Tx
               k="chatWheel.helpNote"
-              fallback="Only VPKs made by ChatLane can be opened. The embedded chatlane.yml is preserved on every save."
+              fallback="Only VPKs made by ChatLane can be opened. The embedded chatlane.yml is preserved on every save. Installation happens only when you choose Save & install."
             />
           </p>
         </aside>
 
         <section className="space-y-3 rounded border border-border bg-bg-secondary p-4">
+          {!selected && (
+            <p className="rounded border border-accent/30 bg-accent/10 px-3 py-2 text-xs text-text-secondary" role="status">
+              <Tx
+                k="chatWheel.newWheelDraft"
+                fallback="New wheel draft: this is not installed yet. Save & install creates the managed add-on."
+              />
+            </p>
+          )}
           <label className="block text-sm font-medium text-text-primary">
             <Tx k="chatWheel.nameLabel" fallback="Name" />
             <input
@@ -215,15 +267,15 @@ export default function ChatWheel() {
             />
           </label>
           <div className="flex items-center justify-between gap-3">
-            <span className="text-xs text-text-secondary">
-              <Tx
-                k="chatWheel.validationNote"
-                fallback="Validation happens in ChatLane before any add-on is installed."
-              />
+            <span className={validation?.state === 'invalid' ? 'text-xs text-red-300' : 'text-xs text-text-secondary'}>
+              {validation?.state === 'checking' && t('chatWheel.validationChecking', 'Checking YAML with ChatLane…')}
+              {validation?.state === 'valid' && t('chatWheel.validationValid', 'ChatLane YAML is valid. Nothing has been installed.')}
+              {validation?.state === 'invalid' && validation.message}
+              {!validation && <Tx k="chatWheel.validationNote" fallback="Validation happens in ChatLane before any add-on is installed." />}
             </span>
             <Button
               onClick={save}
-              disabled={busy !== null || starterLoading || converterAvailable === false}
+              disabled={busy !== null || starterLoading || converterAvailable === false || validation?.state === 'checking' || validation?.state === 'invalid'}
               isLoading={busy === 'save'}
             >
               <Save className="mr-1 h-4 w-4" />
