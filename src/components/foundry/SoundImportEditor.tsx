@@ -102,6 +102,10 @@ export function SoundImportEditor({ file, targetClipPath, onChange }: SoundImpor
     const [targetRms, setTargetRms] = useState<number | null>(null);
     const [targetState, setTargetState] = useState<'idle' | 'loading' | 'missing'>('idle');
     const [gainDb, setGainDb] = useState(0);
+    /** Hand-dialed loudness, added on top of any normalizer match. This is the
+     *  half that makes retuning a stock clip useful: matching a clip against
+     *  itself is always 0 dB, so "punchier" has to come from here. */
+    const [manualGainDb, setManualGainDb] = useState(0);
 
     const containerRef = useRef<HTMLDivElement | null>(null);
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -197,8 +201,16 @@ export function SoundImportEditor({ file, targetClipPath, onChange }: SoundImpor
         setGainDb(Math.round(clamped * 10) / 10);
     }, [normalize, buffer, targetRms, startMs, endMs]);
 
+    // What actually ships: the normalizer's match (when enabled) plus whatever the
+    // user dialed by hand, clamped once so the two can't stack into noise.
+    const effectiveGainDb = useMemo(() => {
+        const raw = (normalize ? gainDb : 0) + manualGainDb;
+        const clamped = Math.max(-MAX_GAIN_DB, Math.min(MAX_GAIN_DB, raw));
+        return Math.round(clamped * 10) / 10;
+    }, [normalize, gainDb, manualGainDb]);
+
     // Report authored edits upward. Trim only when the window is narrower than the
-    // whole clip; gain only when the normalizer produced a non-zero value.
+    // whole clip; gain only when it is a real change.
     useEffect(() => {
         if (!buffer) {
             onChange({});
@@ -209,9 +221,9 @@ export function SoundImportEditor({ file, targetClipPath, onChange }: SoundImpor
         onChange({
             trimStartMs: trimmed ? startMs : undefined,
             trimEndMs: trimmed ? endMs : undefined,
-            gainDb: normalize && gainDb !== 0 ? gainDb : undefined,
+            gainDb: effectiveGainDb !== 0 ? effectiveGainDb : undefined,
         });
-    }, [buffer, startMs, endMs, normalize, gainDb, onChange]);
+    }, [buffer, startMs, endMs, effectiveGainDb, onChange]);
 
     const stopPlayback = useCallback(() => {
         if (srcRef.current) {
@@ -248,8 +260,7 @@ export function SoundImportEditor({ file, targetClipPath, onChange }: SoundImpor
         const src = ctx.createBufferSource();
         src.buffer = buffer;
         const gainNode = ctx.createGain();
-        const previewGain = normalize ? 10 ** (gainDb / 20) : 1;
-        gainNode.gain.value = previewGain * soundVolume;
+        gainNode.gain.value = 10 ** (effectiveGainDb / 20) * soundVolume;
         src.connect(gainNode).connect(ctx.destination);
 
         const offset = startMs / 1000;
@@ -268,7 +279,7 @@ export function SoundImportEditor({ file, targetClipPath, onChange }: SoundImpor
             if (elapsed < span) requestAnimationFrame(tick);
         };
         requestAnimationFrame(tick);
-    }, [buffer, playing, stopPlayback, acquireCtx, normalize, gainDb, soundVolume, startMs, endMs]);
+    }, [buffer, playing, stopPlayback, acquireCtx, effectiveGainDb, soundVolume, startMs, endMs]);
 
     // Stop a running preview if the window moves under it.
     useEffect(() => {
@@ -445,6 +456,37 @@ export function SoundImportEditor({ file, targetClipPath, onChange }: SoundImpor
                     )}
                 </label>
             )}
+
+            {/* Hand-dialed loudness, on top of the normalizer */}
+            <div className="flex items-center gap-2 text-[11px] text-text-secondary">
+                <span className="shrink-0 text-text-primary">
+                    {t('foundry.sound.import.gain', 'Loudness')}
+                </span>
+                <input
+                    type="range"
+                    min={-MAX_GAIN_DB}
+                    max={MAX_GAIN_DB}
+                    step={0.5}
+                    value={manualGainDb}
+                    aria-label={t('foundry.sound.import.gain', 'Loudness')}
+                    onChange={(e) => setManualGainDb(Number(e.target.value))}
+                    className="min-w-0 flex-1 accent-accent"
+                />
+                <span className="w-14 shrink-0 text-right tabular-nums text-accent">
+                    {effectiveGainDb >= 0 ? '+' : ''}
+                    {effectiveGainDb.toFixed(1)} dB
+                </span>
+                {manualGainDb !== 0 && (
+                    <button
+                        type="button"
+                        onClick={() => setManualGainDb(0)}
+                        className="shrink-0 transition-colors hover:text-text-primary"
+                        title={t('foundry.sound.import.resetGain', 'Back to the original loudness')}
+                    >
+                        <RotateCcw size={11} />
+                    </button>
+                )}
+            </div>
         </div>
     );
 }
