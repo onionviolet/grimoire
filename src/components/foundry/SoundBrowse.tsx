@@ -26,6 +26,8 @@ import {
     foundryHeroSounds,
     foundryVoicelines,
     foundrySwapSound,
+    foundryVoiceclip,
+    foundryVoiceclipFile,
     getHeroAbilitySlots,
 } from '../../lib/api';
 import { describeSound, matchesSound, primaryClipName } from '../../lib/soundDescribe';
@@ -757,6 +759,39 @@ function SwapPanel({
         [t]
     );
 
+    // "Retune the original": pull the stock clip out of the pak and load it into
+    // the same editor an imported MP3 goes through. Nothing else about the swap
+    // changes, so trimming or re-levelling a vanilla sound is the import flow with
+    // the donor already filled in.
+    const [loadingOriginal, setLoadingOriginal] = useState(false);
+    const loadOriginalClip = useCallback(async () => {
+        if (!targetClip || loadingOriginal) return;
+        setLoadingOriginal(true);
+        try {
+            const [path, url] = await Promise.all([
+                foundryVoiceclipFile(targetClip),
+                foundryVoiceclip(targetClip),
+            ]);
+            if (!path || !url) {
+                showToast(
+                    t('foundry.sound.swap.originalUnavailable', 'Could not read the original clip.'),
+                    { tone: 'error' }
+                );
+                return;
+            }
+            const blob = await (await fetch(url)).blob();
+            const fileName = targetClip.split('/').pop() ?? 'original.mp3';
+            setAudioPath(path);
+            setAudioName(fileName);
+            setAudioFile(new File([blob], fileName, { type: 'audio/mpeg' }));
+            setEdits({});
+        } catch (e) {
+            showToast(e instanceof Error ? e.message : String(e), { tone: 'error' });
+        } finally {
+            setLoadingOriginal(false);
+        }
+    }, [targetClip, loadingOriginal, t]);
+
     const forge = useCallback(async () => {
         if (!audioPath || busy) return;
         const finalName = name.trim() || defaultName;
@@ -848,6 +883,25 @@ function SwapPanel({
                     e.target.value = '';
                 }}
             />
+
+            {targetClip && (
+                <button
+                    type="button"
+                    onClick={() => void loadOriginalClip()}
+                    disabled={loadingOriginal}
+                    className="mt-1.5 flex items-center gap-1.5 text-[11px] text-text-secondary transition-colors hover:text-text-primary disabled:opacity-60"
+                >
+                    {loadingOriginal ? (
+                        <Loader2 size={11} className="animate-spin" />
+                    ) : (
+                        <Wand2 size={11} />
+                    )}
+                    <Tx
+                        k="foundry.sound.swap.useOriginal"
+                        fallback="Or start from the original clip, and retune it"
+                    />
+                </button>
+            )}
 
             {/* Trim + normalize the imported clip before forging */}
             {audioFile && (

@@ -261,7 +261,9 @@
         "mp3only": "Audio must be an MP3 file.",
         "done": "Installed \"{{name}}\" - enable it in the Installed tab",
         "poolNote": "Replaces all {{count}} clips in this sound so it always plays your audio.",
-        "singleNote": "Replaces this sound with your audio."
+        "singleNote": "Replaces this sound with your audio.",
+        "useOriginal": "Or start from the original clip, and retune it",
+        "originalUnavailable": "Could not read the original clip."
       },
       "import": {
         "decoding": "Reading audio...",
@@ -272,7 +274,9 @@
         "resetTrim": "Use the whole clip",
         "reset": "Reset",
         "matchVolume": "Match the original volume",
-        "matchUnavailable": "original unavailable"
+        "matchUnavailable": "original unavailable",
+        "gain": "Loudness",
+        "resetGain": "Back to the original loudness"
       }
     },
     "globalSound": {

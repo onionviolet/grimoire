@@ -15,6 +15,7 @@ import {
     ensureCategoryThumbnails,
     ensureFullImage,
     ensureVoiceclip,
+    ensureVoiceclipFile,
     warmCache,
 } from '../services/foundryCatalog';
 import { buildHeroEffectVpkForExport } from '../services/heroColors';
@@ -95,6 +96,15 @@ ipcMain.handle(
     'foundry:voiceclip',
     async (_e, vsndPath: string): Promise<string | null> => {
         return ensureVoiceclip(requireDeadlockPath(), vsndPath);
+    }
+);
+
+// The extracted clip's path on disk, for retuning a stock sound through the
+// swap path (which mints from a file, not from a data URL).
+ipcMain.handle(
+    'foundry:voiceclipFile',
+    async (_e, vsndPath: string): Promise<string | null> => {
+        return ensureVoiceclipFile(requireDeadlockPath(), vsndPath);
     }
 );
 

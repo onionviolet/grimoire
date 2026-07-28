@@ -506,15 +506,36 @@ export async function ensureVoiceclip(
     deadlockPath: string,
     vsndPath: string
 ): Promise<string | null> {
+    const file = await ensureVoiceclipFile(deadlockPath, vsndPath);
+    if (!file) return null;
+    const mp3 = await fs.readFile(file).catch(() => null);
+    if (!mp3) return null;
+    return `data:audio/mpeg;base64,${mp3.toString('base64')}`;
+}
+
+/**
+ * The same extraction as `ensureVoiceclip`, but handing back the cached MP3's
+ * path on disk instead of its bytes. The swap path mints from a file path
+ * (`HeroSoundSwapRequest.audioPath`), so retuning a stock clip needs the path,
+ * not a data URL.
+ *
+ * The file lives in the fingerprint-keyed cache and can be pruned by a later
+ * call after a game update, so treat the path as valid for the current turn
+ * rather than storing it.
+ */
+export async function ensureVoiceclipFile(
+    deadlockPath: string,
+    vsndPath: string
+): Promise<string | null> {
     const fp = await buildFingerprint(deadlockPath);
     const key = fingerprintKey(fp);
     const dir = join(voiceclipsRoot(), key);
     const hash = createHash('sha1').update(vsndPath).digest('hex');
     const file = join(dir, `${hash}.mp3`);
 
-    let mp3: Buffer;
     try {
-        mp3 = await fs.readFile(file);
+        await fs.access(file);
+        return file;
     } catch {
         await pruneStaleVoiceclips(key);
         await fs.mkdir(dir, { recursive: true });
@@ -529,12 +550,12 @@ export async function ensureVoiceclip(
                 '--out',
                 file,
             ]);
-            mp3 = await fs.readFile(file);
+            await fs.access(file);
+            return file;
         } catch {
             return null; // missing entry or unsupported codec; no audition
         }
     }
-    return `data:audio/mpeg;base64,${mp3.toString('base64')}`;
 }
 
 /** Remove voiceclip caches for any fingerprint other than the current one. */

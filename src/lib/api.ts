@@ -1390,6 +1390,11 @@ export async function foundryVoiceclip(vsndPath: string): Promise<string | null>
   return window.electronAPI.foundry.voiceclip(vsndPath);
 }
 
+/** The extracted stock clip's path on disk, for feeding it back into a swap. */
+export async function foundryVoiceclipFile(vsndPath: string): Promise<string | null> {
+  return window.electronAPI.foundry.voiceclipFile(vsndPath);
+}
+
 export async function foundryWarmCache(): Promise<void> {
   return window.electronAPI.foundry.warmCache();
 }
