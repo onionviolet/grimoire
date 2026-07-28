@@ -88,26 +88,38 @@ one texture into a single VPK.
 
 Depends on: nothing. Slice G is no longer blocked behind the build itself.
 
-## Phase 3 — Source-panel actions (slices D/E completion) **[verified]**
+## Phase 3 — Source-panel actions (slices D/E completion) **[items 1, 2, 4 landed 2026-07-28, wave 1]**
 
-`AssetSourcesPanel` is inspect-only and is mounted on sound rows (hero and
-global, via the shared `SoundRow`), texture cards, the texture lightbox, and
-library browse. Missing:
+`AssetSourcesPanel` is mounted on sound rows (hero and global, via the shared
+`SoundRow`), texture cards, the texture lightbox, and library browse.
 
-1. Panel actions: audition the current source, open its owner in Installed,
-   enable/disable through the normal mod store, add/remove from a launch shuffle
-   pool, create a replacement from that source. Never silently change precedence;
-   no direct-overwrite action for third-party VPKs.
-2. `MySoundChanges`: event-level active-winner context, jump to the source or
-   conflict row, annotation access, re-forge from recorded assignments.
-3. Surface the existing hero sound launch-shuffle controls in Foundry with a link
-   back to Locker. Global-sound shuffle only after an event-level persisted pool
-   is defined.
-4. Pool editor completion: exact target-to-audio assignment shown before Forge,
-   seed persisted and displayed in forged-mod metadata, `Shuffle now` preview.
+Closed 2026-07-28 (wave 1):
 
-Exit gate: discovery, seed, cancel, and rollback tests; verification against a
-downloaded third-party mod, a forged mod, a disabled mod, and a multi-clip pool.
+1. ~~Panel actions.~~ Audition (extracted from the owning VPK via
+   `foundry:auditionSourceClip`, not the game paks), open-in-Installed
+   (`/?focusMod=<id>`, consumed by `Installed.tsx`), enable/disable through
+   `appStore.toggleMod`, shuffle-pool add/remove lifted into `SoundRow`, and
+   create-replacement handed back to the row's swap panel. Precedence is never
+   touched, no third-party VPK is written, and an unreadable VPK blocks every
+   action that depends on knowing the real owner, naming the VPK at fault.
+2. ~~`MySoundChanges` context.~~ Per-change winner resolution over the recorded
+   write set, a jump to the winning mod, shared annotation editing, and a
+   re-forge from `soundSwap.reforge` that refuses to start when a recorded
+   audio file has moved. Legacy swaps carry no recorded write set and say so
+   rather than guessing.
+4. ~~Pool editor completion.~~ The exact clip-to-audio write set is listed
+   before Forge, the seed is recorded (`SoundSwapInfo.poolSeed`) and shown in
+   `My sound changes`, and `Shuffle now` redraws the seed the build will record.
+
+Still open:
+
+3. Surface the existing hero sound launch-shuffle controls in Foundry with a
+   link back to Locker. Global-sound shuffle only after an event-level
+   persisted pool is defined.
+
+Exit gate: verification against a downloaded third-party mod, a forged mod, a
+disabled mod, and a multi-clip pool, in game. None of that has been done: the
+landed work is covered by unit tests and the repository gate only.
 
 Depends on: nothing (the C contract is stable and fixture-covered).
 
@@ -118,12 +130,18 @@ From [vpk-composition-roadmap.md](./vpk-composition-roadmap.md). Milestone 1
 (`services/modMerger.ts:517`, read-only, `entryCount: null` distinguishes an
 unreadable VPK from an empty one at `:574`) but reaches no renderer: the chain
 stops at `preload/index.ts:335` + `types/electron.ts:841` with no `api.ts`
-wrapper. Milestones 2-5 are genuinely absent — no recipe schema, no path policy,
-nothing half-wired. They are staged deliberately so each is separately
+wrapper; wave 1 added that wrapper and the review UI on top of it. Milestones
+2-5 are genuinely absent — no recipe schema, no path policy, nothing half-wired. They are staged deliberately so each is separately
 releasable:
 
-- **4a. Review UI and ordering.** Show analysis before confirmation: grouped
-  collisions, effective winner, source reordering in the new workflow only.
+- **4a. Review UI and ordering. [landed 2026-07-28, wave 1]** Grouped
+  collisions, effective winner per collided path, and winner-first source
+  reordering in the new composition workflow only, carried through `merge-mods`
+  as `sourceOrder` (`components/MergeReviewPanel.tsx`,
+  `services/modMerger.ts`). The legacy merge path sends no order and is
+  unchanged; add-sources shows the same review read-only. A reviewed order is
+  refused when a VPK is unreadable or a merged mod is selected. Not yet
+  verified in game: no merged VPK built from a reviewed order has been mounted.
 - **4b. Recipe schema and rebuilds.** Optional versioned recipe (source
   identities, order, policy) stored beside `MergedModInfo`. Missing recipe =
   legacy default. Exit gate: transaction rollback and legacy-merge reconstruction
@@ -252,7 +270,7 @@ and Phase 7a turned out to be already built.
 | Batch | Contents | Rationale |
 | --- | --- | --- |
 | 1 | Phase 2 items 1-2, Phase 1 | The sound preflight is the only live correctness gap found; the tray copy is a one-line fix; the smoke record is still owed |
-| 2 | Phase 3, Phase 5 item 2 | Both Foundry/Locker surfaces, both small and independently ownable |
+| 2 | ~~Phase 3~~ (items 1, 2, 4 landed wave 1), Phase 5 item 2 | Both Foundry/Locker surfaces, both small and independently ownable |
 | 3 | Phase 6b, Phase 4a | Small, self-contained, separately releasable |
 | 4 | Phase 7c, Phase 8a | Long-lead work with real technical risk, now unblocked |
 

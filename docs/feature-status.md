@@ -1,7 +1,8 @@
 # Feature status
 
 Status snapshot: 2026-07-28, re-verified against the working tree at v1.25.171
-by the audit in [spec-audit-prompt.md](./spec-audit-prompt.md). This is an
+by the audit in [spec-audit-prompt.md](./spec-audit-prompt.md), then updated on
+2026-07-28 for wave 1 (Foundry source actions and merge review). This is an
 implementation inventory, not a substitute for the manual in-game validation
 required before a release.
 
@@ -28,29 +29,42 @@ required before a release.
 - **Non-MP3 sound input.** WAV, OGG, FLAC, M4A, AAC, and Opus are transcoded
   locally to MP3 by the bundled FFmpeg before the mint path runs
   (`services/audioConversion.ts:38`, `services/foundryCatalog.ts:257`).
-- **Read-only merge analysis.** The main process exposes source order, parsed
-  entries, collisions, winners, and unreadable-VPK warnings without mutating
-  mods.
+- **Read-only merge analysis, now surfaced.** The main process exposes source
+  order, parsed entries, collisions, winners, and unreadable-VPK warnings
+  without mutating mods, and the renderer shows them before a merge is
+  confirmed (`components/MergeReviewPanel.tsx`). The new composition workflow
+  can reorder sources winner-first and carries that order through
+  `merge-mods` as `sourceOrder`; the legacy merge path sends no order and is
+  unchanged. Add-sources shows the same review read-only.
+- **Actionable Foundry asset sources.** The sources panel auditions what an
+  installed VPK actually writes (extracted from that VPK, not the game paks),
+  opens the owner in Installed, toggles enablement through the normal mod
+  store, adds or removes a shuffle-pool target, and hands the row back control
+  to mint a replacement (`components/foundry/AssetSourcesPanel.tsx`). An
+  unreadable VPK blocks every action that depends on knowing the true owner.
+  `My sound changes` resolves which recorded clip path it actually loses and to
+  whom, jumps to that winner, edits the shared annotation, and re-forges from
+  the recorded assignments, refusing to start when a recorded audio file has
+  moved (`components/foundry/MySoundChanges.tsx`).
 
 ## Confirmed gaps
 
 1. **Combined output covers sound and texture only.** `FoundryForgeEdit`
    (`src/types/foundry.ts:320`) admits `sound` and `texture`; recolor and model
    edits have no staged-edit serializer and cannot enter a combined build.
-2. **Asset source panel is inspect-only.** No audition, open-in-Installed,
-   mod-store enable/disable, shuffle-pool, or create-replacement action exists
-   (`components/foundry/AssetSourcesPanel.tsx:25`). `My sound changes` supports
-   enable/disable, rename, and delete only
-   (`components/foundry/MySoundChanges.tsx:44`).
+2. **Asset source actions are unverified in game.** The panel and
+   `My sound changes` now carry the full action set, but no in-game check has
+   confirmed that an audition of an installed VPK's clip matches what the
+   engine plays, or that a re-forged swap sounds identical to the original.
 3. **Foundry models and broad asset browsing.** There is no usable Foundry
    model-export/viewer entry point. Thumbnail browsing is intentionally limited
    to ability icons, item icons, and hero images; model, VFX, and other large
    categories remain deferred.
-4. **Advanced merge composition.** Read-only analysis is present in the main
-   process but reaches no renderer surface (the chain stops at
-   `electron/preload/index.ts:335`; there is no `api.ts` wrapper). Merge
-   recipes, editable include/exclude path policy, merge-content presets, and
-   rebuild diffs are absent.
+4. **Advanced merge composition.** The review and reviewed source order have
+   landed. Merge recipes, editable include/exclude path policy, merge-content
+   presets, and rebuild diffs are still absent, and a reviewed order cannot be
+   applied to a selection containing a merged mod (flattening contributes
+   leaves the review never showed, so the merger rejects it).
 5. **High-fidelity animated 3D previews.** Material/lighting parity, NPR, and
    cloth have landed, and a rigged (no-`--pose`) export path exists
    (`services/heroPoseModels.ts:972`). Animation retarget and in-preview ability
