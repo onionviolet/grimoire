@@ -1,9 +1,46 @@
 # Locker Hero Card: APPLY pipeline design
 
-Status: design (not yet built). Supersedes the "next step" note in the
-`feat/locker-hero-card-picker` prototype. Read alongside the project memory
+Status: **shipped**, with one renderer gap (re-verified 2026-07-28: apply, swap,
+revert, custom uploads, empty-set teardown, and the Installed/Conflicts/profile/
+portable-export hiding all confirmed in code). This document is the design of
+record; the "As built" section below records where the implementation deviates
+from it. Read alongside the project memory
 `project_global_mod_type_signals.md` for the verified path signals and decode
 notes.
+
+Implementation: `services/heroCards.ts` (`rebuildLockerCosmetics`,
+`applyHeroCard`, `revertHeroCard`, `getActiveHeroCard`),
+`services/customHeroCards.ts` (user-uploaded card art through the same rebuild),
+`ipc/portraits.ts`, `lib/api.ts`, `components/locker/HeroCardPicker.tsx`,
+revert from `components/LockerOverridesModal.tsx`, profile restore in
+`stores/appStore.ts`.
+
+## As built: deviations from this design
+
+1. **Slot model.** The design pinned the cosmetics VPK to the front of the
+   enabled load order (`pinLockerVpksToFront`). The implementation instead
+   writes a fixed VPK inside the grimoire SearchPaths directory
+   (`lockerCardsVpkPath`), which wins by SearchPaths precedence, so no load-order
+   pinning is involved and the selection set lives under a synthetic metadata
+   key (`LOCKER_CARDS_KEY`) rather than under the VPK filename. Sections 6 and
+   "Lifecycle guarantees" below describe the superseded pakNN approach; keep them
+   for the reasoning, not as a description of current behaviour.
+2. **Source identity is a `metaKey`, not a bare filename.** Overflow addon
+   folders mean two sources can share a filename, so `LockerCardSelection.source.fileName`
+   holds the folder-relative metaKey, with the `sha256AtApplyTime` fallback intact.
+3. **Custom uploads.** `LockerCardSelection.source.kind === 'custom'` resolves to
+   a per-codename staging VPK built by `vpkmerge icon`, not to an installed addon.
+   Applying a mod card over a custom pick deletes the orphaned staging VPK.
+4. **Open decisions are resolved.** (1) variant scope: the whole per-hero
+   panorama prefix set is captured, as recommended. (3) unpreviewable cards:
+   apply copies bytes and does not depend on the preview decode.
+5. **The missing-source warning is not surfaced.** "Failure handling" below
+   requires a dropped source to be reported like unmerge's
+   `missingSourceFileNames`. The service does report it
+   (`services/heroCards.ts:361`, `:389`), but `HeroCardPicker.tsx:153` and
+   `:206` read only `activeSourceFileName` and discard the rest, so the user
+   silently loses a card. This is an unresolved gap, not an intentional
+   deviation; the fix is to render it into the picker's existing `actionError`.
 
 ## Problem
 

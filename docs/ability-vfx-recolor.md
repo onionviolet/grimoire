@@ -1,6 +1,22 @@
 # Ability VFX layer + recolor
 
-Status: in progress. Particle layer extraction and particle recoloring are proven end to end (verified in game on Paige). The texture recolor primitive (dragon, projectile) now ships as `vpkmerge texture`; the particle-recolor CLI surface and the Locker UI are still to build, and the in-game dragon check is still pending.
+Status: shipped, with roster coverage essentially complete (re-verified against
+the code and the engine source on 2026-07-28). Particle layer extraction and
+particle recoloring are proven end to end (verified in game on Paige). The
+texture recolor primitive ships as `vpkmerge texture`, and the Locker UI
+(`HeroColorPicker.tsx`) is built. The bundled engine is the tagged, pinned
+`vpkmerge v0.19.0` release (`scripts/fetch-vpkmerge.mjs`), not a local dev build.
+Particle recolor never became a standalone `vpkmerge particle` subcommand: it is
+composed inside `recolor-hero`, `prism`, and `trippy-vfx`, which is the surface
+Grimoire calls.
+
+**38 heroes now carry a pinned recipe** (`COLOR_CODENAME_BY_HERO` in
+`services/heroColors.ts:55`), and every one of them resolves to a matching
+`recipe_for` arm in `vpkmerge-core/src/hero_recolor.rs:71`; `RECIPE_CACHE_VERSION`
+is at v7 for that coverage. Still open: per-hero in-game confirmation of the
+recolored abilities, and the picker's "this hero has no preview texture"
+detection is a substring match on the engine's error string
+(`HeroColorPicker.tsx:291`) rather than a typed error code, with no test.
 
 The recolor target is no longer hue-only: it carries a **saturation scale** and a **brightness scale** on top of the hue (see "Color accuracy" below), so pale/pastel colors like light blue are reachable, and the washed-out look of a hue-only retint on low-saturation source textures is fixable. The Locker picker (`HeroColorPicker.tsx`) exposes hue + saturation + brightness sliders with a **live recolored preview** (a real ability texture run through the recolor, not a CSS guess).
 
@@ -201,4 +217,5 @@ This is why `HeroRecolorRecipe.preview_texture` is `Option<String>` and the empt
 - **Three color mechanisms, not two.** Beyond particles (params) and model/self-illum textures, the **ult horse/knight is colored by baked mesh vertex colors** (material `bookworm_knight.vmat`: `F_PAINT_VERTEX_COLORS=1`, gray albedo, `g_bApplyTintToVertexColors=0`), so it stayed green after the first two passes and a tint can't fix it. The vertex-color recolor (above) handles it - **in-game confirmed purple**. Two lessons baked in: find the rendered model via the ult's model particle (`bookworm_ultimate_model.vpcf_c` -> `models/particle/bookworm_horse_knight.vmdl`, not the `heroes_wip` copies), and never re-encode meshopt (convert it to uncompressed instead).
 - Built: the Locker UI (`HeroColorPicker.tsx`): hue + saturation + brightness sliders, full-color presets (incl. light blue), and a live recolored preview via `recolor-hero --preview-png` (fast, no bake). Saturation/brightness scales fix the hue-only "drowned out" look and unlock pastel colors. The bundled `resources/vpkmerge` binary was rebuilt with the scale flags (local dev; a tagged vpkmerge release + pin bump is still pending).
 - Built: **Celeste** (`unicorn`) as the 2nd supported hero, particle-only (recipe + Grimoire registration); `preview_texture` is now `Option` to model heroes with no color texture.
-- Pending: the `vpkmerge particle recolor` subcommand (promote `recolor_particles.rs`); a vpkmerge release + Grimoire pin bump; rebuilding the bundled `resources/vpkmerge` binary with the Celeste recipe; and the in-game confirmation of a saturation/brightness-tuned (non-hue-only) Paige bake + the Celeste recolor.
+- Resolved since the first draft: the vpkmerge release + Grimoire pin landed (pinned `v0.19.0`, which carries the scale flags and the Celeste recipe), and a standalone `vpkmerge particle recolor` subcommand was dropped in favour of composing `recolor_particles.rs` inside `recolor-hero` / `prism` / `trippy-vfx`.
+- Pending: pinned recipes for the rest of the roster (only `bookworm` and `unicorn` exist), and the in-game confirmation of a saturation/brightness-tuned (non-hue-only) Paige bake + the Celeste recolor.

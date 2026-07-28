@@ -1,6 +1,7 @@
 # Feature status
 
-Status snapshot: 2026-07-28, based on `main` at v1.25.170. This is an
+Status snapshot: 2026-07-28, re-verified against the working tree at v1.25.171
+by the audit in [spec-audit-prompt.md](./spec-audit-prompt.md). This is an
 implementation inventory, not a substitute for the manual in-game validation
 required before a release.
 
@@ -15,36 +16,45 @@ required before a release.
   conflict disablement; selected-clip and seeded-library pool modes; and a
   `My sound changes` view backed by the normal mod state.
 - **Foundry texture and item replacement.** The supported catalog cards accept
-  a PNG drop/pick and create a tracked local mod.
+  a PNG drop/pick, run an exact-path preflight, and stage the replacement in the
+  build tray. Nothing is installed until the user forges
+  (`components/foundry/LibraryBrowse.tsx:57`).
+- **Combined Foundry output.** Staged sound and visual edits are reviewed as one
+  write set with collision winners, then built into a single named VPK that the
+  user saves through a native dialog (`services/foundryForge.ts:45`,
+  `ipc/foundry.ts:104`, `components/foundry/FoundryBuildTray.tsx:48`). It is
+  deliberately export-only: build parts never enter Installed, and a cancelled
+  save leaves both the mod library and the staged edits untouched.
+- **Non-MP3 sound input.** WAV, OGG, FLAC, M4A, AAC, and Opus are transcoded
+  locally to MP3 by the bundled FFmpeg before the mint path runs
+  (`services/audioConversion.ts:38`, `services/foundryCatalog.ts:257`).
 - **Read-only merge analysis.** The main process exposes source order, parsed
   entries, collisions, winners, and unreadable-VPK warnings without mutating
   mods.
 
 ## Confirmed gaps
 
-1. **Chat Wheel visual editor.** There is no radial preview, slot form editor,
-   typed/lossless YAML model, or direct manipulation. Converter-backed inline
-   YAML validation and an explicit `Create new wheel` flow exist, but creation
-   still happens only on Save & install. See
-   [chat-wheel.md](./chat-wheel.md).
-2. **Combined Foundry output.** The build tray reviews staged edits, collision
-   winners, and the final write set, but it does not yet bake selected sound,
-   texture, recolor, and model edits into one VPK.
+1. **Combined output covers sound and texture only.** `FoundryForgeEdit`
+   (`src/types/foundry.ts:320`) admits `sound` and `texture`; recolor and model
+   edits have no staged-edit serializer and cannot enter a combined build.
+2. **Asset source panel is inspect-only.** No audition, open-in-Installed,
+   mod-store enable/disable, shuffle-pool, or create-replacement action exists
+   (`components/foundry/AssetSourcesPanel.tsx:25`). `My sound changes` supports
+   enable/disable, rename, and delete only
+   (`components/foundry/MySoundChanges.tsx:44`).
 3. **Foundry models and broad asset browsing.** There is no usable Foundry
    model-export/viewer entry point. Thumbnail browsing is intentionally limited
    to ability icons, item icons, and hero images; model, VFX, and other large
    categories remain deferred.
-4. **Non-MP3 Sound Forge input.** Sound swaps require MP3. A decoder/transcoder
-   has not been bundled for WAV, OGG, FLAC, or M4A input.
-5. **Advanced merge composition.** Read-only analysis is present, but merge
+4. **Advanced merge composition.** Read-only analysis is present in the main
+   process but reaches no renderer surface (the chain stops at
+   `electron/preload/index.ts:335`; there is no `api.ts` wrapper). Merge
    recipes, editable include/exclude path policy, merge-content presets, and
-   rebuild diffs are not.
-6. **Locker cosmetics consolidation.** The proposed single managed VPK for
-   applied hero cards/cosmetics is design-only; current picker and launch-shuffle
-   behaviour remains separate.
-7. **High-fidelity animated 3D previews.** Static/posed previews work where
-   assets permit, but rigged animation playback remains intentionally gated
-   off pending fidelity work.
+   rebuild diffs are absent.
+5. **High-fidelity animated 3D previews.** Material/lighting parity, NPR, and
+   cloth have landed, and a rigged (no-`--pose`) export path exists
+   (`services/heroPoseModels.ts:972`). Animation retarget and in-preview ability
+   VFX remain unbuilt.
 
 ## History and branch safety
 
@@ -123,7 +133,8 @@ guessing source ownership or priority rules.
 ### Current implementation update
 
 The automated portions of A-C are complete: the release workflow is published,
-Chat Wheel has safer YAML-only authoring, and `AssetSourcesInspection` has
+Chat Wheel has form authoring, Advanced YAML, and a live radial preview, and
+`AssetSourcesInspection` has
 fixture coverage for normalized ownership, priority winners, third-party
 entries, and unreadable VPKs. The Windows smoke record is still outstanding.
 
@@ -136,12 +147,22 @@ open-in-Installed, or normal-mod-store enable/disable actions. `My sound
 changes` currently supports normal-state enable/disable, rename, and delete,
 but not annotation access, jump-to-conflict, or re-forge.
 
-Visual and sound staged-edit serializers exist and are unit-tested, but the
-sound serializer is not invoked by a live forge path and neither serializer is
-added to the build-tray review. Therefore F's integration gate is **not met**;
-F must first wire both live authoring flows into one reviewed write-set before
-implementing its named-VPK build/cancel behavior. Models, VFX, and advanced
-composition (G) remain blocked.
+F has **landed**. Both live authoring flows stage into one reviewed write set
+(`SoundBrowse.tsx:1034`, `LibraryBrowse.tsx:66`), the tray shows the write set
+and collision winners before an explicit confirm
+(`FoundryBuildTray.tsx:48`-`:79`), and `foundryForge.ts` builds each part in an
+isolated temp directory, merges once, re-derives the review server-side, and
+rejects a stale confirmation (`services/foundryForge.ts:50`) or a built VPK
+whose entries do not match the confirmed write set (`:73`). The build is
+export-only by design.
+
+On 2026-07-28 the staged sound path gained the exact-path preflight it was
+missing (`SoundBrowse.tsx:1043`): an uninspectable VPK now blocks staging with
+an explanation, and an enabled owner requires an explicit acknowledgement,
+mirroring `LibraryBrowse.tsx:57` without offering the install path's
+disable/replace resolutions, which would mutate enabled state at staging time.
+One exit-gate item remains open: there is no installed-state regression test for
+cancellation. Models, VFX, and advanced composition (G) remain blocked.
 
 **Repository verification gate.** Each implementation batch must run the
 relevant Vitest files, then `pnpm typecheck`, `pnpm lint`, and the full
@@ -158,22 +179,7 @@ fixture/fake in unit tests and retain one manual packaged smoke test.
    the engine version in Settings.
 3. Publish a new version; never replace the v1.25.169 assets.
 
-### 2. Chat Wheel Editor v1 — make the existing feature understandable
-
-1. Replace `Start a new wheel` with `Create new wheel`, including an unsaved
-   changes confirmation and an explicit statement that installation occurs only
-   on Save & install.
-2. Parse the supported ChatLane YAML into a typed editor model while retaining
-   unknown fields and comments on round-trip.
-3. Add a non-destructive live radial preview: menu navigation, icons, labels,
-   command summaries, and invalid/empty-slot indicators. Clicking a preview
-   slot focuses the matching editor control.
-4. Add a form editor for wheel settings, menus, slots, and commands, with
-   synchronized Advanced YAML and converter-backed inline validation.
-5. Test reset confirmation, lossless round-trip, preview layout/navigation,
-   and converter failures before removing the experimental gate.
-
-### 3. Foundry sources, existing mods, and randomization
+### 2. Foundry sources, existing mods, and randomization
 
 **What exists now**
 

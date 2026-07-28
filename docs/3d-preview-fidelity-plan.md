@@ -5,9 +5,24 @@ named: cloth bones, lighting/materials (Source 2 shader parity), previewing effe
 (ambient passive FX + authentic ability casts), and applying custom animations
 (taunts/dances) to any hero skeleton.
 
-Status: feasibility research complete (multi-agent pass, every load-bearing claim
-verified against source). No code yet. Pilots: Paige (`bookworm`), Dynamo (`astro`),
-Seven (`gigawatt`). This doc is the build map.
+Status (re-verified 2026-07-28): **Phases 1-4 have landed.** Pilots: Paige
+(`bookworm`), Dynamo (`astro`), Seven (`gigawatt`). This doc is the build map;
+the premise section below is preserved for its reasoning, not as a description
+of current behaviour.
+
+- **Phase 1 (shared spine): built.** `services/heroPoseModels.ts` exports two
+  sibling glbs: the legacy static `--pose` bake (`:169`) and a rigged export
+  that deliberately omits `--pose` to keep the skeleton, skin, and one ranked
+  animated clip (`:171`, `:882`, `:972`). The claim below that "Grimoire always
+  passes `--pose`" is obsolete.
+- **Phase 2 (material/lighting parity): built.** `src/lib/deadlockMaterial.ts`,
+  `src/lib/source2Preview/`, with tests.
+- **Phase 3 (NPR cel/rim/tint): built.** `src/lib/source2NprMaterial.ts`, tested.
+- **Phase 4 (cloth/jiggle): built.** `src/lib/useClothSim.ts` plus
+  `clothMath.test.ts`, `feModel.test.ts`, and solver-stability harness tests.
+- **Phases 5-7 (retarget, ambient FX, ability casts): not started.** No
+  bone-map, retarget, or pre-baked-clip code exists. They are no longer blocked
+  on the rigged spine.
 
 ## The reframe (read this first)
 
