@@ -68,10 +68,11 @@ export default defineConfig(({ mode }) => {
                 // pure-JS node_modules, so any externalized prod dep would be missing
                 // from app.asar at runtime. @xhayper/discord-rpc (and its pure-JS
                 // dependency tree: ws, @discordjs/rest, discord-api-types,
-                // @vladfrangu/async_event_emitter) is bundled for the same reason:
-                // it's a runtime dependency of the main process but lives only under
-                // pnpm's .pnpm store, so allowlisting it in electron-builder.yml is
-                // unreliable. Externalizing it shipped a launch crash in 1.15.1
+                // @vladfrangu/async_event_emitter) and @ghostery/adblocker-electron
+                // are bundled for the same reason: they're runtime dependencies of
+                // the main process but live only under pnpm's .pnpm store, so
+                // allowlisting them in electron-builder.yml is unreliable.
+                // Externalizing them shipped launch crashes
                 // (ERR_MODULE_NOT_FOUND from app.asar).
                 exclude: [
                     'electron-updater',
@@ -79,6 +80,7 @@ export default defineConfig(({ mode }) => {
                     '@grimoire/social-types',
                     'zod',
                     '@xhayper/discord-rpc',
+                    '@ghostery/adblocker-electron',
                 ],
             }),
         ],
