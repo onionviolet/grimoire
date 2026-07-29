@@ -2843,6 +2843,40 @@
         }
       }
     },
+    "reset": "Reset to game default",
+    "resetHint": "Removes Grimoire's line for this setting instead of writing a value.",
+    "valueState": {
+      "gameDefault": "Game default",
+      "managedPreset": "Managed preset",
+      "userOverride": "Your override",
+      "unsupported": "Unsupported value",
+      "outOfRange": "Out of range"
+    },
+    "valueStateHint": {
+      "gameDefault": "gameinfo.gi has no line for this, so the game's own value applies.",
+      "managedPreset": "Set by the OptimizationLock preset at its bundled value.",
+      "userOverride": "You changed this away from the preset or the game default.",
+      "unsupported": "gameinfo.gi holds a value Grimoire cannot interpret. Reset or edit the file to continue.",
+      "outOfRange": "gameinfo.gi holds {{value}}, outside the range Grimoire can show ({{min}} to {{max}})."
+    },
+    "pending": {
+      "title": "Not applied yet",
+      "summary_one": "{{count}} pending change",
+      "summary_other": "{{count}} pending changes",
+      "row": "{{control}}: {{from}} to {{to}}",
+      "rowFromDefault": "{{control}}: game default to {{to}}",
+      "rowToDefault": "{{control}}: {{from}} to game default",
+      "apply": "Apply changes",
+      "discard": "Discard",
+      "appliedNote": "Everything else on this card matches gameinfo.gi."
+    },
+    "outOfRangeDialog": {
+      "title": "Replace an out-of-range value?",
+      "body": "{{control}} is currently {{current}} in gameinfo.gi, outside the range Grimoire supports ({{min}} to {{max}}). Grimoire will not silently clamp it.",
+      "choice": "Applying replaces it with {{next}}. Resetting removes the line so the game default applies.",
+      "confirm": "Replace with {{next}}",
+      "cancel": "Leave it alone"
+    },
     "advanced": {
       "sectionTitle": "Advanced numeric settings",
       "usingGameDefault": "Using the game default until changed.",

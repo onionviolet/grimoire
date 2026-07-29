@@ -914,6 +914,13 @@ export async function setPerformanceAdvancedConvars(values: Record<string, numbe
   return window.electronAPI.setPerformanceAdvancedConvars(values);
 }
 
+/** Reset specific ConVars to the game default by removing Grimoire's override
+ *  for them. Deliberately not a "write the default value" helper: an app-chosen
+ *  number pinned into gameinfo.gi is not the same thing as the game default. */
+export async function clearPerformanceConvars(keys: string[]): Promise<PerformanceConfigStatus> {
+  return window.electronAPI.clearPerformanceConvars(keys);
+}
+
 export async function removePerformanceConfig(): Promise<PerformanceConfigStatus> {
   return window.electronAPI.removePerformanceConfig();
 }

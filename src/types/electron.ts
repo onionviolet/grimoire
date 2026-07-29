@@ -122,6 +122,30 @@ export interface EditorCandidate {
     path: string;
 }
 
+/** Where a single managed ConVar's current value comes from.
+ *  'game-default' means gameinfo.gi carries no line for it at all, so the
+ *  engine's own built-in value applies. 'unsupported' means a line exists but
+ *  Grimoire cannot interpret it (non-numeric, or a value it never writes). */
+export type PerformanceConvarOrigin =
+    | 'game-default'
+    | 'managed-preset'
+    | 'user-override'
+    | 'unsupported';
+
+/** Per-ConVar provenance, so the UI can badge a control honestly instead of
+ *  presenting an app-chosen fallback as if the game had chosen it. */
+export interface PerformanceConvarState {
+    origin: PerformanceConvarOrigin;
+    /** The value present in gameinfo.gi, or null when no line exists. */
+    value: string | null;
+    /** What the managed preset writes for this key, or null when unmanaged. */
+    presetValue: string | null;
+    /** The engine's stock value, or null when Grimoire does not know it. */
+    gameDefault: string | null;
+    /** A numeric control whose file value sits outside the supported range. */
+    outOfRange?: boolean;
+}
+
 /** State of the OptimizationLock performance preset in gameinfo.gi.
  *  'wiped' means it was applied before but a game update reset the file. */
 export interface PerformanceConfigStatus {
@@ -135,6 +159,9 @@ export interface PerformanceConfigStatus {
     overrideCount?: number;
     /** Current values for the user-facing HUD ConVars. */
     convarValues?: Record<string, string>;
+    /** Per-key provenance for every user-facing ConVar (HUD and advanced),
+     *  keyed by ConVar name. Absent on states that could not read the file. */
+    convarStates?: Record<string, PerformanceConvarState>;
     /** gameinfo.gi is empty/corrupt (no ConVars section to patch) AND a
      *  Grimoire backup exists, so the UI can offer a one-click restore. Only
      *  set on the broken-file states (error / wiped). */
@@ -890,6 +917,9 @@ export interface ElectronAPI {
     applyPerformanceConfig: () => Promise<PerformanceConfigStatus>;
     setPerformanceHudConvars: (values: Record<string, boolean>) => Promise<PerformanceConfigStatus>;
     setPerformanceAdvancedConvars: (values: Record<string, number>) => Promise<PerformanceConfigStatus>;
+    /** Drop Grimoire's override for these ConVars so the game default applies
+     *  again. This removes the line rather than writing an app-chosen value. */
+    clearPerformanceConvars: (keys: string[]) => Promise<PerformanceConfigStatus>;
     removePerformanceConfig: () => Promise<PerformanceConfigStatus>;
     resetPerformanceConfigOverrides: () => Promise<PerformanceConfigStatus>;
     restorePerformanceConfigBackup: () => Promise<PerformanceConfigStatus>;
