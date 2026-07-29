@@ -111,6 +111,9 @@ const RELEASE_RENDER_FLAGS = {
   unified: USE_UNIFIED_MATERIAL,
   celV2: USE_CEL_V2,
   cloth: USE_CLOTH,
+  // Rigged is its own switch so the animated path can be measured without the
+  // WIP cloth sim riding along. Off in released builds, like cloth.
+  rigged: false,
   bloom: USE_BLOOM,
   nprDebug: false,
   matDebug: false,
@@ -874,6 +877,7 @@ export default function HeroPoseViewer({
     unified: previewFlag('grimoire.preview.unifiedMaterial', USE_UNIFIED_MATERIAL),
     celV2: previewFlag('grimoire.preview.celV2', USE_CEL_V2),
     cloth: previewFlag('grimoire.preview.cloth', USE_CLOTH),
+    rigged: previewFlag('grimoire.preview.rigged', false),
     bloom: previewFlag('grimoire.preview.bloom', USE_BLOOM),
     effects: previewFlag('grimoire.preview.effects', USE_EFFECT_PREVIEW),
     nprDebug: previewFlag('grimoire.preview.nprDebug', false),
@@ -1247,6 +1251,12 @@ function DevViewerControls({
           Cloth: {
             value: devFlags.cloth,
             onChange: (value: boolean) => setDevFlag('cloth', 'grimoire.preview.cloth', value),
+          },
+          // Listed after Cloth but independent of it: Cloth forces the rigged
+          // path on regardless, so this switch is what isolates rigged alone.
+          Rigged: {
+            value: devFlags.rigged,
+            onChange: (value: boolean) => setDevFlag('rigged', 'grimoire.preview.rigged', value),
           },
         },
         { collapsed: true }

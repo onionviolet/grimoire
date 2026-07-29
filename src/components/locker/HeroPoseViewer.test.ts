@@ -23,6 +23,7 @@ function baseFlags() {
     unified: false,
     celV2: false,
     cloth: false,
+    rigged: false,
     bloom: false,
     nprDebug: false,
     matDebug: false,
@@ -131,6 +132,22 @@ describe('resolveHeroPoseRenderFeatures', () => {
 
     expect(features.clothPreviewEnabled).toBe(true);
     expect(features.riggedPreviewEnabled).toBe(true);
+  });
+
+  // The point of the separate switch: a frame-cost reading taken with only
+  // this flag on measures the animated path and nothing else.
+  it('enables the rigged preview without starting the cloth sim', () => {
+    const features = resolveHeroPoseRenderFeatures({ ...baseFlags(), rigged: true }, false);
+
+    expect(features.riggedPreviewEnabled).toBe(true);
+    expect(features.clothPreviewEnabled).toBe(false);
+  });
+
+  it('keeps both off when neither flag is set', () => {
+    const features = resolveHeroPoseRenderFeatures(baseFlags(), false);
+
+    expect(features.riggedPreviewEnabled).toBe(false);
+    expect(features.clothPreviewEnabled).toBe(false);
   });
 });
 

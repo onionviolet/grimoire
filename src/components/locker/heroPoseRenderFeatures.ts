@@ -1,12 +1,20 @@
-// Rigged (animated, skinned) preview is gated off for now: the idle clip is WIP
-// and too many heroes fall back to a default A-pose, so the static `--pose` menu
-// pose stays the default. Cloth remains off in released builds.
+// Rigged (animated, skinned) preview is gated off in released builds: the
+// static `--pose` menu pose stays the default until a human has measured the
+// animated path's frame cost on the worst-case hero. See
+// docs/rigged-preview-spike.md. Cloth remains off too.
+//
+// The "too many heroes fall back to a default A-pose" half of this note was
+// measured and found stale: all three spike pilots select a real looping idle
+// and every primitive carries JOINTS_0. What is still missing is an fps number,
+// which is why the flag stays false rather than becoming a default.
 const USE_RIGGED_PREVIEW: boolean = false;
 
 export interface HeroPoseDevFlags {
   unified: boolean;
   celV2: boolean;
   cloth: boolean;
+  /** Play the hero's own animated clip on a skinned rig, without cloth. */
+  rigged: boolean;
   bloom: boolean;
   nprDebug: boolean;
   matDebug: boolean;
@@ -40,7 +48,11 @@ export function resolveHeroPoseRenderFeatures(
     celV2Enabled: flags.celV2,
     clothPreviewEnabled,
     bloomEnabled: flags.bloom,
-    riggedPreviewEnabled: USE_RIGGED_PREVIEW || clothPreviewEnabled,
+    // Cloth implies rigged (a sim needs a skeleton to hang off), but the
+    // converse is not true. Keeping cloth as the only way in meant rigged could
+    // never be auditioned on its own: switching it on started the WIP cloth sim
+    // too, so any frame-cost reading measured both at once.
+    riggedPreviewEnabled: USE_RIGGED_PREVIEW || flags.rigged || clothPreviewEnabled,
     source2ShaderHintsEnabled: unifiedEnabled,
     nprDebugEnabled: flags.nprDebug,
     source2SkipNpr: unifiedEnabled && !trippySpriteActive,
