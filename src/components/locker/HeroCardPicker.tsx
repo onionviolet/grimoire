@@ -141,6 +141,14 @@ export default function HeroCardPicker({ heroName }: HeroCardPickerProps) {
     };
   }, [heroName]);
 
+  /** A rebuild drops any selection whose source VPK has since been uninstalled.
+   *  The service reports those names; without this the card just vanishes with
+   *  no explanation, so surface them on the shared actionError line. */
+  const reportMissingSources = (missing: string[]) => {
+    if (missing.length === 0) return;
+    setActionError(t('locker.cards.missingSources', { names: missing.join(', ') }));
+  };
+
   const handlePick = async (modFileName: string) => {
     if (busySource) return;
     setBusySource(modFileName);
@@ -152,6 +160,7 @@ export default function HeroCardPicker({ heroName }: HeroCardPickerProps) {
       } else {
         const result = await applyHeroCard(heroName, modFileName);
         setActiveSource(result.activeSourceFileName);
+        reportMissingSources(result.missingSourceFileNames);
       }
       // Rebuild changed the cosmetics VPK and possibly the load order; refresh
       // the shared mod list so Installed/Locker stay in sync.
@@ -205,6 +214,7 @@ export default function HeroCardPicker({ heroName }: HeroCardPickerProps) {
     try {
       const result = await applyCustomHeroCard(heroName, uploads);
       setActiveSource(result.activeSourceFileName);
+      reportMissingSources(result.missingSourceFileNames);
       // Mark these exact picks as applied so the button reads "Applied" until
       // the user changes a slot.
       setAppliedSig(sigAtApply);
