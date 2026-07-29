@@ -1,5 +1,6 @@
 import { lazy, Suspense, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import {
   Star,
   Hammer,
@@ -101,6 +102,7 @@ export function LockerHeroView({
   shuffleArmed,
 }: LockerHeroViewProps) {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   // Issue #208: the backdrop reflects the active skin's chosen Locker image, if
   // the user picked one (set per skin in the skins list below).
   const lockerModThumbnails = useAppStore((s) => s.lockerModThumbnails);
@@ -293,6 +295,18 @@ export function LockerHeroView({
             onReorder={onReorderSkins}
             hideNsfwPreviews={hideNsfwPreviews}
           />
+        ) : activeSection === 'sounds' ? (
+          /* This section picks one source per ability; the Sound Locker shelf
+             is where the hero's whole sound inventory lives, including what it
+             overrides and who currently wins. */
+          <button
+            type="button"
+            onClick={() => navigate(`/locker/sounds?hero=${encodeURIComponent(hero.name)}`)}
+            className="flex w-full items-center gap-2 rounded-lg border border-border/70 px-3 py-2 text-sm text-text-secondary transition-colors hover:border-accent/60 hover:text-text-primary cursor-pointer"
+          >
+            <Music className="w-4 h-4" />
+            {t('soundLocker.hero.openShelf', 'All sound mods for this hero')}
+          </button>
         ) : null
       }
       /* Adjust the hero-detail backdrop image, and the live 3D model toggle.

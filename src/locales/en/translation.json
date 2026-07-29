@@ -504,7 +504,8 @@
       "shuffleOff": "Shuffle on launch is currently off, so nothing will be re-rolled. Turn it on in the Locker.",
       "shuffleWith": "Shuffles against: {{mods}}",
       "shuffleAlone": "Nothing else writes these paths yet, so this pool has only one outcome",
-      "shuffleUnavailable": "This change has no recorded paths, so it cannot be pooled"
+      "shuffleUnavailable": "This change has no recorded paths, so it cannot be pooled",
+      "openInSoundLocker": "Open in Sound Locker"
     }
   },
   "autoexec": {
@@ -3394,5 +3395,81 @@
     "currentArtUnavailable": "The current art for this entry could not be decoded.",
     "recentTitle": "Recently used",
     "recentHint": "Load this image into the frame"
+  },
+  "soundLocker": {
+    "title": "Sound Locker",
+    "description": "Every sound mod you have installed, filed under the hero it changes. Audition it, see exactly what it overrides, and turn it on or off.",
+    "showAllHeroes": "Show every hero",
+    "labels": {
+      "myLabel": "My label: {{label}}"
+    },
+    "category": {
+      "ability": "Abilities",
+      "voice": "Voice",
+      "weapon": "Weapon",
+      "movement": "Movement",
+      "music": "Music",
+      "announcer": "Announcer",
+      "ui": "Interface",
+      "other": "Other"
+    },
+    "provenance": {
+      "locker": "Locker",
+      "forged": "Forged",
+      "downloaded": "Downloaded",
+      "imported": "Imported",
+      "third-party": "Third-party"
+    },
+    "card": {
+      "modCount_one": "{{count}} mod",
+      "modCount_other": "{{count}} mods",
+      "summary_one": "{{count}} mod, {{enabled}} on",
+      "summary_other": "{{count}} mods, {{enabled}} on",
+      "none": "Nothing installed"
+    },
+    "empty": {
+      "title": "No sound mods installed",
+      "description": "Download a sound mod, or forge one in Foundry, and it lands here under its hero."
+    },
+    "global": {
+      "title": "Global sounds",
+      "description": "Installed sound mods that belong to no hero: announcers, killstreak music, interface sounds, and anything Grimoire could not classify.",
+      "makeNew": "Make one in Foundry",
+      "back": "Sound Locker",
+      "empty": {
+        "title": "No global sound mods",
+        "description": "Announcer packs, killstreak music, and interface sounds show up here once you install one."
+      }
+    },
+    "hero": {
+      "back": "Sound Locker",
+      "sections": "Sound sections",
+      "openPicker": "Pick sounds per ability",
+      "makeInFoundry": "Make a new one in Foundry",
+      "openShelf": "All sound mods for this hero",
+      "modCount_one": "{{count}} mod",
+      "modCount_other": "{{count}} mods",
+      "empty": "No installed sound mods in this section for {{hero}}.",
+      "overlapWarning_one": "{{count}} sound file is claimed by more than one enabled mod here. Only the highest-priority mod is heard; expand a row to see who wins.",
+      "overlapWarning_other": "{{count}} sound files are claimed by more than one enabled mod here. Only the highest-priority mod is heard; expand a row to see who wins."
+    },
+    "row": {
+      "abilitySlots": "a{{slots}}",
+      "fileCount_one": "{{count}} sound file",
+      "fileCount_other": "{{count}} sound files",
+      "on": "On",
+      "off": "Off",
+      "openInInstalled": "Open in Installed",
+      "whatItChanges": "What it changes",
+      "events": "Events: {{events}}",
+      "reading": "Reading this mod’s write set",
+      "unknownWriteSet": "This mod records no entry paths, so what it overrides cannot be named without opening its VPK. Enabled state and load order still decide who wins.",
+      "incomplete": "Some installed VPKs could not be read: {{mods}}",
+      "audition": "Audition from this mod",
+      "takes_one": "{{count}} take",
+      "takes_other": "{{count}} takes",
+      "overriddenBy": "Overridden by {{winner}}",
+      "openWinner": "open"
+    }
   }
 }

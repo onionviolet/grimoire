@@ -43,6 +43,7 @@ import {
 } from '../../lib/api';
 import { describeSound, primaryClipName } from '../../lib/soundDescribe';
 import { isAnnotated, matchSoundWithAnnotation } from '../../lib/soundAnnotationSearch';
+import { hasPersonalLabel } from '../../lib/soundLabels';
 import { showToast } from '../../stores/toastStore';
 import { useAppStore } from '../../stores/appStore';
 import type { HeroInfo, HeroSound, HeroSoundCategory, VoiceLine, SoundAnnotation, FoundrySoundConflictInspection, SoundConflictResolution } from '../../types/foundry';
@@ -747,6 +748,7 @@ export function SoundRow({ label, event, clips, duration, state, onToggle, poolI
         if (!annotationsVisible) setAnnotationOpen(false);
     }, [annotationsVisible]);
     const seconds = duration && duration > 0 ? `${duration.toFixed(1)}s` : null;
+    const personalLabel = hasPersonalLabel(annotation) ? annotation!.name!.trim() : null;
     // The catalog returns source `.vsnd` names, whereas VPK entries and sound
     // mod override targets are the compiled `.vsnd_c` files.
     const compiledClipName = clipName
@@ -788,10 +790,25 @@ export function SoundRow({ label, event, clips, duration, state, onToggle, poolI
                     )}
                 </button>
                 <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm text-text-primary" title={label || event}>
-                        <span className="text-text-secondary">Base-game label: </span>{label || event}
-                    </p>
-                    {annotationsVisible && annotation?.name && <p className="truncate text-[11px] text-accent" title={annotation.name}>My label: {annotation.name}</p>}
+                    {/* A name the user wrote themselves is the best label in the
+                        app, so it leads whether or not the Annotate toggle is on
+                        (see lib/soundLabels.ts). The base-game label is then
+                        demoted rather than dropped: it is still how everyone
+                        else refers to the row. */}
+                    {personalLabel ? (
+                        <>
+                            <p className="truncate text-sm text-accent" title={personalLabel}>
+                                {t('soundLocker.labels.myLabel', 'My label: {{label}}', { label: personalLabel })}
+                            </p>
+                            <p className="truncate text-[11px] text-text-secondary" title={label || event}>
+                                <span className="text-text-secondary">Base-game label: </span>{label || event}
+                            </p>
+                        </>
+                    ) : (
+                        <p className="truncate text-sm text-text-primary" title={label || event}>
+                            <span className="text-text-secondary">Base-game label: </span>{label || event}
+                        </p>
+                    )}
                     {(annotationsVisible && annotation?.note ? annotation.note : description) && (
                         <p className="truncate text-[11px] text-text-secondary" title={(annotationsVisible && annotation?.note) || description || undefined}>
                             {(annotationsVisible && annotation?.note) || description}

@@ -277,15 +277,35 @@ export default function MyChanges({ onAddNew, heroName }: MyChangesProps) {
           <section key={scope || '__global'} className="rounded-sm border border-border">
             <h3 className="flex items-center justify-between border-b border-border px-3 py-2 text-sm font-medium text-text-primary">
               <span>{scope || t('foundry.myChanges.unscoped', 'Not hero-specific')}</span>
-              {scope && (
-                <button
-                  type="button"
-                  onClick={() => navigate(`/locker?hero=${encodeURIComponent(scope)}`)}
-                  className="flex items-center gap-1 text-[11px] font-normal text-text-secondary hover:text-text-primary"
-                >
-                  <ExternalLink size={11} /> {t('foundry.myChanges.openInLocker', 'Open in Locker')}
-                </button>
-              )}
+              <span className="flex items-center gap-2">
+                {/* The other half of the Sound Locker link: Foundry made these,
+                    the Sound Locker manages them next to everything else that
+                    writes the same sounds. Only offered when this group has a
+                    sound change in it, since that is the shelf it lands on. */}
+                {entries.some((entry) => entry.kind === 'sound') && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      navigate(
+                        scope ? `/locker/sounds?hero=${encodeURIComponent(scope)}` : '/locker/sounds/global'
+                      )
+                    }
+                    className="flex items-center gap-1 text-[11px] font-normal text-text-secondary hover:text-text-primary"
+                  >
+                    <ExternalLink size={11} />{' '}
+                    {t('foundry.myChanges.openInSoundLocker', 'Open in Sound Locker')}
+                  </button>
+                )}
+                {scope && (
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/locker?hero=${encodeURIComponent(scope)}`)}
+                    className="flex items-center gap-1 text-[11px] font-normal text-text-secondary hover:text-text-primary"
+                  >
+                    <ExternalLink size={11} /> {t('foundry.myChanges.openInLocker', 'Open in Locker')}
+                  </button>
+                )}
+              </span>
             </h3>
             {entries.map((entry) => {
               const editing = renaming[entry.id];

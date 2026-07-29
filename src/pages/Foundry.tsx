@@ -146,8 +146,23 @@ export default function Foundry() {
     const canonical = canonicalHeroName(wanted);
     return heroes.find((hero) => canonicalHeroName(hero.name) === canonical) ?? null;
   }, [heroes, location.search]);
+  // `/foundry?tool=<subtool>` opens the catalog rail on that tool. The hero
+  // workshop rail has no home for the non-hero tools (Global sounds most of
+  // all), so the Sound Locker's Global shelf links here by tool id the same way
+  // the Locker links here by hero. Derived from the URL for the same reason
+  // `linkedHero` is: the link stays the single source of truth while it is
+  // present, and picking another tool clears the query rather than fighting it.
+  const linkedTool = useMemo(() => {
+    const wanted = new URLSearchParams(location.search).get('tool');
+    return SUBTOOLS.find((entry) => entry.id === wanted)?.id ?? null;
+  }, [location.search]);
+  const clearLinkedTool = useCallback(() => {
+    if (linkedTool) navigate('/foundry', { replace: true });
+  }, [linkedTool, navigate]);
+
   const workshopHero = selectedHero ?? linkedHero;
-  const activeMode: Mode = linkedHero ? 'heroes' : mode;
+  const activeTool: SubtoolId = linkedTool ?? active;
+  const activeMode: Mode = linkedHero ? 'heroes' : linkedTool ? 'catalog' : mode;
   const leaveWorkshop = useCallback(() => {
     setSelectedHero(null);
     if (linkedHero) navigate('/foundry', { replace: true });
@@ -259,7 +274,10 @@ export default function Foundry() {
       <aside className="flex w-44 shrink-0 flex-col gap-1 border-r border-border bg-bg-secondary/40 p-3">
         <button
           type="button"
-          onClick={() => setMode('heroes')}
+          onClick={() => {
+            clearLinkedTool();
+            setMode('heroes');
+          }}
           className="mb-1 flex items-center gap-2 rounded-sm px-2.5 py-2 text-sm text-text-secondary transition-colors hover:bg-bg-tertiary hover:text-text-primary cursor-pointer"
         >
           <ArrowLeft size={15} />
@@ -274,13 +292,17 @@ export default function Foundry() {
           (tool) => tool.id !== 'globalSound' || settings?.forkGlobalSounds !== false
         ).map((tool) => {
           const Icon = tool.icon;
-          const isActive = active === tool.id;
+          const isActive = activeTool === tool.id;
           return (
             <button
               key={tool.id}
               type="button"
               disabled={!tool.enabled}
-              onClick={() => tool.enabled && setActive(tool.id)}
+              onClick={() => {
+                if (!tool.enabled) return;
+                clearLinkedTool();
+                setActive(tool.id);
+              }}
               className={`flex items-center gap-2.5 rounded-sm px-2.5 py-2 text-sm transition-colors ${
                 isActive
                   ? 'bg-accent/10 font-medium text-accent'
@@ -313,19 +335,24 @@ export default function Foundry() {
             }
           />
 
-          {active === 'sound' ? (
+          {activeTool === 'sound' ? (
             <SoundBrowse heroes={heroes} heroNames={heroNames} onStage={stageEdit} />
-          ) : active === 'myChanges' ? (
-            <MyChanges onAddNew={(filter) => setActive(subtoolForChangeFilter(filter))} />
-          ) : active === 'globalSound' && settings?.forkGlobalSounds !== false ? (
+          ) : activeTool === 'myChanges' ? (
+            <MyChanges
+              onAddNew={(filter) => {
+                clearLinkedTool();
+                setActive(subtoolForChangeFilter(filter));
+              }}
+            />
+          ) : activeTool === 'globalSound' && settings?.forkGlobalSounds !== false ? (
             <GlobalSoundBrowse onStage={stageEdit} />
-          ) : active === 'texture' ? (
+          ) : activeTool === 'texture' ? (
             <TextureBrowse heroes={heroes} heroNames={heroNames} onStage={stageEdit} />
-          ) : active === 'portraits' ? (
+          ) : activeTool === 'portraits' ? (
             <PortraitBrowse heroNames={heroNames} onStage={stageEdit} />
-          ) : active === 'recolor' ? (
+          ) : activeTool === 'recolor' ? (
             <RecolorTool heroes={heroes} />
-          ) : active === 'items' ? (
+          ) : activeTool === 'items' ? (
             <LibraryBrowse heroNames={heroNames} initialCategory="item-icon" onStage={stageEdit} />
           ) : (
             <LibraryBrowse heroNames={heroNames} onStage={stageEdit} />

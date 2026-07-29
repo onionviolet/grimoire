@@ -911,6 +911,19 @@ export default function Locker() {
             .join(' • ')}
         </div>
         <div className="flex items-center gap-3">
+          {/* Sounds have their own shelf now (docs/sound-locker-plan.md): this
+              grid is about what a hero looks like, that one is about what they
+              sound like. Always offered, since the Global sound shelf is
+              reachable nowhere else. */}
+          <button
+            type="button"
+            onClick={() => navigate('/locker/sounds')}
+            className="flex items-center gap-1.5 self-stretch rounded-sm border border-border bg-bg-secondary px-3 text-sm text-text-secondary transition-colors hover:bg-bg-tertiary hover:text-text-primary cursor-pointer"
+            title={t('soundLocker.description')}
+          >
+            <Music className="w-4 h-4" />
+            {t('soundLocker.title')}
+          </button>
           {heroesWithSkins > 0 && (
             <button
               type="button"
