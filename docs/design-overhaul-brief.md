@@ -90,6 +90,73 @@
 
 ---
 
+## Shell rule: which chrome belongs to what
+
+Three kinds of surface, and each owns a fixed amount of chrome. This is not a
+new convention. Foundry already follows it: `src/pages/Foundry.tsx:204` reads
+"Hero workshop: full-bleed, no page chrome (mirrors the Locker hero view)" and
+returns `HeroWorkshop` bare, while the roster landing and the no-game-path gate
+each use `PageHeader`. Writing it down is what stops the next surface from
+drifting.
+
+**Top-level route.** A sidebar destination. Uses `PageHeader` with a title, a
+description, and its actions. Conflicts, Browse, Settings, Servers, Discover,
+and the Foundry landings.
+
+**Drill-in.** Reached from a grid or a card, and keeps a Back control. The
+shell owns identity, background art, the rail, and Back. Its sections are
+panels inside that shell, and a section never renders its own `PageHeader` or
+its own Back. Locker Global, Locker hero, Foundry hero workshop.
+
+**Section body.** A component that renders content and nothing else: no header,
+no back control, no page padding of its own. Named `*Shelf` or `*Panel`.
+`HeroSoundShelf` and `GlobalSoundShelf` are the reference.
+
+Three invariants follow, and they are navigation rules rather than styling
+ones:
+
+1. **A tab switch never changes the shell.** If selecting a section unmounts
+   the rail or the background, it is a route, not a tab, and it must not be
+   presented as one. The check is mechanical: capture a node from the shell,
+   switch sections, and confirm the same node is still in the document.
+2. **A route that presents itself as a section of X can return to X.** The
+   control that got the user there stays visible and shows itself as selected
+   where they land.
+3. **Section state is addressable and survives a round trip.** Opening a
+   drill-in from a section and pressing Back returns to that section, not to
+   the default.
+
+The Locker's Global sounds panel broke all three at once, which is what
+prompted writing this down: its Sounds tab returned a different page
+component, so the shell unmounted, Visuals became unreachable from Sounds, and
+the tablist reported two tabs where the unselected one was a link off the
+screen. See `docs/locker-consistency-pass.md` for that diagnosis.
+
+A `role="tab"` is a promise about all of the above. Either wire it fully
+(`aria-controls` to a real `role="tabpanel"`, `aria-labelledby` back, roving
+`tabIndex`, arrow-key movement) or use plain buttons and drop the role. The
+half-state, where the role is present and the panel is not, is worse than
+either.
+
+### Audit, as of the Locker consistency pass
+
+Every `role="tablist"` in `src/`, classified. Three shapes turn up: a real
+tablist, a control set that only looked like one, and a real tablist whose
+panel is rendered by the caller.
+
+| Site | Verdict | State |
+| --- | --- | --- |
+| `Locker.tsx` Global drill-in, Visuals/Sounds | Real tablist | Wired |
+| `Locker.tsx` `HeroCard`, Skins/Sounds | Real tablist | Wired |
+| `Browse.tsx` section, Mods/Sounds/Wip | Real tablist | Wired |
+| `Browse.tsx` `BrowseViewOptionControl` | Not a tablist: picks a layout, a card design, or an NSFW mode, and reveals nothing | Now `role="group"` with `aria-pressed`; arrow keys kept |
+| `common/ui.tsx` `SegmentedControl` | Real tablist: both callers (`LockerModImagePicker` surface tabs, `AppearanceArtSection` source-kind tabs) switch a body below it | **Open.** Has roving `tabIndex` and arrow keys, no `aria-controls`. Wiring it needs the component to mint panel ids and the callers to attach them |
+
+`PageHeader` is used by `Conflicts`, `Discover`, `Foundry`, `Servers`, and
+`Settings`, all top-level routes. No drill-in renders one.
+
+---
+
 ## General Guidelines
 
 - Use `transition-all duration-200` for hover states

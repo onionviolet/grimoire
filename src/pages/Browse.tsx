@@ -1060,7 +1060,13 @@ function BrowseViewOptionControl<T extends string>({
   };
 
   return (
-    <div className="flex items-center rounded-lg border border-border bg-bg-secondary p-[3px]" role="tablist" aria-label={label}>
+    // A group of pressed buttons, not a tablist: these pick a layout, a card
+    // design, or an NSFW mode, and none of them reveals a panel. A `role="tab"`
+    // promises an `aria-controls` target that does not exist here, so it says
+    // the wrong thing to a screen reader. See the shell rule in
+    // docs/design-overhaul-brief.md. Arrow-key movement is kept: it is useful
+    // on a segmented control whether or not the control is a tablist.
+    <div className="flex items-center rounded-lg border border-border bg-bg-secondary p-[3px]" role="group" aria-label={label}>
       {options.map((option, i) => {
         const Icon = option.icon;
         const active = option.value === value;
@@ -1069,9 +1075,7 @@ function BrowseViewOptionControl<T extends string>({
             key={option.value}
             ref={(el) => { refs.current[i] = el; }}
             type="button"
-            role="tab"
-            aria-selected={active}
-            tabIndex={active ? 0 : -1}
+            aria-pressed={active}
             disabled={disabled}
             onClick={() => !disabled && onChange(option.value)}
             onKeyDown={(e) => {
@@ -1263,6 +1267,8 @@ export default function Browse() {
   const pendingScrollTopRef = useRef<number | null>(initialCache?.scrollTop ?? null);
   // The outer scroll container — same element with `h-full overflow-y-auto`.
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  // Section tabs (Mods / Sounds / Wip), so arrow-key movement can follow focus.
+  const sectionTabRefs = useRef<(HTMLButtonElement | null)[]>([]);
   // The virtualized grid's relative wrapper (the div sized to getTotalSize()).
   // Used by the scroll anchor below to translate scrollTop into item space.
   const gridWrapRef = useRef<HTMLDivElement | null>(null);
@@ -3520,7 +3526,7 @@ export default function Browse() {
             {/* Section toggle: Mods vs Sounds as icon buttons */}
             {sections.length > 1 && (
               <div className="flex flex-shrink-0 items-center h-10 rounded-lg border border-border bg-bg-secondary p-1" role="tablist" aria-label={t('browse.section.label')}>
-                {sections.map((entry) => {
+                {sections.map((entry, i) => {
                   const Icon =
                     entry.modelName === 'Sound'
                       ? Music
@@ -3531,9 +3537,21 @@ export default function Browse() {
                   return (
                     <button
                       key={entry.modelName}
+                      ref={(el) => { sectionTabRefs.current[i] = el; }}
                       type="button"
                       role="tab"
+                      id={`browse-section-tab-${entry.modelName}`}
+                      aria-controls={`browse-section-panel-${entry.modelName}`}
                       aria-selected={active}
+                      tabIndex={active ? 0 : -1}
+                      onKeyDown={(e) => {
+                        const dir = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+                        if (!dir) return;
+                        e.preventDefault();
+                        const next = (i + dir + sections.length) % sections.length;
+                        setSection(sections[next].modelName);
+                        sectionTabRefs.current[next]?.focus();
+                      }}
                       onClick={() => setSection(entry.modelName)}
                       className={`flex items-center gap-1.5 px-3 py-1.5 @max-[980px]:px-2.5 rounded-md transition-colors cursor-pointer ${
                         active
@@ -3772,8 +3790,15 @@ export default function Browse() {
         )}
       </div>
 
-      {/* Main Content */}
-      <div className="relative z-0 flex-1 p-4">
+      {/* Main Content. This is the panel the Mods/Sounds/Wip section tablist
+          above selects, so it carries the tabpanel wiring: one panel id per
+          section, labelled by the tab that selected it. */}
+      <div
+        role="tabpanel"
+        id={`browse-section-panel-${section}`}
+        aria-labelledby={`browse-section-tab-${section}`}
+        className="relative z-0 flex-1 p-4"
+      >
         {(() => {
           const gridClass =
             layout === 'list'

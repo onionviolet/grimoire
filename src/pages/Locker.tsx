@@ -2421,6 +2421,12 @@ function HeroGalleryCard({
   );
 }
 
+/** The expanded hero card's Skins/Sounds tabs, in tablist order. */
+const CARD_SECTION_TABS = [
+  { id: 'skins' as const, icon: Shirt, labelKey: 'locker.page.skins' },
+  { id: 'sounds' as const, icon: Music, labelKey: 'locker.page.sounds' },
+];
+
 function HeroCard({
   hero,
   mods,
@@ -2452,6 +2458,8 @@ function HeroCard({
   // wiki render -> GameBanana icon -> none (solid panel).
   const [bgFallbackStep, setBgFallbackStep] = useState(0);
   const [section, setSection] = useState<'skins' | 'sounds'>('skins');
+  const cardTabRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const cardTabsId = useId();
   const skinCount = useMemo(() => countLockerSkins(mods), [mods]);
   const soundCount = useMemo(() => countLockerSkins(sounds), [sounds]);
   const hasSounds = sounds.length > 0;
@@ -2570,36 +2578,49 @@ function HeroCard({
             aria-label={t('locker.page.section')}
             className="inline-flex items-center rounded-full border border-border bg-bg-tertiary p-0.5 text-xs"
           >
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeSection === 'skins'}
-              onClick={() => setSection('skins')}
-              className={`flex items-center gap-1.5 rounded-full px-3 py-1 transition-colors cursor-pointer ${
-                activeSection === 'skins'
-                  ? 'bg-accent/15 text-text-primary border border-accent/40'
-                  : 'text-text-secondary hover:text-text-primary border border-transparent'
-              }`}
-            >
-              <Shirt className="w-3.5 h-3.5" />
-              {t('locker.page.skins')}
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeSection === 'sounds'}
-              onClick={() => setSection('sounds')}
-              className={`flex items-center gap-1.5 rounded-full px-3 py-1 transition-colors cursor-pointer ${
-                activeSection === 'sounds'
-                  ? 'bg-accent/15 text-text-primary border border-accent/40'
-                  : 'text-text-secondary hover:text-text-primary border border-transparent'
-              }`}
-            >
-              <Music className="w-3.5 h-3.5" />
-              {t('locker.page.sounds')}
-            </button>
+            {CARD_SECTION_TABS.map(({ id, icon: Icon, labelKey }, i) => {
+              const selected = activeSection === id;
+              return (
+                <button
+                  key={id}
+                  ref={(el) => { cardTabRefs.current[i] = el; }}
+                  type="button"
+                  role="tab"
+                  id={`${cardTabsId}-tab-${id}`}
+                  aria-controls={`${cardTabsId}-panel`}
+                  aria-selected={selected}
+                  tabIndex={selected ? 0 : -1}
+                  onKeyDown={(e) => {
+                    const dir = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+                    if (!dir) return;
+                    e.preventDefault();
+                    const next = (i + dir + CARD_SECTION_TABS.length) % CARD_SECTION_TABS.length;
+                    setSection(CARD_SECTION_TABS[next].id);
+                    cardTabRefs.current[next]?.focus();
+                  }}
+                  onClick={() => setSection(id)}
+                  className={`flex items-center gap-1.5 rounded-full px-3 py-1 transition-colors cursor-pointer ${
+                    selected
+                      ? 'bg-accent/15 text-text-primary border border-accent/40'
+                      : 'text-text-secondary hover:text-text-primary border border-transparent'
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  {t(labelKey)}
+                </button>
+              );
+            })}
           </div>
         )}
+        {/* The panel both card tabs select. One element rather than one per
+            tab: it is the same list with a different source, so a second
+            panel would be an empty promise. `aria-labelledby` tracks the
+            selected tab. */}
+        <div
+          role={hasSounds ? 'tabpanel' : undefined}
+          id={hasSounds ? `${cardTabsId}-panel` : undefined}
+          aria-labelledby={hasSounds ? `${cardTabsId}-tab-${activeSection}` : undefined}
+        >
         <HeroSkinsPanel
           mods={activeList}
           onSelect={onSelect}
@@ -2626,6 +2647,7 @@ function HeroCard({
               : t('locker.page.downloadASkinForThisHero')
           }
         />
+        </div>
       </div>
       )}
     </div>
