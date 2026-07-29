@@ -1,10 +1,11 @@
 # Locker Hero Card: APPLY pipeline design
 
-Status: **shipped**, with one renderer gap (re-verified 2026-07-28: apply, swap,
-revert, custom uploads, empty-set teardown, and the Installed/Conflicts/profile/
-portable-export hiding all confirmed in code). This document is the design of
-record; the "As built" section below records where the implementation deviates
-from it. Read alongside the project memory
+Status: **shipped** (re-verified 2026-07-28: apply, swap, revert, custom
+uploads, empty-set teardown, and the Installed/Conflicts/profile/
+portable-export hiding all confirmed in code). The one renderer gap, the
+unsurfaced missing-source warning, was closed the same day; see deviation 5.
+This document is the design of record; the "As built" section below records
+where the implementation deviates from it. Read alongside the project memory
 `project_global_mod_type_signals.md` for the verified path signals and decode
 notes.
 
@@ -34,13 +35,17 @@ revert from `components/LockerOverridesModal.tsx`, profile restore in
 4. **Open decisions are resolved.** (1) variant scope: the whole per-hero
    panorama prefix set is captured, as recommended. (3) unpreviewable cards:
    apply copies bytes and does not depend on the preview decode.
-5. **The missing-source warning is not surfaced.** "Failure handling" below
-   requires a dropped source to be reported like unmerge's
-   `missingSourceFileNames`. The service does report it
-   (`services/heroCards.ts:361`, `:389`), but `HeroCardPicker.tsx:153` and
-   `:206` read only `activeSourceFileName` and discard the rest, so the user
-   silently loses a card. This is an unresolved gap, not an intentional
-   deviation; the fix is to render it into the picker's existing `actionError`.
+5. **The missing-source warning is surfaced (resolved 2026-07-28).** "Failure
+   handling" below requires a dropped source to be reported like unmerge's
+   `missingSourceFileNames`. The service always reported it
+   (`services/heroCards.ts:361`, `:389`), but the picker read only
+   `activeSourceFileName` and discarded the rest, so a user silently lost a
+   card. Both apply paths now pass `missingSourceFileNames` through
+   `reportMissingSources` (`HeroCardPicker.tsx:147`, called at `:163` and
+   `:217`), which renders the comma-joined names into the picker's existing
+   `actionError` surface via `locker.cards.missingSources`. No behaviour in the
+   service changed. This entry is kept as history: the design and the
+   implementation now agree.
 
 ## Problem
 
