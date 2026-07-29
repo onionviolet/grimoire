@@ -2,7 +2,7 @@ import { promises as fs } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { randomUUID } from 'crypto';
-import type { FoundryForgeEdit, FoundryForgeRequest } from '../../../src/types/foundry';
+import type { FoundryForgeEdit, FoundryForgeRequest, VpkExportResult } from '../../../src/types/foundry';
 import { buildHeroSoundSwapVpk, cleanupHeroSoundSwapBuild } from './foundryCatalog';
 import { buildTextureReplacementVpk, cleanupTextureReplacementBuild } from './foundryTextureReplace';
 import { runVpkmerge, verifyVpkOutput } from './modMerger';
@@ -73,11 +73,41 @@ export async function buildFoundryForgeVpk(deadlockPath: string, request: Foundr
         if (!actualWriteSet || JSON.stringify(actualWriteSet) !== JSON.stringify(review.writeSet)) {
             throw new Error('The forged VPK did not match the confirmed write-set; no file was exported.');
         }
-        return { vpkPath: output, cleanup: () => fs.rm(dir, { recursive: true, force: true }) };
+        return { vpkPath: output, cleanup: () => fs.rm(dir, { recursive: true, force: true }).catch(() => {}) };
     } catch (error) {
         await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
         throw error;
     } finally {
-        await Promise.all(built.map((part) => part.cleanup()));
+        // Part cleanup is best effort on purpose. A failure to remove one part's
+        // scratch directory must not reject a build that already succeeded, or
+        // the merged directory above would be returned to nobody and leak.
+        await Promise.all(built.map((part) => part.cleanup().catch(() => {})));
+    }
+}
+
+/**
+ * Build, then export, then always remove the build temp: the atomic-cancel
+ * contract in one place so the IPC handler cannot drift from it.
+ *
+ * Cancelling the save dialog is a normal `{ exported: false }` result, not an
+ * error, and it must leave zero residue: no temp directory, no installed mod
+ * touched, no load order changed. A build that throws partway is the same
+ * promise, which is why the cleanup lives in `finally` rather than on the
+ * success branch. Staged edits live in the renderer and are never cleared from
+ * here, so a cancelled forge is fully retryable.
+ */
+export async function forgeAndExportFoundryVpk(
+    request: FoundryForgeRequest,
+    build: () => Promise<{ vpkPath: string; cleanup: () => Promise<void> }>,
+    exportVpk: (vpkPath: string, suggestedName: string) => Promise<VpkExportResult>,
+): Promise<VpkExportResult> {
+    const built = await build();
+    try {
+        const safe = request.name.trim().replace(/[\\/:*?"<>|]/g, '-').replace(/\s+/g, ' ') || 'Foundry mod';
+        return await exportVpk(built.vpkPath, `${safe}_dir.vpk`);
+    } finally {
+        // Never let a cleanup failure rewrite the user-visible outcome of an
+        // export that already landed (or of a cancel that changed nothing).
+        await built.cleanup().catch(() => {});
     }
 }

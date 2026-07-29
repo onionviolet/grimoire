@@ -24,7 +24,7 @@ import {
 import { scanMods } from '../services/mods';
 import { buildHeroEffectVpkForExport } from '../services/heroColors';
 import { exportVpkViaDialog } from '../services/foundryExport';
-import { buildFoundryForgeVpk } from '../services/foundryForge';
+import { buildFoundryForgeVpk, forgeAndExportFoundryVpk } from '../services/foundryForge';
 import { runVpkmergeStdout, vpkmergeBinaryPath } from '../services/modMerger';
 import {
     exportSoundAnnotations,
@@ -108,13 +108,12 @@ ipcMain.handle('foundry:saveSoundAnnotation', async (_e, key: string, name: stri
 ipcMain.handle(
     'foundry:forge',
     async (_e, request: FoundryForgeRequest): Promise<VpkExportResult> => {
-        const built = await buildFoundryForgeVpk(requireDeadlockPath(), request);
-        try {
-            const safe = request.name.trim().replace(/[\\/:*?"<>|]/g, '-').replace(/\s+/g, ' ') || 'Foundry mod';
-            return await exportVpkViaDialog(built.vpkPath, `${safe}_dir.vpk`);
-        } finally {
-            await built.cleanup();
-        }
+        const deadlockPath = requireDeadlockPath();
+        return forgeAndExportFoundryVpk(
+            request,
+            () => buildFoundryForgeVpk(deadlockPath, request),
+            exportVpkViaDialog
+        );
     }
 );
 ipcMain.handle('foundry:exportSoundAnnotations', async () => exportSoundAnnotations());
