@@ -7,6 +7,7 @@ import WelcomeModal from './WelcomeModal';
 import SyncIndicator from './SyncIndicator';
 import DownloadQueueIndicator from './DownloadQueueIndicator';
 import AppUpdateBanner from './AppUpdateBanner';
+import VpkImpostorBanner from './VpkImpostorBanner';
 import { Button } from './common/ui';
 import { ConfirmModal } from './common/PageComponents';
 import { ToastStack } from './common/ToastStack';
@@ -252,6 +253,9 @@ export default function Layout() {
           </div>
         )}
         <AppUpdateBanner />
+        {/* Lane A's startup reconcile: installed files that are not VPKs.
+            Dismissible and non-blocking, like the update banner above. */}
+        <VpkImpostorBanner />
         <div key={outletKey} className="min-h-0 flex-1 overflow-auto animate-fade-in">
           <Outlet />
         </div>

@@ -3,6 +3,7 @@ import { join } from 'path';
 import { tmpdir } from 'os';
 import { randomUUID } from 'crypto';
 import type { FoundryForgeEdit, FoundryForgeRequest, VpkExportResult } from '../../../src/types/foundry';
+import type { FoundryBuildInfo, FoundryBuildPart } from '../../../src/types/mod';
 import { buildHeroSoundSwapVpk, cleanupHeroSoundSwapBuild } from './foundryCatalog';
 import { buildTextureReplacementVpk, cleanupTextureReplacementBuild } from './foundryTextureReplace';
 import { runVpkmerge, verifyVpkOutput } from './modMerger';
@@ -30,6 +31,46 @@ export function reviewFoundryForge(edits: readonly FoundryForgeEdit[]) {
         }))
         .sort((a, b) => a.file.localeCompare(b.file));
     return { writeSet, collisionWinners };
+}
+
+const baseName = (path: string) => path.split(/[\\/]/).pop() || path;
+
+/**
+ * Describe an installed build from the request main already validated, never
+ * from anything the renderer labelled it. `writeSet` is the re-derived one, so
+ * the recorded provenance and the VPK's real contents cannot drift: the caller
+ * passes the same review the build was verified against.
+ *
+ * The whole request is retained as `reforge` so the build can be rebuilt
+ * without re-authoring. Its source paths are the user's own files, so a rebuild
+ * has to check they still exist rather than assuming this record is enough.
+ */
+export function describeFoundryBuild(
+    request: FoundryForgeRequest,
+    review: ReturnType<typeof reviewFoundryForge> = reviewFoundryForge(request.edits),
+): FoundryBuildInfo {
+    const parts: FoundryBuildPart[] = request.edits.map((edit) => {
+        if (edit.kind === 'sound') {
+            const assignments = edit.request.assignments ?? [];
+            return {
+                kind: 'sound',
+                title: edit.request.name?.trim() || edit.request.event || 'Sound change',
+                entries: [...new Set(assignments.map(({ clipPath }) => soundEntry(clipPath)).filter(Boolean))],
+                heroName: edit.request.heroName?.trim() || undefined,
+                event: edit.request.event,
+                sourceFileName: edit.request.audioPath ? baseName(edit.request.audioPath) : undefined,
+            };
+        }
+        return {
+            kind: 'texture',
+            title: edit.request.name?.trim() || baseName(edit.request.entryPath),
+            entries: [normalize(edit.request.entryPath)].filter(Boolean),
+            category: edit.request.category,
+            heroName: edit.request.heroName?.trim() || undefined,
+            sourceFileName: edit.request.imagePath ? baseName(edit.request.imagePath) : undefined,
+        };
+    });
+    return { writeSet: review.writeSet, parts, reforge: request };
 }
 
 function sameReview(request: FoundryForgeRequest, review: ReturnType<typeof reviewFoundryForge>): boolean {

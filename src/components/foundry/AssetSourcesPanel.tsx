@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   AlertTriangle,
+  ChevronDown,
+  ChevronRight,
   ExternalLink,
   Loader2,
   Pause,
@@ -15,6 +17,7 @@ import {
   Wand2,
 } from 'lucide-react';
 import { foundryAuditionSourceClip, foundryInspectAssetSources } from '../../lib/api';
+import { computeSourceGating } from './sourceGating';
 import { useAppStore } from '../../stores/appStore';
 import { showToast } from '../../stores/toastStore';
 import type {
@@ -58,9 +61,12 @@ const TOKEN_SEPARATOR = '\n';
  * only for the card a player explicitly asks to inspect.
  *
  * Every action here goes through the normal mod store or hands control back to
- * the caller. The panel never writes a VPK, never reorders anything, and blocks
- * the ambiguous actions outright while any installed VPK is unreadable, because
- * an incomplete scan cannot tell you who really owns a path.
+ * the caller. The panel never writes a VPK and never reorders anything.
+ *
+ * An unreadable VPK narrows what is known, and the gate is scoped to match: a
+ * listed source stays toggleable (its own directory was read), while creating a
+ * replacement stays blocked (the winner of the new path is the ambiguous part).
+ * See `sourceGating.ts`.
  */
 export default function AssetSourcesPanel({
   paths,
@@ -77,6 +83,7 @@ export default function AssetSourcesPanel({
   const [error, setError] = useState<string | null>(null);
   const [busyModId, setBusyModId] = useState<string | null>(null);
   const [playing, setPlaying] = useState<string | null>(null);
+  const [showWhy, setShowWhy] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const inspect = useCallback(async () => {
@@ -92,13 +99,11 @@ export default function AssetSourcesPanel({
     }
   }, [paths]);
 
-  // An unreadable VPK means the ownership picture is incomplete, so anything
-  // that depends on knowing the real owner is withheld until it is resolved.
-  const blocked = (result?.unreadableMods.length ?? 0) > 0;
-  const blockReason = blocked
-    ? t('foundry.sources.blocked', {
-        mods: result!.unreadableMods.map((mod) => mod.modName).join(', '),
-      })
+  // An unreadable VPK makes the ownership picture incomplete, but not every
+  // action depends on the missing part. See `sourceGating.ts` for the split.
+  const gating = useMemo(() => computeSourceGating(result), [result]);
+  const replacementBlockReason = gating.replacementBlocked
+    ? t('sourceBlocking.replacementBlocked')
     : null;
 
   const audition = useCallback(async (source: FoundryAssetSource, entry: string) => {
@@ -178,11 +183,69 @@ export default function AssetSourcesPanel({
               <p key={path} className="truncate" title={path}>{t('foundry.sources.winner', { name })}</p>
             ) : null
           )}
-          {result.unreadableMods.length > 0 && (
-            <p className="flex items-start gap-1 rounded-sm border border-danger/40 bg-danger/10 px-1.5 py-1 text-danger">
-              <AlertTriangle size={11} className="mt-px shrink-0" />
-              <span>{blockReason}</span>
-            </p>
+          {gating.incomplete && (
+            <div className="rounded-sm border border-amber-400/40 bg-amber-400/10 px-1.5 py-1 text-amber-300">
+              <p className="flex items-start gap-1">
+                <AlertTriangle size={11} className="mt-px shrink-0" />
+                <span>
+                  <span className="font-medium">{t('sourceBlocking.incompleteTitle')}</span>
+                  {': '}
+                  {t('sourceBlocking.incomplete', {
+                    count: gating.unreadable.length,
+                    mods: gating.unreadableNames,
+                  })}
+                </span>
+              </p>
+              <p className="mt-0.5 pl-4">{t('sourceBlocking.toggleAllowed')}</p>
+              <button
+                type="button"
+                onClick={() => setShowWhy((open) => !open)}
+                className="mt-0.5 ml-4 flex items-center gap-0.5 rounded-sm underline-offset-2 hover:underline"
+              >
+                {showWhy ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+                {showWhy ? t('sourceBlocking.whyHide') : t('sourceBlocking.why')}
+              </button>
+              {showWhy && (
+                <div className="mt-1 space-y-1 pl-4">
+                  {/* State the uncertainty precisely. Enablement is known without
+                      parsing; contents are not knowable at all from a file that
+                      will not open, so neither is guessed at here. */}
+                  {gating.enabledUnreadable.length > 0 ? (
+                    <p>
+                      {t('sourceBlocking.uncertaintyEnabled', { count: gating.enabledUnreadable.length })}
+                      {gating.disabledUnreadable.length > 0
+                        ? ` ${t('sourceBlocking.disabledAlso', { count: gating.disabledUnreadable.length })}`
+                        : ''}
+                    </p>
+                  ) : (
+                    <p>{t('sourceBlocking.uncertaintyDisabledOnly', { count: gating.disabledUnreadable.length })}</p>
+                  )}
+                  <p>{t('sourceBlocking.replacementBlocked')}</p>
+                  {gating.unreadable.map((mod) => (
+                    <div key={mod.modId} className="flex flex-wrap items-center gap-1">
+                      <span className="truncate text-text-primary" title={mod.modName}>{mod.modName}</span>
+                      <span>
+                        {/* Lane A's detected-file-type report lands here: it is
+                            optional, so this reads honestly before and after. */}
+                        {mod.detectedType
+                          ? t('sourceBlocking.detectedType', { type: mod.detectedType })
+                          : t('sourceBlocking.detectedTypeUnknown')}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/?focusMod=${encodeURIComponent(mod.modId)}`)}
+                        title={t('sourceBlocking.openMod', { mod: mod.modName })}
+                        className="flex items-center gap-1 rounded-sm border border-amber-400/40 px-1.5 py-0.5 hover:text-amber-200"
+                      >
+                        <ExternalLink size={10} />
+                        {t('sourceBlocking.openModShort')}
+                      </button>
+                    </div>
+                  ))}
+                  <p>{t('sourceBlocking.fixHint')}</p>
+                </div>
+              )}
+            </div>
           )}
           {result.sources.length === 0 ? (
             <p>{t('foundry.sources.none')}</p>
@@ -230,13 +293,14 @@ export default function AssetSourcesPanel({
                   </button>
                   <button
                     type="button"
-                    disabled={blocked || busyModId === source.modId}
+                    // Deliberately not gated on the unreadable set: this source's
+                    // identity is known, and the mod store owns enabled state.
+                    disabled={gating.toggleBlocked || busyModId === source.modId}
                     onClick={() => void setEnabled(source)}
                     title={
-                      blockReason ??
-                      (source.enabled
+                      source.enabled
                         ? t('foundry.sources.disableHint', { mod: source.modName })
-                        : t('foundry.sources.enableHint', { mod: source.modName }))
+                        : t('foundry.sources.enableHint', { mod: source.modName })
                     }
                     className="flex items-center gap-1 rounded-sm border border-border px-1.5 py-0.5 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40"
                   >
@@ -272,9 +336,9 @@ export default function AssetSourcesPanel({
           {onCreateReplacement && (
             <button
               type="button"
-              disabled={blocked}
+              disabled={gating.replacementBlocked}
               onClick={onCreateReplacement}
-              title={blockReason ?? t('foundry.sources.createReplacementHint')}
+              title={replacementBlockReason ?? t('foundry.sources.createReplacementHint')}
               className="flex w-full items-center justify-center gap-1 rounded-sm border border-accent/40 bg-accent/10 px-1.5 py-1 text-accent hover:bg-accent/20 disabled:cursor-not-allowed disabled:opacity-40"
             >
               <Wand2 size={11} />

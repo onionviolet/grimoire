@@ -19,6 +19,9 @@ interface FoundryBuildTrayProps {
   outputName: string;
   onOutputNameChange: (name: string) => void;
   onForge: (request: FoundryForgeRequest) => Promise<void>;
+  /** Install the same reviewed build into the mod library instead of exporting
+   *  it. Optional so a host that only wants the export half can omit it. */
+  onInstall?: (request: FoundryForgeRequest) => Promise<void>;
   /** Drop one staged edit. A review the user cannot narrow is not a review. */
   onRemove: (id: string) => void;
   /** Layout override for hosts that dock the tray differently (hero workshop). */
@@ -43,7 +46,7 @@ const KIND_LABEL_KEYS: Record<FoundryEditKind, string> = {
  * this component owns the last gate before a build: the source-file preflight,
  * the in-app confirmation, and the promise that cancelling changes nothing.
  */
-export default function FoundryBuildTray({ edits, outputName, onOutputNameChange, onForge, onRemove, className = '' }: FoundryBuildTrayProps) {
+export default function FoundryBuildTray({ edits, outputName, onOutputNameChange, onForge, onInstall, onRemove, className = '' }: FoundryBuildTrayProps) {
   const { t } = useTranslation();
   // `null` means the natural default: every staged edit, including a later
   // addition. Once the user touches selection, it becomes explicit.
@@ -100,12 +103,18 @@ export default function FoundryBuildTray({ edits, outputName, onOutputNameChange
     setConfirming(true);
   };
 
-  const forge = async () => {
+  /**
+   * Both outputs run the identical reviewed request, so the only difference the
+   * user is choosing between is where the finished VPK lands: a file they save,
+   * or a tracked mod in their library. Failure handling is shared too, so an
+   * install that throws leaves the tray exactly as an export that throws does.
+   */
+  const run = async (output: (request: FoundryForgeRequest) => Promise<void>) => {
     if (!review.selected.length || forging) return;
     setConfirming(false);
     setForging(true);
     try {
-      await onForge(toForgeRequest(outputName, review));
+      await output(toForgeRequest(outputName, review));
     } catch (error) {
       setBlocked(error instanceof Error ? error.message : String(error));
     } finally {
@@ -192,9 +201,11 @@ export default function FoundryBuildTray({ edits, outputName, onOutputNameChange
             </div>
             <div className="border-t border-border p-4">
               <p className="text-xs text-text-secondary">{t('foundry.buildTray.confirmCancelNote')}</p>
+              {onInstall && <p className="mt-1 text-xs text-text-secondary">{t('foundry.buildTray.confirmOutputs', 'Export saves a VPK file you manage yourself. Install adds it to your library, where My changes can track and rebuild it.')}</p>}
               <div className="mt-3 flex justify-end gap-2">
                 <button type="button" onClick={() => setConfirming(false)} className="rounded-sm border border-border px-3 py-1.5 text-sm text-text-secondary transition-colors hover:text-text-primary">{t('foundry.buildTray.cancel', 'Cancel')}</button>
-                <button type="button" onClick={() => void forge()} className="rounded-sm bg-accent px-3 py-1.5 text-sm font-medium text-white">{t('foundry.buildTray.confirmAction', 'Forge VPK')}</button>
+                <button type="button" onClick={() => void run(onForge)} className="rounded-sm border border-border px-3 py-1.5 text-sm font-medium text-text-primary transition-colors hover:bg-bg-tertiary">{t('foundry.buildTray.confirmAction', 'Export VPK')}</button>
+                {onInstall && <button type="button" onClick={() => void run(onInstall)} className="rounded-sm bg-accent px-3 py-1.5 text-sm font-medium text-white">{t('foundry.buildTray.confirmInstall', 'Install to Grimoire')}</button>}
               </div>
             </div>
           </div>

@@ -27,6 +27,18 @@ import { migrateDmmInstall } from './dmmMigration';
 const h = vi.hoisted(() => ({ userData: '' }));
 vi.mock('electron', () => ({ app: { getPath: () => h.userData } }));
 
+/** Real VPK v2 bytes (magic 0x55aa1234 + version + a one-byte empty tree) with a
+ *  trailing marker so each fixture has distinct content and hash. Fixtures must
+ *  be genuine VPKs: migrateDmmInstall now runs every file through the shared
+ *  identity gate in services/vpk.ts before adopting it. */
+function vpkBytes(marker: string): Buffer {
+  const header = Buffer.alloc(28);
+  header.writeUInt32LE(0x55aa1234, 0);
+  header.writeUInt32LE(2, 4);
+  header.writeUInt32LE(1, 8);
+  return Buffer.concat([header, Buffer.from([0]), Buffer.from(marker)]);
+}
+
 interface Sandbox {
   dl: string;
   addons: string;
@@ -102,8 +114,8 @@ describe('idempotency: a second run adopts nothing and mints no duplicates', () 
     const sb = makeSandbox();
     const liveSlot = join(sb.addons, 'pak50_dir.vpk');
     const separateVpk = join(sb.separate, 'skin_c_dir.vpk');
-    writeFileSync(liveSlot, Buffer.from('ENABLED-MOD-111'));
-    writeFileSync(separateVpk, Buffer.from('DISABLED-MOD-333'));
+    writeFileSync(liveSlot, vpkBytes('ENABLED-MOD-111'));
+    writeFileSync(separateVpk, vpkBytes('DISABLED-MOD-333'));
     writeState(sb, [
       { id: 111, name: 'Enabled A', enabled: true, vpks: [liveSlot] },
       { id: 333, name: 'Disabled C', enabled: false, vpks: [separateVpk] },
@@ -129,7 +141,7 @@ describe('idempotency: a second run adopts nothing and mints no duplicates', () 
 
   it('an identical file already managed under another id is not copied again', async () => {
     const sb = makeSandbox();
-    const content = Buffer.from('DISABLED-MOD-333');
+    const content = vpkBytes('DISABLED-MOD-333');
     const separateVpk = join(sb.separate, 'skin_c_dir.vpk');
     writeFileSync(separateVpk, content);
     // A prior import left a managed copy whose metadata lost the submission id
@@ -155,7 +167,7 @@ describe('staleness guard: stale DMM records cannot hijack reused slots', () => 
   it('skips a bare pakNN slot that is newer than the record claiming it', async () => {
     const sb = makeSandbox();
     const liveSlot = join(sb.addons, 'pak50_dir.vpk');
-    writeFileSync(liveSlot, Buffer.from('SOME-OTHER-USERS-MOD'));
+    writeFileSync(liveSlot, vpkBytes('SOME-OTHER-USERS-MOD'));
     writeState(sb, [{ id: 111, name: 'Old DMM Mod', enabled: true, vpks: [liveSlot] }]);
     makeNewerThanState(liveSlot);
 
@@ -173,7 +185,7 @@ describe('staleness guard: stale DMM records cannot hijack reused slots', () => 
   it('still adopts when the filename matches the recorded mod name', async () => {
     const sb = makeSandbox();
     const vpk = join(sb.disabled, 'glamorous_geist_dir.vpk');
-    writeFileSync(vpk, Buffer.from('DISABLED-MOD-444'));
+    writeFileSync(vpk, vpkBytes('DISABLED-MOD-444'));
     writeState(sb, [{ id: 444, name: 'Glamorous Geist', enabled: false, vpks: [vpk] }]);
     makeNewerThanState(vpk);
 
@@ -184,7 +196,7 @@ describe('staleness guard: stale DMM records cannot hijack reused slots', () => 
   it('still adopts a file whose name carries the submission-id prefix', async () => {
     const sb = makeSandbox();
     const parked = join(sb.addons, '555_CoolSkin.vpk');
-    writeFileSync(parked, Buffer.from('PARKED-MOD-555'));
+    writeFileSync(parked, vpkBytes('PARKED-MOD-555'));
     writeState(sb, [{ id: 555, name: 'Cool Skin', enabled: true, vpks: [parked] }]);
     makeNewerThanState(parked);
 
@@ -200,8 +212,8 @@ describe('catalog validation: unknown submission ids are never stamped', () => {
     const sb = makeSandbox();
     const knownVpk = join(sb.addons, 'pak50_dir.vpk');
     const bogusVpk = join(sb.disabled, 'weird_thing_dir.vpk');
-    writeFileSync(knownVpk, Buffer.from('KNOWN-111'));
-    writeFileSync(bogusVpk, Buffer.from('BOGUS-76'));
+    writeFileSync(knownVpk, vpkBytes('KNOWN-111'));
+    writeFileSync(bogusVpk, vpkBytes('BOGUS-76'));
     writeState(sb, [
       { id: 111, name: 'Known Mod', enabled: true, vpks: [knownVpk] },
       { id: 76, name: 'Weird Thing', enabled: false, vpks: [bogusVpk] },
@@ -218,8 +230,8 @@ describe('catalog validation: unknown submission ids are never stamped', () => {
     const sb = makeSandbox();
     const knownVpk = join(sb.addons, 'pak50_dir.vpk');
     const bogusVpk = join(sb.disabled, 'weird_thing_dir.vpk');
-    writeFileSync(knownVpk, Buffer.from('KNOWN-111'));
-    writeFileSync(bogusVpk, Buffer.from('BOGUS-76'));
+    writeFileSync(knownVpk, vpkBytes('KNOWN-111'));
+    writeFileSync(bogusVpk, vpkBytes('BOGUS-76'));
     writeState(sb, [
       { id: 111, name: 'Known Mod', enabled: true, vpks: [knownVpk] },
       { id: 76, name: 'Weird Thing', enabled: false, vpks: [bogusVpk] },
@@ -237,7 +249,7 @@ describe('recoverability: sidecar backup before the batch write', () => {
   it('backs up the pre-import metadata and does not rotate it out on no-op re-runs', async () => {
     const sb = makeSandbox();
     const liveSlot = join(sb.addons, 'pak50_dir.vpk');
-    writeFileSync(liveSlot, Buffer.from('ENABLED-MOD-111'));
+    writeFileSync(liveSlot, vpkBytes('ENABLED-MOD-111'));
     const seeded = JSON.stringify({ 'pak01_dir.vpk': { gameBananaId: 42, modName: 'Precious' } });
     writeFileSync(join(sb.userData, 'mod-metadata.json'), seeded);
     writeState(sb, [{ id: 111, name: 'Enabled A', enabled: true, vpks: [liveSlot] }]);
@@ -258,8 +270,8 @@ describe('recoverability: sidecar backup before the batch write', () => {
     const sb = makeSandbox();
     const liveSlot = join(sb.addons, 'pak50_dir.vpk');
     const staleVpk = join(sb.disabled, 'hijack_me_dir.vpk');
-    writeFileSync(liveSlot, Buffer.from('ENABLED-MOD-111'));
-    writeFileSync(staleVpk, Buffer.from('SOMEONE-ELSES-MOD'));
+    writeFileSync(liveSlot, vpkBytes('ENABLED-MOD-111'));
+    writeFileSync(staleVpk, vpkBytes('SOMEONE-ELSES-MOD'));
     const seeded = JSON.stringify({ 'pak01_dir.vpk': { gameBananaId: 42 } });
     writeFileSync(join(sb.userData, 'mod-metadata.json'), seeded);
     writeState(sb, [

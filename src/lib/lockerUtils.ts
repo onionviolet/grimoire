@@ -259,6 +259,14 @@ export function isLockerManagedMod(mod: Mod): boolean {
   if (mod.lockerCosmetics) return false;
   if (mod.lockerSounds) return false;
 
+  // An installed Foundry build is hero-tagged so Foundry can shelve it under
+  // that hero, but it is not a skin: it may be a portrait, an icon, a sound, or
+  // several at once. Letting it into the Skins pile would give it an active-skin
+  // card, a slot in the skin load-order strip and the launch-shuffle pool, and a
+  // source in the 3D preview merge, none of which it can satisfy. Foundry's
+  // My changes owns it; the Locker reaches it by link, not by duplicating it.
+  if (mod.foundryBuild) return false;
+
   // Sound-section mods are the Sounds tab's domain (see isLockerManagedSound),
   // never hero skins. They get an auto hero-tag at download time, so guard on
   // the section explicitly before the lockerHero escape hatch below — otherwise

@@ -8,6 +8,9 @@ export interface VisualReplacementDraft {
   imagePath: string;
   name: string;
   category: TextureCategory;
+  /** Hero the catalog entry belongs to, when it knew one. Grouping and the
+   *  Locker cross-link only; the entry path stays the ownership key. */
+  heroName?: string;
 }
 
 /** A visual replacement writes one exact VPK entry and retains its PNG input. */
@@ -41,6 +44,9 @@ export interface VisualStageContext {
   inspect: (paths: string[]) => Promise<FoundryAssetSourcesInspection>;
   confirm: (modNames: string[]) => boolean;
   unreadableMessage: string;
+  /** Resolved hero display name for `item.hero` (the catalog stores codenames).
+   *  Callers own the roster map, so they resolve it; omitted means unscoped. */
+  heroName?: string;
 }
 
 /**
@@ -61,6 +67,9 @@ export async function prepareVisualStagedEdit(context: VisualStageContext): Prom
     imagePath: context.imagePath,
     name: context.name,
     category: context.item.category,
+    // Driven by the catalog's own hero field, not by the label: an entry with
+    // no hero stays unscoped rather than being guessed into a hero pile.
+    heroName: context.item.hero ? (context.heroName?.trim() || context.item.hero) : undefined,
   });
 }
 
@@ -75,7 +84,10 @@ export function visualAssetInspectionPaths(item: TextureEntry, catalog: readonly
     .map((candidate) => candidate.path);
 }
 
-function portraitFamilyKey(path: string): string {
+/** The family stem two portrait-state paths must share to be one visual family.
+ *  Exported so the portrait editor names the same family the preflight inspects,
+ *  rather than re-deriving (and possibly narrowing) it. */
+export function portraitFamilyKey(path: string): string {
   const normalized = path.replace(/\\/g, '/').toLowerCase();
   const slash = normalized.lastIndexOf('/');
   const directory = normalized.slice(0, slash + 1);

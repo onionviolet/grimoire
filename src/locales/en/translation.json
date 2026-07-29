@@ -1,4 +1,12 @@
 {
+  "alternatives": {
+    "previewAlt": "Source image for {{name}}",
+    "sourceMissing": "No preview: the source file {{file}} is not where this change recorded it. The change itself still works.",
+    "auditionPlay": "Hear {{name}}",
+    "auditionStop": "Stop playing {{name}}",
+    "auditionHint": "Play what this alternative writes at {{path}}. Playing changes nothing.",
+    "auditionFailed": "Could not extract a clip from {{name}} to play."
+  },
   "common": {
     "view": "View",
     "gameRunningWarning": "Game is running. Close Deadlock to change loaded mods.",
@@ -159,7 +167,8 @@
       "abilitiesSoon": {
         "title": "More per-ability editing coming",
         "body": "Per-ability icon and VFX color editing will land here next, one row per ability. For now, recolor all ability VFX at once under Appearance, and browse ability icons under Icons & Textures."
-      }
+      },
+      "myChanges": "My changes"
     },
     "subtools": {
       "heading": "Workshop",
@@ -169,7 +178,8 @@
       "texture": "Texture",
       "items": "Items",
       "recolor": "Recolor",
-      "soon": "soon"
+      "soon": "soon",
+      "myChanges": "My changes"
     },
     "categories": {
       "abilityIcon": "Ability icons",
@@ -238,7 +248,10 @@
         "texture": "Texture",
         "recolor": "Recolor",
         "model": "Model"
-      }
+      },
+      "confirmInstall": "Install to Grimoire",
+      "confirmOutputs": "Export saves a VPK file you manage yourself. Install adds it to your library, where My changes can track and rebuild it.",
+      "installed": "Installed \"{{name}}\". Find it in My changes."
     },
     "texture": {
       "replace": "Replace PNG",
@@ -363,7 +376,6 @@
       "inspect": "Existing sources",
       "reinspect": "Re-inspect",
       "inspectHint": "Inspect installed VPKs that write this exact asset path",
-      "blocked": "Cannot act on these paths while {{mods}} cannot be inspected. Fix or remove those VPKs, then inspect again.",
       "winner": "Current winner: {{name}}",
       "none": "No installed VPK writes this path.",
       "enabled": "Enabled",
@@ -395,7 +407,7 @@
       }
     },
     "myChanges": {
-      "empty": "No Foundry sound changes yet. Forged sound swaps will appear here and follow their normal Installed state.",
+      "empty": "No Foundry changes yet. Sound swaps and installed builds appear here and follow their normal Installed state.",
       "globalScope": "Global sounds",
       "summary": "{{name}} · {{audio}} · {{pool}}",
       "seed": "seed {{seed}}",
@@ -436,7 +448,44 @@
       "myLabel": "My label",
       "myLabelPlaceholder": "My label (optional)",
       "myNote": "My note",
-      "myNotePlaceholder": "What this sound is, or where you found it"
+      "myNotePlaceholder": "What this sound is, or where you found it",
+      "emptyFiltered": "No change matches this filter. {{total}} in total.",
+      "unscoped": "Not hero-specific",
+      "search": "Search changes",
+      "searchPlaceholder": "Search your changes, or paste a game path",
+      "filterLabel": "Show",
+      "sortLabel": "Sort by",
+      "addNew": "Make a new one",
+      "partOfBuild": "part of a build",
+      "openInLocker": "Open in Locker",
+      "openInInstalled": "Open in Installed",
+      "assetDetails": "Asset details",
+      "deleteBuildConfirm": "Delete \"{{name}}\"? Every change in this build goes with it.",
+      "rebuild": "Rebuild",
+      "rebuildHint": "Rebuild this change from its recorded sources",
+      "rebuildUnavailable": "This change has no recorded sources to rebuild from",
+      "rebuildMissing_one": "Cannot rebuild: {{count}} recorded source file moved or was deleted ({{files}}). Re-author this change instead.",
+      "rebuildMissing_other": "Cannot rebuild: {{count}} recorded source files moved or were deleted ({{files}}). Re-author this change instead.",
+      "filters": {
+        "all": "Everything",
+        "sound": "Sounds",
+        "heroImage": "Portraits & hero images",
+        "abilityIcon": "Ability icons",
+        "itemIcon": "Item icons",
+        "other": "Other textures"
+      },
+      "sort": {
+        "recent": "Recently added",
+        "name": "Name",
+        "hero": "Hero",
+        "enabled": "Enabled first"
+      },
+      "shuffleSummary_one": "{{count}} change is in the launch shuffle. Opting a change in makes every change writing the same game paths exclusive: one is picked at launch and the rest are turned off.",
+      "shuffleSummary_other": "{{count}} changes are in the launch shuffle. Opting a change in makes every change writing the same game paths exclusive: one is picked at launch and the rest are turned off.",
+      "shuffleOff": "Shuffle on launch is currently off, so nothing will be re-rolled. Turn it on in the Locker.",
+      "shuffleWith": "Shuffles against: {{mods}}",
+      "shuffleAlone": "Nothing else writes these paths yet, so this pool has only one outcome",
+      "shuffleUnavailable": "This change has no recorded paths, so it cannot be pooled"
     }
   },
   "autoexec": {
@@ -2057,7 +2106,8 @@
       "favorite": "Favorite",
       "unfavorite": "Unfavorite",
       "lockerSections": "Locker sections",
-      "hero3dModel": "{{hero}} 3D model"
+      "hero3dModel": "{{hero}} 3D model",
+      "editInFoundry": "Edit in Foundry"
     }
   },
   "profiles": {
@@ -2792,6 +2842,34 @@
     "noReleaseNotesForThisVersion": "No release notes for this version.",
     "deliveredViaGithub": "Updates are delivered automatically through GitHub Releases. Click Check for Updates to look now."
   },
+  "vpkImpostors": {
+    "title": "Installed files that are not VPKs",
+    "headline_one": "1 installed file is not a VPK",
+    "headline_other": "{{count}} installed files are not VPKs",
+    "subheadRepairable_one": "It is an archive that wraps a single VPK, so Grimoire can extract that VPK for you.",
+    "subheadRepairable_other": "Each one is an archive that wraps a single VPK, so Grimoire can extract those VPKs for you.",
+    "subheadUnrepairable_one": "Deadlock cannot load it. Grimoire cannot recover a VPK from it, and leaves the file alone.",
+    "subheadUnrepairable_other": "Deadlock cannot load them. Grimoire cannot recover a VPK from them, and leaves the files alone.",
+    "subheadMixed": "{{repairable}} can be repaired by extracting the VPK inside. {{blocked}} cannot be repaired, and Deadlock cannot load them.",
+    "row": {
+      "repairable": "Detected as a {{label}}. Repair extracts {{innerVpkName}} into its place and moves the original archive aside to {{backupName}}. Nothing is deleted.",
+      "unrepairable": "Detected as a {{label}} (header {{magicHex}}). Deadlock cannot load this file. Grimoire cannot recover a VPK from it and will leave it where it is.",
+      "unrepairableNoHeader": "Detected as a {{label}}. Deadlock cannot load this file. Grimoire cannot recover a VPK from it and will leave it where it is.",
+      "repairing": "Extracting the VPK inside {{fileName}}...",
+      "repaired": "Repaired. {{innerVpkName}} is now in place, and the original archive is kept at {{backupPath}}.",
+      "failed": "Could not repair {{fileName}}: {{error}} The file was left exactly as it was."
+    },
+    "repair": "Extract the VPK",
+    "repairing": "Extracting",
+    "retryRepair": "Try again",
+    "neverDeletes": "Grimoire never deletes anything here. A repair moves the original archive aside and keeps it.",
+    "notRemoved": "Files that cannot be repaired stay exactly where they are. Your addons folder is yours to manage.",
+    "showDetails": "Show the files",
+    "hideDetails": "Hide the files",
+    "dismissTitle": "Hide this notice until the next launch",
+    "repairedToast": "Extracted {{innerVpkName}}. The original archive is kept at {{backupPath}}.",
+    "repairFailedToast": "Repair failed: {{error}}"
+  },
   "appUpdateBanner": {
     "readyToInstallVersion": "Grimoire {{version}} is ready to install",
     "readyToInstall": "Grimoire is ready to install",
@@ -3126,5 +3204,143 @@
     "emptySlot": "Empty slot",
     "advancedYaml": "Advanced YAML",
     "remove": "Remove"
+  },
+  "sourceBlocking": {
+    "incompleteTitle": "This list may be incomplete",
+    "incomplete_one": "{{count}} installed VPK would not open, so it is missing from the sources below: {{mods}}",
+    "incomplete_other": "{{count}} installed VPKs would not open, so they are missing from the sources below: {{mods}}",
+    "toggleAllowed": "Enabling or disabling a source listed here is still allowed: its paths were read from its own directory.",
+    "replacementBlocked": "Create a replacement stays unavailable: a replacement is a claim about which mod wins a path, and that is the part an unread VPK could change.",
+    "why": "Why?",
+    "whyHide": "Hide details",
+    "uncertaintyEnabled_one": "{{count}} of these is enabled. Whether it writes any path shown here cannot be known: a file that will not open cannot be asked what is inside it. Treat it as unknown rather than as safe or unsafe.",
+    "uncertaintyEnabled_other": "{{count}} of these are enabled. Whether they write any path shown here cannot be known: a file that will not open cannot be asked what is inside it. Treat them as unknown rather than as safe or unsafe.",
+    "uncertaintyDisabledOnly_one": "It is disabled, so it cannot win any path while it stays off. Its contents are still unknown, so enabling it could change what wins here.",
+    "uncertaintyDisabledOnly_other": "All of them are disabled, so they cannot win any path while they stay off. Their contents are still unknown, so enabling one could change what wins here.",
+    "disabledAlso_one": "{{count}} more is disabled and cannot win a path while it stays off.",
+    "disabledAlso_other": "{{count}} more are disabled and cannot win a path while they stay off.",
+    "detectedType": "Detected file type: {{type}}. It is not a VPK, so the game cannot load it either.",
+    "detectedTypeUnknown": "Grimoire has not identified what this file actually is.",
+    "openMod": "Open {{mod}} in Installed",
+    "openModShort": "Open in Installed",
+    "fixHint": "Re-import or remove these files, then inspect again for a complete picture."
+  },
+  "poolView": {
+    "viewLabel": "View",
+    "viewFlat": "List",
+    "viewFlatHint": "One row per change, for finding one thing",
+    "viewPools": "Pools",
+    "viewPoolsHint": "Group changes that write the same game paths, for deciding between alternatives",
+    "empty": "No pools to show. A pool appears when a change records the exact game paths it writes.",
+    "noContention": "Nothing here contends with anything else yet. Every change writes paths no other change writes.",
+    "cardTitle": "{{n}} alternatives for the same game paths",
+    "sharedPaths": "Shared: {{paths}}",
+    "shuffleOn": "Shuffling this pool",
+    "shuffleOff": "Shuffle this pool",
+    "shuffleOnHint": "Put every member of this pool into the launch shuffle. One is picked at launch and the rest are turned off.",
+    "shuffleOffHint": "Take every member of this pool out of the launch shuffle",
+    "partialPool": "Only some members are in the pool. Opting one in already makes the whole pool exclusive at launch, so add the rest to make the choice explicit.",
+    "resolving": "Resolving what wins each path",
+    "incomplete": "This picture is incomplete: {{mods}} could not be read.",
+    "foreignWinner": "A mod outside this pool wins {{n}} of its paths, so shuffling will not change them.",
+    "recheck": "Re-check",
+    "showPaths": "Paths ({{n}})",
+    "memberPaths": "{{n}} paths",
+    "winner": "in game now",
+    "winsPathsHint": "Currently wins: {{paths}}",
+    "enabledButLosing": "enabled, overridden",
+    "notActive": "not active",
+    "memberShuffleOn": "In the launch pool",
+    "memberShuffleOff": "Add just this alternative to the launch pool",
+    "enable": "Enable",
+    "disable": "Disable",
+    "openInInstalled": "Open in Installed",
+    "singlesHidden": "Changes with no alternatives yet ({{n}})",
+    "singleReason": "Nothing else writes these paths, so there is only one possible outcome. It cannot be shuffled against anything yet.",
+    "unpooledHeading": "Not in any pool",
+    "unpooledReason": "These changes have no recorded write set, so Grimoire cannot tell what they contend with. Rebuild them to record one."
+  },
+  "soundTools": {
+    "badge": {
+      "title": "Recorded in the sound workbench",
+      "trim": "Trimmed {{window}}",
+      "gain": "Gain {{gain}}",
+      "loopOn": "Loop: on",
+      "loopOff": "Loop: off",
+      "untouched": "Whole clip, no gain",
+      "legacy": "No recorded tuning"
+    },
+    "summary": {
+      "none": "whole clip, no gain"
+    },
+    "seed": {
+      "applied": "Opened on the recorded trim and loudness.",
+      "none": "Nothing was recorded to open on, so this is the whole clip at the original loudness.",
+      "clamped": "The recorded trim window ran past the end of this clip, so it was pulled in to fit.",
+      "dropped": "The recorded trim window does not fit this clip, so the whole clip is selected. Set a new window with the handles.",
+      "loopOn": "The rebuild keeps looping on.",
+      "loopOff": "The rebuild keeps looping off.",
+      "restore": "Back to what was recorded"
+    },
+    "retune": {
+      "button": "Retune",
+      "hint": "Open the sound workbench on this change and rebuild it with a new trim and gain",
+      "unavailable": "This change has no recorded audio, so it cannot be retuned. Only a fresh swap can record one.",
+      "title": "Retune this change",
+      "intro": "Rebuilds the same clip targets with a new trim and gain. Targets, pool mode, seed, and loop are reused, so nothing is re-authored.",
+      "recorded": "Recorded: {{summary}}",
+      "missing": "The recorded audio file is no longer at {{path}}. Pick it from its new location, or another file, to continue.",
+      "load": "Open {{file}} in the workbench",
+      "picked": "Editing {{file}}",
+      "loadNote": "The waveform is drawn in the app, which cannot read the file off disk on its own. Pick the same file to retune it, or a different one to change the audio too.",
+      "differentDonor": "This is a different file ({{file}}), so the rebuild also replaces the audio.",
+      "pending": "New: {{summary}}",
+      "apply": "Rebuild with these edits",
+      "cancel": "Cancel",
+      "pathRejected": "Could not read that file's path.",
+      "rebuiltName": "{{name}} (retuned)",
+      "rebuildNote": "The rebuild is a new managed mod. The original is left alone: removing it is your call in Installed."
+    }
+  },
+  "portraitEditor": {
+    "title": "Portrait editor",
+    "choose": "Choose image",
+    "emptyHint": "Drop an image here, or click to choose one",
+    "target": "Target {{width}} x {{height}}",
+    "targetUnknown": "Template size unknown, so this bakes at the cropped size",
+    "upscaleWarning": "Your image is {{sourceWidth}} x {{sourceHeight}}, smaller than the {{targetWidth}} x {{targetHeight}} target, so it will be upscaled and may look soft.",
+    "notAnImage": "That file is not an image.",
+    "imageReadFailed": "That image could not be read.",
+    "bakeFailed": "That image could not be prepared.",
+    "familyTitle": "This portrait family",
+    "familyHint_one": "One variant was discovered, so this is the only file a change here writes.",
+    "familyHint_other": "{{count}} variants were discovered, and the conflict check already covers all of them. One image applies to every variant unless you override one.",
+    "familySlot": "Image for every variant",
+    "familySet": "Framed and ready",
+    "familyUnset": "Not set yet",
+    "opened": "opened",
+    "usesFamily": "family",
+    "usesOverride": "override",
+    "usesNothing": "no image",
+    "override": "Override",
+    "recrop": "Re-crop",
+    "clearOverride": "Use the family image again",
+    "coverageBlocked": "Some variants would be left with the stock art. The conflict check covered the whole family, so set an image for every variant (or one image for all of them) before staging.",
+    "stageConflict": "These enabled mods already write this portrait: {{mods}}. Staging adds a separate replacement layered over them, and changes nothing about which mods are enabled. Continue?",
+    "stageUnreadable": "An installed VPK could not be read, so which mod owns this portrait cannot be established. Fix or remove that file, then try again.",
+    "editName": "{{label}} portrait",
+    "nothingInstalled": "Staging adds this to the build tray. Nothing is installed.",
+    "stage_one": "Stage 1 change",
+    "stage_other": "Stage {{count}} changes",
+    "staged_one": "Added 1 portrait change to the build tray. Nothing has been installed.",
+    "staged_other": "Added {{count}} portrait changes to the build tray. Nothing has been installed.",
+    "variants": {
+      "base": "Portrait",
+      "card": "Hero card",
+      "portrait": "Portrait",
+      "low_hp": "Low HP",
+      "gloat": "Gloat",
+      "minimap": "Minimap"
+    }
   }
 }

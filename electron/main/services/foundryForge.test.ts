@@ -1,7 +1,7 @@
 import { promises as fs } from 'fs';
 import { tmpdir } from 'os';
 import { describe, expect, it, vi } from 'vitest';
-import { buildFoundryForgeVpk, forgeAndExportFoundryVpk, reviewFoundryForge } from './foundryForge';
+import { buildFoundryForgeVpk, describeFoundryBuild, forgeAndExportFoundryVpk, reviewFoundryForge } from './foundryForge';
 import type { FoundryForgeEdit, FoundryForgeRequest } from '../../../src/types/foundry';
 
 /** Foundry build temps are named so they can be counted; a leaked directory is
@@ -30,6 +30,52 @@ describe('reviewFoundryForge', () => {
 
         expect(review.writeSet).toEqual(['sounds/dash.vsnd_c']);
         expect(review.collisionWinners).toEqual([{ file: 'sounds/dash.vsnd_c', editId: 'sound' }]);
+    });
+});
+
+describe('describeFoundryBuild', () => {
+    const request: FoundryForgeRequest = {
+        name: 'My build',
+        edits: [textureEdit, soundEdit],
+        confirmation: { writeSet: ['sounds/dash.vsnd_c'], collisionWinners: [{ file: 'sounds/dash.vsnd_c', editId: 'sound' }] },
+    };
+
+    it('records the main-derived write set, not anything the renderer supplied', () => {
+        // A renderer that under-reports its write set must not be able to make
+        // the stored provenance disagree with what the VPK actually owns.
+        const provenance = describeFoundryBuild({
+            ...request,
+            confirmation: { writeSet: ['lies/only.vtex_c'], collisionWinners: [] },
+        });
+
+        expect(provenance.writeSet).toEqual(['sounds/dash.vsnd_c']);
+    });
+
+    it('describes one part per edit, carrying that part\'s own normalized entries', () => {
+        const provenance = describeFoundryBuild(request);
+
+        expect(provenance.parts).toEqual([
+            {
+                kind: 'texture',
+                title: 'Dash',
+                entries: ['sounds/dash.vsnd_c'],
+                category: 'ability-icon',
+                heroName: undefined,
+                sourceFileName: 'dash.png',
+            },
+            {
+                kind: 'sound',
+                title: 'Dash audio',
+                entries: ['sounds/dash.vsnd_c'],
+                heroName: 'Hero',
+                event: undefined,
+                sourceFileName: 'dash.mp3',
+            },
+        ]);
+    });
+
+    it('retains the request so the build can be rebuilt without re-authoring', () => {
+        expect(describeFoundryBuild(request).reforge).toEqual(request);
     });
 });
 

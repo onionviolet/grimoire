@@ -17,7 +17,7 @@ required before a release.
   and auditioned. It supports annotations with searchable personal labels,
   notes, and tags; write-set conflict inspection; managed-change replacement or
   conflict disablement; selected-clip and seeded-library pool modes; and a
-  `My sound changes` view backed by the normal mod state.
+  `My changes` view backed by the normal mod state.
 - **Foundry texture and item replacement.** The supported catalog cards accept
   a PNG drop/pick, run an exact-path preflight, and stage the replacement in the
   build tray. Nothing is installed until the user forges
@@ -26,9 +26,10 @@ required before a release.
   write set with collision winners, then built into a single named VPK that the
   user saves through a native dialog (`services/foundryForge.ts:45`,
   `ipc/foundry.ts:104`, `components/foundry/FoundryBuildTray.tsx:48`). It is
-  deliberately export-only: build parts never enter Installed, and a cancelled
-  save leaves both the mod library and the staged edits untouched. As of wave 2
-  the tray is shared by both Foundry modes, so an edit staged in the hero-first
+  export-only when saved that way: build parts never enter Installed, and a
+  cancelled save leaves both the mod library and the staged edits untouched.
+  Install is now offered alongside it (see below); the export contract itself is
+  unchanged. As of wave 2 the tray is shared by both Foundry modes, so an edit staged in the hero-first
   `HeroWorkshop` is reviewable and forgeable rather than stranded; `TextureBrowse`
   stages through the same path as `LibraryBrowse`; the confirmation is in-app and
   shows the full exact write set; and a missing recorded source file (audio or
@@ -75,6 +76,48 @@ required before a release.
   whom, jumps to that winner, edits the shared annotation, and re-forges from
   the recorded assignments, refusing to start when a recorded audio file has
   moved (`components/foundry/MySoundChanges.tsx`).
+- **Foundry builds can be installed, not only exported.** The build tray's
+  confirmation now offers Install to Grimoire beside Export VPK. Both run the
+  identical reviewed request through `buildFoundryForgeVpk`, so the stale-review
+  rejection and the built-VPK write-set check apply equally; install then
+  registers the result as a normal local mod carrying `foundryBuild` provenance
+  (the main-derived write set plus one part per edit and the original request)
+  (`ipc/mods.ts` `foundry:forgeInstall`, `services/foundryForge.ts:describeFoundryBuild`).
+  Export is unchanged and still leaves the mod library untouched.
+- **`My changes` covers every kind, not only sounds.** The old `My sound
+  changes` sub-tool is now `My changes`
+  (`components/foundry/MyChanges.tsx` + the pure `changeList.ts`): it lists
+  sound swaps, installed builds (one row per part), and legacy texture
+  replacements, with a category filter (including Portraits & hero images),
+  sort, path-aware search, per-row exact-path winner resolution, jump to the
+  winner, rename/enable/delete through the normal store, and a rebuild from the
+  recorded request. The hero workshop gets the same view scoped to that hero.
+  Fixes a latent bug on the way past: the sub-tool label read `foundry.subtools.mySounds`,
+  a key that never existed in the en catalog, so the rail rendered the raw id.
+- **Launch shuffle over Foundry changes.** A change can be opted into a launch
+  pool from `My changes`. The pool is not "all my changes": it is the set of
+  changes that contend for the same exact game paths, computed as connected
+  components over their recorded write sets (`lib/foundryChanges.ts`). At launch
+  one member of each pool is enabled and the rest are turned off, mirroring the
+  Locker's per-hero pick. Opting one change in makes that whole pool exclusive,
+  because a non-member left enabled would win the same path by load order and
+  the shuffle would appear to do nothing. Membership is keyed on the content
+  hash, never on `mod.id`/`metaKey` (both are pakNN-derived and change on every
+  toggle, so a persisted opt-in keyed on either would detach the first time it
+  ran). Changes with no recorded paths cannot be pooled and say so rather than
+  offering a dead control. This is the "safe, event-level persisted pool" that
+  section 2 required before any shuffle over installed VPKs: it now generalizes
+  from sound events to any asset path.
+  The Foundry pool is resolved before the Locker's plans and owns every mod it
+  manages, so a Foundry sound swap (which is also `isLockerManagedSound`) cannot
+  be driven by two planners inside one batch.
+- **Foundry and the Locker link both ways.** A hero shelf in `My changes` opens
+  `/locker?hero=<name>`, which resolves the name against the loaded category
+  list and jumps to that hero; the Locker hero view has an Edit in Foundry entry
+  that opens `/foundry?hero=<name>`. Foundry derives the linked hero from the
+  URL rather than copying it into state, so the link is authoritative while
+  present and backing out clears it. An unrecognized name leaves the user on the
+  grid instead of guessing a hero.
 
 ## Confirmed gaps
 
@@ -105,9 +148,84 @@ required before a release.
    default, so an unset toggle is badged honestly but cannot preview what the
    game will do. Both are data-only fixes once someone reads the console.
 2. **Asset source actions are unverified in game.** The panel and
-   `My sound changes` now carry the full action set, but no in-game check has
+   `My changes` now carry the full action set, but no in-game check has
    confirmed that an audition of an installed VPK's clip matches what the
    engine plays, or that a re-forged swap sounds identical to the original.
+2a. **The forge-install path has never been run.** `foundry:forgeInstall` is
+   covered only where the old export path was: `describeFoundryBuild` has unit
+   tests for its provenance derivation, and the build itself is the same
+   already-tested `buildFoundryForgeVpk`. Nobody has installed a real build,
+   confirmed it appears in `My changes` and the Locker, confirmed the recorded
+   write set matches what the engine loads, or exercised the rollback when slot
+   allocation or metadata fails. Treat it as written but unproven.
+2d. **Nothing validates that an installed file is actually a VPK.** Every install
+   path tests the filename extension (`ipc/mods.ts:1176`) and never the magic
+   bytes, though the app already checks magic on merge output
+   (`services/modMerger.ts:251`). On 2026-07-29 this was found to have let six
+   archives into one library as `*_dir.vpk`: two 7-Zip (`0xafbc7a37`) and four
+   ZIP (`0x04034b50`), each wrapping a real VPK that extraction never unpacked.
+   The game cannot load them, so those mods had never worked, and because
+   `AssetSourcesPanel` gates on `unreadableMods.length > 0` globally they also
+   disabled every source action app-wide. Both halves are lanes A and B of
+   [foundry-changes-parallel-plan.md](./foundry-changes-parallel-plan.md).
+   **Both lanes have now landed** (`services/vpk.ts` magic validation on every
+   adoption path, `services/vpkImpostors.ts` reconcile, and the split
+   toggle/replacement gate in `components/foundry/sourceGating.ts`). See 2e for
+   what that did and did not prove.
+2e. **What the 2026-07-29 parallel-lane run proved.** Six lanes of
+   [foundry-changes-parallel-plan.md](./foundry-changes-parallel-plan.md) landed
+   together: A (VPK identity gate), B (scoped source blocking), C (grouped pool
+   view), D (alternatives gallery), E (portrait editor), F (sound tool
+   surfacing). Repository gate is green: `typecheck`, `lint`, 983 tests across
+   91 files, `i18n:check` at 2244 referenced keys, and a regenerated manifest
+   that passes `--check`. A live drive over CDP confirmed all six new IPC
+   bridges reach the renderer, that a forced `reconcileVpkImpostors` pass swept
+   125 installed mods in 60ms and reported **zero false positives** against a
+   library of genuine VPKs, and that `My changes` mounts with the new
+   List/Pools toggle in the sort row and switches to pool mode without error.
+   What the drive could **not** show is the substance of most of it: the drive
+   library contained **zero authored Foundry changes and zero contended pools**,
+   so the pool cards, the alternatives thumbnails, the audition preview, the
+   sound trim/gain badges, and the portrait editor were never rendered against
+   real content. Their pure models are unit-tested; their rendering is not.
+   Vitest runs in a node environment with no DOM, so no lane has a render test.
+   The impostor reconcile has likewise never met a real impostor, the six
+   originals having been removed before this run. And as with 2c, nobody has
+   started Deadlock: no claim is made that the engine loads any of it.
+2f. **Lane A surfaces nothing yet.** The reconcile detects impostors, and
+   `mods:getVpkImpostors` / `mods:repairVpkImpostor` are wired through preload,
+   but the startup pass emits `vpk-impostors-found` with **no listener**. The
+   lane board's done-condition for A was "no non-VPK can be installed; existing
+   ones are surfaced": the first clause holds, the second does not. Separately,
+   `services/dmmMigration.ts` adopts files as installed mods and was **not**
+   gated, because it is not among the paths the lane plan enumerates. It is a
+   real hole in the same invariant. Lane F's retune route **no longer opens
+   `SoundImportEditor` unseeded**: the editor takes an optional `initialEdits`
+   seed (recorded trim window, gain, loop mode), and `seedTrimWindow` in
+   `components/foundry/soundTuning.ts` fits that seed to the clip the user
+   actually decodes, clamping a window that overruns the file and dropping one
+   that cannot survive at all rather than producing an invalid selection
+   (`components/foundry/soundSeed.test.ts`). Every unseeded call site is
+   unchanged. The seeding math is unit-tested; no retune has been executed
+   against a real clip, so the seeded editor has never been rendered.
+2c. **What the live drive did and did not prove.** Driven through
+   `scripts/dev-driver.mjs` against a real 131-mod library: forge-install builds
+   a verified VPK and records provenance; the row, filters, sort, and both
+   Locker links behave; stale-review, empty-name, and missing-source are all
+   rejected with no half-install; two contending builds form one pool, and six
+   consecutive `runLaunchShuffle` calls alternated between them with zero
+   failures. What is still unproven is the only thing this cannot show: nobody
+   has started Deadlock and confirmed the chosen VPK is what the engine loads.
+2b. **An installed build is deliberately not a Locker skin.** It carries a hero
+   tag for Foundry's own shelving, which is the same shape `isLockerManagedMod`
+   reads as "manage as a skin". It is excluded there
+   (`lib/lockerUtils.ts`, `lib/lockerFoundryBuild.test.ts`) because a build may
+   be a portrait, an icon, a sound, or several at once, and an active-skin card,
+   a skin load-order slot, a launch-shuffle entry, and a 3D-preview merge source
+   are all claims it cannot honour. It stays visible in Installed and in
+   `My changes`; the Locker reaches it by link. A build carrying hero ability
+   sounds still routes to that hero's Sounds tab through the existing
+   `abilitySounds` classification, which is non-destructive.
 3. **Foundry models and broad asset browsing.** There is no usable Foundry
    model-export/viewer entry point. Thumbnail browsing is intentionally limited
    to ability icons, item icons, and hero images; model, VFX, and other large
@@ -225,8 +343,10 @@ and collision winners before an explicit confirm
 (`FoundryBuildTray.tsx:48`-`:79`), and `foundryForge.ts` builds each part in an
 isolated temp directory, merges once, re-derives the review server-side, and
 rejects a stale confirmation (`services/foundryForge.ts:50`) or a built VPK
-whose entries do not match the confirmed write set (`:73`). The build is
-export-only by design.
+whose entries do not match the confirmed write set (`:73`). The build was
+export-only by design; it now has an install output too, running through the
+same `buildFoundryForgeVpk` so neither output can drift from the confirmed
+write set.
 
 On 2026-07-28 the staged sound path gained the exact-path preflight it was
 missing (`SoundBrowse.tsx:1043`): an uninspectable VPK now blocks staging with

@@ -6,6 +6,7 @@ import Tx from '../translation/Tx';
 import { foundryInspectAssetSources, foundryThumbnails } from '../../lib/api';
 import { showToast } from '../../stores/toastStore';
 import type { TextureCategory, TextureGridItem } from '../../types/foundry';
+import PortraitEditor from './PortraitEditor';
 import TextureGrid from './TextureGrid';
 import TextureLightbox from './TextureLightbox';
 import { prepareVisualStagedEdit, visualAssetInspectionPaths, type VisualStagedEdit } from './visualEdits';
@@ -42,8 +43,16 @@ export default function LibraryBrowse({ heroNames, initialCategory = 'ability-ic
   const [heroFilter, setHeroFilter] = useState('all');
   const [lightbox, setLightbox] = useState<TextureGridItem | null>(null);
   const [replacingPath, setReplacingPath] = useState<string | null>(null);
+  // Portrait/hero-image drops open the editor instead of staging the raw file:
+  // that family has state variants and a real target size, so a raw drop cannot
+  // show what the card will show. Every other category is unchanged.
+  const [portrait, setPortrait] = useState<{ item: TextureGridItem; file: File | null } | null>(null);
 
   const replace = useCallback(async (item: TextureGridItem, file: File) => {
+    if (item.category === 'hero-image') {
+      if (onStage) setPortrait({ item, file });
+      return;
+    }
     const imagePath = window.electronAPI.getDroppedFilePath(file);
     if (!imagePath) return;
     setReplacingPath(item.path);
@@ -57,6 +66,7 @@ export default function LibraryBrowse({ heroNames, initialCategory = 'ability-ic
         inspect: foundryInspectAssetSources,
         confirm: (modNames) => window.confirm(t('foundry.texture.stageConflict', { mods: modNames.join(', ') })),
         unreadableMessage: t('foundry.texture.stageUnreadable'),
+        heroName: item.hero ? heroNames.get(item.hero) : undefined,
       });
       if (!staged) return;
       onStage(staged);
@@ -66,7 +76,7 @@ export default function LibraryBrowse({ heroNames, initialCategory = 'ability-ic
     } finally {
       setReplacingPath(null);
     }
-  }, [items, onStage, t]);
+  }, [items, heroNames, onStage, t]);
 
   const loadCategory = useCallback(async (cat: TextureCategory) => {
     setLoading(true);
@@ -169,6 +179,21 @@ export default function LibraryBrowse({ heroNames, initialCategory = 'ability-ic
           onReplace={replacingPath ? undefined : replace}
         />
       )}
+
+      <PortraitEditor
+        item={portrait?.item ?? null}
+        catalog={items}
+        heroName={portrait?.item.hero ? heroNames.get(portrait.item.hero) : undefined}
+        initialFile={portrait?.file ?? null}
+        onClose={() => setPortrait(null)}
+        onStage={(edits) => {
+          for (const edit of edits) onStage?.(edit);
+          showToast(
+            t('portraitEditor.staged', { count: edits.length }),
+            { tone: 'success', duration: 6000 },
+          );
+        }}
+      />
 
       <TextureLightbox
         item={lightbox}

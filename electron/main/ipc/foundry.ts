@@ -25,6 +25,8 @@ import { scanMods } from '../services/mods';
 import { buildHeroEffectVpkForExport } from '../services/heroColors';
 import { exportVpkViaDialog } from '../services/foundryExport';
 import { buildFoundryForgeVpk, forgeAndExportFoundryVpk } from '../services/foundryForge';
+import { writeFoundryPortraitImage } from '../services/foundryPortraitImages';
+import { ensureSourceThumbnail } from '../services/foundrySourceThumbs';
 import { runVpkmergeStdout, vpkmergeBinaryPath } from '../services/modMerger';
 import {
     exportSoundAnnotations,
@@ -178,6 +180,27 @@ ipcMain.handle(
         return ensureVoiceclipFile(requireDeadlockPath(), vsndPath);
     }
 );
+
+// Park a portrait-editor bake on disk so it can be staged.
+//
+// The visual staging contract records an absolute PNG path, and the editor
+// authors its image on a renderer canvas, so the bytes need a file before
+// `prepareVisualStagedEdit` can see them. This writes into a bounded userData
+// cache only: no mod is installed, enabled, or reordered here, and nothing is
+// written into the game directory.
+ipcMain.handle('foundry:stagePortraitImage', async (_e, dataUrl: string): Promise<string> => {
+    return writeFoundryPortraitImage(dataUrl);
+});
+
+// A preview of the user's own source image behind a visual change, for the
+// alternatives gallery. Read-only and bounded: it stats and decodes one file the
+// renderer already knows about from mod provenance, caches a 128px PNG under the
+// existing Foundry thumbnail root, and hands back a `grimoire-foundry:` URL. It
+// never returns a filesystem path, so the renderer gains no new read reach.
+ipcMain.handle('foundry:sourceThumbnail', async (_e, sourcePath: string): Promise<string | null> => {
+    if (typeof sourcePath !== 'string') return null;
+    return ensureSourceThumbnail(sourcePath);
+});
 
 ipcMain.handle('foundry:warmCache', async (): Promise<void> => {
     const deadlockPath = getActiveDeadlockPath();

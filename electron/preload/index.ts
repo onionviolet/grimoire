@@ -33,6 +33,7 @@ import type {
     TrippySpriteOptions,
     TrippyVfxChoice,
     UnknownModDetectionProgress,
+    VpkImpostorReport,
 } from '../../src/types/mod';
 // The single source of truth for the renderer-facing API surface. The api
 // object below is checked against it via `satisfies ElectronAPI`; the
@@ -126,6 +127,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     disableMod: (modId: string) => ipcRenderer.invoke('disable-mod', modId),
     deleteMod: (modId: string) => ipcRenderer.invoke('delete-mod', modId),
     revealModInFolder: (modId: string) => ipcRenderer.invoke('reveal-mod-in-folder', modId),
+    // Installed files that are not actually VPKs (archives renamed to *_dir.vpk).
+    // Reporting only: nothing is deleted, and repair is an explicit user action.
+    reconcileVpkImpostors: () => ipcRenderer.invoke('mods:reconcileVpkImpostors'),
+    getVpkImpostors: () => ipcRenderer.invoke('mods:getVpkImpostors'),
+    repairVpkImpostor: (modId: string) => ipcRenderer.invoke('mods:repairVpkImpostor', modId),
+    onVpkImpostorsFound: (callback: (reports: VpkImpostorReport[]) => void) => {
+        const listener = (_event: Electron.IpcRendererEvent, reports: VpkImpostorReport[]) => callback(reports);
+        ipcRenderer.on('vpk-impostors-found', listener);
+        return () => ipcRenderer.removeListener('vpk-impostors-found', listener);
+    },
     detectUnknownModFilters: (modId: string, requestId?: string) =>
         ipcRenderer.invoke('detect-unknown-mod-filters', modId, requestId),
     detectUnknownModCacheBulk: (requests: Array<{ modId: string; requestId?: string }>) =>
@@ -667,6 +678,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
             ipcRenderer.invoke('foundry:fullImage', category, entryPath),
         voiceclip: (vsndPath: string) => ipcRenderer.invoke('foundry:voiceclip', vsndPath),
         voiceclipFile: (vsndPath: string) => ipcRenderer.invoke('foundry:voiceclipFile', vsndPath),
+        stagePortraitImage: (dataUrl: string): Promise<string> =>
+            ipcRenderer.invoke('foundry:stagePortraitImage', dataUrl),
+        sourceThumbnail: (sourcePath: string): Promise<string | null> =>
+            ipcRenderer.invoke('foundry:sourceThumbnail', sourcePath),
         warmCache: () => ipcRenderer.invoke('foundry:warmCache'),
         engineInfo: () => ipcRenderer.invoke('foundry:engineInfo'),
         exportHeroEffect: (req: HeroEffectExportRequest) =>
@@ -685,6 +700,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
             ipcRenderer.invoke('foundry:replaceTexture', req),
         forge: (req: import('../../src/types/foundry').FoundryForgeRequest) =>
             ipcRenderer.invoke('foundry:forge', req),
+        forgeInstall: (req: import('../../src/types/foundry').FoundryForgeRequest) =>
+            ipcRenderer.invoke('foundry:forgeInstall', req),
     },
 
     // In-app browser: read-only view of the ad/tracker filter's state.

@@ -5,6 +5,12 @@ import AdmZip from 'adm-zip';
 import { spawn } from 'child_process';
 import { createExtractorFromData } from 'node-unrar-js';
 import { path7za as bundled7zaPath } from '7zip-bin';
+import {
+    checkVpkFile,
+    describeVpkRejection,
+    isUnpackableArchiveFormat,
+    type VpkFileFormat,
+} from './vpk';
 
 /**
  * Resolve a node_modules binary path to its asar.unpacked location when packaged.
@@ -159,26 +165,186 @@ function uniqueDestName(fileName: string, taken: Set<string>): string {
     return candidate;
 }
 
+/** Archive containers this module can unpack. */
+export type ArchiveFormat = 'zip' | '7z' | 'rar';
+
+/** A file that carried a `.vpk` name but is not a VPK. */
+export interface RejectedVpk {
+    /** The name it had inside the archive (or on disk). */
+    fileName: string;
+    /** What the magic bytes say it actually is. */
+    format: VpkFileFormat;
+    /** Human-readable format name, e.g. "7-Zip archive". */
+    label: string;
+    /** One sentence naming the real type, safe to show the user. */
+    reason: string;
+}
+
+export interface ExtractArchiveOptions {
+    /** Force a container format instead of sniffing/using the extension. */
+    format?: ArchiveFormat;
+    /** Receives every extracted file that failed the VPK identity gate. */
+    rejected?: RejectedVpk[];
+    /** Internal: bounds the archive-in-archive unwrap to one level. */
+    depth?: number;
+}
+
 /**
- * Extract an archive to a destination directory
- * Returns the list of extracted VPK files
+ * Container format from the file's magic bytes, or null when it is not an
+ * archive we unpack. Magic beats the extension here for the same reason lane A
+ * exists: a mislabelled file is exactly the case we are trying to survive.
+ */
+export function detectArchiveFormat(filePath: string): ArchiveFormat | null {
+    const check = checkVpkFile(filePath);
+    return isUnpackableArchiveFormat(check.format) ? check.format : null;
+}
+
+function archiveFormatFromExtension(filePath: string): ArchiveFormat | null {
+    switch (extname(filePath).toLowerCase()) {
+        case '.zip': return 'zip';
+        case '.7z': return '7z';
+        case '.rar': return 'rar';
+        default: return null;
+    }
+}
+
+/**
+ * Extract an archive to a destination directory.
+ *
+ * Returns the list of extracted files that are REAL VPKs. Anything named
+ * `*.vpk` inside the archive that turns out to be something else is either
+ * unwrapped (when it is itself an archive wrapping exactly one VPK, which is
+ * the case that shipped six inert mods into a real library) or dropped and
+ * reported through `options.rejected`.
  */
 export async function extractArchive(
     archivePath: string,
-    destDir: string
+    destDir: string,
+    options: ExtractArchiveOptions = {}
 ): Promise<ExtractedVpk[]> {
-    const ext = extname(archivePath).toLowerCase();
+    const format =
+        options.format ?? detectArchiveFormat(archivePath) ?? archiveFormatFromExtension(archivePath);
 
-    switch (ext) {
-        case '.zip':
-            return extractZip(archivePath, destDir);
-        case '.7z':
-            return extract7z(archivePath, destDir);
-        case '.rar':
-            return extractRar(archivePath, destDir);
+    let raw: ExtractedVpk[];
+    switch (format) {
+        case 'zip':
+            raw = extractZip(archivePath, destDir);
+            break;
+        case '7z':
+            raw = await extract7z(archivePath, destDir);
+            break;
+        case 'rar':
+            raw = await extractRar(archivePath, destDir);
+            break;
         default:
-            throw new Error(`Unknown archive format: ${ext}`);
+            throw new Error(`Unknown archive format: ${extname(archivePath) || archivePath}`);
     }
+
+    return validateExtractedVpks(raw, destDir, options);
+}
+
+/**
+ * Apply the VPK identity gate to a freshly extracted set. Valid VPKs pass
+ * through untouched; an entry that is really an archive is unwrapped when it
+ * contains exactly one VPK; everything else is removed from disk and recorded.
+ */
+async function validateExtractedVpks(
+    entries: ExtractedVpk[],
+    destDir: string,
+    options: ExtractArchiveOptions
+): Promise<ExtractedVpk[]> {
+    const depth = options.depth ?? 0;
+    const taken = new Set(entries.map((e) => basename(e.path).toLowerCase()));
+    const kept: ExtractedVpk[] = [];
+
+    for (const entry of entries) {
+        const check = checkVpkFile(entry.path);
+        if (check.valid) {
+            kept.push(entry);
+            continue;
+        }
+
+        if (depth < 1 && isUnpackableArchiveFormat(check.format)) {
+            const innerPath = await unwrapSingleInnerVpk(entry.path, destDir, check.format, taken);
+            if (innerPath) {
+                console.warn(
+                    `[extractArchive] ${entry.fileName} was a ${check.label}; installed the single VPK it contained instead.`
+                );
+                try { unlinkSync(entry.path); } catch { /* best-effort */ }
+                kept.push({ ...entry, path: innerPath });
+                continue;
+            }
+        }
+
+        console.warn(`[extractArchive] Dropping ${entry.fileName}: ${check.reason ?? 'not a VPK'}`);
+        options.rejected?.push({
+            fileName: entry.fileName,
+            format: check.format,
+            label: check.label,
+            reason: describeVpkRejection(entry.fileName, check),
+        });
+        try { unlinkSync(entry.path); } catch { /* best-effort */ }
+    }
+
+    return kept;
+}
+
+/**
+ * When `filePath` is really an archive containing exactly one VPK, extract that
+ * VPK into `destDir` and return its path. Returns null when the archive holds
+ * zero or several VPKs (ambiguous: we will not guess which one the user meant)
+ * or cannot be read.
+ */
+async function unwrapSingleInnerVpk(
+    filePath: string,
+    destDir: string,
+    format: ArchiveFormat,
+    taken: Set<string>
+): Promise<string | null> {
+    const scratch = createTempDir('grimoire-unwrap');
+    try {
+        const inner = await extractArchive(filePath, scratch, { format, depth: 1 });
+        if (inner.length !== 1) return null;
+        const destPath = join(destDir, uniqueDestName(basename(inner[0].path), taken));
+        copyFileSync(inner[0].path, destPath);
+        return destPath;
+    } catch (error) {
+        console.warn(`[extractArchive] Could not unwrap ${basename(filePath)}:`, error);
+        return null;
+    } finally {
+        try { rmDirRecursive(scratch); } catch { /* ignore cleanup errors */ }
+    }
+}
+
+/**
+ * Resolve ONE candidate file into an installable VPK path.
+ *
+ * - A real VPK resolves to itself.
+ * - An archive (whatever its extension says) that wraps exactly one VPK
+ *   resolves to that inner VPK, extracted into `workDir`.
+ * - Anything else throws an error naming the detected type.
+ *
+ * This is the single entry point for the adoption paths that handle a bare
+ * file rather than an archive listing: custom import, drag-drop, and a direct
+ * `.vpk` download.
+ */
+export async function resolveInstallableVpk(
+    filePath: string,
+    workDir: string,
+    displayName = basename(filePath)
+): Promise<{ path: string; unwrappedFrom?: string }> {
+    const check = checkVpkFile(filePath);
+    if (check.valid) return { path: filePath };
+
+    if (isUnpackableArchiveFormat(check.format)) {
+        const inner = await unwrapSingleInnerVpk(filePath, workDir, check.format, new Set());
+        if (inner) return { path: inner, unwrappedFrom: check.label };
+        throw new Error(
+            `${displayName} is a ${check.label}, not a VPK, and it does not contain exactly one VPK to install instead.`
+        );
+    }
+
+    throw new Error(describeVpkRejection(displayName, check));
 }
 
 /**
@@ -429,8 +595,12 @@ function rmDirRecursive(dir: string): void {
 /**
  * List contents of an archive (for Mina variants)
  */
-export async function listArchiveContents(archivePath: string): Promise<string[]> {
-    const ext = extname(archivePath).toLowerCase();
+export async function listArchiveContents(
+    archivePath: string,
+    format?: ArchiveFormat
+): Promise<string[]> {
+    const resolved = format ?? detectArchiveFormat(archivePath) ?? archiveFormatFromExtension(archivePath);
+    const ext = resolved ? `.${resolved}` : extname(archivePath).toLowerCase();
 
     if (ext === '.zip') {
         const zip = new AdmZip(archivePath);

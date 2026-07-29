@@ -4,7 +4,7 @@ import { join, basename, extname, resolve } from 'path';
 import { tmpdir } from 'os';
 import { BrowserWindow } from 'electron';
 import { getDisabledPath } from './deadlock';
-import { extractArchive, isArchive, checkOneClickOptOut, scanSuspiciousFiles, type ExtractedVpk } from './extract';
+import { extractArchive, isArchive, checkOneClickOptOut, scanSuspiciousFiles, resolveInstallableVpk, type ExtractedVpk } from './extract';
 import { buildVpkIndexBySize } from './vpkVariantIndex';
 import { randomUUID } from 'crypto';
 import { setModMetadataWithHash, getModMetadata } from './metadata';
@@ -903,11 +903,14 @@ async function executeDownload(
             await fs.unlink(downloadPath);
         }
     } else if (extname(downloadPath).toLowerCase() === '.vpk') {
-        // Direct VPK download
+        // Direct VPK download. The `.vpk` extension is not evidence: check the
+        // magic bytes, and unwrap a file that is really an archive holding
+        // exactly one VPK rather than installing an inert impostor.
+        const resolved = await resolveInstallableVpk(downloadPath, workDir, basename(downloadPath));
         const renamed = await renameVpksToAvoidConflicts(
             deadlockPath,
             targetPath,
-            [{ path: downloadPath, fileName: basename(downloadPath) }],
+            [{ path: resolved.path, fileName: basename(downloadPath) }],
             details.name
         );
         installedVpks = renamed.map((r) => r.fileName);
@@ -1420,10 +1423,13 @@ async function executeOneClickDownload(
             await fs.unlink(downloadPath);
         }
     } else if (extname(downloadPath).toLowerCase() === '.vpk') {
+        // Same identity gate as the Browse download path above: one-click
+        // installs must not adopt an archive that merely ends in `.vpk`.
+        const resolved = await resolveInstallableVpk(downloadPath, workDir, basename(downloadPath));
         const renamed = await renameVpksToAvoidConflicts(
             deadlockPath,
             targetPath,
-            [{ path: downloadPath, fileName: basename(downloadPath) }],
+            [{ path: resolved.path, fileName: basename(downloadPath) }],
             oneClickModName
         );
         installedVpks = renamed.map((r) => r.fileName);

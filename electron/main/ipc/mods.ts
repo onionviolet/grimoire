@@ -19,7 +19,13 @@ import {
 import { metaKeyFor } from '../services/deadlock';
 import { getModMetadata, setModMetadata, setModMetadataWithHash, removeModMetadata, pruneOrphanMetadata } from '../services/metadata';
 import { inferHeroFromTitle } from '@grimoire/social-types/heroes';
-import { inferHeroFromVpk, classifyGlobalModFromVpk, GLOBAL_CLASSIFIER_VERSION, parseVpkDirectory, parseVpkDirectoriesAsync } from '../services/vpk';
+import { inferHeroFromVpk, classifyGlobalModFromVpk, GLOBAL_CLASSIFIER_VERSION, parseVpkDirectory, parseVpkDirectoriesAsync, checkVpkFile, invalidateVpkParseCache } from '../services/vpk';
+import {
+    reconcileInstalledVpks,
+    repairVpkImpostor,
+    type VpkImpostorReport,
+    type VpkImpostorRepairResult,
+} from '../services/vpkImpostors';
 import { inspectFoundrySoundWriteSet } from '../services/foundrySoundConflicts';
 import { inspectFoundryAssetSources } from '../services/foundryAssetSources';
 import { classifyAbilitySoundsFromVpk } from '../services/abilitySounds';
@@ -35,7 +41,7 @@ import {
 } from '../services/unknownModDetection';
 import { downloadMod } from '../services/download';
 import { fetchAdoptedThumbnail, type AdoptedThumbnailTarget } from '../services/adoptedThumbnail';
-import { extractArchive, isArchive, type ExtractedVpk } from '../services/extract';
+import { extractArchive, isArchive, resolveInstallableVpk, type ExtractedVpk, type RejectedVpk } from '../services/extract';
 import {
     analyzeMerge,
     mergeMods,
@@ -57,13 +63,14 @@ import { parseAddonInfo, readEmbeddedAddonInfoText, readEmbeddedAddonInfo, carry
 import { readEmbeddedModinfo, readLegacyGrimoireMergeMeta, hasLegacyGrimoireMergeMetaEntry } from '../services/modinfoFormat';
 import { buildHeroSoundSwapVpk, cleanupHeroSoundSwapBuild } from '../services/foundryCatalog';
 import { buildTextureReplacementVpk, cleanupTextureReplacementBuild } from '../services/foundryTextureReplace';
+import { buildFoundryForgeVpk, describeFoundryBuild } from '../services/foundryForge';
 import { buildSoulContainerVpk, cleanupSoulContainerBuild, previewSoulContainerGlb } from '../services/soulContainerImport';
 import { buildSpiritUrnVpk, cleanupSpiritUrnBuild, previewSpiritUrnGlb } from '../services/spiritUrnImport';
 import { resolveModVpk, clearSoulModelCache } from '../services/soulContainerModels';
 import { exportVpkViaDialog, exportVpkFileName } from '../services/foundryExport';
 import { getMainWindow } from '../index';
 import type { ImportCustomModArgs, ImportCustomModsBatchArgs, ImportCustomModsBatchResult, ImportCustomModResult, ImportCustomModsProgress, ImportSoulContainerGlbArgs, PreviewSoulContainerGlbArgs, SoulContainerPreview, ImportSpiritUrnGlbArgs, PreviewSpiritUrnGlbArgs, SpiritUrnPreview } from '../../../src/types/electron';
-import type { VpkExportResult, HeroSoundSwapRequest, TextureReplacementRequest, FoundrySoundConflictInspection, FoundryAssetSourcesInspection } from '../../../src/types/foundry';
+import type { VpkExportResult, HeroSoundSwapRequest, TextureReplacementRequest, FoundryForgeRequest, FoundrySoundConflictInspection, FoundryAssetSourcesInspection } from '../../../src/types/foundry';
 import type { AbilitySoundClassification, AddMergeSourcesResult, ApplyUnknownCustomModArgs, ApplyUnknownModMatchArgs, AssociateUnknownModArgs, EditLocalModArgs, GlobalModType, LockerHeroSource, MergeAnalysisResult, MergeModsArgs, Mod as WireMod, SoulContainerImportInfo, SoundSwapInfo, UrnImportInfo, UnmergeModResult, ExtractMergeSourceResult, UnknownModFileList, ImprintPreflightResult, ImprintDetails, PeekImprintResult, ModelCompatibilityReport } from '../../../src/types/mod';
 
 const unknownDetectionControllers = new Map<string, AbortController>();
@@ -177,7 +184,11 @@ function resolveGlobalType(
     mod: Mod,
     metadata: ReturnType<typeof getModMetadata>
 ): import('../../../src/types/mod').GlobalModType | null {
-    if (metadata?.soundSwap) return metadata.globalType ?? null;
+    // An installed Foundry build has the same problem as a sound swap: its file
+    // tree is the *game's* layout for whatever it overrides, not a statement of
+    // its own intent, so path sniffing would mislabel it. Foundry already
+    // decided placement at install time; an explicit user retag still wins.
+    if (metadata?.soundSwap || metadata?.foundryBuild) return metadata.globalType ?? null;
     const current = metadata?.globalType;
     const stamped = metadata?.globalTypeClassifierVersion ?? 0;
     const needsClassify =
@@ -321,6 +332,8 @@ function enrichMod(mod: Mod): WireMod {
             soulImport: metadata.soulImport,
             urnImport: metadata.urnImport,
             soundSwap: metadata.soundSwap,
+            textureReplacement: metadata.textureReplacement,
+            foundryBuild: metadata.foundryBuild,
             ignoreUpdates: metadata.ignoreUpdates,
             imprinted: metadata.imprinted,
             imprintStale: metadata.imprintStale,
@@ -388,12 +401,83 @@ function migrateIgnoredConflictKeysBeforeRenames(mods: Mod[]): void {
     }
 }
 
+// --- VPK impostor reconcile -------------------------------------------------
+//
+// Files installed before the identity gate existed may not be VPKs at all
+// (archives renamed to `*_dir.vpk`). Reconcile flags them with the detected
+// type; it never deletes anything. Repair is always user-initiated.
+
+let impostorReportCache: VpkImpostorReport[] | null = null;
+let startupImpostorScanStarted = false;
+
+async function runVpkImpostorReconcile(): Promise<VpkImpostorReport[]> {
+    const deadlockPath = getActiveDeadlockPath();
+    if (!deadlockPath) return [];
+    const mods = await scanMods(deadlockPath);
+    const reports = await reconcileInstalledVpks(
+        mods.map((mod) => ({ id: mod.id, name: enrichMod(mod).name, path: mod.path, fileName: mod.fileName }))
+    );
+    impostorReportCache = reports;
+    return reports;
+}
+
+/**
+ * One background reconcile per app run, kicked off by the first mod scan (which
+ * the renderer performs at startup). Reports through an event so nothing about
+ * the normal mod list is delayed by it; a failure is logged and dropped.
+ */
+function startStartupImpostorScan(): void {
+    if (startupImpostorScanStarted) return;
+    startupImpostorScanStarted = true;
+    void runVpkImpostorReconcile()
+        .then((reports) => {
+            if (reports.length === 0) return;
+            console.warn(
+                `[vpkImpostors] ${reports.length} installed file(s) are not VPKs:`,
+                reports.map((r) => `${r.fileName} (${r.label})`)
+            );
+            getMainWindow()?.webContents.send('vpk-impostors-found', reports);
+        })
+        .catch((error) => {
+            console.warn('[vpkImpostors] Startup reconcile failed:', error);
+        });
+}
+
+// Force a fresh reconcile (Settings, or after a repair).
+ipcMain.handle('mods:reconcileVpkImpostors', async (): Promise<VpkImpostorReport[]> => {
+    startupImpostorScanStarted = true;
+    return runVpkImpostorReconcile();
+});
+
+// Read whatever the last reconcile found, without rescanning.
+ipcMain.handle('mods:getVpkImpostors', (): VpkImpostorReport[] => impostorReportCache ?? []);
+
+// Extract-and-repair one impostor that wraps exactly one VPK. Explicit user
+// action only: the original archive is moved aside, never deleted.
+ipcMain.handle('mods:repairVpkImpostor', async (_, modId: string): Promise<VpkImpostorRepairResult> => {
+    const deadlockPath = getActiveDeadlockPath();
+    if (!deadlockPath) throw new Error('No Deadlock path configured');
+    if (!modId || typeof modId !== 'string') throw new Error('A mod id is required');
+    return runExclusiveModMutation(async () => {
+        const mods = await scanMods(deadlockPath);
+        const target = mods.find((mod) => mod.id === modId);
+        if (!target) throw new Error('That mod is no longer installed');
+        const result = await repairVpkImpostor(target.path);
+        // The slot now holds different bytes at the same path; drop any cached
+        // parse for it so the next inspection reads the repaired VPK.
+        invalidateVpkParseCache(target.path);
+        impostorReportCache = null;
+        return result;
+    });
+});
+
 // get-mods
 ipcMain.handle('get-mods', async (): Promise<Mod[]> => {
     const deadlockPath = getActiveDeadlockPath();
     if (!deadlockPath) {
         return [];
     }
+    startStartupImpostorScan();
     const mods = await scanMods(deadlockPath);
     // Self-heal users whose metadata.json still carries orphan entries from
     // pre-fix deletes (issue #26). Skip while dev mode is active: the dev
@@ -1173,23 +1257,34 @@ async function importCustomModSource(
 
     // Resolve the list of source VPKs to import. A bare .vpk is a single
     // source; an archive is extracted to a temp dir first and every VPK it
-    // contains becomes its own import (extractArchive already filters to .vpk).
+    // contains becomes its own import.
+    //
+    // IDENTITY GATE: the extension is not evidence. `resolveInstallableVpk`
+    // reads the magic bytes, unwraps a file that is really an archive holding
+    // exactly one VPK, and otherwise rejects by detected type; `extractArchive`
+    // applies the same gate to everything it pulls out of a real archive.
     let sourceVpks: ExtractedVpk[];
-    let tempDir: string | undefined;
-    if (isVpk) {
-        sourceVpks = [{ path: vpkPath, fileName: basename(vpkPath) }];
-    } else {
-        tempDir = await fs.mkdtemp(join(tmpdir(), 'grimoire-import-'));
-        try {
-            sourceVpks = await extractArchive(vpkPath, tempDir);
-        } catch (err) {
-            await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
-            throw err;
+    const tempDir = await fs.mkdtemp(join(tmpdir(), 'grimoire-import-'));
+    const rejected: RejectedVpk[] = [];
+    try {
+        if (isVpk) {
+            const resolved = await resolveInstallableVpk(vpkPath, tempDir, basename(vpkPath));
+            sourceVpks = [{ path: resolved.path, fileName: basename(vpkPath) }];
+        } else {
+            sourceVpks = await extractArchive(vpkPath, tempDir, { rejected });
         }
-        if (sourceVpks.length === 0) {
-            await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
-            throw new Error('No .vpk file was found inside the archive.');
+    } catch (err) {
+        await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+        throw err;
+    }
+    if (sourceVpks.length === 0) {
+        await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+        if (rejected.length > 0) {
+            throw new Error(
+                `No usable VPK was found inside the archive. ${rejected.map((r) => r.reason).join(' ')}`
+            );
         }
+        throw new Error('No .vpk file was found inside the archive.');
     }
 
     try {
@@ -1272,9 +1367,7 @@ async function importCustomModSource(
             }
         }
     } finally {
-        if (tempDir) {
-            await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
-        }
+        await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
     }
 
     return sourceVpks.length;
@@ -1401,11 +1494,26 @@ ipcMain.handle('foundry:inspectAssetSources', async (_, paths: string[]): Promis
     }
     const mods = await scanMods(deadlockPath);
     const entriesByPath = await parseVpkDirectoriesAsync(mods.map((mod) => mod.path));
-    return inspectFoundryAssetSources(paths, mods.map((mod) => ({
-        mod: { id: mod.id, name: enrichMod(mod).name, enabled: mod.enabled, priority: mod.priority },
-        entries: entriesByPath.get(mod.path) ?? null,
-        metadata: getModMetadata(mod.metaKey),
-    })));
+    return inspectFoundryAssetSources(paths, mods.map((mod) => {
+        const entries = entriesByPath.get(mod.path) ?? null;
+        // An unreadable VPK is often not a VPK at all. Read its magic bytes so
+        // the panel can name the real type instead of reporting a bare failure.
+        // Only for the unreadable ones: a 16-byte header read per healthy mod
+        // would be pure waste on a large library.
+        let detectedType: string | null = null;
+        if (!entries) {
+            const check = checkVpkFile(mod.path);
+            detectedType = check.valid || check.format === 'unknown' || check.format === 'vpk'
+                ? null
+                : check.label;
+        }
+        return {
+            mod: { id: mod.id, name: enrichMod(mod).name, enabled: mod.enabled, priority: mod.priority },
+            entries,
+            detectedType,
+            metadata: getModMetadata(mod.metaKey),
+        };
+    }));
 });
 
 // foundry:swapSound
@@ -1598,6 +1706,73 @@ ipcMain.handle(
         }
     }
 );
+
+// foundry:forgeInstall -- the install half of the Foundry build tray. It runs
+// exactly the same reviewed, verified build as `foundry:forge` (same stale
+// confirmation rejection, same write-set check against the built VPK), then
+// registers the result as a normal local mod instead of handing it to a save
+// dialog. Export stays available and unchanged; this is the path that gives a
+// forged change provenance, so `My changes` can list it, resolve its real
+// runtime winner, and rebuild it later.
+//
+// Installed/Locker remains the only authority for enabled state: this allocates
+// an enabled slot exactly like every other local install and then gets out of
+// the way. Nothing else on disk is touched, and a build that fails leaves no
+// half-installed mod behind.
+ipcMain.handle(
+    'foundry:forgeInstall',
+    async (_, request: FoundryForgeRequest): Promise<WireMod[]> => {
+        const deadlockPath = getActiveDeadlockPath();
+        if (!deadlockPath) throw new Error('No Deadlock path configured');
+        const name = request?.name?.trim();
+        if (!name) throw new Error('A name is required for the Foundry build.');
+
+        // Build first: a rejected review or a mismatched write set must fail
+        // before any slot is allocated.
+        const built = await buildFoundryForgeVpk(deadlockPath, request);
+        const provenance = describeFoundryBuild(request);
+        let destPath: string | null = null;
+        let destMetaKey: string | null = null;
+        try {
+            destPath = await allocateEnabledVpkPath(deadlockPath);
+            destMetaKey = metaKeyFor(destPath);
+            await copyIntoModSlot(built.vpkPath, destPath, true);
+            removeModMetadata(destMetaKey);
+            await setModMetadataWithHash(
+                destMetaKey,
+                {
+                    modName: name,
+                    sourceSection: 'Mod',
+                    categoryName: 'Foundry build',
+                    // A build is hero-scoped only when every part agrees on one
+                    // hero. A mixed build files under the global bucket rather
+                    // than claiming a hero it only partly belongs to.
+                    ...(soleHeroOf(provenance) ? { lockerHero: soleHeroOf(provenance)!, lockerHeroSource: 'manual' as LockerHeroSource } : {}),
+                    foundryBuild: provenance,
+                },
+                destPath
+            );
+            return (await scanMods(deadlockPath)).map(enrichMod);
+        } catch (err) {
+            // The VPK and its metadata are one observable install; never leave
+            // half of it behind.
+            if (destMetaKey) removeModMetadata(destMetaKey);
+            if (destPath) await fs.unlink(destPath).catch(() => {});
+            throw err;
+        } finally {
+            await built.cleanup().catch(() => {});
+        }
+    }
+);
+
+/** The one hero every part of a build belongs to, or null when the build spans
+ *  heroes / has any unscoped part. Used only for Locker filing. */
+function soleHeroOf(build: import('../../../src/types/mod').FoundryBuildInfo): string | null {
+    const heroes = new Set(build.parts.map((part) => part.heroName?.trim() || ''));
+    if (heroes.size !== 1) return null;
+    const [only] = [...heroes];
+    return only || null;
+}
 
 // foundry:replaceTexture -- bake one catalog texture/icon replacement and
 // register it like every other local mod. The source pak is never changed:

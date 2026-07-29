@@ -96,6 +96,10 @@ export interface ModMetadata {
     /** One-entry Foundry texture/icon replacement, retained for local-mod
      * tracking and clean deletion through the normal Installed workflow. */
     textureReplacement?: import('../../../src/types/mod').TextureReplacementInfo;
+    /** Set when a Foundry build tray was installed instead of exported. Carries
+     * the confirmed write set plus each part's provenance, so the "My changes"
+     * surface can list, group, and rebuild it without re-authoring. */
+    foundryBuild?: import('../../../src/types/mod').FoundryBuildInfo;
     /** Load-order slot this mod last held while enabled. Disabled mods now
      *  get free-form filenames (no pakNN), so the priority is no longer encoded
      *  in the name; we stash it here on disable and try to restore it on enable

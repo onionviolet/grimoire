@@ -675,6 +675,13 @@ export interface Mod {
   /** Provenance for a Foundry-managed sound override. This is projected from
    * local metadata so Foundry and the Locker share the exact same enabled state. */
   soundSwap?: SoundSwapInfo;
+  /** Provenance for a one-entry Foundry visual replacement, projected from
+   * local metadata so Foundry can list it beside its sound changes. */
+  textureReplacement?: TextureReplacementInfo;
+  /** Provenance for a Foundry build that was installed rather than exported.
+   * A build may carry several parts of mixed kinds; the exact write set is
+   * recorded so the change's real runtime winner can be resolved. */
+  foundryBuild?: FoundryBuildInfo;
   /** User opted out of the "update available" flag for this mod. Persisted
    *  in metadata; toggled from the mod details modal. */
   ignoreUpdates?: boolean;
@@ -705,6 +712,39 @@ export interface TextureReplacementInfo {
   entryPath: string;
   imageFileName: string;
   category: import('./foundry').TextureCategory;
+  /** Display name of the hero this asset belongs to, when the catalog knew one.
+   *  Grouping and the Locker cross-link only; never an ownership signal. */
+  heroName?: string;
+}
+
+/** One part of an installed Foundry build, kept so a "my changes" surface can
+ *  list and group it. `entries` are the exact normalized VPK paths that part
+ *  contributed, so ownership is never inferred from a label or a hero name. */
+export interface FoundryBuildPart {
+  kind: 'sound' | 'texture';
+  title: string;
+  entries: string[];
+  /** Visual parts only: which catalog family the replaced asset came from. */
+  category?: import('./foundry').TextureCategory;
+  /** Hero display name when the part is hero-scoped. Grouping and the Locker
+   *  cross-link only. */
+  heroName?: string;
+  /** Basename of the user file behind this part (the dropped MP3 or PNG). */
+  sourceFileName?: string;
+  /** Sound parts only: the soundevent that was replaced. */
+  event?: string;
+}
+
+/** Provenance for a Foundry build installed into the mod library instead of
+ *  exported to disk. `writeSet` is the main-derived set of entries the VPK
+ *  actually owns (the same one the forge verified the built VPK against), and
+ *  `reforge` is the original request so the build can be rebuilt without
+ *  re-authoring. Those source files are the user's own and may since have
+ *  moved, so a rebuild must check they still exist before it starts. */
+export interface FoundryBuildInfo {
+  writeSet: string[];
+  parts: FoundryBuildPart[];
+  reforge?: import('./foundry').FoundryForgeRequest;
 }
 
 /** Read-only preflight for a prospective merge. Kept separate from
@@ -1259,4 +1299,40 @@ export interface AppSettings {
     height: number;
     isMaximized?: boolean;
   };
+}
+
+/**
+ * An installed file that is not actually a VPK.
+ *
+ * Before the identity gate landed, every install path tested the filename
+ * extension and never the magic bytes, so archives renamed to `*_dir.vpk`
+ * could be adopted as mods. The game cannot load them, so those mods never
+ * worked. The startup reconcile reports them with the detected type; it never
+ * deletes anything, and repair is an explicit user action.
+ */
+export interface VpkImpostorReport {
+  modId: string;
+  modName: string;
+  fileName: string;
+  filePath: string;
+  /** Detected container: 'zip' | '7z' | 'rar' | 'gzip' | 'empty' | 'unknown' | 'vpk'. */
+  format: string;
+  /** Human-readable format name, e.g. "7-Zip archive". */
+  label: string;
+  /** First four bytes, e.g. `0xafbc7a37`. */
+  magicHex?: string;
+  /** One sentence naming the detected type. */
+  reason: string;
+  /** True when the archive wraps exactly one VPK that can replace it. */
+  repairable: boolean;
+  /** Name of that single inner VPK, when `repairable`. */
+  innerVpkName?: string;
+}
+
+/** Outcome of an extract-and-repair on one impostor. */
+export interface VpkImpostorRepairResult {
+  /** Where the original archive was moved. Nothing is ever deleted. */
+  backupPath: string;
+  /** The inner VPK now occupying the slot. */
+  innerVpkName: string;
 }

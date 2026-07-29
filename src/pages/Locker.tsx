@@ -404,6 +404,21 @@ export default function Locker() {
     [baseHeroList]
   );
 
+  // `/locker?hero=<display name>` opens that hero's shelf. Foundry links here by
+  // name because it never sees the GameBanana category ids the routes use, so the
+  // id resolution happens on this side, once the category list has loaded. An
+  // unknown name deliberately leaves the user on the grid rather than guessing a
+  // hero; either way the query is dropped so a back-navigation cannot re-fire it.
+  useEffect(() => {
+    if (selectedHeroId !== null || globalSelected) return;
+    const wanted = new URLSearchParams(location.search).get('hero');
+    if (!wanted) return;
+    if (!baseHeroList.length) return;
+    const canonical = canonicalHeroName(wanted);
+    const match = baseHeroList.find((hero) => canonicalHeroName(hero.name) === canonical);
+    navigate(match ? `/locker/hero/${match.id}` : '/locker', { replace: true });
+  }, [baseHeroList, globalSelected, location.search, navigate, selectedHeroId]);
+
   useEffect(() => {
     let active = true;
     if (heroNamesForColorSupport.length === 0) {
@@ -1156,6 +1171,7 @@ export default function Locker() {
             skinCount={selectedHeroSkinCount}
             isFavorite={favoriteHeroes.includes(overlayHero.id)}
             onBack={() => navigate('/locker')}
+            onEditInFoundry={() => navigate(`/foundry?hero=${encodeURIComponent(overlayHero.name)}`)}
             onToggleFavorite={() =>
               setFavoriteHeroes((prev) =>
                 prev.includes(overlayHero.id)

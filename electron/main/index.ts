@@ -66,6 +66,18 @@ app.commandLine.appendSwitch(
     'HardwareMediaKeyHandling,MediaSessionService'
 );
 
+// Opt-in renderer debugging port, for driving the app from a script during
+// development (see scripts/dev-driver.mjs). Deliberately env-gated rather than
+// keyed off `is.dev`: an always-open port in dev is an always-open port on any
+// developer's machine, and this one accepts arbitrary code in the renderer.
+// Never set in a packaged build.
+if (process.env.GRIMOIRE_DEV_CDP_PORT) {
+    app.commandLine.appendSwitch('remote-debugging-port', process.env.GRIMOIRE_DEV_CDP_PORT);
+    // Bind to loopback only. Without this Chromium may accept connections from
+    // the local network, which would expose renderer eval to anything on it.
+    app.commandLine.appendSwitch('remote-allow-origins', 'http://127.0.0.1');
+}
+
 // Import IPC handlers
 import './ipc/settings';
 import './ipc/mods';

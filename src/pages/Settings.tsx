@@ -805,6 +805,10 @@ export default function Settings() {
           </div>
         </Card>
 
+        {/* Performance convars. Sits directly under Game Configuration because it
+            edits the same gameinfo.gi the status block above reports on. */}
+        {settings?.experimentalPerformanceConfig && <PerformanceConfigCard />}
+
         {/* Updates */}
         <Card title={<Tx k="settings.sections.updates" fallback="Updates" />} icon={Download} className="lg:col-span-2">
           <div className="space-y-4">
@@ -1391,8 +1395,6 @@ export default function Settings() {
             />
           </Card>
         )}
-
-        {settings?.experimentalPerformanceConfig && <PerformanceConfigCard />}
 
         {/* Support */}
         <Card title={<Tx k="settings.sections.support" fallback="Support" />} icon={LifeBuoy} className="lg:col-span-2">

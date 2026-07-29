@@ -20,6 +20,207 @@ import type { GlobalModType } from '../../../src/types/mod';
 const VPK_SIGNATURE = 0x55AA1234;
 
 /**
+ * The VPK header magic, exported so every adoption path can agree on one
+ * constant. `services/modMerger.ts` has validated merge OUTPUT against this
+ * value for a long time; the identity gate below applies the same check on the
+ * way IN, which is the half that was missing (see docs/feature-status.md 2d).
+ */
+export const VPK_MAGIC = VPK_SIGNATURE;
+
+/** VPK directory versions the parser above understands. */
+export const SUPPORTED_VPK_VERSIONS: readonly number[] = [1, 2];
+
+/** Formats a file that claims to be a VPK can actually turn out to be. */
+export type VpkFileFormat = 'vpk' | 'zip' | '7z' | 'rar' | 'gzip' | 'empty' | 'unknown';
+
+export interface VpkFileCheck {
+    /** True only for a real VPK header with a version this app can parse. */
+    valid: boolean;
+    /** What the magic bytes say the file actually is. */
+    format: VpkFileFormat;
+    /** Human-readable format name, e.g. "7-Zip archive". */
+    label: string;
+    /** VPK directory version, present when `format` is 'vpk'. */
+    version?: number;
+    /** First four bytes as `0x........`, for reporting an unknown format. */
+    magicHex?: string;
+    /** Why the file was rejected. Absent when `valid`. */
+    reason?: string;
+}
+
+const FORMAT_LABELS: Record<VpkFileFormat, string> = {
+    vpk: 'VPK',
+    zip: 'ZIP archive',
+    '7z': '7-Zip archive',
+    rar: 'RAR archive',
+    gzip: 'gzip archive',
+    empty: 'empty file',
+    unknown: 'unrecognized file',
+};
+
+/** Display name for a detected format ("7-Zip archive"). */
+export function vpkFormatLabel(format: VpkFileFormat): string {
+    return FORMAT_LABELS[format] ?? FORMAT_LABELS.unknown;
+}
+
+/** True when the detected format is an archive we know how to unpack. */
+export function isUnpackableArchiveFormat(format: VpkFileFormat): format is 'zip' | '7z' | 'rar' {
+    return format === 'zip' || format === '7z' || format === 'rar';
+}
+
+/**
+ * The first four bytes as the little-endian uint32 they are read as. This is
+ * the same vocabulary the diagnosis used: 7-Zip reads `0xafbc7a37` and ZIP
+ * reads `0x04034b50`, exactly as VPK reads `0x55aa1234`.
+ */
+function magicHexOf(head: Buffer): string {
+    const padded = Buffer.alloc(4);
+    head.copy(padded, 0, 0, Math.min(4, head.length));
+    return `0x${padded.readUInt32LE(0).toString(16).padStart(8, '0')}`;
+}
+
+/**
+ * Classify a file's leading bytes. Pure, so the impostor cases (a ZIP or a 7z
+ * renamed to `*_dir.vpk`) are unit-testable without touching disk.
+ *
+ * Accepts a short buffer: anything under 12 bytes cannot carry a VPK header, so
+ * it is reported by whatever archive signature it does match, or as unknown.
+ */
+export function identifyVpkBytes(head: Buffer): VpkFileCheck {
+    if (head.length === 0) {
+        return { valid: false, format: 'empty', label: FORMAT_LABELS.empty, reason: 'The file is empty.' };
+    }
+
+    if (head.length >= 4 && head.readUInt32LE(0) === VPK_SIGNATURE) {
+        if (head.length < 12) {
+            return {
+                valid: false,
+                format: 'vpk',
+                label: FORMAT_LABELS.vpk,
+                magicHex: magicHexOf(head),
+                reason: 'The VPK header is truncated.',
+            };
+        }
+        const version = head.readUInt32LE(4);
+        if (!SUPPORTED_VPK_VERSIONS.includes(version)) {
+            return {
+                valid: false,
+                format: 'vpk',
+                label: FORMAT_LABELS.vpk,
+                version,
+                magicHex: magicHexOf(head),
+                reason: `Unsupported VPK version ${version}.`,
+            };
+        }
+        return { valid: true, format: 'vpk', label: FORMAT_LABELS.vpk, version, magicHex: magicHexOf(head) };
+    }
+
+    const format = detectNonVpkFormat(head);
+    return {
+        valid: false,
+        format,
+        label: FORMAT_LABELS[format],
+        magicHex: magicHexOf(head),
+        reason:
+            format === 'unknown'
+                ? `The file does not start with the VPK signature (found ${magicHexOf(head)}).`
+                : `This is a ${FORMAT_LABELS[format]}, not a VPK.`,
+    };
+}
+
+function detectNonVpkFormat(head: Buffer): VpkFileFormat {
+    // ZIP: "PK\x03\x04" and the empty/spanned variants.
+    if (head.length >= 4 && head[0] === 0x50 && head[1] === 0x4b) {
+        const third = head[2];
+        const fourth = head[3];
+        const isZip =
+            (third === 0x03 && fourth === 0x04) ||
+            (third === 0x05 && fourth === 0x06) ||
+            (third === 0x07 && fourth === 0x08);
+        if (isZip) return 'zip';
+    }
+    // 7z: 37 7A BC AF 27 1C (reads 0xafbc7a37 little-endian).
+    if (head.length >= 6 &&
+        head[0] === 0x37 && head[1] === 0x7a && head[2] === 0xbc &&
+        head[3] === 0xaf && head[4] === 0x27 && head[5] === 0x1c) {
+        return '7z';
+    }
+    // RAR: "Rar!\x1A\x07" (v4 and v5 share the first six bytes).
+    if (head.length >= 6 &&
+        head[0] === 0x52 && head[1] === 0x61 && head[2] === 0x72 &&
+        head[3] === 0x21 && head[4] === 0x1a && head[5] === 0x07) {
+        return 'rar';
+    }
+    // gzip: 1F 8B.
+    if (head.length >= 2 && head[0] === 0x1f && head[1] === 0x8b) {
+        return 'gzip';
+    }
+    return 'unknown';
+}
+
+/**
+ * THE shared identity gate. Read a candidate file's header and report whether
+ * it is a real VPK, naming what it actually is when it is not. Every path that
+ * adopts a file as an installed mod (custom import, archive extraction results,
+ * downloads, one-click install, drag-drop) routes through this rather than
+ * trusting the `.vpk` filename extension.
+ */
+export function checkVpkFile(filePath: string): VpkFileCheck {
+    let fd: number | null = null;
+    try {
+        const stat = statSync(filePath);
+        if (!stat.isFile()) {
+            return { valid: false, format: 'unknown', label: FORMAT_LABELS.unknown, reason: 'Not a file.' };
+        }
+        if (stat.size === 0) {
+            return { valid: false, format: 'empty', label: FORMAT_LABELS.empty, reason: 'The file is empty.' };
+        }
+        fd = openSync(filePath, 'r');
+        const head = Buffer.alloc(Math.min(16, stat.size));
+        readSync(fd, head, 0, head.length, 0);
+        return identifyVpkBytes(head);
+    } catch (error) {
+        return {
+            valid: false,
+            format: 'unknown',
+            label: FORMAT_LABELS.unknown,
+            reason: error instanceof Error ? error.message : String(error),
+        };
+    } finally {
+        if (fd !== null) {
+            try { closeSync(fd); } catch { /* already closed */ }
+        }
+    }
+}
+
+/**
+ * One sentence naming what a rejected file really is, for an error thrown at
+ * the user. Deliberately concrete ("this is a 7-Zip archive, not a VPK")
+ * instead of a generic failure.
+ */
+export function describeVpkRejection(displayName: string, check: VpkFileCheck): string {
+    if (check.format === 'vpk') {
+        return `${displayName} is not a usable VPK: ${check.reason ?? 'unreadable header.'}`;
+    }
+    if (isUnpackableArchiveFormat(check.format)) {
+        return `${displayName} is a ${check.label}, not a VPK. Deadlock cannot load it.`;
+    }
+    if (check.format === 'empty') {
+        return `${displayName} is empty, not a VPK.`;
+    }
+    return `${displayName} is not a VPK (${check.magicHex ? `header ${check.magicHex}` : 'unreadable header'}). Deadlock cannot load it.`;
+}
+
+/** Throwing form of `checkVpkFile`, for adoption paths that must abort. */
+export function assertVpkFile(filePath: string, displayName?: string): VpkFileCheck {
+    const check = checkVpkFile(filePath);
+    if (!check.valid) {
+        throw new Error(describeVpkRejection(displayName ?? filePath.split(/[\\/]/).pop() ?? filePath, check));
+    }
+    return check;
+}
+
+/**
  * Read a null-terminated string from a buffer at the given offset
  */
 function readNullTerminatedString(buffer: Buffer, offset: number): { str: string; bytesRead: number } {

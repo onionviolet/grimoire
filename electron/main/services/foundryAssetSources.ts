@@ -5,10 +5,15 @@ export type AssetSourceProvenance = 'Downloaded' | 'Imported' | 'Forged' | 'Thir
 export interface InstalledAssetSourceCandidate {
     mod: Pick<Mod, 'id' | 'name' | 'enabled' | 'priority'>;
     entries: string[] | null;
+    /** When `entries` is null, the file's real type read from its magic bytes
+     *  ("7-Zip archive", "ZIP archive"). Null/absent when it could not be
+     *  identified: the panel says so rather than inventing a placeholder. */
+    detectedType?: string | null;
     metadata?: {
         gameBananaId?: number;
         textureReplacement?: unknown;
         soundSwap?: unknown;
+        foundryBuild?: unknown;
         sourceSection?: string;
         chatWheel?: boolean;
         merged?: unknown;
@@ -40,7 +45,14 @@ export interface FoundryAssetSourcesInspection {
     sources: FoundryAssetSource[];
     /** Winner by requested normalized entry path. A disabled source never wins. */
     winners: Record<string, string | null>;
-    unreadableMods: Array<{ modId: string; modName: string; enabled: boolean }>;
+    unreadableMods: Array<{
+        modId: string;
+        modName: string;
+        enabled: boolean;
+        /** The file's real type, when its magic bytes identify one. Absent or
+         *  null when unidentifiable. */
+        detectedType?: string | null;
+    }>;
 }
 
 export function normalizeFoundryAssetPath(path: string): string {
@@ -50,7 +62,7 @@ export function normalizeFoundryAssetPath(path: string): string {
 function provenance(candidate: InstalledAssetSourceCandidate): AssetSourceProvenance {
     const meta = candidate.metadata;
     if (meta?.gameBananaId) return 'Downloaded';
-    if (meta?.textureReplacement || meta?.soundSwap || meta?.chatWheel || meta?.merged || meta?.soulImport || meta?.urnImport) return 'Forged';
+    if (meta?.textureReplacement || meta?.soundSwap || meta?.foundryBuild || meta?.chatWheel || meta?.merged || meta?.soulImport || meta?.urnImport) return 'Forged';
     if (meta?.sourceSection) return 'Imported';
     return 'Third-party';
 }
@@ -70,7 +82,14 @@ export function inspectFoundryAssetSources(
     const sources: FoundryAssetSource[] = [];
     for (const candidate of installed) {
         if (!candidate.entries) {
-            unreadableMods.push({ modId: candidate.mod.id, modName: candidate.mod.name, enabled: candidate.mod.enabled });
+            unreadableMods.push({
+                modId: candidate.mod.id,
+                modName: candidate.mod.name,
+                enabled: candidate.mod.enabled,
+                // Omitted rather than nulled when unidentifiable, so the entry
+                // shape is unchanged for every existing reader.
+                detectedType: candidate.detectedType ?? undefined,
+            });
             continue;
         }
         // Return the same normalized key used for matching and winner lookup.

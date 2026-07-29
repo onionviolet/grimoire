@@ -62,9 +62,21 @@ function pak01Path(deadlockPath: string): string {
     return join(getCitadelPath(deadlockPath), 'pak01_dir.vpk');
 }
 
-function thumbsRoot(): string {
+export function thumbsRoot(): string {
     return join(app.getPath('userData'), 'foundry-thumbs');
 }
+
+/**
+ * Reserved first path segment under the thumbs root, owned by
+ * `foundrySourceThumbs.ts` (the alternatives gallery's source-image previews).
+ *
+ * Every other directory here is a pak build fingerprint and is disposable when
+ * the game updates. This one is keyed by the user's own source files instead, so
+ * `pruneStaleFingerprints` skips it and its budget is enforced separately. It
+ * lives under the same root purely so both caches are served by the one
+ * `grimoire-foundry:` handler rather than a second protocol.
+ */
+export const FOUNDRY_SOURCE_THUMB_DIR = '_sources';
 
 function catalogCacheDir(): string {
     return join(app.getPath('userData'), 'foundry-catalog-cache');
@@ -711,7 +723,9 @@ async function pruneStaleFingerprints(currentKey: string): Promise<void> {
         const dirs = await fs.readdir(root);
         await Promise.all(
             dirs
-                .filter((d) => d !== currentKey)
+                // The source-thumb subtree is not a build fingerprint, so a game
+                // update must not take it with the stale pak thumbnails.
+                .filter((d) => d !== currentKey && d !== FOUNDRY_SOURCE_THUMB_DIR)
                 .map((d) => fs.rm(join(root, d), { recursive: true, force: true }))
         );
     } catch {

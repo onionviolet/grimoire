@@ -1443,6 +1443,21 @@ export async function foundryVoiceclipFile(vsndPath: string): Promise<string | n
   return window.electronAPI.foundry.voiceclipFile(vsndPath);
 }
 
+/** Park a portrait-editor PNG bake on disk and get the absolute path back. The
+ *  visual staging contract records a path, not bytes, so an editor-authored
+ *  image has to land in this bounded userData cache before it can be staged. */
+export async function foundryStagePortraitImage(dataUrl: string): Promise<string> {
+  return window.electronAPI.foundry.stagePortraitImage(dataUrl);
+}
+
+/** A bounded 128px preview of the user's own source image behind a visual
+ *  change, served over the existing `grimoire-foundry:` thumbnail protocol.
+ *  Resolves null when the file has moved, is too large, or cannot be decoded,
+ *  in which case the caller shows the kind icon instead of a broken frame. */
+export async function foundrySourceThumbnail(sourcePath: string): Promise<string | null> {
+  return window.electronAPI.foundry.sourceThumbnail(sourcePath);
+}
+
 export async function foundryWarmCache(): Promise<void> {
   return window.electronAPI.foundry.warmCache();
 }
@@ -1516,6 +1531,15 @@ export async function foundryForge(
   req: import('../types/foundry').FoundryForgeRequest
 ): Promise<import('../types/foundry').VpkExportResult> {
   return window.electronAPI.foundry.forge(req);
+}
+
+/** Build all confirmed Foundry edits into one named VPK and install it as a
+ * tracked local mod, so the change keeps its provenance and can be listed,
+ * inspected, and rebuilt from `My changes`. */
+export async function foundryForgeInstall(
+  req: import('../types/foundry').FoundryForgeRequest
+): Promise<import('../types/mod').Mod[]> {
+  return window.electronAPI.foundry.forgeInstall(req);
 }
 
 export async function getChatWheelStatus(): Promise<{ available: boolean; path?: string; error?: string }> {

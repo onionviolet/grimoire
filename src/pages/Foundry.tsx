@@ -9,11 +9,14 @@ import {
   ShoppingBag,
   Palette,
   ArrowLeft,
+  ListChecks,
 } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { EmptyState, PageHeader } from '../components/common/PageComponents';
+import { canonicalHeroName } from '../lib/lockerUtils';
 import Tx from '../components/translation/Tx';
 import { useAppStore } from '../stores/appStore';
-import { foundryForge, foundryHeroes, foundryWarmCache } from '../lib/api';
+import { foundryForge, foundryForgeInstall, foundryHeroes, foundryWarmCache } from '../lib/api';
 import { showToast } from '../stores/toastStore';
 import type { HeroInfo } from '../types/foundry';
 import LibraryBrowse from '../components/foundry/LibraryBrowse';
@@ -24,7 +27,8 @@ import RecolorTool from '../components/foundry/RecolorTool';
 import FoundryHeroGrid from '../components/foundry/FoundryHeroGrid';
 import HeroWorkshop from '../components/foundry/HeroWorkshop';
 import FoundryBuildTray from '../components/foundry/FoundryBuildTray';
-import MySoundChanges from '../components/foundry/MySoundChanges';
+import MyChanges from '../components/foundry/MyChanges';
+import type { FoundryChangeFilter } from '../components/foundry/changeList';
 import type { FoundryStagedEdit } from '../components/foundry/buildTray';
 
 // Sub-tools shown in the left rail of the Catalog (tool-first) mode. Library /
@@ -34,7 +38,7 @@ import type { FoundryStagedEdit } from '../components/foundry/buildTray';
 const SUBTOOLS = [
   { id: 'library', icon: Library, labelKey: 'foundry.subtools.library', enabled: true },
   { id: 'sound', icon: Volume2, labelKey: 'foundry.subtools.sound', enabled: true },
-  { id: 'mySounds', icon: Volume2, labelKey: 'foundry.subtools.mySounds', enabled: true },
+  { id: 'myChanges', icon: ListChecks, labelKey: 'foundry.subtools.myChanges', enabled: true },
   { id: 'globalSound', icon: Globe, labelKey: 'foundry.subtools.globalSound', enabled: true },
   { id: 'texture', icon: ImageIcon, labelKey: 'foundry.subtools.texture', enabled: true },
   { id: 'items', icon: ShoppingBag, labelKey: 'foundry.subtools.items', enabled: true },
@@ -44,8 +48,30 @@ const SUBTOOLS = [
 type SubtoolId = (typeof SUBTOOLS)[number]['id'];
 type Mode = 'heroes' | 'catalog';
 
+/** Where "make a new one" lands for the shelf the user is looking at. The
+ *  Library grid covers portraits and ability icons; Items and Texture have
+ *  their own sub-tools. Sounds default to the hero browser, which is the one
+ *  that can also reach global events. */
+function subtoolForChangeFilter(filter: FoundryChangeFilter): SubtoolId {
+  switch (filter) {
+    case 'sound':
+      return 'sound';
+    case 'item-icon':
+      return 'items';
+    case 'other':
+      return 'texture';
+    case 'hero-image':
+    case 'ability-icon':
+      return 'library';
+    default:
+      return 'library';
+  }
+}
+
 export default function Foundry() {
   const { t } = useTranslation();
+  const location = useLocation();
+  const navigate = useNavigate();
   const settings = useAppStore((s) => s.settings);
   const hasGamePath = Boolean(settings?.deadlockPath || (settings?.devMode && settings?.devDeadlockPath));
 
@@ -75,6 +101,16 @@ export default function Foundry() {
     }
   }, [t]);
 
+  // The other output for the same reviewed build: it becomes a tracked mod, so
+  // it keeps its provenance and shows up in My changes. Unlike export there is
+  // no dialog to cancel, so a success always clears the tray.
+  const install = useCallback(async (request: import('../types/foundry').FoundryForgeRequest) => {
+    await foundryForgeInstall(request);
+    await useAppStore.getState().loadMods({ silent: true });
+    setStagedEdits([]);
+    showToast(t('foundry.buildTray.installed', 'Installed "{{name}}". Find it in My changes.', { name: request.name }), { tone: 'success', duration: 6000 });
+  }, [t]);
+
   // Roster (codename -> name) loads once; warm the catalog cache opportunistically
   // so the Sound tool opens without the cold voice-line rescan.
   useEffect(() => {
@@ -92,6 +128,26 @@ export default function Foundry() {
       cancelled = true;
     };
   }, [hasGamePath]);
+
+  // `/foundry?hero=<display name>` opens that hero's workshop: the Locker links
+  // here by name because it only knows GameBanana category names, not the
+  // catalog codenames. This is derived from the URL rather than copied into
+  // state, so the link is the single source of truth while it is present and
+  // there is no render cascade to resolve it. Resolution waits for the roster,
+  // and an unknown name leaves the user on the hero grid rather than opening
+  // the wrong workshop. Backing out clears the query (see `leaveWorkshop`).
+  const linkedHero = useMemo(() => {
+    const wanted = new URLSearchParams(location.search).get('hero');
+    if (!wanted || !heroes.length) return null;
+    const canonical = canonicalHeroName(wanted);
+    return heroes.find((hero) => canonicalHeroName(hero.name) === canonical) ?? null;
+  }, [heroes, location.search]);
+  const workshopHero = selectedHero ?? linkedHero;
+  const activeMode: Mode = linkedHero ? 'heroes' : mode;
+  const leaveWorkshop = useCallback(() => {
+    setSelectedHero(null);
+    if (linkedHero) navigate('/foundry', { replace: true });
+  }, [linkedHero, navigate]);
 
   const heroNames = useMemo(() => {
     const map = new Map<string, string>();
@@ -127,24 +183,25 @@ export default function Foundry() {
   }
 
   // Hero workshop: full-bleed, no page chrome (mirrors the Locker hero view).
-  if (mode === 'heroes' && selectedHero) {
+  if (activeMode === 'heroes' && workshopHero) {
     return (
       <HeroWorkshop
-        hero={selectedHero}
+        hero={workshopHero}
         heroNames={heroNames}
-        onBack={() => setSelectedHero(null)}
+        onBack={leaveWorkshop}
         stagedEdits={stagedEdits}
         onStage={stageEdit}
         onRemoveStagedEdit={removeEdit}
         outputName={outputName}
         onOutputNameChange={setOutputName}
         onForge={forge}
+        onInstall={install}
       />
     );
   }
 
   // Hero roster landing.
-  if (mode === 'heroes') {
+  if (activeMode === 'heroes') {
     return (
       <div className="space-y-4 p-6">
         <PageHeader
@@ -251,8 +308,8 @@ export default function Foundry() {
 
           {active === 'sound' ? (
             <SoundBrowse heroes={heroes} heroNames={heroNames} onStage={stageEdit} />
-          ) : active === 'mySounds' ? (
-            <MySoundChanges />
+          ) : active === 'myChanges' ? (
+            <MyChanges onAddNew={(filter) => setActive(subtoolForChangeFilter(filter))} />
           ) : active === 'globalSound' && settings?.forkGlobalSounds !== false ? (
             <GlobalSoundBrowse onStage={stageEdit} />
           ) : active === 'texture' ? (
@@ -266,7 +323,7 @@ export default function Foundry() {
           )}
         </div>
       </div>
-      <FoundryBuildTray edits={stagedEdits} outputName={outputName} onOutputNameChange={setOutputName} onForge={forge} onRemove={removeEdit} />
+      <FoundryBuildTray edits={stagedEdits} outputName={outputName} onOutputNameChange={setOutputName} onForge={forge} onInstall={install} onRemove={removeEdit} />
     </div>
   );
 }

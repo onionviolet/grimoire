@@ -6,6 +6,7 @@ import {
   Swords,
   Volume2,
   Image as ImageIcon,
+  ListChecks,
   type LucideIcon,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -22,6 +23,7 @@ import SoundBrowse from './SoundBrowse';
 import TextureBrowse from './TextureBrowse';
 import LibraryBrowse from './LibraryBrowse';
 import FoundryBuildTray from './FoundryBuildTray';
+import MyChanges from './MyChanges';
 import type { FoundryStagedEdit } from './buildTray';
 import Tx from '../translation/Tx';
 import { useAppStore } from '../../stores/appStore';
@@ -40,9 +42,12 @@ interface HeroWorkshopProps {
   outputName: string;
   onOutputNameChange: (name: string) => void;
   onForge: (request: FoundryForgeRequest) => Promise<void>;
+  /** Install the reviewed build instead of exporting it, so it is tracked and
+   *  listed in My changes. Optional, exactly as on the tray itself. */
+  onInstall?: (request: FoundryForgeRequest) => Promise<void>;
 }
 
-type SectionId = 'appearance' | 'abilities' | 'voice' | 'icons';
+type SectionId = 'appearance' | 'abilities' | 'voice' | 'icons' | 'myChanges';
 
 /**
  * The per-hero Foundry workshop: pick a hero, edit everything about them. Mirrors
@@ -71,6 +76,7 @@ export default function HeroWorkshop({
   outputName,
   onOutputNameChange,
   onForge,
+  onInstall,
 }: HeroWorkshopProps) {
   const { t } = useTranslation();
   const mods = useAppStore((s) => s.mods);
@@ -110,6 +116,7 @@ export default function HeroWorkshop({
     { id: 'abilities', label: t('foundry.workshop.abilities', 'Abilities'), icon: Swords },
     { id: 'voice', label: t('foundry.workshop.voice', 'Voice'), icon: Volume2 },
     { id: 'icons', label: t('foundry.workshop.icons', 'Icons & Textures'), icon: ImageIcon },
+    { id: 'myChanges', label: t('foundry.workshop.myChanges', 'My changes'), icon: ListChecks },
   ];
 
   const renderSrc =
@@ -251,6 +258,10 @@ export default function HeroWorkshop({
                 <LibraryBrowse heroNames={heroNames} initialCategory="ability-icon" onStage={stage} />
               </div>
             </div>
+          ) : section === 'myChanges' ? (
+            // Scoped to this hero: the workshop is a per-hero surface, so a
+            // global change would read as belonging to a hero it does not.
+            <MyChanges heroName={hero.name} onAddNew={() => setSection('icons')} />
           ) : null}
         </div>
       </div>
@@ -262,6 +273,7 @@ export default function HeroWorkshop({
             outputName={outputName}
             onOutputNameChange={onOutputNameChange}
             onForge={onForge}
+            onInstall={onInstall}
             onRemove={onRemoveStagedEdit}
             className="h-full bg-bg-secondary/80"
           />

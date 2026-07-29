@@ -25,6 +25,11 @@ import {
   writeStoredShuffleVariants,
   type VariantChoice,
 } from '../lib/lockerRandomizer';
+import {
+  FOUNDRY_SHUFFLE_INCLUDED_KEY,
+  planFoundryShuffle,
+  readStoredFoundryShuffleIncluded,
+} from '../lib/foundryChanges';
 
 // Cache entry with timestamp for TTL support
 interface CacheEntry<T> {
@@ -241,6 +246,10 @@ interface AppState {
   shuffleVariants: Map<string, VariantChoice>;
   shuffleIncludeVanilla: boolean;
   soundShuffleIncluded: Set<string>;
+  /** Foundry change keys (foundryShuffleKey) opted into the contended-path
+   *  launch pool. Separate from the Locker sets: the unit here is an exact
+   *  write set, not a hero. */
+  foundryShuffleIncluded: Set<string>;
   /** Card-source keys (hero + VPK) opted into launch shuffle. */
   cardShuffleIncluded: Set<string>;
 
@@ -326,6 +335,7 @@ interface AppState {
   setShuffleVariant: (skinKey: string, choice: VariantChoice | null) => void;
   setShuffleIncludeVanilla: (enabled: boolean) => void;
   toggleSoundShuffleIncluded: (soundKey: string) => void;
+  toggleFoundryShuffleIncluded: (changeKey: string) => void;
   toggleCardShuffleIncluded: (cardKey: string) => void;
   runLaunchShuffle: () => Promise<{ failures: number }>;
   /** Disable every other mod and enable only `enableKeys` (one card's file(s)),
@@ -414,6 +424,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   shuffleVariants: readStoredShuffleVariants(),
   shuffleIncludeVanilla: readStoredShuffleIncludeVanilla(),
   soundShuffleIncluded: readStoredSoundShuffleIncluded(),
+  foundryShuffleIncluded: readStoredFoundryShuffleIncluded(),
   cardShuffleIncluded: readStoredCardShuffleIncluded(),
   browseUi: { ...DEFAULT_BROWSE_UI },
   browseSession: null,
@@ -775,6 +786,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ soundShuffleIncluded: next });
   },
 
+  toggleFoundryShuffleIncluded: (changeKey: string) => {
+    const next = new Set(get().foundryShuffleIncluded);
+    if (next.has(changeKey)) next.delete(changeKey); else next.add(changeKey);
+    try { localStorage.setItem(FOUNDRY_SHUFFLE_INCLUDED_KEY, JSON.stringify([...next])); } catch { /* ignore */ }
+    set({ foundryShuffleIncluded: next });
+  },
+
   toggleCardShuffleIncluded: (cardKey: string) => {
     const next = new Set(get().cardShuffleIncluded);
     if (next.has(cardKey)) next.delete(cardKey); else next.add(cardKey);
@@ -790,8 +808,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   // the caller can warn that the shuffle only half-applied; a stuck shuffle
   // never blocks the launch (the Sidebar swallows a thrown error).
   runLaunchShuffle: async (): Promise<{ failures: number }> => {
-    const { shuffleOnLaunch, shuffleIncluded, soundShuffleIncluded, cardShuffleIncluded } = get();
-    if (!shuffleOnLaunch || (shuffleIncluded.size === 0 && soundShuffleIncluded.size === 0 && cardShuffleIncluded.size === 0)) return { failures: 0 };
+    const { shuffleOnLaunch, shuffleIncluded, soundShuffleIncluded, cardShuffleIncluded, foundryShuffleIncluded } = get();
+    if (!shuffleOnLaunch || (shuffleIncluded.size === 0 && soundShuffleIncluded.size === 0 && cardShuffleIncluded.size === 0 && foundryShuffleIncluded.size === 0)) return { failures: 0 };
     let heroList: { id: number; name: string }[] = [];
     try {
       heroList = buildHeroList(await api.getGamebananaCategories('ModCategory'));
@@ -808,14 +826,24 @@ export const useAppStore = create<AppState>((set, get) => ({
     // derived from the mods state after any in-flight manual toggle has settled,
     // not from a pre-launch snapshot that a concurrent rename could invalidate.
     return enqueueToggle(async () => {
-      const { mods, shuffleIncluded: included, shuffleVariants: variants, soundShuffleIncluded: soundIncluded, shuffleIncludeVanilla: includeVanilla, cardShuffleIncluded } = get();
-      const plan = planLaunchShuffle({ mods, heroList, included, variants, soundIncluded, includeVanilla });
+      const { mods, shuffleIncluded: included, shuffleVariants: variants, soundShuffleIncluded: soundIncluded, shuffleIncludeVanilla: includeVanilla, cardShuffleIncluded, foundryShuffleIncluded: foundryIncluded } = get();
+      // The Foundry pool is resolved FIRST and owns every mod it manages. A
+      // Foundry sound swap is also `isLockerManagedSound`, so without this the
+      // hero sound shuffle and the contended-path shuffle would both emit
+      // enable/disable ids for the same mod inside one batch and the last
+      // writer would win at random. One authority per mod, decided here.
+      const foundry = planFoundryShuffle({ mods, included: foundryIncluded, includeVanilla });
+      const foundryOwned = new Set([...foundry.enableIds, ...foundry.disableIds]);
+      const lockerMods = foundryOwned.size ? mods.filter((mod) => !foundryOwned.has(mod.id)) : mods;
+      const plan = planLaunchShuffle({ mods: lockerMods, heroList, included, variants, soundIncluded, includeVanilla });
       const cardChoices = planCardShuffle(cardShuffleIncluded);
+      const enableIds = [...plan.enableIds, ...foundry.enableIds];
+      const disableIds = [...plan.disableIds, ...foundry.disableIds];
       let failures = 0;
-      if (plan.enableIds.length === 0 && plan.disableIds.length === 0 && cardChoices.length === 0) return { failures };
+      if (enableIds.length === 0 && disableIds.length === 0 && cardChoices.length === 0) return { failures };
       try {
-        if (plan.enableIds.length || plan.disableIds.length) {
-          const applied = await api.applyModToggleBatch(plan.enableIds, plan.disableIds);
+        if (enableIds.length || disableIds.length) {
+          const applied = await api.applyModToggleBatch(enableIds, disableIds);
           set({ mods: applied.mods });
           failures += applied.failures.length;
         }
@@ -834,7 +862,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         if (isEnableCapError(err)) { set({ modsNotice: ENABLE_CAP_NOTICE }); }
         else if (!isGameRunningModLockError(err)) { set({ modsError: String(err) }); }
         get().loadMods();
-        return { failures: failures + plan.enableIds.length + plan.disableIds.length + cardChoices.length };
+        return { failures: failures + enableIds.length + disableIds.length + cardChoices.length };
       }
     });
   },
@@ -1024,3 +1052,15 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ lockerHeroName: name });
   },
 }));
+
+// Dev-only handle for scripts/dev-driver.mjs, so a store action can be exercised
+// without the UI gesture that normally triggers it (running the launch shuffle
+// without actually launching the game, for one). `import.meta.env.DEV` is
+// statically false in a production build, so this is dropped at bundle time and
+// never reaches a packaged app.
+// The `typeof window` guard is not belt-and-braces: this module is imported by
+// unit tests that run in the Node environment, where touching `window` at import
+// time throws and takes the whole suite with it.
+if (import.meta.env.DEV && typeof window !== 'undefined') {
+  (window as unknown as { __grimoireStore?: typeof useAppStore }).__grimoireStore = useAppStore;
+}

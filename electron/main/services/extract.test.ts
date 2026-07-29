@@ -17,6 +17,26 @@ import { join } from 'path';
 import AdmZip from 'adm-zip';
 import { extractArchive } from './extract';
 
+/**
+ * A minimal file that passes the VPK identity gate: a real v1 header (magic +
+ * version + tree size) followed by an empty directory tree, then the marker
+ * bytes this test uses to tell the variants apart. The gate reads the header
+ * only, so the trailing payload is free-form.
+ */
+function vpkBytes(marker: string): Buffer {
+  const header = Buffer.alloc(13);
+  header.writeUInt32LE(0x55aa1234, 0);
+  header.writeUInt32LE(1, 4);
+  header.writeUInt32LE(1, 8);
+  header.writeUInt8(0, 12); // empty tree terminator
+  return Buffer.concat([header, Buffer.from(marker)]);
+}
+
+/** The marker back out of a file written by `vpkBytes`. */
+function markerOf(filePath: string): string {
+  return readFileSync(filePath).subarray(13).toString('utf8');
+}
+
 describe('extractArchive (multi-variant VPK folders)', () => {
   let extracted: Awaited<ReturnType<typeof extractArchive>>;
   let dest: string;
@@ -28,9 +48,9 @@ describe('extractArchive (multi-variant VPK folders)', () => {
 
     // Two variant folders share the same pakNN name; a third VPK sits at the root.
     const zip = new AdmZip();
-    zip.addFile('Tailed_mod_Beard/pak83_dir.vpk', Buffer.from('BEARD-CONTENT'));
-    zip.addFile('Tailed_mod/pak83_dir.vpk', Buffer.from('NO-BEARD-CONTENT'));
-    zip.addFile('root_skin_dir.vpk', Buffer.from('ROOT-CONTENT'));
+    zip.addFile('Tailed_mod_Beard/pak83_dir.vpk', vpkBytes('BEARD-CONTENT'));
+    zip.addFile('Tailed_mod/pak83_dir.vpk', vpkBytes('NO-BEARD-CONTENT'));
+    zip.addFile('root_skin_dir.vpk', vpkBytes('ROOT-CONTENT'));
     const zipPath = join(root, 'tailed.zip');
     zip.writeZip(zipPath);
 
@@ -44,13 +64,13 @@ describe('extractArchive (multi-variant VPK folders)', () => {
   });
 
   it('preserves each variant content (no silent clobber)', () => {
-    const contents = extracted.map((e) => readFileSync(e.path, 'utf8')).sort();
+    const contents = extracted.map((e) => markerOf(e.path)).sort();
     expect(contents).toEqual(['BEARD-CONTENT', 'NO-BEARD-CONTENT', 'ROOT-CONTENT']);
   });
 
   it('tags each VPK with its archive variant folder', () => {
     const byFolder = Object.fromEntries(
-      extracted.map((e) => [e.archiveFolder ?? '(root)', readFileSync(e.path, 'utf8')])
+      extracted.map((e) => [e.archiveFolder ?? '(root)', markerOf(e.path)])
     );
     expect(byFolder).toEqual({
       Tailed_mod_Beard: 'BEARD-CONTENT',

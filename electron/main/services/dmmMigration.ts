@@ -12,15 +12,25 @@
  *   - setModMetadataWithHash   (write the sidecar keyed by metaKey + sha256)
  * all wrapped in one runExclusiveModMutation batch so it's atomic vs UI toggles.
  *
+ * Every file passes the shared VPK identity gate (services/vpk.ts) before it is
+ * adopted: DMM's records name files by extension, and a `*_dir.vpk` that is
+ * really a ZIP or a 7-Zip archive is inert in the game. Where the impostor wraps
+ * exactly one VPK, that inner VPK is installed instead (via
+ * resolveInstallableVpk, the same helper the other install paths use). One bad
+ * file never aborts the run: it is recorded in the report's skipped list, named
+ * by the type it actually is, and the remaining mods still import.
+ *
  * Hero/global-type are intentionally left unset: Grimoire's enrichMod infers
  * them from the adopted VPK file tree on the next scan ("auto recognize").
  */
 
-import { homedir } from 'os';
+import { homedir, tmpdir } from 'os';
 import { join, basename, dirname, resolve, isAbsolute } from 'path';
 import { promises as fs, constants as fsConstants, existsSync } from 'fs';
 
 import { getAddonsPath, getAddonFolderPaths, getDisabledPath, metaKeyFor } from './deadlock';
+import { checkVpkFile, describeVpkRejection, isUnpackableArchiveFormat } from './vpk';
+import { resolveInstallableVpk } from './extract';
 import {
   allocateEnabledVpkPath,
   makeDisabledFileName,
@@ -423,6 +433,24 @@ export async function migrateDmmInstall(opts: DmmMigrationOptions): Promise<DmmM
 
   const disabledPath = getDisabledPath(opts.deadlockPath);
 
+  // Scratch space for the identity gate: when a DMM file turns out to be an
+  // archive wrapping one VPK, the inner VPK is extracted here and then copied
+  // into Grimoire's layout. Created lazily (most runs never need it) and always
+  // removed. DMM's own file is never touched, so the import stays non-destructive.
+  let unwrapDir: string | null = null;
+  const unwrapScratch = async (): Promise<string> => {
+    if (unwrapDir === null) unwrapDir = await fs.mkdtemp(join(tmpdir(), 'grimoire-dmm-unwrap-'));
+    return unwrapDir;
+  };
+  const cleanupScratch = async () => {
+    if (unwrapDir === null) return;
+    const dir = unwrapDir;
+    unwrapDir = null;
+    await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
+  };
+  let notVpkCount = 0;
+  let unwrappedCount = 0;
+
   await runExclusiveModMutation(async () => {
     // Seed the .disabled taken-set once; we add to it as we mint names.
     const disabledTaken = new Set<string>(
@@ -455,12 +483,41 @@ export async function migrateDmmInstall(opts: DmmMigrationOptions): Promise<DmmM
           continue;
         }
 
+        // IDENTITY GATE: DMM records a file by name, and the `.vpk` extension
+        // is not evidence. A renamed ZIP/7-Zip archive adopted here would be an
+        // installed mod the engine cannot load. Where the impostor wraps exactly
+        // one VPK, install that inner file instead (the same preference
+        // resolveInstallableVpk applies on every other install path). Anything
+        // else is reported by its real type and the run carries on.
+        let adoptSrc = src;
+        const check = checkVpkFile(src);
+        if (!check.valid) {
+          if (isUnpackableArchiveFormat(check.format)) {
+            try {
+              const resolved = await resolveInstallableVpk(src, await unwrapScratch(), vpkName);
+              adoptSrc = resolved.path;
+              unwrappedCount++;
+              console.log(
+                `[DMM] ${vpkName} is a ${check.label}; adopting the single VPK it contains instead.`
+              );
+            } catch (err) {
+              notVpkCount++;
+              fileSkips.push(err instanceof Error ? err.message : String(err));
+              continue;
+            }
+          } else {
+            notVpkCount++;
+            fileSkips.push(describeVpkRejection(vpkName, check));
+            continue;
+          }
+        }
+
         // Content dedupe: if a byte-identical file is already managed (e.g. a
         // copy minted by an earlier import run whose metadata lost the id),
         // adopting another copy only duplicates the mod.
         let srcHash: string;
         try {
-          srcHash = (await hashFileSha256(src)).toLowerCase();
+          srcHash = (await hashFileSha256(adoptSrc)).toLowerCase();
         } catch (err) {
           fileSkips.push(`${vpkName} (${err instanceof Error ? err.message : String(err)})`);
           continue;
@@ -473,10 +530,12 @@ export async function migrateDmmInstall(opts: DmmMigrationOptions): Promise<DmmM
         try {
           let destPath: string;
           if (entry.enabled) {
-            if (mode === 'in-place' && isLiveEnabledSlot(src, addonRoots)) {
+            if (mode === 'in-place' && isLiveEnabledSlot(adoptSrc, addonRoots)) {
               // Already a live pakNN_dir.vpk slot Grimoire scans: adopt by
-              // metadata only, no copy.
-              destPath = src;
+              // metadata only, no copy. (An unwrapped inner VPK lives in the
+              // scratch dir, so it never lands here: it is copied into a real
+              // slot below, leaving DMM's archive where it is.)
+              destPath = adoptSrc;
               const existing = getModMetadata(metaKeyFor(destPath));
               // Skip anything Grimoire already manages (a prior import, or a
               // local/Locker VPK that happens to occupy this slot): re-tagging it
@@ -491,13 +550,13 @@ export async function migrateDmmInstall(opts: DmmMigrationOptions): Promise<DmmM
               // actually loads. Must write before the next allocation so the slot
               // scan sees it taken.
               destPath = await allocateEnabledVpkPath(opts.deadlockPath);
-              await fs.copyFile(src, destPath, fsConstants.COPYFILE_EXCL);
+              await fs.copyFile(adoptSrc, destPath, fsConstants.COPYFILE_EXCL);
             }
-          } else if (isLiveDisabledSlot(src, disabledPath)) {
+          } else if (isLiveDisabledSlot(adoptSrc, disabledPath)) {
             // Already a valid disabled slot in Grimoire's .disabled folder (DMM
             // shares it): adopt by metadata only, no move. Non-destructive, so
             // DMM's recorded path keeps working and the file never shifts.
-            destPath = src;
+            destPath = adoptSrc;
             const existing = getModMetadata(metaKeyFor(destPath));
             // Don't re-tag a file Grimoire already manages (a prior import or a
             // Locker/local surface parked here): that would hijack its identity.
@@ -509,12 +568,12 @@ export async function migrateDmmInstall(opts: DmmMigrationOptions): Promise<DmmM
             // DMM's file lives outside Grimoire's scanned folders (a separate
             // profile subfolder or copy): bring a COPY into .disabled under a
             // free-form name. Always copy, never move, so DMM stays intact.
-            const nameHint = entry.modName ?? entry.sourceFileName ?? basename(src);
-            const disabledName = makeDisabledFileName(basename(src), disabledTaken, nameHint);
+            const nameHint = entry.modName ?? entry.sourceFileName ?? basename(adoptSrc);
+            const disabledName = makeDisabledFileName(basename(adoptSrc), disabledTaken, nameHint);
             disabledTaken.add(disabledName.toLowerCase());
             if (!existsSync(disabledPath)) await fs.mkdir(disabledPath, { recursive: true });
             destPath = join(disabledPath, disabledName);
-            await fs.copyFile(src, destPath, fsConstants.COPYFILE_EXCL);
+            await fs.copyFile(adoptSrc, destPath, fsConstants.COPYFILE_EXCL);
           }
 
           const metaKey = metaKeyFor(destPath);
@@ -548,7 +607,25 @@ export async function migrateDmmInstall(opts: DmmMigrationOptions): Promise<DmmM
         });
       }
     }
+  }).catch(async (err) => {
+    await cleanupScratch();
+    throw err;
   });
+  await cleanupScratch();
+
+  // Surface the identity gate at report level too: the per-entry skip reason
+  // already names what each rejected file really is, but a run of 40 mods needs
+  // the headline as well.
+  if (notVpkCount > 0) {
+    report.warnings.push(
+      `${notVpkCount} file(s) were not adopted because they are not VPKs (the skipped list names what each one actually is). Deadlock cannot load them.`
+    );
+  }
+  if (unwrappedCount > 0) {
+    report.warnings.push(
+      `${unwrappedCount} file(s) were archives wrapping a single VPK; the inner VPK was imported instead and the original was left untouched.`
+    );
+  }
 
   // Diagnostic summary (main-process log): the renderer only surfaces a count, so
   // this is where a "only N imported" report can be traced to its real cause.

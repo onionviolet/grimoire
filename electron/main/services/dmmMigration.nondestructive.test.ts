@@ -22,6 +22,18 @@ import { migrateDmmInstall } from './dmmMigration';
 const h = vi.hoisted(() => ({ userData: '' }));
 vi.mock('electron', () => ({ app: { getPath: () => h.userData } }));
 
+/** Real VPK v2 bytes (magic 0x55aa1234 + version + a one-byte empty tree) with a
+ *  trailing marker so each fixture has distinct content and hash. Fixtures must
+ *  be genuine VPKs: migrateDmmInstall now runs every file through the shared
+ *  identity gate in services/vpk.ts before adopting it. */
+function vpkBytes(marker: string): Buffer {
+  const header = Buffer.alloc(28);
+  header.writeUInt32LE(0x55aa1234, 0);
+  header.writeUInt32LE(2, 4);
+  header.writeUInt32LE(1, 8);
+  return Buffer.concat([header, Buffer.from([0]), Buffer.from(marker)]);
+}
+
 type Snap = Record<string, { ino: number; size: number }>;
 function snap(dir: string): Snap {
   const out: Snap = {};
@@ -67,9 +79,9 @@ describe('migrateDmmInstall (non-destructive adoption)', () => {
     const enabledSlot = join(addons, 'pak50_dir.vpk');
     const disabledShared = join(disabled, 'skin_b_dir.vpk');
     const disabledSeparate = join(separate, 'skin_c_dir.vpk');
-    writeFileSync(enabledSlot, Buffer.from('ENABLED-MOD-111'));
-    writeFileSync(disabledShared, Buffer.from('DISABLED-MOD-222'));
-    writeFileSync(disabledSeparate, Buffer.from('DISABLED-MOD-333'));
+    writeFileSync(enabledSlot, vpkBytes('ENABLED-MOD-111'));
+    writeFileSync(disabledShared, vpkBytes('DISABLED-MOD-222'));
+    writeFileSync(disabledSeparate, vpkBytes('DISABLED-MOD-333'));
 
     const state = {
       activeProfileId: 'default',
@@ -124,7 +136,7 @@ describe('migrateDmmInstall (non-destructive adoption)', () => {
     // The DMM original is still there, byte-for-byte.
     expect(postSeparate['skin_c_dir.vpk']).toBeDefined();
     expect(postSeparate['skin_c_dir.vpk'].ino).toBe(preSeparate['skin_c_dir.vpk'].ino);
-    expect(readFileSync(join(dirs.separate, 'skin_c_dir.vpk')).toString()).toBe('DISABLED-MOD-333');
+    expect(readFileSync(join(dirs.separate, 'skin_c_dir.vpk')).equals(vpkBytes('DISABLED-MOD-333'))).toBe(true);
     // Exactly one new file appeared in .disabled (the copy of skin_c).
     const added = Object.keys(postDisabled).filter((n) => !(n in preDisabled));
     expect(added.length).toBe(1);

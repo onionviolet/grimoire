@@ -66,6 +66,7 @@ export default function TextureBrowse({ heroes, heroNames, onStage }: TextureBro
         inspect: foundryInspectAssetSources,
         confirm: (modNames) => window.confirm(t('foundry.texture.stageConflict', { mods: modNames.join(', ') })),
         unreadableMessage: t('foundry.texture.stageUnreadable'),
+        heroName: entry.hero ? heroNames.get(entry.hero) : undefined,
       });
       if (!staged) return;
       onStage(staged);
@@ -75,7 +76,7 @@ export default function TextureBrowse({ heroes, heroNames, onStage }: TextureBro
     } finally {
       setStagingPath(null);
     }
-  }, [items, onStage, t]);
+  }, [items, heroNames, onStage, t]);
 
   // Hero dropdown: every roster hero, by display name. Texture entries key on the
   // codename, which is what we send as the filter.

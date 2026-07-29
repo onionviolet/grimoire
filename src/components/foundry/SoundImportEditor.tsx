@@ -4,6 +4,13 @@ import { Loader2, Pause, Play, RotateCcw, Volume2 } from 'lucide-react';
 
 import { foundryVoiceclip } from '../../lib/api';
 import { useAppStore } from '../../stores/appStore';
+import {
+    MAX_GAIN_DB,
+    MIN_WINDOW_MS,
+    seedTrimWindow,
+    type SeededSoundWindow,
+    type SoundImportSeed,
+} from './soundTuning';
 
 /** Pre-mint edits the editor reports up to the swap panel. All optional: an
  *  untouched clip reports `{}` (whole clip, no gain). */
@@ -22,14 +29,26 @@ interface SoundImportEditorProps {
     /** Called whenever the authored edits change (debounced by React state). Must
      *  be referentially stable (wrap in useCallback). */
     onChange: (edits: SoundImportEdits) => void;
+    /**
+     * Optional starting point: the trim window, gain, and loop mode a change
+     * already recorded, so a retune opens on what it is retuning instead of on
+     * the whole clip at unity gain.
+     *
+     * Strictly additive. Omit it and the editor behaves exactly as it always
+     * has (whole clip, unity gain, manual gain untouched across file picks).
+     *
+     * Read once per decoded file, at decode time, so an inline object literal
+     * cannot re-trigger decoding. Changing it after a file is decoded does not
+     * move the handles; pick the file again to re-seed.
+     */
+    initialEdits?: SoundImportSeed;
 }
 
 const WAVE_HEIGHT = 64;
 const WAVE_BUCKETS = 600;
-/** Keep the trim window at least this wide so a handle drag cannot invert it. */
-const MIN_WINDOW_MS = 50;
-/** Clamp the auto-gain so a near-silent import can't be boosted into noise. */
-const MAX_GAIN_DB = 18;
+// MIN_WINDOW_MS (handle drags cannot invert the window) and MAX_GAIN_DB (a
+// near-silent import cannot be boosted into noise) live in ./soundTuning so the
+// seeding math and this editor cannot drift apart.
 
 /** Peak (abs-max) amplitude per horizontal bucket of channel 0, for the
  *  waveform. */
@@ -87,7 +106,12 @@ function fmt(ms: number): string {
  * gain are applied losslessly in Rust at mint time; this only authors the
  * numbers and previews them.
  */
-export function SoundImportEditor({ file, targetClipPath, onChange }: SoundImportEditorProps) {
+export function SoundImportEditor({
+    file,
+    targetClipPath,
+    onChange,
+    initialEdits,
+}: SoundImportEditorProps) {
     const { t } = useTranslation();
     const soundVolume = useAppStore((s) => s.soundVolume);
 
@@ -106,6 +130,14 @@ export function SoundImportEditor({ file, targetClipPath, onChange }: SoundImpor
      *  half that makes retuning a stock clip useful: matching a clip against
      *  itself is always 0 dB, so "punchier" has to come from here. */
     const [manualGainDb, setManualGainDb] = useState(0);
+
+    /** How the seed (if any) landed on the clip that was actually decoded. Null
+     *  until a decode completes, and null forever when nothing was seeded. */
+    const [seeded, setSeeded] = useState<SeededSoundWindow | null>(null);
+    /** The seed is read at decode time only, so passing a fresh object literal
+     *  every render cannot restart the decode or fight the user's dragging. */
+    const seedRef = useRef<SoundImportSeed | undefined>(initialEdits);
+    seedRef.current = initialEdits;
 
     const containerRef = useRef<HTMLDivElement | null>(null);
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -129,14 +161,26 @@ export function SoundImportEditor({ file, targetClipPath, onChange }: SoundImpor
         setDecodeError(null);
         setTargetRms(null);
         setTargetState('idle');
+        setSeeded(null);
         (async () => {
             try {
                 const ab = await file.arrayBuffer();
                 const decoded = await acquireCtx().decodeAudioData(ab.slice(0));
                 if (cancelled) return;
                 setBuffer(decoded);
-                setStartMs(0);
-                setEndMs(Math.round(decoded.duration * 1000));
+                // Fit whatever was seeded to the clip that was actually decoded:
+                // a recorded window may be longer than a different file the user
+                // picked, and an out-of-range selection is not a selection.
+                const seed = seedRef.current;
+                const fitted = seedTrimWindow(seed, decoded.duration * 1000);
+                setStartMs(fitted.startMs);
+                setEndMs(fitted.endMs);
+                // Only a seeded editor touches the gain. Without a seed the
+                // manual gain survives a file change exactly as it always has.
+                if (seed) {
+                    setSeeded(fitted);
+                    setManualGainDb(fitted.gainDb);
+                }
             } catch {
                 if (!cancelled) {
                     setDecodeError(
@@ -353,6 +397,15 @@ export function SoundImportEditor({ file, targetClipPath, onChange }: SoundImpor
         [durationMs, startMs, endMs]
     );
 
+    /** Put the handles and the loudness back where the seed opened them, so the
+     *  starting point stays reachable after any amount of dragging. */
+    const restoreSeed = useCallback(() => {
+        if (!seeded) return;
+        setStartMs(seeded.startMs);
+        setEndMs(seeded.endMs);
+        setManualGainDb(seeded.gainDb);
+    }, [seeded]);
+
     const resetTrim = useCallback(() => {
         if (!buffer) return;
         setStartMs(0);
@@ -426,6 +479,55 @@ export function SoundImportEditor({ file, targetClipPath, onChange }: SoundImpor
                     </button>
                 )}
             </div>
+
+            {/* What the seed did, when the editor was opened on an existing
+                change. Says so even when the recorded window did not fit, which
+                is the case a silent seed would hide. */}
+            {seeded && (
+                <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-text-secondary">
+                    <span>
+                        {seeded.fit === 'dropped'
+                            ? t(
+                                  'soundTools.seed.dropped',
+                                  'The recorded trim window does not fit this clip, so the whole clip is selected. Set a new window with the handles.'
+                              )
+                            : seeded.fit === 'clamped'
+                              ? t(
+                                    'soundTools.seed.clamped',
+                                    'The recorded trim window ran past the end of this clip, so it was pulled in to fit.'
+                                )
+                              : seeded.seededTrim || seeded.gainDb !== 0
+                                ? t(
+                                      'soundTools.seed.applied',
+                                      'Opened on the recorded trim and loudness.'
+                                  )
+                                : t(
+                                      'soundTools.seed.none',
+                                      'Nothing was recorded to open on, so this is the whole clip at the original loudness.'
+                                  )}
+                    </span>
+                    {initialEdits?.loop === 'on' && (
+                        <span>{t('soundTools.seed.loopOn', 'The rebuild keeps looping on.')}</span>
+                    )}
+                    {initialEdits?.loop === 'off' && (
+                        <span>{t('soundTools.seed.loopOff', 'The rebuild keeps looping off.')}</span>
+                    )}
+                    {(startMs !== seeded.startMs ||
+                        endMs !== seeded.endMs ||
+                        manualGainDb !== seeded.gainDb) && (
+                        <button
+                            type="button"
+                            onClick={restoreSeed}
+                            className="flex items-center gap-1 transition-colors hover:text-text-primary"
+                        >
+                            <RotateCcw size={11} />
+                            <span>
+                                {t('soundTools.seed.restore', 'Back to what was recorded')}
+                            </span>
+                        </button>
+                    )}
+                </div>
+            )}
 
             {/* Normalizer */}
             {targetClipPath && (

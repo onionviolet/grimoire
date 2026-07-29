@@ -1,25 +1,32 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AlertTriangle, Check, ChevronDown, ExternalLink, Loader2, Pencil, Power, RefreshCw, Trash2, Volume2 } from 'lucide-react';
+import { AlertTriangle, Check, ChevronDown, ExternalLink, Loader2, Pencil, RefreshCw, SlidersHorizontal, Upload } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 import { showToast } from '../../stores/toastStore';
 import {
   foundryCheckAudioPaths,
   foundryInspectAssetSources,
   foundrySoundAnnotationKey,
-  foundrySoundAnnotations,
   foundrySwapSound,
-  saveFoundrySoundAnnotation,
 } from '../../lib/api';
+import { SoundImportEditor, type SoundImportEdits } from './SoundImportEditor';
+import {
+  describeSoundTuning,
+  formatGain,
+  formatTrimWindow,
+  soundSeedFromTuning,
+  soundTuningBadges,
+  type SoundTuningState,
+} from './soundTuning';
 import type { FoundryAssetSourcesInspection, SoundAnnotation } from '../../types/foundry';
 import type { Mod } from '../../types/mod';
 
-/** Grouping key only. Empty means global scope; the heading translates it at
- *  render time so the group key never depends on the active language. */
-function scopeFor(mod: Mod): string {
-  return mod.lockerHero?.trim() || mod.soundSwap?.heroCodename || '';
-}
+/**
+ * The sound-specific half of `My changes`. A sound swap records clip-to-audio
+ * assignments and shares annotations with the Sound browser, so it keeps a
+ * richer panel than the generic asset one; the surrounding row chrome (enable,
+ * rename, delete) lives in `MyChanges` so there is only one copy of it.
+ */
 
 /** Catalog rows name the source `.vsnd`; a VPK carries the compiled `.vsnd_c`. */
 function compiledSoundEntry(path: string): string {
@@ -36,95 +43,10 @@ function writeSetFor(mod: Mod): string[] {
   return [...new Set(clips.map(compiledSoundEntry))];
 }
 
-/**
- * A deliberately thin view over the normal installed-mod store. It does not
- * maintain its own enabled flag: toggling here calls the same action used by
- * the Locker, preventing the two surfaces from drifting apart.
- *
- * The one thing it adds on top of the store is event-level truth: an enabled
- * sound change is not necessarily the sound you hear, because a lower-priority
- * VPK writing the same clip paths wins. That is resolved by inspecting the
- * recorded write set, not by trusting this mod's own enabled flag.
- */
-export default function MySoundChanges() {
-  const { t } = useTranslation();
-  const navigate = useNavigate();
-  const mods = useAppStore((state) => state.mods);
-  const toggleMod = useAppStore((state) => state.toggleMod);
-  const deleteMod = useAppStore((state) => state.deleteMod);
-  const editLocalMod = useAppStore((state) => state.editLocalMod);
-  const [open, setOpen] = useState<Record<string, boolean>>({});
-  const [rename, setRename] = useState<Record<string, string>>({});
-  const changes = useMemo(() => mods.filter((mod) => Boolean(mod.soundSwap)), [mods]);
-  const groups = useMemo(() => {
-    const grouped = new Map<string, Mod[]>();
-    for (const mod of changes) {
-      const scope = scopeFor(mod);
-      grouped.set(scope, [...(grouped.get(scope) ?? []), mod]);
-    }
-    return [...grouped.entries()].sort(([a], [b]) => a.localeCompare(b));
-  }, [changes]);
-
-  const [annotations, setAnnotations] = useState<Record<string, SoundAnnotation>>({});
-  useEffect(() => {
-    let cancelled = false;
-    foundrySoundAnnotations()
-      .then((entries) => {
-        if (!cancelled) setAnnotations(Object.fromEntries(entries.map((entry) => [entry.key, entry.annotation])));
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const saveAnnotation = useCallback(async (key: string, name: string, note: string) => {
-    const saved = await saveFoundrySoundAnnotation(key, name, note, []);
-    setAnnotations((current) => {
-      const next = { ...current };
-      if (saved) next[key] = saved.annotation;
-      else delete next[key];
-      return next;
-    });
-  }, []);
-
-  if (!changes.length) return <p className="rounded-sm border border-dashed border-border p-3 text-sm text-text-secondary">{t('foundry.myChanges.empty')}</p>;
-  return <div className="space-y-3">
-    {groups.map(([scope, entries]) => <section key={scope} className="rounded-sm border border-border">
-      <h3 className="border-b border-border px-3 py-2 text-sm font-medium text-text-primary">{scope || t('foundry.myChanges.globalScope')}</h3>
-      {entries.map((mod) => {
-        const editing = open[mod.id];
-        const value = rename[mod.id] ?? mod.name;
-        const summary = [
-          t('foundry.myChanges.summary', { name: mod.name, audio: mod.soundSwap?.audioFileName, pool: mod.soundSwap?.pool }),
-          ...(mod.soundSwap?.poolSeed != null ? [t('foundry.myChanges.seed', { seed: mod.soundSwap.poolSeed })] : []),
-        ].join(' · ');
-        return <div key={mod.id} className="border-b border-border/60 px-3 py-2 last:border-b-0">
-          <div className="flex items-center gap-2">
-            <Volume2 size={14} className="text-accent" />
-            <div className="min-w-0 flex-1"><p className="truncate text-sm text-text-primary">{mod.soundSwap?.event}</p><p className="truncate text-[11px] text-text-secondary">{summary}</p></div>
-            <span className={`text-[11px] ${mod.enabled ? 'text-green-400' : 'text-text-secondary'}`}>{mod.enabled ? t('foundry.myChanges.enabled') : t('foundry.myChanges.disabled')}</span>
-            <button type="button" onClick={() => void toggleMod(mod.id)} title={mod.enabled ? t('foundry.myChanges.disable') : t('foundry.myChanges.enable')} className="rounded-sm border border-border p-1.5 text-text-secondary hover:text-text-primary"><Power size={13} /></button>
-            <button type="button" onClick={() => setOpen((current) => ({ ...current, [mod.id]: !editing }))} title={t('foundry.myChanges.rename')} className="rounded-sm border border-border p-1.5 text-text-secondary hover:text-text-primary">{editing ? <ChevronDown size={13} /> : <Pencil size={13} />}</button>
-            <button type="button" onClick={() => { if (window.confirm(t('foundry.myChanges.deleteConfirm', { name: mod.name }))) void deleteMod(mod.id); }} title={t('foundry.myChanges.delete')} className="rounded-sm border border-border p-1.5 text-red-300 hover:text-red-200"><Trash2 size={13} /></button>
-          </div>
-          {editing && <form className="mt-2 flex gap-2" onSubmit={(event) => { event.preventDefault(); const name = value.trim(); if (name) void editLocalMod(mod.id, { name }).then(() => setOpen((current) => ({ ...current, [mod.id]: false }))); }}><input aria-label={t('foundry.myChanges.nameLabel')} value={value} onChange={(event) => setRename((current) => ({ ...current, [mod.id]: event.target.value }))} className="min-w-0 flex-1 rounded-sm border border-border bg-bg-primary px-2 py-1 text-sm text-text-primary" /><button className="rounded-sm bg-accent px-2 text-sm text-bg-primary">{t('foundry.myChanges.save')}</button></form>}
-          <SoundChangeDetails
-            mod={mod}
-            annotations={annotations}
-            onSaveAnnotation={saveAnnotation}
-            onOpenInInstalled={(modId) => navigate(`/?focusMod=${encodeURIComponent(modId)}`)}
-          />
-        </div>;
-      })}
-    </section>)}
-  </div>;
-}
-
 /** Per-change detail: who actually wins each recorded clip path right now, a
  *  jump to the conflicting owner, the personal annotation for the event, and a
  *  re-forge from the recorded assignments. */
-function SoundChangeDetails({
+export function SoundChangeDetails({
   mod,
   annotations,
   onSaveAnnotation,
@@ -142,8 +64,10 @@ function SoundChangeDetails({
   const [inspecting, setInspecting] = useState(false);
   const [reforging, setReforging] = useState(false);
   const [annotationOpen, setAnnotationOpen] = useState(false);
+  const [retuneOpen, setRetuneOpen] = useState(false);
 
   const recorded = mod.soundSwap?.reforge;
+  const tuning = useMemo(() => describeSoundTuning(mod), [mod]);
   const writeSet = useMemo(() => writeSetFor(mod), [mod]);
   const annotationKey = foundrySoundAnnotationKey(
     mod.soundSwap?.event ?? '',
@@ -182,11 +106,21 @@ function SoundChangeDetails({
       }));
   }, [inspection, mod.id]);
 
-  const reforge = useCallback(async () => {
+  /** Rebuild this change from what was recorded. `options.edits` retunes the
+   *  trim/gain instead of reproducing the recorded ones, and `options.audioPath`
+   *  swaps the donor the user re-opened in the workbench (normally the same
+   *  file). Everything else - targets, pool mode, seed, loop - is reused, which
+   *  is the whole point: a retune is not a re-authoring. */
+  const reforge = useCallback(async (options?: { edits?: SoundImportEdits; audioPath?: string; retuned?: boolean }) => {
     if (!recorded || reforging) return;
     setReforging(true);
     try {
-      const wanted = [...new Set([recorded.audioPath, ...recorded.assignments.map((a) => a.audioPath)])];
+      const donorPath = options?.audioPath ?? recorded.audioPath;
+      const assignments = recorded.assignments.map((assignment) => ({
+        ...assignment,
+        audioPath: assignment.audioPath === recorded.audioPath ? donorPath : assignment.audioPath,
+      }));
+      const wanted = [...new Set([donorPath, ...assignments.map((a) => a.audioPath)])];
       const present = new Set(await foundryCheckAudioPaths(wanted));
       const missing = wanted.filter((path) => !present.has(path));
       if (missing.length) {
@@ -221,18 +155,21 @@ function SoundChangeDetails({
         soundeventsEntry: recorded.soundeventsEntry,
         event: recorded.event,
         clipPaths: recorded.clipPaths,
-        audioPath: recorded.audioPath,
-        assignments: recorded.assignments,
+        audioPath: donorPath,
+        assignments,
         poolMode: mod.soundSwap!.poolMode,
         poolSeed: mod.soundSwap!.poolSeed,
-        name: t('foundry.myChanges.reforgedName', { name: mod.name }),
+        name: options?.retuned
+          ? t('soundTools.retune.rebuiltName', { name: mod.name })
+          : t('foundry.myChanges.reforgedName', { name: mod.name }),
         loop: mod.soundSwap!.loop,
-        trimStartMs: recorded.trimStartMs,
-        trimEndMs: recorded.trimEndMs,
-        gainDb: recorded.gainDb,
+        trimStartMs: options?.edits ? options.edits.trimStartMs : recorded.trimStartMs,
+        trimEndMs: options?.edits ? options.edits.trimEndMs : recorded.trimEndMs,
+        gainDb: options?.edits ? options.edits.gainDb : recorded.gainDb,
       });
       await useAppStore.getState().loadMods({ silent: true });
       setInspection(null);
+      setRetuneOpen(false);
       showToast(t('foundry.myChanges.reforgeDone', { name: mod.name }), { tone: 'success', duration: 6000 });
     } catch (cause) {
       showToast(cause instanceof Error ? cause.message : String(cause), { tone: 'error', duration: 8000 });
@@ -243,17 +180,42 @@ function SoundChangeDetails({
 
   return (
     <div className="mt-1.5 text-[11px] text-text-secondary">
-      <button
-        type="button"
-        onClick={() => setExpanded((value) => !value)}
-        aria-expanded={expanded}
-        className="flex items-center gap-1 rounded-sm px-1 py-0.5 hover:text-text-primary"
-      >
-        <ChevronDown size={11} className={expanded ? '' : '-rotate-90'} />
-        {writeSet.length
-          ? `${t('foundry.myChanges.eventDetails')} · ${t('foundry.myChanges.recordedPaths', { count: writeSet.length })}`
-          : t('foundry.myChanges.eventDetails')}
-      </button>
+      {/* Row level, deliberately outside the disclosure: the workbench state is
+          what the row was missing, so it must not need a click to read. */}
+      <div className="flex flex-wrap items-center gap-1">
+        <button
+          type="button"
+          onClick={() => setExpanded((value) => !value)}
+          aria-expanded={expanded}
+          className="flex items-center gap-1 rounded-sm px-1 py-0.5 hover:text-text-primary"
+        >
+          <ChevronDown size={11} className={expanded ? '' : '-rotate-90'} />
+          {writeSet.length
+            ? `${t('foundry.myChanges.eventDetails')} · ${t('foundry.myChanges.recordedPaths', { count: writeSet.length })}`
+            : t('foundry.myChanges.eventDetails')}
+        </button>
+        <SoundTuningBadges state={tuning} />
+        <button
+          type="button"
+          disabled={!tuning.retunable || reforging}
+          aria-expanded={retuneOpen}
+          onClick={() => setRetuneOpen((value) => !value)}
+          title={tuning.retunable ? t('soundTools.retune.hint') : t('soundTools.retune.unavailable')}
+          className="flex items-center gap-1 rounded-sm border border-border px-1.5 py-0.5 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <SlidersHorizontal size={10} /> {t('soundTools.retune.button')}
+        </button>
+      </div>
+      {retuneOpen && recorded && (
+        <SoundRetunePanel
+          state={tuning}
+          audioPath={recorded.audioPath}
+          targetClipPath={recorded.assignments[0]?.clipPath ?? recorded.clipPaths?.[0] ?? null}
+          busy={reforging}
+          onCancel={() => setRetuneOpen(false)}
+          onApply={(edits, donorPath) => void reforge({ edits, audioPath: donorPath, retuned: true })}
+        />
+      )}
       {expanded && (
         <div className="mt-1 space-y-1.5 rounded-sm border border-border bg-bg-tertiary/40 p-2">
           {writeSet.length === 0 ? (
@@ -330,6 +292,171 @@ function SoundChangeDetails({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/** The recorded workbench state, rendered as small badges on the change row.
+ *  Reads what `soundTuning` derived; it never recomputes anything. */
+function SoundTuningBadges({ state }: { state: SoundTuningState }) {
+  const { t } = useTranslation();
+  const badges = soundTuningBadges(state);
+  if (!badges.length) return null;
+  return (
+    <span className="flex flex-wrap items-center gap-1" title={t('soundTools.badge.title')}>
+      {badges.map((badge) => {
+        const label =
+          badge.kind === 'trim' ? t('soundTools.badge.trim', { window: badge.value })
+          : badge.kind === 'gain' ? t('soundTools.badge.gain', { gain: badge.value })
+          : badge.kind === 'loop' ? (badge.value === 'on' ? t('soundTools.badge.loopOn') : t('soundTools.badge.loopOff'))
+          : badge.kind === 'untouched' ? t('soundTools.badge.untouched')
+          : t('soundTools.badge.legacy');
+        const tuned = badge.kind === 'trim' || badge.kind === 'gain' || badge.kind === 'loop';
+        return (
+          <span
+            key={badge.kind}
+            className={`rounded-sm border px-1.5 py-0.5 ${tuned ? 'border-accent/40 bg-accent/10 text-accent' : 'border-border text-text-secondary'}`}
+          >
+            {label}
+          </span>
+        );
+      })}
+    </span>
+  );
+}
+
+/** One-line "what is recorded" / "what you just authored", from the same pure
+ *  formatters the badges use. */
+function tuningSummary(state: SoundTuningState, fallback: string): string {
+  const parts = [formatTrimWindow(state), formatGain(state)].filter(Boolean) as string[];
+  return parts.length ? parts.join(' · ') : fallback;
+}
+
+/**
+ * Retune an existing change: the same `SoundImportEditor` the Swap panel opens,
+ * pointed at this change's recorded donor and clip target, with everything else
+ * (targets, pool mode, seed, loop, name) reused from what was recorded.
+ *
+ * The editor draws its waveform from decoded bytes in the renderer, and the
+ * renderer cannot read an arbitrary path off disk under `webSecurity`, so the
+ * user re-opens the file here. That is one file pick, not a re-authoring: the
+ * write set is already decided.
+ */
+function SoundRetunePanel({
+  state,
+  audioPath,
+  targetClipPath,
+  busy,
+  onCancel,
+  onApply,
+}: {
+  state: SoundTuningState;
+  /** The donor recorded on the change. Checked for existence, not read. */
+  audioPath: string;
+  targetClipPath: string | null;
+  busy: boolean;
+  onCancel: () => void;
+  onApply: (edits: SoundImportEdits, donorPath: string) => void;
+}) {
+  const { t } = useTranslation();
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [present, setPresent] = useState<boolean | null>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const [pickedPath, setPickedPath] = useState<string | null>(null);
+  const [edits, setEdits] = useState<SoundImportEdits>({});
+
+  const fileName = audioPath.split(/[\\/]/).pop() ?? audioPath;
+
+  /** What the editor opens on: the recorded window, gain, and loop mode. The
+   *  editor fits it to whatever the user actually decodes, so a window recorded
+   *  against a longer file cannot produce an invalid selection. */
+  const seed = useMemo(() => soundSeedFromTuning(state), [state]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void foundryCheckAudioPaths([audioPath])
+      .then((found) => { if (!cancelled) setPresent(found.includes(audioPath)); })
+      .catch(() => { if (!cancelled) setPresent(null); });
+    return () => { cancelled = true; };
+  }, [audioPath]);
+
+  const accept = useCallback((picked: File | undefined | null) => {
+    if (!picked) return;
+    const path = window.electronAPI.getDroppedFilePath(picked);
+    if (!path) {
+      showToast(t('soundTools.retune.pathRejected'), { tone: 'error' });
+      return;
+    }
+    setFile(picked);
+    setPickedPath(path);
+    setEdits({});
+  }, [t]);
+
+  // The pending state reuses the same shape the badges read, so "recorded" and
+  // "new" are formatted by exactly one set of rules.
+  const pending: SoundTuningState = {
+    ...state,
+    trimStartMs: edits.trimStartMs !== undefined && edits.trimStartMs > 0 ? edits.trimStartMs : undefined,
+    trimEndMs: edits.trimEndMs !== undefined && edits.trimEndMs > 0 ? edits.trimEndMs : undefined,
+    gainDb: edits.gainDb !== undefined && edits.gainDb !== 0 ? edits.gainDb : undefined,
+  };
+
+  return (
+    <div className="mt-1 space-y-1.5 rounded-sm border border-accent/30 bg-bg-tertiary/40 p-2">
+      <p className="text-text-primary">{t('soundTools.retune.title')}</p>
+      <p>{t('soundTools.retune.intro')}</p>
+      <p>{t('soundTools.retune.recorded', { summary: tuningSummary(state, t('soundTools.summary.none')) })}</p>
+      {present === false && (
+        <p className="flex items-start gap-1 text-danger">
+          <AlertTriangle size={11} className="mt-px shrink-0" />
+          <span>{t('soundTools.retune.missing', { path: audioPath })}</span>
+        </p>
+      )}
+      <button
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        className="flex w-full items-center justify-center gap-1.5 rounded-sm border border-dashed border-border px-2 py-2 hover:border-accent/50 hover:text-text-primary"
+      >
+        <Upload size={11} />
+        {file ? t('soundTools.retune.picked', { file: file.name }) : t('soundTools.retune.load', { file: fileName })}
+      </button>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="audio/*,.mp3,.wav,.flac,.m4a,.aac,.ogg,.opus"
+        className="hidden"
+        onChange={(event) => { accept(event.target.files?.[0]); event.target.value = ''; }}
+      />
+      <p>{t('soundTools.retune.loadNote')}</p>
+      {pickedPath && pickedPath !== audioPath && (
+        <p className="text-text-primary">{t('soundTools.retune.differentDonor', { file: pickedPath.split(/[\\/]/).pop() })}</p>
+      )}
+      {/* The same editor the Swap panel opens. Not a fork, not a copy. */}
+      {file && (
+        <SoundImportEditor
+          file={file}
+          targetClipPath={targetClipPath}
+          onChange={setEdits}
+          initialEdits={seed}
+        />
+      )}
+      {file && (
+        <p>{t('soundTools.retune.pending', { summary: tuningSummary(pending, t('soundTools.summary.none')) })}</p>
+      )}
+      <div className="flex flex-wrap gap-1">
+        <button
+          type="button"
+          disabled={!file || !pickedPath || busy}
+          onClick={() => { if (pickedPath) onApply(edits, pickedPath); }}
+          className="flex items-center gap-1 rounded-sm bg-accent px-2 py-1 text-bg-primary disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {busy ? <Loader2 size={11} className="animate-spin" /> : <Check size={11} />} {t('soundTools.retune.apply')}
+        </button>
+        <button type="button" onClick={onCancel} className="rounded-sm border border-border px-2 py-1 hover:text-text-primary">
+          {t('soundTools.retune.cancel')}
+        </button>
+      </div>
+      <p>{t('soundTools.retune.rebuildNote')}</p>
     </div>
   );
 }

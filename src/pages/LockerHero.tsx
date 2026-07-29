@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import {
   ArrowLeft,
   Star,
+  Hammer,
   Music,
   Shirt,
   Images,
@@ -45,6 +46,9 @@ interface LockerHeroViewProps {
   skinCount: number;
   isFavorite: boolean;
   onBack: () => void;
+  /** Open this hero's Foundry workshop. Optional: hosts that have no route to
+   *  Foundry simply do not show the entry point. */
+  onEditInFoundry?: () => void;
   onToggleFavorite: () => void;
   onSelect: (modId: string) => void | Promise<void>;
   onToggleVariant: (modId: string) => void | Promise<void>;
@@ -86,6 +90,7 @@ export function LockerHeroView({
   skinCount,
   isFavorite,
   onBack,
+  onEditInFoundry,
   onToggleFavorite,
   onSelect,
   onToggleVariant,
@@ -408,6 +413,19 @@ export function LockerHeroView({
             {isFavorite ? t('locker.hero.unfavorite') : t('locker.hero.favorite')}
           </button>
         </div>
+
+        {/* The other half of the Foundry link: the Locker is where you manage
+            what you have, Foundry is where you make more of it. */}
+        {onEditInFoundry && (
+          <button
+            type="button"
+            onClick={onEditInFoundry}
+            className="flex w-full items-center gap-2 rounded-lg border border-border/70 px-3 py-2 text-sm text-text-secondary transition-colors hover:border-accent/60 hover:text-text-primary"
+          >
+            <Hammer className="w-4 h-4" />
+            {t('locker.hero.editInFoundry', 'Edit in Foundry')}
+          </button>
+        )}
 
         {/* Hero Name. Hidden when the active skin's backdrop already shows the
             hero name (issue #208). */}

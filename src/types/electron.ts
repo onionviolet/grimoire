@@ -41,6 +41,8 @@ import type {
     LockerClearScope,
     SoulImportStatus,
     AppearanceSurface,
+    VpkImpostorReport,
+    VpkImpostorRepairResult,
 } from './mod';
 import type {
     GameBananaModsResponse,
@@ -657,6 +659,15 @@ export interface ElectronAPI {
     disableMod: (modId: string) => Promise<Mod>;
     deleteMod: (modId: string) => Promise<void>;
     revealModInFolder: (modId: string) => Promise<void>;
+    /** Rescan every installed file for non-VPK impostors. Reporting only. */
+    reconcileVpkImpostors: () => Promise<VpkImpostorReport[]>;
+    /** Whatever the last reconcile found, without rescanning. */
+    getVpkImpostors: () => Promise<VpkImpostorReport[]>;
+    /** Replace one impostor with the single VPK it wraps. The original archive
+     *  is moved aside, never deleted. */
+    repairVpkImpostor: (modId: string) => Promise<VpkImpostorRepairResult>;
+    /** Fired once per app run when the startup reconcile finds impostors. */
+    onVpkImpostorsFound: (callback: (reports: VpkImpostorReport[]) => void) => () => void;
     detectUnknownModFilters: (modId: string, requestId?: string) => Promise<UnknownModFilterGuess>;
     detectUnknownModCacheBulk: (requests: Array<{ modId: string; requestId?: string }>) => Promise<UnknownModFilterGuess[]>;
     cancelUnknownModDetection: (modId: string) => Promise<void>;
@@ -1151,6 +1162,14 @@ export interface ElectronAPI {
         ) => Promise<string | null>;
         voiceclip: (vsndPath: string) => Promise<string | null>;
         voiceclipFile: (vsndPath: string) => Promise<string | null>;
+        /** Park a portrait-editor PNG bake (data URL) in a bounded userData cache
+         *  and return its absolute path, which is what the visual staging
+         *  contract records. Writes nothing into the game directory. */
+        stagePortraitImage: (dataUrl: string) => Promise<string>;
+        /** A 128px `grimoire-foundry:` preview of a recorded source image, or
+         *  null when it is gone, too large, or not decodable. Never returns a
+         *  filesystem path. */
+        sourceThumbnail: (sourcePath: string) => Promise<string | null>;
         warmCache: () => Promise<void>;
         engineInfo: () => Promise<import('./foundry').EngineInfo>;
         exportHeroEffect: (
@@ -1170,6 +1189,12 @@ export interface ElectronAPI {
         checkAudioPaths: (paths: string[]) => Promise<string[]>;
         replaceTexture: (
             req: import('./foundry').TextureReplacementRequest
+        ) => Promise<import('./mod').Mod[]>;
+        /** The install half of the build tray: the same reviewed, verified build
+         *  as `forge`, registered as a tracked local mod instead of exported.
+         *  Resolves to the rescanned mod list. */
+        forgeInstall: (
+            req: import('./foundry').FoundryForgeRequest
         ) => Promise<import('./mod').Mod[]>;
     };
     browser: {

@@ -307,7 +307,15 @@ export interface FoundryAssetSourcesInspection {
     paths: string[];
     sources: FoundryAssetSource[];
     winners: Record<string, string | null>;
-    unreadableMods: Array<{ modId: string; modName: string; enabled: boolean }>;
+    unreadableMods: Array<{
+        modId: string;
+        modName: string;
+        enabled: boolean;
+        /** The file's real type read from its magic bytes, as a human-readable
+         *  noun phrase ("7-Zip archive", "ZIP archive"). Null or absent when
+         *  the type could not be identified. */
+        detectedType?: string | null;
+    }>;
 }
 
 /** Request to replace one catalog texture with a user-selected PNG and install
@@ -317,6 +325,10 @@ export interface TextureReplacementRequest {
     imagePath: string;
     name: string;
     category: TextureCategory;
+    /** Hero display name from the catalog entry, when it had one. Retained for
+     *  grouping and the Locker cross-link only: the entry path stays the sole
+     *  ownership key. */
+    heroName?: string;
     thumbnailDataUrl?: string;
 }
 
