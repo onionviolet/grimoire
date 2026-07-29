@@ -7,6 +7,7 @@ import {
   Swords,
   Volume2,
   Image as ImageIcon,
+  Images,
   ListChecks,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -25,6 +26,7 @@ import FloatingModelPanel from '../locker/FloatingModelPanel';
 import SoundBrowse from './SoundBrowse';
 import TextureBrowse from './TextureBrowse';
 import LibraryBrowse from './LibraryBrowse';
+import PortraitBrowse from './PortraitBrowse';
 import FoundryBuildTray from './FoundryBuildTray';
 import MyChanges from './MyChanges';
 import type { FoundryStagedEdit } from './buildTray';
@@ -53,9 +55,14 @@ interface HeroWorkshopProps {
   /** Install the reviewed build instead of exporting it, so it is tracked and
    *  listed in My changes. Optional, exactly as on the tray itself. */
   onInstall?: (request: FoundryForgeRequest) => Promise<void>;
+  /** Section to open on (deep links like `/foundry?hero=X&section=portraits`).
+   *  Unknown values fall back to the default first section. */
+  initialSection?: string;
 }
 
-type SectionId = 'appearance' | 'abilities' | 'voice' | 'icons' | 'myChanges';
+type SectionId = 'appearance' | 'abilities' | 'voice' | 'portraits' | 'icons' | 'myChanges';
+
+const SECTION_IDS: readonly SectionId[] = ['appearance', 'abilities', 'voice', 'portraits', 'icons', 'myChanges'];
 
 /**
  * The per-hero Foundry workshop: pick a hero, edit everything about them. Mirrors
@@ -85,13 +92,16 @@ export default function HeroWorkshop({
   onOutputNameChange,
   onForge,
   onInstall,
+  initialSection,
 }: HeroWorkshopProps) {
   const { t } = useTranslation();
   const mods = useAppStore((s) => s.mods);
   const modsLoaded = useAppStore((s) => s.modsLoaded);
   const loadMods = useAppStore((s) => s.loadMods);
   const toggleMod = useAppStore((s) => s.toggleMod);
-  const [section, setSection] = useState<SectionId>('appearance');
+  const [section, setSection] = useState<SectionId>(
+    SECTION_IDS.find((id) => id === initialSection) ?? 'appearance'
+  );
   // The workshop is a full-bleed hero view, so the tray docks on demand rather
   // than permanently eating width. Staging opens it: an edit the user cannot
   // see landing is an edit they cannot review.
@@ -174,6 +184,7 @@ export default function HeroWorkshop({
     { id: 'appearance', label: t('foundry.workshop.appearance', 'Appearance'), icon: Sparkles },
     { id: 'abilities', label: t('foundry.workshop.abilities', 'Abilities'), icon: Swords },
     { id: 'voice', label: t('foundry.workshop.voice', 'Voice'), icon: Volume2 },
+    { id: 'portraits', label: t('foundry.workshop.portraits', 'Portraits'), icon: Images },
     { id: 'icons', label: t('foundry.workshop.icons', 'Icons & Textures'), icon: ImageIcon },
     { id: 'myChanges', label: t('foundry.workshop.myChanges', 'My changes'), icon: ListChecks },
   ];
@@ -304,6 +315,10 @@ export default function HeroWorkshop({
         </div>
       ) : section === 'voice' ? (
         <SoundBrowse heroes={scopedRoster} heroNames={heroNames} only="voice" onStage={stage} />
+      ) : section === 'portraits' ? (
+        // The family-first portrait surface, pinned to this hero. Staging goes
+        // through the same editor and preflight as the catalog-mode tab.
+        <PortraitBrowse hero={hero.codename} heroNames={heroNames} onStage={stage} />
       ) : section === 'icons' ? (
         <div className="space-y-8">
           <TextureBrowse heroes={scopedRoster} heroNames={heroNames} onStage={stage} />

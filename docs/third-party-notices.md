@@ -14,3 +14,13 @@ the selected audio and temporary conversion output never leave the computer.
 Release engineering must retain this notice and the license/source information
 for the exact distributed binary. `ffmpeg-static` identifies each prebuilt
 binary's source in its package/release metadata.
+
+## ChatLane chat wheel icons
+
+The Chat Wheel page's icon picker previews (`src/assets/chatlane-icons/*.svg`)
+are vendored from RedMser/ChatLane (`GUI/ping_icons/`), the same MIT-licensed
+project whose converter CLI Grimoire bundles in `resources/chatlane` (its MIT
+`LICENSE` file is distributed alongside the executable and covers this artwork
+as well).
+
+- ChatLane: https://github.com/RedMser/ChatLane (MIT)

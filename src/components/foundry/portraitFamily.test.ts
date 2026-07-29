@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   cropToTargetRect,
+  groupPortraitFamilies,
   planPortraitFamilyEdits,
   portraitFamilyCoverageGap,
   portraitFamilyVariants,
@@ -61,6 +62,75 @@ describe('portraitFamilyVariants', () => {
     expect(portraitVariantKey('panorama/images/heroes/mina_low-hp.png')).toBe('low_hp');
     expect(portraitVariantLabelKey('gloat')).toBe('portraitEditor.variants.gloat');
     expect(portraitVariantLabelKey('card_low_hp')).toBeNull();
+  });
+});
+
+describe('groupPortraitFamilies', () => {
+  it('folds the catalog into one group per family with preflight-identical membership', () => {
+    const groups = groupPortraitFamilies(catalog);
+
+    // mina_card* and mina_minimap share the `mina` stem; mina_ability is its own
+    // family of one (it is hero-image art, just not a state variant).
+    expect(groups.map((group) => group.key)).toEqual([
+      'panorama/images/heroes/mina',
+      'panorama/images/heroes/mina_ability',
+    ]);
+    const family = groups[0];
+    expect(new Set(family.variants.map((v) => v.path))).toEqual(
+      new Set(visualAssetInspectionPaths(family.base, catalog)),
+    );
+    expect(family.hero).toBe('mina');
+    expect(groups[1].variants).toHaveLength(1);
+  });
+
+  it('anchors on the most recognizable state and falls back to catalog order', () => {
+    // No unsuffixed member here, so `card` wins over low_hp/gloat/minimap.
+    expect(groupPortraitFamilies(catalog)[0].base.path).toBe('panorama/images/heroes/mina_card.png');
+
+    const unsuffixed = [entry('panorama/images/heroes/mina.png', 'Mina'), ...catalog];
+    expect(groupPortraitFamilies(unsuffixed)[0].base.path).toBe('panorama/images/heroes/mina.png');
+
+    const oddOnly = [
+      entry('panorama/images/heroes/mina_gloat.png', 'Mina gloat'),
+      entry('panorama/images/heroes/mina_low_hp.png', 'Mina low HP'),
+    ];
+    expect(groupPortraitFamilies(oddOnly)[0].base.path).toBe('panorama/images/heroes/mina_gloat.png');
+  });
+
+  it('groups the live pak naming: format token, stacked states, hash-suffixed duplicates', () => {
+    // Real entry shapes from an installed pak (astro == Holliday).
+    const live = [
+      entry('panorama/images/heroes/astro_card_critical_psd.vtex_c', 'card critical'),
+      entry('panorama/images/heroes/astro_card_gloat_psd.vtex_c', 'card gloat'),
+      entry('panorama/images/heroes/astro_card_psd.vtex_c', 'card'),
+      entry('panorama/images/heroes/astro_mm_psd.vtex_c', 'mm'),
+      entry('panorama/images/heroes/astro_sm_psd.vtex_c', 'sm'),
+      entry('panorama/images/heroes/astro_sm_psd_e2407af5.vtex_c', 'sm'),
+      entry('panorama/images/heroes/astro_vertical_psd.vtex_c', 'vertical'),
+      // Different directories stay different families even for the same hero.
+      entry('panorama/images/heroes/backgrounds/astro_bg_psd.vtex_c', 'bg'),
+      entry('panorama/images/heroes/guns/astro_gun_psd.vtex_c', 'gun'),
+    ];
+    const groups = groupPortraitFamilies(live);
+
+    expect(groups.map((group) => group.key)).toEqual([
+      'panorama/images/heroes/astro',
+      'panorama/images/heroes/backgrounds/astro_bg',
+      'panorama/images/heroes/guns/astro_gun',
+    ]);
+    const family = groups[0];
+    expect(family.base.path).toBe('panorama/images/heroes/astro_card_psd.vtex_c');
+    expect(family.variants).toHaveLength(7);
+    expect(new Set(family.variants.map((v) => v.key))).toEqual(
+      new Set(['card', 'card_critical', 'card_gloat', 'mm', 'sm', 'vertical']),
+    );
+    expect(portraitVariantKey('panorama/images/heroes/astro_sm_psd_e2407af5.vtex_c')).toBe('sm');
+    expect(portraitVariantLabelKey('card_critical')).toBe('portraitEditor.variants.card_critical');
+  });
+
+  it('ignores non hero-image categories entirely', () => {
+    const icon: TextureEntry = { path: 'panorama/images/icons/rescue_beam.png', category: 'ability-icon', hero: null, label: 'Rescue beam' };
+    expect(groupPortraitFamilies([icon])).toEqual([]);
   });
 });
 

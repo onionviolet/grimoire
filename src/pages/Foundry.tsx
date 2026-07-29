@@ -6,6 +6,7 @@ import {
   Volume2,
   Globe,
   Image as ImageIcon,
+  Images,
   ShoppingBag,
   Palette,
   ArrowLeft,
@@ -20,6 +21,7 @@ import { foundryForge, foundryForgeInstall, foundryHeroes, foundryWarmCache } fr
 import { showToast } from '../stores/toastStore';
 import type { HeroInfo } from '../types/foundry';
 import LibraryBrowse from '../components/foundry/LibraryBrowse';
+import PortraitBrowse from '../components/foundry/PortraitBrowse';
 import SoundBrowse from '../components/foundry/SoundBrowse';
 import GlobalSoundBrowse from '../components/foundry/GlobalSoundBrowse';
 import TextureBrowse from '../components/foundry/TextureBrowse';
@@ -41,6 +43,7 @@ const SUBTOOLS = [
   { id: 'myChanges', icon: ListChecks, labelKey: 'foundry.subtools.myChanges', enabled: true },
   { id: 'globalSound', icon: Globe, labelKey: 'foundry.subtools.globalSound', enabled: true },
   { id: 'texture', icon: ImageIcon, labelKey: 'foundry.subtools.texture', enabled: true },
+  { id: 'portraits', icon: Images, labelKey: 'foundry.subtools.portraits', enabled: true },
   { id: 'items', icon: ShoppingBag, labelKey: 'foundry.subtools.items', enabled: true },
   { id: 'recolor', icon: Palette, labelKey: 'foundry.subtools.recolor', enabled: true },
 ] as const;
@@ -61,6 +64,7 @@ function subtoolForChangeFilter(filter: FoundryChangeFilter): SubtoolId {
     case 'other':
       return 'texture';
     case 'hero-image':
+      return 'portraits';
     case 'ability-icon':
       return 'library';
     default:
@@ -188,6 +192,9 @@ export default function Foundry() {
       <HeroWorkshop
         hero={workshopHero}
         heroNames={heroNames}
+        // Only meaningful alongside `?hero=`: a deep link opens a specific
+        // hero's workshop on a specific section (the Locker links portraits).
+        initialSection={new URLSearchParams(location.search).get('section') ?? undefined}
         onBack={leaveWorkshop}
         stagedEdits={stagedEdits}
         onStage={stageEdit}
@@ -314,6 +321,8 @@ export default function Foundry() {
             <GlobalSoundBrowse onStage={stageEdit} />
           ) : active === 'texture' ? (
             <TextureBrowse heroes={heroes} heroNames={heroNames} onStage={stageEdit} />
+          ) : active === 'portraits' ? (
+            <PortraitBrowse heroNames={heroNames} onStage={stageEdit} />
           ) : active === 'recolor' ? (
             <RecolorTool heroes={heroes} />
           ) : active === 'items' ? (

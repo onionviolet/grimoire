@@ -165,6 +165,7 @@
       "appearance": "Appearance",
       "abilities": "Abilities",
       "voice": "Voice",
+      "portraits": "Portraits",
       "icons": "Icons & Textures",
       "back": "All heroes",
       "sections": "Workshop sections",
@@ -186,10 +187,18 @@
       "sound": "Sound",
       "globalSound": "Global sounds",
       "texture": "Texture",
+      "portraits": "Portraits",
       "items": "Items",
       "recolor": "Recolor",
       "soon": "soon",
       "myChanges": "My changes"
+    },
+    "portraits": {
+      "searchPlaceholder": "Search portraits...",
+      "empty": {
+        "title": "No portraits match",
+        "description": "No portrait families match that hero or search."
+      }
     },
     "categories": {
       "abilityIcon": "Ability icons",
@@ -3233,6 +3242,10 @@
     "previewEmpty": "Add a menu to preview its wheel.",
     "untitled": "Untitled",
     "emptySlot": "Empty slot",
+    "previewWheel": "Chat wheel preview",
+    "overflowWarning": "The game shows only the first {{max}} commands; {{count}} more are in this menu but will not appear on the wheel.",
+    "wheelFull": "This wheel is full ({{max}} commands).",
+    "iconUnknown": "Not a ChatLane icon name; the wheel will show no icon.",
     "advancedYaml": "Advanced YAML",
     "remove": "Remove"
   },
@@ -3371,7 +3384,10 @@
       "portrait": "Portrait",
       "low_hp": "Low HP",
       "gloat": "Gloat",
-      "minimap": "Minimap"
+      "minimap": "Minimap",
+      "card_gloat": "Gloat",
+      "card_critical": "Critical",
+      "vertical": "Vertical"
     },
     "useCurrentArt": "Use current art",
     "useCurrentArtHint": "Load the game's own art for this variant into the frame",

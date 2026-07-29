@@ -7,6 +7,8 @@ import { Button } from '../components/common/ui';
 import Tx from '../components/translation/Tx';
 import type { Mod } from '../types/mod';
 import { parseChatWheelYaml, updateChatWheelYaml, type ChatWheelModel } from '../lib/chatWheelModel';
+import { CHAT_WHEEL_ICONS, chatWheelIconUrl } from '../lib/chatWheelIcons';
+import RadialWheelPreview from '../components/chatwheel/RadialWheelPreview';
 
 export default function ChatWheel() {
   const { t } = useTranslation();
@@ -298,9 +300,18 @@ export default function ChatWheel() {
                   <p className="text-sm text-text-secondary"><Tx k="chatWheel.noMenus" fallback="No custom menus yet. Add one to begin." /></p>
                 ) : model.menus.map((menu, menuIndex) => (
                   <div key={`${menuIndex}-${menu.name}`} className="mb-3 rounded border border-border bg-bg-secondary p-3 last:mb-0">
-                    <div className="grid gap-2 sm:grid-cols-[1fr_8rem_auto]">
+                    <div className="grid gap-2 sm:grid-cols-[1fr_10rem_auto]">
                       <input aria-label={t('chatWheel.menuName', 'Menu name')} value={menu.name} onFocus={() => setActiveMenu(menuIndex)} onChange={(event) => changeMenu(menuIndex, { name: event.target.value })} className="rounded border border-border bg-bg-tertiary px-2 py-1.5 text-sm text-text-primary" />
-                      <input aria-label={t('chatWheel.menuIcon', 'Icon')} value={menu.icon} onChange={(event) => changeMenu(menuIndex, { icon: event.target.value })} className="rounded border border-border bg-bg-tertiary px-2 py-1.5 text-sm text-text-primary" />
+                      {/* The icon names ChatLane ships; anything else renders as
+                          no icon in game, so free text stays allowed. */}
+                      <div className="flex items-center gap-1.5 rounded border border-border bg-bg-tertiary px-2">
+                        <span className="flex h-5 w-5 shrink-0 items-center justify-center" title={chatWheelIconUrl(menu.icon) ? menu.icon : t('chatWheel.iconUnknown', 'Not a ChatLane icon name; the wheel will show no icon.')}>
+                          {chatWheelIconUrl(menu.icon)
+                            ? <img src={chatWheelIconUrl(menu.icon)!} alt="" className="h-4 w-4" />
+                            : <span className="h-3.5 w-3.5 rounded-sm border border-dashed border-border" />}
+                        </span>
+                        <input aria-label={t('chatWheel.menuIcon', 'Icon')} list="chat-wheel-icon-names" value={menu.icon} onFocus={() => setActiveMenu(menuIndex)} onChange={(event) => changeMenu(menuIndex, { icon: event.target.value })} className="min-w-0 flex-1 bg-transparent py-1.5 text-sm text-text-primary focus:outline-none" />
+                      </div>
                       <Button size="sm" variant="secondary" onClick={() => { applyModel({ ...model, menus: model.menus.filter((_, index) => index !== menuIndex) }); }}><Tx k="chatWheel.remove" fallback="Remove" /></Button>
                     </div>
                     <div className="mt-2 space-y-2">
@@ -324,19 +335,20 @@ export default function ChatWheel() {
                 {model.menus.map((menu, index) => <Button key={`${menu.name}-${index}`} size="sm" variant={activeMenu === index ? 'primary' : 'secondary'} onClick={() => setActiveMenu(index)}>{menu.name || t('chatWheel.untitled', 'Untitled')}</Button>)}
               </div>
               {model.menus[activeMenu] ? (
-                <div className="relative mx-auto mt-5 grid h-64 w-64 grid-cols-3 grid-rows-3 gap-2 rounded-full border border-accent/30 bg-bg-tertiary p-5">
-                  {Array.from({ length: 8 }, (_, slot) => {
-                    const item = model.menus[activeMenu].items[slot];
-                    const gridSlots = [1, 2, 5, 8, 7, 6, 3, 0];
-                    return <button key={slot} type="button" onClick={() => selectPreviewSlot(slot)} style={{ gridColumnStart: (gridSlots[slot] % 3) + 1, gridRowStart: Math.floor(gridSlots[slot] / 3) + 1 }} className={`rounded border px-1 text-center text-[10px] ${focusedItem === slot ? 'border-accent bg-accent/20 text-text-primary' : 'border-border bg-bg-secondary text-text-secondary'}`} title={item || t('chatWheel.emptySlot', 'Empty slot')}>
-                      {item || <span className="text-text-secondary/50">+</span>}
-                    </button>;
-                  })}
-                  <div className="col-start-2 row-start-2 flex items-center justify-center rounded-full border border-accent/40 bg-bg-primary p-2 text-center text-xs font-semibold text-text-primary">{model.menus[activeMenu].name || t('chatWheel.untitled', 'Untitled')}</div>
-                </div>
+                <RadialWheelPreview
+                  menuName={model.menus[activeMenu].name}
+                  icon={model.menus[activeMenu].icon}
+                  items={model.menus[activeMenu].items}
+                  focusedSlot={focusedItem}
+                  onSelectSlot={selectPreviewSlot}
+                />
               ) : <div className="mt-5 rounded border border-dashed border-border p-6 text-center text-xs text-text-secondary"><Tx k="chatWheel.previewEmpty" fallback="Add a menu to preview its wheel." /></div>}
             </div>
           </div>
+
+          <datalist id="chat-wheel-icon-names">
+            {CHAT_WHEEL_ICONS.map((icon) => <option key={icon.name} value={icon.name} />)}
+          </datalist>
 
           <details className="rounded border border-border bg-bg-primary p-3">
             <summary className="cursor-pointer text-sm font-semibold text-text-primary"><Tx k="chatWheel.advancedYaml" fallback="Advanced YAML" /></summary>

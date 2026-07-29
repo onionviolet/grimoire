@@ -84,6 +84,18 @@ export function visualAssetInspectionPaths(item: TextureEntry, catalog: readonly
     .map((candidate) => candidate.path);
 }
 
+/** Strip the non-semantic tail the pak appends to a portrait basename: an
+ *  optional content-hash token (hex, kept conservative by requiring a digit so
+ *  a real word never matches) and the source-format token compiled into the
+ *  name (`astro_card_gloat_psd` -> `astro_card_gloat`). Exported so the
+ *  variant labeling in portraitFamily diffs the same cleaned basename this
+ *  module keys families on. */
+export function stripPortraitFileTokens(basename: string): string {
+  return basename
+    .replace(/_(?=[0-9a-f]*\d)[0-9a-f]{6,}$/, '')
+    .replace(/_(?:psd|png|tga|jpe?g)$/, '');
+}
+
 /** The family stem two portrait-state paths must share to be one visual family.
  *  Exported so the portrait editor names the same family the preflight inspects,
  *  rather than re-deriving (and possibly narrowing) it. */
@@ -91,7 +103,9 @@ export function portraitFamilyKey(path: string): string {
   const normalized = path.replace(/\\/g, '/').toLowerCase();
   const slash = normalized.lastIndexOf('/');
   const directory = normalized.slice(0, slash + 1);
-  const base = normalized.slice(slash + 1).replace(/\.[^.]+$/, '');
-  // State labels are suffixes in the asset filename, not display metadata.
-  return `${directory}${base.replace(/(?:[_-](?:low[_-]?hp|gloat|minimap|portrait|card))+$/g, '')}`;
+  const base = stripPortraitFileTokens(normalized.slice(slash + 1).replace(/\.[^.]+$/, ''));
+  // State labels are suffixes in the asset filename, not display metadata. The
+  // live pak's vocabulary (scanned 2026-07-29): card / card_gloat /
+  // card_critical / mm / sm / vertical, stacked after the hero stem.
+  return `${directory}${base.replace(/(?:[_-](?:low[_-]?hp|gloat|critical|minimap|portrait|card|mm|sm|vertical))+$/g, '')}`;
 }

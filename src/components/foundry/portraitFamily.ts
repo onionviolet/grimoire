@@ -27,6 +27,7 @@ import type { FoundryAssetSourcesInspection, TextureEntry } from '../../types/fo
 import {
   portraitFamilyKey,
   prepareVisualStagedEdit,
+  stripPortraitFileTokens,
   visualAssetInspectionPaths,
   type VisualStagedEdit,
 } from './visualEdits';
@@ -65,6 +66,10 @@ const KNOWN_VARIANT_KEYS: ReadonlySet<string> = new Set([
   'low_hp',
   'gloat',
   'minimap',
+  // The live pak's stacked card states (e.g. astro_card_gloat_psd).
+  'card_gloat',
+  'card_critical',
+  'vertical',
 ]);
 
 function normalizePath(path: string): string {
@@ -82,7 +87,9 @@ function basename(path: string): string {
  * `card_low_hp`; an unsuffixed `mina.png` is `base`.
  */
 export function portraitVariantKey(path: string): string {
-  const base = basename(path);
+  // Diff against the family stem with the pak's hash/format tail removed, so
+  // `astro_card_gloat_psd` reads as the `card_gloat` state, not `card_gloat_psd`.
+  const base = stripPortraitFileTokens(basename(path));
   const family = portraitFamilyKey(path);
   const familyBase = family.slice(family.lastIndexOf('/') + 1);
   const suffix = base.startsWith(familyBase) ? base.slice(familyBase.length) : '';
@@ -122,6 +129,50 @@ export function portraitFamilyVariants<T extends TextureEntry>(
   // The anchor is what the user clicked, so lead with it; the rest keep catalog
   // order. Membership is untouched, only presentation order.
   return variants.sort((a, b) => Number(b.anchor) - Number(a.anchor));
+}
+
+/** One portrait family as a browsable unit: the anchor entry a card opens the
+ *  editor on, plus every variant the staging preflight would inspect. */
+export interface PortraitFamilyGroup<T extends TextureEntry = TextureEntry> {
+  /** The family stem (`portraitFamilyKey` of every member): stable list key. */
+  key: string;
+  /** Codename of the hero the anchor entry belongs to, when the catalog knew. */
+  hero: string | null;
+  /** The member a card opens the editor on. Preferring the unsuffixed / card
+   *  member keeps the editor anchored on the state players recognize. */
+  base: T;
+  /** Full family membership, identical to what the preflight inspects. */
+  variants: PortraitVariant<T>[];
+}
+
+/** Which member anchors a family card, most recognizable state first. A family
+ *  with none of these (all-unknown suffixes) anchors on catalog order. */
+const BASE_PREFERENCE = ['base', 'card', 'portrait'] as const;
+
+/**
+ * Fold a loaded hero-image catalog into one group per portrait family, in
+ * catalog order. Membership is still derived through `portraitFamilyVariants`
+ * (rule 1 above), so a card can never present a narrower or wider family than
+ * the editor and the preflight will use. Non-portrait hero images simply come
+ * out as families of one, which is exactly how the editor treats them.
+ */
+export function groupPortraitFamilies<T extends TextureEntry>(
+  catalog: readonly T[],
+): PortraitFamilyGroup<T>[] {
+  const groups = new Map<string, T[]>();
+  for (const item of catalog) {
+    if (item.category !== 'hero-image') continue;
+    const key = portraitFamilyKey(item.path);
+    const members = groups.get(key);
+    if (members) members.push(item);
+    else groups.set(key, [item]);
+  }
+  return [...groups.entries()].map(([key, members]) => {
+    const byVariant = new Map(members.map((member) => [portraitVariantKey(member.path), member]));
+    const preferred = BASE_PREFERENCE.map((variant) => byVariant.get(variant)).find(Boolean);
+    const base = preferred ?? members[0];
+    return { key, hero: base.hero, base, variants: portraitFamilyVariants(base, catalog) };
+  });
 }
 
 /** Normalized (source-fraction) crop rect, the shape LockerImageCropper emits. */
