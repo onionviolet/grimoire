@@ -2,6 +2,46 @@
 
 All notable changes to this project are documented here. Format is loosely based on [Keep a Changelog](https://keepachangelog.com/), and the project adheres to semantic versioning.
 
+## [1.25.173] - 2026-07-29
+
+Locker and Foundry are one object at two moments: the Locker manages what you
+have, Foundry makes more of it. Each had learned only half of the same lesson.
+This release trades those halves.
+
+### Added
+- **The Foundry build tray can be previewed on the 3D model.** Stage a texture
+  or portrait edit, flip on 3D, and see it on the hero before forging anything,
+  stacked over the skins you already have enabled rather than on a vanilla
+  model. The preview build is temporary in the strong sense: it never enters the
+  addons folder, never changes Installed, and is removed when the panel closes.
+- **The Locker says what an ability-sound pick will overwrite, before it
+  writes.** Each source now reports the exact entries it would take over from
+  what is applied, and how many entries the current source supplies that would
+  revert to the game default (a pick rebuilds that ability's whole selection,
+  which was invisible until now). Shown next to the control, not behind a
+  confirmation dialog.
+- **"What else writes these files" is answerable from the hero page.** With two
+  or more skins enabled, the Skins section lists the exact entries the stack
+  contests and which installed mods own them, without a trip to Conflicts.
+- **The Locker warns when a custom hero card covers only part of its family.**
+  A card is several images (main, low-HP, gloat, minimap); the picker now names
+  the variants that will keep their stock art instead of leaving you to notice
+  in-game.
+- **The Foundry portrait editor no longer demands a file drop every time.**
+  Images you framed before are offered back, and the game's own art for the
+  entry can be loaded straight into the crop frame.
+- **The Foundry hero grid shows what you have already made.** Each card badges
+  its authored-change count, and heroes can be starred. Favorites are shared
+  with the Locker, so a hero starred in one grid reads as starred in the other.
+
+### Changed
+- **Both hero pages now render from one frame.** The Locker hero view and the
+  Foundry workshop had drifted into two copies of the same chrome, with
+  Foundry's the visibly worse of the two. Foundry picks up the Locker's softer
+  frosted-glass feather and its fuller hero-render fallback, so a hero with no
+  render art degrades the same way on every surface.
+- The Foundry hero grid's "in development" label is now translatable.
+
 ## [1.25.1721] - 2026-07-28
 
 Maintenance release. No user-facing behaviour changes over 1.25.172.
