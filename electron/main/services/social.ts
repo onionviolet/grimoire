@@ -84,6 +84,37 @@ export class SocialUnauthenticatedError extends SocialApiError {
     }
 }
 
+/** The service could not be reached at all: DNS failure, refused connection,
+ *  no route, or a request that timed out before any response. From the user's
+ *  side these are indistinguishable and the answer is the same (check your
+ *  connection, try again), so they share one class. */
+export class SocialOfflineError extends SocialApiError {
+    constructor(message: string) {
+        super(message, 0);
+        this.name = 'SocialOfflineError';
+    }
+}
+
+/** The service answered, but with "not right now": a 429 throttle or a 5xx.
+ *  The D1 free tier hard-stops rather than degrading (see the social repo's
+ *  free-tier notes), so a 5xx here is a plausible everyday state, not an
+ *  exotic one, and it deserves its own reassuring copy in the UI. */
+export class SocialBusyError extends SocialApiError {
+    constructor(message: string, status: number, issues?: unknown) {
+        super(message, status, issues);
+        this.name = 'SocialBusyError';
+    }
+}
+
+/** Errors cross the IPC boundary as text (Electron serializes them down to
+ *  `name: message`), so the renderer classifies on the error NAME. That is
+ *  why these classes exist instead of a status-code check renderer-side:
+ *  the status is not on the wire, the name is. See
+ *  src/components/social/socialErrors.ts for the other half. */
+function isBusyStatus(status: number): boolean {
+    return status === 429 || status >= 500;
+}
+
 type AuthMode = 'none' | 'optional' | 'required';
 
 interface RequestOptions {
@@ -140,14 +171,12 @@ async function request<T>(
         });
     } catch (err) {
         if (err instanceof Error && err.name === 'AbortError') {
-            throw new SocialApiError(
-                `Grimoire Social request timed out after ${timeoutMs / 1000}s`,
-                0
+            throw new SocialOfflineError(
+                `Grimoire Social request timed out after ${timeoutMs / 1000}s`
             );
         }
-        throw new SocialApiError(
-            `Grimoire Social request failed: ${err instanceof Error ? err.message : String(err)}`,
-            0
+        throw new SocialOfflineError(
+            `Grimoire Social request failed: ${err instanceof Error ? err.message : String(err)}`
         );
     } finally {
         clearTimeout(timeoutId);
@@ -166,6 +195,13 @@ async function request<T>(
         const errShape = parsedBody === null ? null : ErrorResponse.safeParse(parsedBody);
         const message = errShape && errShape.success ? errShape.data.error : response.statusText;
         const issues = errShape && errShape.success ? errShape.data.issues : undefined;
+        if (isBusyStatus(response.status)) {
+            throw new SocialBusyError(
+                message || 'Grimoire Social is over capacity',
+                response.status,
+                issues
+            );
+        }
         throw new SocialApiError(message || 'Grimoire Social error', response.status, issues);
     }
 

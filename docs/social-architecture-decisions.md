@@ -335,6 +335,37 @@ A log of the load-bearing decisions made while planning Grimoire Social. Each en
 
 ---
 
+## ADR-017: Phase 1.5 write paths: coalesced view counts, paced revalidation cron
+
+**Date:** 2026-07-28
+**Status:** Accepted
+
+**Context.** Phase 1.5 adds two things that both want to write on behalf of traffic we do not control.
+
+1. **Owner-only view counts.** The obvious implementation is `UPDATE published_profiles SET view_count = view_count + 1` inside `GET /v1/profiles/:id`. That puts an unbounded write on the single hottest read path in the product. D1's free tier hard-stops at 100K writes/day (ADR-013: a cliff, not throttling), so one profile linked in a busy Discord channel could exhaust the daily write budget and take publish and like down with it. The failure mode is the whole social layer going 5xx because a vanity stat got popular.
+2. **GameBanana revalidation.** Published profiles are recipes pointing at submissions we do not host, and authors delete and archive them. To render "11 of 12 mods available" we have to ask GameBanana about every referenced submission, from a cron, unsolicited, against a volunteer-run service.
+
+**Decision.**
+
+*View counts.* Views never touch D1 on the request path. `GET /v1/profiles/:id` hands the view to a sharded `ViewCounterDO` (8 shards, profile id hashed to a shard so a profile's deltas accumulate in one place) via `executionCtx.waitUntil`. The DO accumulates per-profile deltas in DO storage and flushes them to D1 on a 5-minute alarm. D1 writes are therefore bounded by *distinct profiles viewed per 5-minute window*, not by view volume: a profile viewed 10,000 times in an hour costs at most 12 writes. We accept DO storage writes per view (cheap, separate budget, no cliff) to avoid D1 writes per view. The owner's own views are not counted, so the number means "other people looked". On flush we delete the pending keys before writing to D1, so a failed batch under-counts rather than double-counts: for a vanity stat, under-counting is the safer direction.
+
+*Revalidation.* A weekly cron (`17 4 * * 1`) walks published profiles oldest-check-first (`ORDER BY mods_revalidated_at ASC`; SQLite sorts NULL first, so never-checked profiles lead). Requests to GameBanana are strictly serial at 250 ms spacing (4 req/sec) with a hard per-run budget of 500 requests and 200 profiles. The Electron client's limiter allows 10 req/sec because a user is waiting; nobody is waiting on a cron, so it gets half that and a ceiling. A `mod_availability` table memoizes each submission's verdict for 6 days across profiles and across runs, so the popular mods that show up in half the feed cost one request per run rather than one per profile. Probe results are three-state: 404/410 is "gone", a 200 with `_idRow` is "available", and everything else (429, 5xx, timeout, network) is "could not tell" and is neither cached nor recorded. A profile with any inconclusive probe is left untouched and re-picked next run.
+
+*Never-checked is not healthy.* `mods_available` is `NULL` until the cron has seen the profile. Clients must render that as unknown, never as "all available". This is why the field is nullable rather than defaulting to `mod_count`.
+
+**Consequences.**
+- (+) The detail route stays read-only against D1; view popularity cannot trigger the free-tier cliff
+- (+) Revalidation cost per run is capped and predictable, and the backlog drains over weeks instead of hammering GameBanana in one burst
+- (+) Purely additive wire changes (`mods_available`, `mods_revalidated_at`, `unavailable_mod_ids`, `view_count`): ADR-005 compliant
+- (-) View counts lag by up to 5 minutes, and a DO eviction between flush-delete and D1 write loses one window
+- (-) Availability badges can be up to a week stale, and a mod deleted an hour ago still reads as available
+- (-) A second DO class means a second `[[migrations]]` entry and one more moving part to reason about at deploy time
+- (-) `mod_availability` is a new table that grows with the distinct-mod count; it is a cache and can be truncated at any time
+
+**Alternatives considered.** Increment `view_count` directly with sampling (count 1 in N and multiply) (rejected: still an unbounded hot-path write, and it makes small numbers wrong in a way owners will notice). Keep view counts in KV (rejected: KV is eventually consistent and its free write ceiling is 1K/day, far tighter than D1's). One DO per profile (rejected: unbounded object count for a stat nobody but the owner sees). Revalidate on read, when a profile detail is fetched (rejected: puts GameBanana latency and rate-limit exposure on a user-facing path, and hot profiles get checked constantly while cold ones never do). Revalidate from the client during import (rejected: the import flow already discovers a dead mod naturally; the point of the badge is to warn *before* the user commits to importing).
+
+---
+
 ## Index of decisions
 
 | ID | Title | Status |
@@ -355,3 +386,4 @@ A log of the load-bearing decisions made while planning Grimoire Social. Each en
 | ADR-014 | Account deletion: hard-delete user, soft-delete profiles | Accepted |
 | ADR-015 | Shared types via Zod schemas package | Accepted |
 | ADR-016 | Owner-only PATCH for title + description on profiles | Accepted |
+| ADR-017 | Coalesced view counts + paced revalidation cron (Phase 1.5) | Accepted |

@@ -11,6 +11,7 @@ import {
   Terminal,
   Crosshair,
   CheckCircle2,
+  Eye,
 } from 'lucide-react';
 import { Button, Badge } from '../common/ui';
 import { Textarea } from '../common/forms';
@@ -24,7 +25,18 @@ import {
   type SocialListProfilesResponse,
 } from '../../lib/api';
 import { useSocialStore } from '../../stores/socialStore';
+import { useAppStore } from '../../stores/appStore';
 import { formatRelativeDate } from '../../lib/dates';
+import ModsAvailableBadge from './ModsAvailableBadge';
+import MissingModsBadge from './MissingModsBadge';
+import SocialStateNotice from './SocialStateNotice';
+import { classifySocialError, type ClassifiedSocialError } from './socialErrors';
+import {
+  collectInstalledGameBananaIds,
+  collectProfileGameBananaIds,
+  resolveMissingMods,
+  type MissingModsSummary,
+} from './availability';
 
 // Seed for instant render before the /v1/profiles/:id call completes. Matches
 // the list response shape — pass straight through from the Discover card.
@@ -59,12 +71,26 @@ export default function SocialProfileHeader({
 }: SocialProfileHeaderProps) {
   const { t } = useTranslation();
   const signedIn = useSocialStore((s) => s.status.signedIn);
+  const viewerId = useSocialStore((s) => s.status.user?.id ?? null);
+  // Installed mods are already in the store; resolving "mods I'm missing"
+  // against them needs no extra IPC and no extra network call.
+  const installedMods = useAppStore((s) => s.mods);
+  // Until the installed-mod scan has actually run, an empty list means "we
+  // don't know yet", not "you have nothing". Claiming every mod is missing in
+  // that window would be worse than saying nothing.
+  const modsLoaded = useAppStore((s) => s.modsLoaded);
 
   const [detail, setDetail] = useState<SocialProfileDetail | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<ClassifiedSocialError | null>(null);
   const [hasCrosshair, setHasCrosshair] = useState(false);
   const [autoexecCount, setAutoexecCount] = useState(0);
+  // GameBanana ids referenced by this profile, filled in once the share code
+  // parses. Feeds the local "mods I'm missing" summary, which is a different
+  // question from upstream availability in every way that matters.
+  const [profileModIds, setProfileModIds] = useState<number[] | null>(null);
+  // Bumped by the retry button so the detail fetch effect re-runs.
+  const [reloadTick, setReloadTick] = useState(0);
 
   const [likeBusy, setLikeBusy] = useState(false);
   const [likeError, setLikeError] = useState<string | null>(null);
@@ -86,16 +112,17 @@ export default function SocialProfileHeader({
         onDetailReady?.(d);
       })
       .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+        if (!cancelled) setError(classifySocialError(err, navigator.onLine));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
     return () => { cancelled = true; };
     // onDetailReady deliberately omitted — parent should pass a stable ref;
-    // we only want this to fire when the profile id changes.
+    // we only want this to fire when the profile id changes (or the user
+    // asks for a retry).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profileId]);
+  }, [profileId, reloadTick]);
 
   // Inspect the share_code purely for the crosshair / autoexec indicators.
   // Parsing the mod list happens in the import dialog itself.
@@ -107,6 +134,7 @@ export default function SocialProfileHeader({
         if (cancelled) return;
         setHasCrosshair(!!p.extensions?.grimoire?.crosshair);
         setAutoexecCount(p.extensions?.grimoire?.autoexecCommands?.length ?? 0);
+        setProfileModIds(collectProfileGameBananaIds(p));
       })
       .catch(() => { /* best-effort; the import path surfaces real errors */ });
     return () => { cancelled = true; };
@@ -169,6 +197,17 @@ export default function SocialProfileHeader({
     };
   }, [view?.thumbnail_urls]);
 
+  const missing: MissingModsSummary | null = useMemo(() => {
+    if (!profileModIds || !modsLoaded) return null;
+    return resolveMissingMods(profileModIds, collectInstalledGameBananaIds(installedMods));
+  }, [profileModIds, installedMods, modsLoaded]);
+
+  // Owner-only: the server sends view_count as null to everyone else, and we
+  // additionally gate on identity so a future server change can't leak it into
+  // a public surface by accident.
+  const isOwner = !!viewerId && !!view && viewerId === view.owner.id;
+  const viewCount = detail?.view_count;
+
   const allHeroes = useMemo(() => {
     if (!view) return [];
     if (view.heroes && view.heroes.length > 0) return view.heroes;
@@ -230,10 +269,18 @@ export default function SocialProfileHeader({
 
       {/* Body */}
       <div className="px-4 py-3 space-y-3 text-sm">
-        {error && !view && (
+        {error && error.kind !== 'other' && (
+          <SocialStateNotice
+            kind={error.kind}
+            onRetry={() => setReloadTick((n) => n + 1)}
+            inline
+          />
+        )}
+
+        {error && error.kind === 'other' && !view && (
           <div className="bg-red-500/10 border border-red-500/30 rounded-md p-2.5 text-xs text-state-danger flex items-start gap-2">
             <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-            <span>{error}</span>
+            <span>{error.message}</span>
           </div>
         )}
 
@@ -303,6 +350,29 @@ export default function SocialProfileHeader({
                 </Badge>
               )}
             </div>
+
+            {/* Two separate answers, kept visually apart on purpose:
+                - availability: what GameBanana can still serve (server side)
+                - missing: what this machine does not have yet (local) */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <ModsAvailableBadge
+                profile={view}
+                unavailableModIds={detail?.unavailable_mod_ids}
+              />
+              {missing && <MissingModsBadge summary={missing} />}
+            </div>
+
+            {isOwner && (
+              <div
+                className="text-xs text-text-tertiary inline-flex items-center gap-1.5"
+                title={t('discover.stats.ownerOnly')}
+              >
+                <Eye className="w-3.5 h-3.5 flex-shrink-0" />
+                {typeof viewCount === 'number'
+                  ? t('discover.stats.views', { count: viewCount })
+                  : t('discover.stats.viewsUnavailable')}
+              </div>
+            )}
 
             {likeError && (
               <div className="bg-red-500/10 border border-red-500/30 rounded-md p-2 text-xs text-state-danger flex items-start gap-2">

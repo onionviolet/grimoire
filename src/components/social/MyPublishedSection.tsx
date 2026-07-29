@@ -22,6 +22,9 @@ import {
 } from '../../lib/api';
 import { formatRelativeDate } from '../../lib/dates';
 import EditProfileDialog from './EditProfileDialog';
+import ModsAvailableBadge from './ModsAvailableBadge';
+import SocialStateNotice from './SocialStateNotice';
+import { classifySocialError, type ClassifiedSocialError } from './socialErrors';
 
 interface MyPublishedSectionProps {
   // Bumped by the parent whenever a publish completes elsewhere so this
@@ -60,7 +63,9 @@ export default function MyPublishedSection({
   const { t } = useTranslation();
   const [data, setData] = useState<SocialMeResponse | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // Classified so an offline machine or an over-capacity service gets its own
+  // reassuring copy instead of a red "something went wrong" bar.
+  const [error, setError] = useState<ClassifiedSocialError | null>(null);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [editTarget, setEditTarget] = useState<EditTarget | null>(null);
@@ -72,7 +77,7 @@ export default function MyPublishedSection({
       const res = await socialMe();
       setData(res);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(classifySocialError(err, navigator.onLine));
     } finally {
       setLoading(false);
     }
@@ -92,7 +97,7 @@ export default function MyPublishedSection({
         );
         onUnpublished?.(id);
       } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
+        setError(classifySocialError(err, navigator.onLine));
       } finally {
         setDeletingId(null);
         setConfirmingId(null);
@@ -134,10 +139,14 @@ export default function MyPublishedSection({
         </div>
       )}
 
-      {error && (
+      {error && error.kind !== 'other' && (
+        <SocialStateNotice kind={error.kind} onRetry={() => void load()} inline />
+      )}
+
+      {error && error.kind === 'other' && (
         <div className="bg-red-500/10 border border-red-500/30 rounded-md p-2.5 text-xs text-state-danger flex items-start gap-2">
           <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-          <span className="break-words">{error}</span>
+          <span className="break-words">{error.message}</span>
           <button
             type="button"
             onClick={() => void load()}
@@ -215,6 +224,10 @@ export default function MyPublishedSection({
                     <span className="text-text-tertiary">
                       {formatRelativeDate(isoFromUnix(p.updated_at ?? p.created_at))}
                     </span>
+                    {/* Owners are the people who can actually fix a profile
+                        whose mods went away upstream, so they see the same
+                        availability verdict the public cards show. */}
+                    <ModsAvailableBadge profile={p} />
                   </div>
                 </div>
 

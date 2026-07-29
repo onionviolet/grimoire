@@ -30,6 +30,9 @@ import ImportProfileDialog from '../components/profiles/ImportProfileDialog';
 import MyPublishedSection from '../components/social/MyPublishedSection';
 import PublishPickerDialog from '../components/social/PublishPickerDialog';
 import PublishDialog from '../components/social/PublishDialog';
+import ModsAvailableBadge from '../components/social/ModsAvailableBadge';
+import SocialStateNotice from '../components/social/SocialStateNotice';
+import { classifySocialError, type ClassifiedSocialError } from '../components/social/socialErrors';
 import { getActiveDeadlockPath, shouldBlurNsfw } from '../lib/appSettings';
 import { formatRelativeDate } from '../lib/dates';
 
@@ -72,7 +75,10 @@ export default function Discover() {
   const [data, setData] = useState<SocialListProfilesResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // Classified rather than a bare string: "you are offline" and "the service
+  // is over capacity" get their own reassuring copy instead of the generic
+  // error banner, which reads like Grimoire itself broke.
+  const [error, setError] = useState<ClassifiedSocialError | null>(null);
   const [likingId, setLikingId] = useState<string | null>(null);
   // Tracks the viewer's like state per profile. Seeded from the list response
   // when the server returns viewer_has_liked (only when authenticated), and
@@ -117,7 +123,7 @@ export default function Discover() {
       setData(res);
       mergeViewerLiked(res.profiles);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(classifySocialError(err, navigator.onLine));
     } finally {
       setLoading(false);
     }
@@ -150,7 +156,7 @@ export default function Discover() {
       });
       mergeViewerLiked(res.profiles);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(classifySocialError(err, navigator.onLine));
     } finally {
       setLoadingMore(false);
     }
@@ -426,14 +432,20 @@ export default function Discover() {
         </div>
       )}
 
-      {tab !== 'mine' && error && (
+      {/* Offline and busy are not errors in the "Grimoire broke" sense, so
+          they get their own copy and a retry instead of the red banner. */}
+      {tab !== 'mine' && error && error.kind !== 'other' && (
+        <SocialStateNotice kind={error.kind} onRetry={() => void loadProfiles()} />
+      )}
+
+      {tab !== 'mine' && error && error.kind === 'other' && (
         <EmptyState
           icon={CloudOff}
           variant="error"
           title={t('discover.error.title')}
           description={
             <div className="space-y-2">
-              <p>{error}</p>
+              <p>{error.message}</p>
               <p className="text-xs text-text-secondary">
                 {t('discover.error.retryHint')}
               </p>
@@ -555,6 +567,13 @@ export default function Discover() {
                           {p.description}
                         </div>
                       )}
+                    </div>
+
+                    {/* Upstream availability, from the weekly revalidation
+                        pass. Never-checked profiles say so rather than
+                        implying everything is fine. */}
+                    <div>
+                      <ModsAvailableBadge profile={p} />
                     </div>
 
                     <div className="flex items-center gap-2.5">

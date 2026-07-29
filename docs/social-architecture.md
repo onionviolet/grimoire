@@ -424,11 +424,11 @@ The app shifts from "zero telemetry" to "explicit social opt-in." Discover tab f
 13. Wrangler deploy to `*.workers.dev`; soft-launch to a Discord channel for feedback
 
 **Phase 1.5: Polish (1-2 weeks after launch)**
-- Analytics dashboard (admin-only): publishes/day, likes/day, MAU, top reports
-- Better empty/error states; offline detection; "service busy" toast on D1 ceiling 5xx
-- "Mods I'm missing" hint in profile cards (resolve against local install state)
-- Owner-only stats: views per profile
-- **GameBanana revalidation cron**: weekly job marks profiles with deleted/archived mods; surfaces "11/12 mods available" badge on cards
+- Analytics dashboard (admin-only): publishes/day, likes/day, MAU, top reports — *still open*
+- ~~Better empty/error states; offline detection; "service busy" toast on D1 ceiling 5xx~~ — **done**: offline and busy are distinct states with their own copy and retry, and both say local mods/profiles are unaffected
+- ~~"Mods I'm missing" hint in profile cards (resolve against local install state)~~ — **done**: rendered on the profile detail rail (the import surface), where mod ids are known locally. The list wire format carries `mod_count` but not mod ids, and adding per-card ids would fatten every list response for a hint only the detail view can act on
+- ~~Owner-only stats: views per profile~~ — **done**: `ProfileDetail.view_count`, null for non-owners, fed by the coalescing counter DO (ADR-017)
+- ~~**GameBanana revalidation cron**~~ — **done**: weekly paced job (ADR-017) writes `mods_available` / `mods_revalidated_at` / `unavailable_mod_ids`; cards show "11 of 12 mods available", and never-checked profiles show as unknown rather than healthy
 
 **Phase 2: Growth (open-ended)**
 - Comments (with the moderation cost we postponed)
