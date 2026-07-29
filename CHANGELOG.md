@@ -2,6 +2,52 @@
 
 All notable changes to this project are documented here. Format is loosely based on [Keep a Changelog](https://keepachangelog.com/), and the project adheres to semantic versioning.
 
+## [1.25.1723] - 2026-07-29
+
+Three surfaces that were each missing the same thing: a way to see what you
+already have. The chat wheel showed a fake wheel, portraits were buried in a
+grid of everything else, and sound mods had no home beyond a per-ability
+picker.
+
+### Added
+- **The Chat Wheel preview is the real wheel now.** A donut of wedges drawn to
+  the game's own geometry, replacing the 3x3 grid of rectangles, so you can see
+  label fit and which wedge a command actually lands on before saving. Wheels
+  hold up to 12 entries and fill the whole circle, and the `icon:` field is a
+  picker over ChatLane's real icon names with a live thumbnail instead of a
+  free-text box.
+- **Foundry has a Portraits tab.** One card per portrait family per hero, in
+  both the catalog rail and the hero workshop, opening straight into the
+  existing crop editor. Previously the only way in was to filter the Library
+  grid to hero images and recognize which card was a portrait base.
+- **A Sound Locker: every sound mod you have, filed under the hero it
+  changes.** A hero grid plus a Global shelf for the content that belongs to no
+  hero (announcer packs, killstreak music, interface sounds), which until now
+  had nowhere to live. Each hero shelf groups your installed sound mods by
+  ability, voice, weapon and movement, with enable/disable in place.
+- **Audition a sound mod from its own VPK.** The play button on a Sound Locker
+  row plays the clip as that mod ships it, not the base game's version of the
+  same path, so you can hear what a mod does before enabling it.
+- **See exactly what a sound mod overrides, and who currently wins.** Expanding
+  a row resolves its real entry paths and names the mod that beats it on each
+  one, with a jump to that mod. A mod that records no paths says so instead of
+  pretending to know.
+- **Numbered takes read as one row.** Three lines of `ball_01/02/03` become one
+  line with a take count. Your own annotation name now leads the label wherever
+  an event is listed, instead of only when the Annotate toggle is on.
+
+### Fixed
+- **Portrait families were silently families of one.** The family key never
+  matched real pak filenames (`astro_card_gloat_psd.vtex_c` carries a
+  source-format token and sometimes a content hash), so the editor's own
+  preflight only ever saw a single variant. It now covers the family it was
+  always documented to cover.
+
+### Changed
+- The Locker and Foundry cross-link both ways for sounds: a hero shelf opens
+  that hero's Foundry workshop on Abilities or Voice, the Global shelf opens the
+  Global sounds tool, and Foundry's My changes links back to the shelf.
+
 ## [1.25.1722] - 2026-07-29
 
 Locker and Foundry are one object at two moments: the Locker manages what you
