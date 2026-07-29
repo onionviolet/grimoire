@@ -87,10 +87,13 @@ required before a release.
    its GameBanana probe shape is unverified against a real deleted or archived
    submission, and the `ViewCounterDO` `v2` migration entry is deploy-time
    behaviour that was never exercised. Nothing here is verified end to end.
-1c. **The rigged preview cannot be auditioned on its own.**
-   `riggedPreviewEnabled` is `USE_RIGGED_PREVIEW || clothPreviewEnabled`, and
-   `USE_RIGGED_PREVIEW` is false, so enabling rigged today means enabling the
-   WIP cloth sim with it. No fps measurement exists for either.
+1c. **No fps measurement exists for the rigged preview.** The flag is no longer
+   welded to cloth (fixed 2026-07-28: rigged has its own dev switch, so the
+   animated path can be measured without the WIP cloth sim riding along), but
+   nobody has taken the reading yet. Until someone measures Seven
+   (`gigawatt_prisoner`, the worst case on every axis) per section 8 of
+   [rigged-preview-spike.md](./rigged-preview-spike.md), the release flag stays
+   false and the static posed preview remains the default.
 1a. **Performance ConVar game defaults are unverified against the game.** The
    eight advanced defaults were moved out of the renderer constant that held
    them, not read off a running build, so a wrong number badges an untagged

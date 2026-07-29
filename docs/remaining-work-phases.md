@@ -268,14 +268,13 @@ that plan have landed:
   number exists and none can be produced headlessly, so the frame-budget figure
   in the report is an estimate and is labelled as one. Two prerequisites:
 
-  1. `riggedPreviewEnabled` is welded to the cloth flag
-     (`USE_RIGGED_PREVIEW || clothPreviewEnabled` in `heroPoseRenderFeatures.ts`).
-     Since `USE_RIGGED_PREVIEW` is false, the only way to enable rigged today is
-     to enable cloth, which starts the WIP cloth sim. Rigged cannot be auditioned
-     alone, and shipping it in this shape would ship cloth. One-line fix, left
-     unmade because the file was outside the spike's ownership.
-  2. A human measures fps on Seven (`gigawatt_prisoner`), the worst case on every
-     axis. Procedure and pass/fail criteria are in section 8 of the report.
+  1. ~~`riggedPreviewEnabled` is welded to the cloth flag.~~ Fixed 2026-07-28.
+     Rigged now has its own dev switch (`flags.rigged`), so it can be measured
+     without the WIP cloth sim. Cloth still implies rigged, which is correct: a
+     sim needs a skeleton. Off in released builds, like cloth.
+  2. **Still open:** a human measures fps on Seven (`gigawatt_prisoner`), the
+     worst case on every axis. Procedure and pass/fail criteria are in section 8
+     of the report. Turn on Preview > Debug > Rigged, leave Cloth off.
 
   Also corrected: the `--require-pose` comment named six clipless WIP heroes.
   Re-checked against the pak, Apollo, Billy, Celeste, Mina and Paige all ship
