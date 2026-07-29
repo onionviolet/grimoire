@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Hammer,
   Library,
@@ -44,6 +45,7 @@ type SubtoolId = (typeof SUBTOOLS)[number]['id'];
 type Mode = 'heroes' | 'catalog';
 
 export default function Foundry() {
+  const { t } = useTranslation();
   const settings = useAppStore((s) => s.settings);
   const hasGamePath = Boolean(settings?.deadlockPath || (settings?.devMode && settings?.devDeadlockPath));
 
@@ -57,13 +59,21 @@ export default function Foundry() {
   // typed build request to main. Merely browsing Foundry never mutates a mod.
   const [stagedEdits, setStagedEdits] = useState<FoundryStagedEdit[]>([]);
   const [outputName, setOutputName] = useState('Foundry mod');
-  const stageEdit = (edit: FoundryStagedEdit) => setStagedEdits((current) => [...current.filter((item) => item.id !== edit.id), { ...edit, precedence: current.length }]);
-  const forge = async (request: import('../types/foundry').FoundryForgeRequest) => {
-    try {
-      const result = await foundryForge(request);
-      if (result.exported) { setStagedEdits([]); showToast(`Exported ${result.path}`, { tone: 'success', duration: 6000 }); }
-    } catch (error) { showToast(error instanceof Error ? error.message : String(error), { tone: 'error', duration: 8000 }); }
-  };
+  const stageEdit = useCallback((edit: FoundryStagedEdit) => setStagedEdits((current) => [...current.filter((item) => item.id !== edit.id), { ...edit, precedence: current.length }]), []);
+  const removeEdit = useCallback((id: string) => setStagedEdits((current) => current.filter((item) => item.id !== id)), []);
+  // Cancelling the native save dialog is a normal outcome, not an error: main
+  // reports { exported: false } and has already removed its own build temp, so
+  // the only correct renderer response is to keep every staged edit exactly as
+  // it was and say so. Clearing the tray is reserved for a real export.
+  const forge = useCallback(async (request: import('../types/foundry').FoundryForgeRequest) => {
+    const result = await foundryForge(request);
+    if (result.exported) {
+      setStagedEdits([]);
+      showToast(t('foundry.buildTray.exported', 'Exported {{path}}', { path: result.path }), { tone: 'success', duration: 6000 });
+    } else {
+      showToast(t('foundry.buildTray.cancelled', 'Nothing was exported. Your staged edits are still here.'), { tone: 'info', duration: 6000 });
+    }
+  }, [t]);
 
   // Roster (codename -> name) loads once; warm the catalog cache opportunistically
   // so the Sound tool opens without the cold voice-line rescan.
@@ -123,6 +133,12 @@ export default function Foundry() {
         hero={selectedHero}
         heroNames={heroNames}
         onBack={() => setSelectedHero(null)}
+        stagedEdits={stagedEdits}
+        onStage={stageEdit}
+        onRemoveStagedEdit={removeEdit}
+        outputName={outputName}
+        onOutputNameChange={setOutputName}
+        onForge={forge}
       />
     );
   }
@@ -240,7 +256,7 @@ export default function Foundry() {
           ) : active === 'globalSound' && settings?.forkGlobalSounds !== false ? (
             <GlobalSoundBrowse onStage={stageEdit} />
           ) : active === 'texture' ? (
-            <TextureBrowse heroes={heroes} heroNames={heroNames} />
+            <TextureBrowse heroes={heroes} heroNames={heroNames} onStage={stageEdit} />
           ) : active === 'recolor' ? (
             <RecolorTool heroes={heroes} />
           ) : active === 'items' ? (
@@ -250,7 +266,7 @@ export default function Foundry() {
           )}
         </div>
       </div>
-      <FoundryBuildTray edits={stagedEdits} outputName={outputName} onOutputNameChange={setOutputName} onForge={forge} />
+      <FoundryBuildTray edits={stagedEdits} outputName={outputName} onOutputNameChange={setOutputName} onForge={forge} onRemove={removeEdit} />
     </div>
   );
 }

@@ -8,14 +8,14 @@ import { showToast } from '../../stores/toastStore';
 import type { TextureCategory, TextureGridItem } from '../../types/foundry';
 import TextureGrid from './TextureGrid';
 import TextureLightbox from './TextureLightbox';
-import { serializeVisualReplacement, visualAssetInspectionPaths } from './visualEdits';
+import { prepareVisualStagedEdit, visualAssetInspectionPaths, type VisualStagedEdit } from './visualEdits';
 
 interface LibraryBrowseProps {
   /** codename -> display name, resolved once by the Foundry shell. */
   heroNames: Map<string, string>;
   /** Category the grid opens on (the Items sub-tool lands on item icons). */
   initialCategory?: TextureCategory;
-  onStage?: (edit: ReturnType<typeof serializeVisualReplacement>) => void;
+  onStage?: (edit: VisualStagedEdit) => void;
 }
 
 // The bounded, thumbnailable categories the browse grid surfaces this pass.
@@ -48,22 +48,18 @@ export default function LibraryBrowse({ heroNames, initialCategory = 'ability-ic
     if (!imagePath) return;
     setReplacingPath(item.path);
     try {
-      const draft = {
-        entryPath: item.path,
+      if (!onStage) throw new Error('Foundry staging is unavailable.');
+      const staged = await prepareVisualStagedEdit({
+        item,
+        catalog: items,
         imagePath,
         name: t('foundry.texture.defaultReplacementName', '{{label}} replacement', { label: item.label || 'Texture' }),
-        category: item.category,
-      } as const;
-      const sources = await foundryInspectAssetSources(visualAssetInspectionPaths(item, items));
-      if (sources.unreadableMods.length > 0) {
-        throw new Error('Cannot replace this asset while installed VPK sources are unreadable. Resolve those VPKs and inspect again.');
-      }
-      const enabled = sources.sources.filter((source) => source.enabled);
-      if (enabled.length > 0 && !window.confirm(`Existing enabled sources: ${enabled.map((source) => source.modName).join(', ')}. Continue to create a separate managed replacement?`)) {
-        return;
-      }
-      if (!onStage) throw new Error('Foundry staging is unavailable.');
-      onStage(serializeVisualReplacement(draft));
+        inspect: foundryInspectAssetSources,
+        confirm: (modNames) => window.confirm(`Existing enabled sources: ${modNames.join(', ')}. Continue to create a separate managed replacement?`),
+        unreadableMessage: 'Cannot replace this asset while installed VPK sources are unreadable. Resolve those VPKs and inspect again.',
+      });
+      if (!staged) return;
+      onStage(staged);
       showToast(t('foundry.texture.replaceDone', 'Added to the Foundry build tray. Nothing has been installed.'), { tone: 'success', duration: 6000 });
     } catch (e) {
       showToast(e instanceof Error ? e.message : String(e), { tone: 'error', duration: 8000 });

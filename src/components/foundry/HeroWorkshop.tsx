@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft,
+  Layers3,
   Sparkles,
   Swords,
   Volume2,
@@ -8,7 +9,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import type { HeroInfo } from '../../types/foundry';
+import type { FoundryForgeRequest, HeroInfo } from '../../types/foundry';
 import type { Mod } from '../../types/mod';
 import {
   getHeroRenderPath,
@@ -20,6 +21,8 @@ import HeroSoundPicker from '../locker/HeroSoundPicker';
 import SoundBrowse from './SoundBrowse';
 import TextureBrowse from './TextureBrowse';
 import LibraryBrowse from './LibraryBrowse';
+import FoundryBuildTray from './FoundryBuildTray';
+import type { FoundryStagedEdit } from './buildTray';
 import Tx from '../translation/Tx';
 import { useAppStore } from '../../stores/appStore';
 
@@ -28,6 +31,15 @@ interface HeroWorkshopProps {
   /** Full roster codename -> display name map (for the reused browse panels). */
   heroNames: Map<string, string>;
   onBack: () => void;
+  /** The shared Foundry tray. The workshop hosts the same staged edits as the
+   *  catalog mode: a staged edit that cannot be reviewed here would be worse
+   *  than one that was never staged at all. */
+  stagedEdits: readonly FoundryStagedEdit[];
+  onStage: (edit: FoundryStagedEdit) => void;
+  onRemoveStagedEdit: (id: string) => void;
+  outputName: string;
+  onOutputNameChange: (name: string) => void;
+  onForge: (request: FoundryForgeRequest) => Promise<void>;
 }
 
 type SectionId = 'appearance' | 'abilities' | 'voice' | 'icons';
@@ -43,11 +55,23 @@ type SectionId = 'appearance' | 'abilities' | 'voice' | 'icons';
  *   Voice       hero VO voice-line browse + audition   (SoundBrowse only=voice)
  *   Icons       ability icons + model textures         (Texture/LibraryBrowse, live browse)
  *
- * Each section applies directly to its own managed mod (the model recolor already
- * uses): there is no separate compose-and-forge step. The per-section apply paths
- * run through the existing Locker engines (e.g. sound via `applyHeroSound`).
+ * Immediate-apply sections (recolor, sound picker) still write their own managed
+ * mod through the existing Locker engines (e.g. sound via `applyHeroSound`).
+ * Authoring surfaces that stage instead (sound swaps, texture and icon
+ * replacements) feed the shared build tray this view docks on the right, so the
+ * hero-first mode reviews and forges the same write set the catalog mode does.
  */
-export default function HeroWorkshop({ hero, heroNames, onBack }: HeroWorkshopProps) {
+export default function HeroWorkshop({
+  hero,
+  heroNames,
+  onBack,
+  stagedEdits,
+  onStage,
+  onRemoveStagedEdit,
+  outputName,
+  onOutputNameChange,
+  onForge,
+}: HeroWorkshopProps) {
   const { t } = useTranslation();
   const mods = useAppStore((s) => s.mods);
   const modsLoaded = useAppStore((s) => s.modsLoaded);
@@ -56,6 +80,14 @@ export default function HeroWorkshop({ hero, heroNames, onBack }: HeroWorkshopPr
   const [section, setSection] = useState<SectionId>('appearance');
   const [renderStep, setRenderStep] = useState(0);
   const [nameFailed, setNameFailed] = useState(false);
+  // The workshop is a full-bleed hero view, so the tray docks on demand rather
+  // than permanently eating width. Staging opens it: an edit the user cannot
+  // see landing is an edit they cannot review.
+  const [trayOpen, setTrayOpen] = useState(false);
+  const stage = useCallback((edit: FoundryStagedEdit) => {
+    onStage(edit);
+    setTrayOpen(true);
+  }, [onStage]);
 
   // A single-hero roster so the reused browse panels are pre-scoped to this hero
   // (they each carry their own hero filter; handing them one hero pins it).
@@ -171,6 +203,22 @@ export default function HeroWorkshop({ hero, heroNames, onBack }: HeroWorkshopPr
             );
           })}
         </nav>
+
+        <button
+          type="button"
+          onClick={() => setTrayOpen((open) => !open)}
+          aria-expanded={trayOpen}
+          className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors cursor-pointer ${
+            trayOpen ? 'border-accent/60 bg-accent/15' : 'border-transparent hover:bg-white/10'
+          }`}
+        >
+          <Layers3 className="h-4 w-4 flex-shrink-0 text-white/80" />
+          <span className="flex-1 truncate text-sm font-medium text-white">
+            {stagedEdits.length > 0
+              ? t('foundry.buildTray.openWithCount', 'Build tray ({{count}})', { count: stagedEdits.length })
+              : t('foundry.buildTray.panelToggle', 'Build tray')}
+          </span>
+        </button>
       </div>
 
       {/* Content pane: the active section. */}
@@ -188,24 +236,37 @@ export default function HeroWorkshop({ hero, heroNames, onBack }: HeroWorkshopPr
               {/* Each ability card lists its gameplay sounds with play + Swap (drop
                   your own MP3), forged through the soundswap engine. The ability
                   axis lives here (not under Voice); Voice is VO only. */}
-              <SoundBrowse heroes={scopedRoster} heroNames={heroNames} only="gameplay" />
+              <SoundBrowse heroes={scopedRoster} heroNames={heroNames} only="gameplay" onStage={stage} />
               <AbilitiesComingNote />
             </div>
           ) : section === 'voice' ? (
-            <SoundBrowse heroes={scopedRoster} heroNames={heroNames} only="voice" />
+            <SoundBrowse heroes={scopedRoster} heroNames={heroNames} only="voice" onStage={stage} />
           ) : section === 'icons' ? (
             <div className="space-y-8">
-              <TextureBrowse heroes={scopedRoster} heroNames={heroNames} />
+              <TextureBrowse heroes={scopedRoster} heroNames={heroNames} onStage={stage} />
               <div className="space-y-2">
                 <h4 className="text-sm font-semibold text-white/90">
                   {t('foundry.workshop.abilityIcons', 'Ability & item icons')}
                 </h4>
-                <LibraryBrowse heroNames={heroNames} initialCategory="ability-icon" />
+                <LibraryBrowse heroNames={heroNames} initialCategory="ability-icon" onStage={stage} />
               </div>
             </div>
           ) : null}
         </div>
       </div>
+
+      {trayOpen && (
+        <div className="relative z-10 overflow-y-auto scrollbar-glass">
+          <FoundryBuildTray
+            edits={stagedEdits}
+            outputName={outputName}
+            onOutputNameChange={onOutputNameChange}
+            onForge={onForge}
+            onRemove={onRemoveStagedEdit}
+            className="h-full bg-bg-secondary/80"
+          />
+        </div>
+      )}
     </div>
   );
 }
