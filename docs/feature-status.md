@@ -2,8 +2,9 @@
 
 Status snapshot: 2026-07-28, re-verified against the working tree at v1.25.171
 by the audit in [spec-audit-prompt.md](./spec-audit-prompt.md), then updated on
-2026-07-28 for wave 1 (Foundry source actions and merge review) and wave 2
-(combined Foundry output, performance ConVar provenance). This is an
+2026-07-28 for wave 1 (Foundry source actions and merge review), wave 2
+(combined Foundry output, performance ConVar provenance), and wave 3 (rigged
+preview measurement, social phase 1.5). This is an
 implementation inventory, not a substitute for the manual in-game validation
 required before a release.
 
@@ -32,6 +33,20 @@ required before a release.
   stages through the same path as `LibraryBrowse`; the confirmation is in-app and
   shows the full exact write set; and a missing recorded source file (audio or
   PNG) blocks the forge by name instead of failing partway through the build.
+- **Discover mod availability and owner view stats.** Discover cards and the
+  owner's published rows carry an "N of M mods available" badge fed by a weekly
+  GameBanana revalidation cron in the companion Worker; a profile that has never
+  been revalidated reads as unknown rather than as healthy. The detail rail adds
+  a separate local "mods you do not have" badge (upstream availability and local
+  install state are different questions and are kept visually distinct), plus an
+  owner-only view count. Offline and service-busy are now distinct states with
+  their own retry, split out from the generic error banner
+  (`components/social/availability.ts`, `socialErrors.ts`, `Discover.tsx`).
+  Requires migration 0005 applied and the Worker deployed: see below.
+- **Rigged hero preview (dev-only, measured not shipped).** The no-`--pose`
+  rigged export, its clip ranking, and the viewer fallback all exist and are
+  measured in [rigged-preview-spike.md](./rigged-preview-spike.md). It is dark in
+  every shipped build and is not user-reachable. Do not describe it as a feature.
 - **Per-ConVar provenance in the performance card.** Every user-facing HUD and
   advanced ConVar carries a main-process-computed state (game default, managed
   preset, user override, unsupported) plus an out-of-range flag, badged per
@@ -66,6 +81,16 @@ required before a release.
 1. **Combined output covers sound and texture only.** `FoundryForgeEdit`
    (`src/types/foundry.ts:320`) admits `sound` and `texture`; recolor and model
    edits have no staged-edit serializer and cannot enter a combined build.
+1b. **Social phase 1.5 is unrunnable until the Worker ships.** Migration 0005
+   has not been applied anywhere and the profile routes select its columns, so
+   they fail against a pre-migration DB. The revalidation cron has never run:
+   its GameBanana probe shape is unverified against a real deleted or archived
+   submission, and the `ViewCounterDO` `v2` migration entry is deploy-time
+   behaviour that was never exercised. Nothing here is verified end to end.
+1c. **The rigged preview cannot be auditioned on its own.**
+   `riggedPreviewEnabled` is `USE_RIGGED_PREVIEW || clothPreviewEnabled`, and
+   `USE_RIGGED_PREVIEW` is false, so enabling rigged today means enabling the
+   WIP cloth sim with it. No fps measurement exists for either.
 1a. **Performance ConVar game defaults are unverified against the game.** The
    eight advanced defaults were moved out of the renderer constant that held
    them, not read off a running build, so a wrong number badges an untagged

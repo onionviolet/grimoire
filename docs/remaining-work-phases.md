@@ -248,10 +248,39 @@ an inverted flag and the one to check first). Filling these in is data-only.
 From [3d-preview-fidelity-plan.md](./3d-preview-fidelity-plan.md). Phases 1-4 of
 that plan have landed:
 
-- **7a. The rigged spine: BUILT.** The "Grimoire always passes `--pose`" premise
-  was stale. `services/heroPoseModels.ts` ships a rigged sibling export that
-  deliberately omits `--pose` to keep the skeleton, skin, and one ranked animated
-  clip (`:171`, `:882`, `:972`), alongside the legacy static bake (`:169`).
+- **7a. The rigged spine: BUILT, and now measured (wave 3, 2026-07-28).** The
+  "Grimoire always passes `--pose`" premise was stale. `services/heroPoseModels.ts`
+  ships a rigged sibling export that deliberately omits `--pose` to keep the
+  skeleton, skin, and one ranked animated clip (`:171`, `:882`, `:972`),
+  alongside the legacy static bake (`:169`). Full evidence in
+  [rigged-preview-spike.md](./rigged-preview-spike.md).
+
+  All three pilots (astro, bookworm, gigawatt_prisoner) export and pick a looping
+  idle clip; every primitive carries `JOINTS_0`, so nothing is left in bind pose.
+  Measured against the installed pak: **+9.3% glb size** (+1.48 to +3.03 MB), and
+  the rigged export is *faster* than static because it skips pose baking. The NPR
+  layer cannot swim under animation: no inverted-hull shell survives either
+  export, the cel/rim is fragment-stage on the skinned normal, and the one vertex
+  write lands after `<skinning_vertex>`. All 15 material extras are byte-identical
+  static vs rigged.
+
+  **Recommendation: ship gated, do not default on.** The blocker is that no fps
+  number exists and none can be produced headlessly, so the frame-budget figure
+  in the report is an estimate and is labelled as one. Two prerequisites:
+
+  1. `riggedPreviewEnabled` is welded to the cloth flag
+     (`USE_RIGGED_PREVIEW || clothPreviewEnabled` in `heroPoseRenderFeatures.ts`).
+     Since `USE_RIGGED_PREVIEW` is false, the only way to enable rigged today is
+     to enable cloth, which starts the WIP cloth sim. Rigged cannot be auditioned
+     alone, and shipping it in this shape would ship cloth. One-line fix, left
+     unmade because the file was outside the spike's ownership.
+  2. A human measures fps on Seven (`gigawatt_prisoner`), the worst case on every
+     axis. Procedure and pass/fail criteria are in section 8 of the report.
+
+  Also corrected: the `--require-pose` comment named six clipless WIP heroes.
+  Re-checked against the pak, Apollo, Billy, Celeste, Mina and Paige all ship
+  pose clips now; only plain `familiar` is still clipless (Rem is already pinned
+  away from it). The guard itself was left alone.
 - **7b. Cloth/jiggle: BUILT.** `src/lib/useClothSim.ts` with `clothMath.test.ts`,
   `feModel.test.ts`, and solver-stability harness tests. Material/lighting parity
   and NPR are likewise built (`deadlockMaterial.ts`, `source2Preview/`,
@@ -281,10 +310,41 @@ One drift worth a decision, not a bug: the TOS gate fires at first *publish* and
 is localStorage-backed (`PublishDialog.tsx:14`, `:23`), where the design put it
 at first login. Unbuilt, from [social-architecture.md](./social-architecture.md):
 
-- **8a (Phase 1.5).** GameBanana revalidation cron and the "11/12 mods available"
-  badge, "mods I'm missing" resolution against local install state, owner-only
-  view stats, admin analytics, better offline/error states.
+Closed 2026-07-28 (wave 3):
+
+- **8a (Phase 1.5).** ~~GameBanana revalidation cron, the "11/12 mods available"
+  badge, "mods I'm missing" against local install state, owner-only view stats,
+  better offline/error states.~~ Worker side: migration 0005 (append-only),
+  `src/cron/revalidateMods.ts` on a weekly trigger, and `ViewCounterDO`. Client
+  side: availability and missing-mods badges, owner-only view count, and offline
+  vs service-busy states split out from the generic error banner. Reasoning is in
+  ADR-017 (new ADR; no existing ADR was edited).
+
+  Two decisions worth knowing without opening the ADR. **Views never write to D1
+  on the request path**: a view goes to one of 8 hashed `ViewCounterDO` shards
+  via `waitUntil`, accumulates in DO storage, and flushes to D1 on a 5-minute
+  alarm. D1 writes are bounded by distinct profiles viewed per window, not by
+  view volume, so a profile viewed 10,000 times in an hour costs at most 12
+  writes. This matters because D1's free tier is a hard cliff, not throttling: a
+  viral profile on a direct-increment design would take publish and like down
+  with it. **The cron paces at 4 req/sec serial**, half the interactive client
+  limiter, with a hard 500-request / 200-profile per-run budget and a 6-day
+  memo table, because nobody is waiting on a cron and GameBanana is
+  volunteer-run. Probes are three-state: a 429/5xx/timeout is "could not tell",
+  never cached and never recorded, so the profile is re-picked next run rather
+  than badged pessimistically wrong.
+
+  Not built, deliberately: the admin analytics dashboard. It appears in the
+  doc's Phase 1.5 list but was outside the wave's scope.
+
+Still open:
+
 - **8b (Phase 2).** Comments, search, follows, collections, Discord OAuth.
+
+Blocking before the Worker deploys: **migration 0005 has not been applied
+anywhere**, and the routes select the new columns, so they will fail against a
+pre-migration DB. The cron has also never run: the probe shape is unverified
+against a real deleted or archived submission.
 
 Depends on: the Worker side (`../grimoire-social`) leads every item; the client
 follows. 8b carries moderation cost that was postponed deliberately — re-decide
