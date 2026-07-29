@@ -2,6 +2,51 @@
 
 All notable changes to this project are documented here. Format is loosely based on [Keep a Changelog](https://keepachangelog.com/), and the project adheres to semantic versioning.
 
+## [1.25.172] - 2026-07-28
+
+### Added
+- **Build tray reaches the hero workshop.** Staged edits are reviewable and
+  forgeable from the hero-first Foundry view, not only the catalog view, and the
+  texture browser can stage replacements like the library grid already could.
+  The forge confirmation is now in-app and lists the exact write set and
+  collision winners instead of a plain dialog.
+- **Honest per-control state in the performance config.** Every HUD toggle and
+  advanced slider is badged with where its value comes from (game default,
+  managed preset, your override, or a value Grimoire cannot interpret), and each
+  has its own reset that removes Grimoire's line rather than writing a value of
+  its own. Changes now stage into a pending list with apply and discard instead
+  of writing on every drag.
+- **Discover mod availability (experimental social).** Published profiles show
+  how many of their mods are still available on GameBanana, which mods you do
+  not have installed yet, and, for your own profiles, a view count only you can
+  see. Requires the companion service; profiles that have never been checked say
+  so rather than claiming everything is fine.
+
+### Fixed
+- **Updates no longer pile up on disk.** Old installers and abandoned partial
+  downloads left behind by previous updates are now swept on launch. Every
+  accepted update used to leave roughly 100 MB behind forever.
+- **Advanced performance sliders always claimed "using the game default".** The
+  status read filtered out every advanced setting, so a value you had already
+  set was never reflected back. The authoritative defaults also moved out of the
+  interface and into the preset data, so a slider no longer presents an
+  app-chosen number as if the game had chosen it.
+- **Out-of-range performance values are no longer silently clamped or dropped.**
+  A value outside the supported range is reported as such and needs an explicit
+  confirmation before it is replaced. Setting one out of range used to report
+  success while leaving the file unchanged.
+- **A cancelled or failed forge leaves nothing behind.** A cleanup failure could
+  previously reject a build that had already succeeded and orphan its temporary
+  directory. Cancelling the save dialog now says so and keeps your staged edits.
+- **Forging blocks when a recorded source file has moved**, naming the missing
+  files, instead of failing partway through the build.
+- **Offline and service-busy are distinct states in Discover**, each with its own
+  retry, rather than one generic error.
+
+### Changed
+- Remaining hardcoded English in the Foundry asset-sources panel, staging
+  confirmations, and My sound changes is now translatable.
+
 ## [1.25.171] - 2026-07-28
 
 ### Added
