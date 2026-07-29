@@ -44,7 +44,7 @@ would be the Cards section plus an extra click. So this plan adds to
   (`cardShuffleIncluded` + `shuffleCardKey(heroName, sourceFileName)`).
 - **Forged** portrait changes randomize through a different mechanism in a
   different surface: `foundryShuffleIncluded` + `foundryShuffleKey(mod)` +
-  `partitionFoundryPools`, rendered by `ChangePools`/`FoundryPoolList` inside
+  `groupFoundryShufflePools`, rendered by `ChangePools`/`FoundryPoolList` inside
   Foundry's *My changes*. That is a manage-what-you-have control living in the
   make-more-of-it surface.
 - `foundryInspectAssetSources(paths)` answers "who writes these exact entries
@@ -120,7 +120,7 @@ Today a user randomizing portraits has two unrelated controls in two surfaces:
 in Foundry's My changes pool view.
 
 1. Surface the forged-portrait pools **in the Cards section**, next to the card
-   shuffle toggle: reuse `partitionFoundryPools` + `foundryShuffleKey` filtered
+   shuffle toggle: reuse `groupFoundryShufflePools` + `foundryShuffleKey` filtered
    to this hero's portrait entries. Reuse, not a second mechanism: the store
    field, the key function, and the launch-time roll all stay exactly as they
    are.

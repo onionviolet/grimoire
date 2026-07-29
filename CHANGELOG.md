@@ -2,6 +2,26 @@
 
 All notable changes to this project are documented here. Format is loosely based on [Keep a Changelog](https://keepachangelog.com/), and the project adheres to semantic versioning.
 
+## [1.25.1724] - 2026-07-29
+
+### Added
+- **Portraits now have an installed-content shelf in Locker.** Hero Cards show
+  each source mod's provenance and enabled state, can resolve exact card-entry
+  winners on demand, and flag recorded overlaps between enabled mods without
+  guessing at unrecorded paths.
+- **Forged portrait shuffle pools live beside Cards.** The hero page reuses the
+  existing Foundry contended-path pool and launch-shuffle rules instead of
+  inventing a second portrait randomizer.
+
+### Changed
+- Hero-card variants use surface-oriented names such as Minimap icon and
+  Compact hero portrait; the original variant token remains available in the
+  art tooltip.
+- Empty custom-card slots reveal the base art at full color on hover, making it
+  easier to judge the image before uploading a replacement.
+- Foundry sound-row chrome is localized for annotation, base-game labels, and
+  source inspection.
+
 ## [1.25.1723] - 2026-07-29
 
 Three surfaces that were each missing the same thing: a way to see what you

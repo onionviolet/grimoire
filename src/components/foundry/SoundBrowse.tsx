@@ -254,10 +254,10 @@ export default function SoundBrowse({ heroes, heroNames, only, onStage }: SoundB
                     />
                 </div>
                 <button type="button" aria-pressed={annotationsVisible} onClick={() => { setAnnotationsVisible((value) => !value); setAnnotatedOnly(false); }} className={`flex items-center gap-1.5 rounded-sm border px-3 py-2 text-sm ${annotationsVisible ? 'border-accent bg-accent/15 text-accent' : 'border-border text-text-secondary'}`}>
-                    <Pencil size={14} /> Annotate
+                    <Pencil size={14} /> {t('foundry.sound.annotate')}
                 </button>
                 {annotationsVisible && <button type="button" aria-pressed={annotatedOnly} onClick={() => setAnnotatedOnly((value) => !value)} className={`rounded-sm border px-3 py-2 text-sm ${annotatedOnly ? 'border-accent bg-accent/15 text-accent' : 'border-border text-text-secondary'}`}>
-                    Annotated only
+                    {t('foundry.sound.annotatedOnly')}
                 </button>}
             </div>
 
@@ -754,7 +754,7 @@ export function SoundRow({ label, event, clips, duration, state, onToggle, poolI
     const compiledClipName = clipName
         ? `${clipName.replace(/\.vsnd(_c)?$/i, '')}.vsnd_c`
         : null;
-    // Include every member of a pool—not only the currently auditioned clip—and
+    // Include every member of a poolâ€”not only the currently auditioned clipâ€”and
     // its event container where the catalog can name one. This is an inspection
     // request only; it never changes enabled state or precedence.
     const sourcePaths = useMemo(() => {
@@ -766,7 +766,7 @@ export function SoundRow({ label, event, clips, duration, state, onToggle, poolI
     // presses read as walking the pool rather than as a stuck button.
     const poolNote =
         clips > 1
-            ? ` · ${t('foundry.sound.poolPosition', {
+            ? ` Â· ${t('foundry.sound.poolPosition', {
                   defaultValue: 'clip {{n}} of {{total}}',
                   n: (poolIndex % clips) + 1,
                   total: clips,
@@ -801,12 +801,12 @@ export function SoundRow({ label, event, clips, duration, state, onToggle, poolI
                                 {t('soundLocker.labels.myLabel', 'My label: {{label}}', { label: personalLabel })}
                             </p>
                             <p className="truncate text-[11px] text-text-secondary" title={label || event}>
-                                <span className="text-text-secondary">Base-game label: </span>{label || event}
+                                <span className="text-text-secondary">{t('foundry.sound.baseGameLabel')} </span>{label || event}
                             </p>
                         </>
                     ) : (
                         <p className="truncate text-sm text-text-primary" title={label || event}>
-                            <span className="text-text-secondary">Base-game label: </span>{label || event}
+                            <span className="text-text-secondary">{t('foundry.sound.baseGameLabel')} </span>{label || event}
                         </p>
                     )}
                     {(annotationsVisible && annotation?.note ? annotation.note : description) && (
@@ -821,7 +821,7 @@ export function SoundRow({ label, event, clips, duration, state, onToggle, poolI
                         title={compiledClipName ? `Event: ${event}\nBase-game file: ${compiledClipName}` : `Event: ${event}`}
                     >
                         <span>Event: {event}</span>
-                        {compiledClipName ? ` · Base-game file: ${compiledClipName}` : ''}
+                        {compiledClipName ? ` Â· Base-game file: ${compiledClipName}` : ''}
                         {poolNote}
                     </p>
                 </div>
@@ -847,13 +847,13 @@ export function SoundRow({ label, event, clips, duration, state, onToggle, poolI
                         type="button"
                         onClick={() => setSourcesOpen((open) => !open)}
                         aria-expanded={sourcesOpen}
-                        title="Inspect installed VPKs that write these exact sound paths"
+                        title={t('foundry.sound.existingSourcesHint')}
                         className={`flex h-8 shrink-0 items-center gap-1.5 rounded-sm border px-2 text-xs transition-colors ${
                             sourcesOpen ? 'border-accent/50 bg-accent/15 text-accent' : 'border-border bg-bg-tertiary text-text-secondary hover:text-text-primary'
                         }`}
                     >
                         <Layers size={14} />
-                        Existing sources
+                        {t('foundry.sound.existingSources')}
                     </button>
                 )}
                 {swap && (
@@ -1262,7 +1262,7 @@ function SwapPanel({
                     </div>
                     <p className="mt-1">
                         {assignments.length} exact clip write{assignments.length === 1 ? '' : 's'}
-                        {poolMode === 'seeded-library' ? ` · seed ${poolSeed} is recorded with the forged mod` : ''}
+                        {poolMode === 'seeded-library' ? ` Â· seed ${poolSeed} is recorded with the forged mod` : ''}
                     </p>
                 </div>
             )}
@@ -1341,4 +1341,3 @@ function SwapPanel({
         </div>
     );
 }
-

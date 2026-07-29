@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Images, Loader2, AlertCircle, Check, Upload, X, Download, Shuffle } from 'lucide-react';
 import {
@@ -24,19 +24,24 @@ import {
 } from '../foundry/portraitFamily';
 import type { CustomCardSlot, HeroPortrait } from '../../types/portrait';
 import { shuffleCardKey } from '../../lib/lockerRandomizer';
+import AssetSourcesPanel from '../foundry/AssetSourcesPanel';
+import FoundryPoolList from '../foundry/ChangePools';
+import { collectFoundryChanges } from '../foundry/changeList';
+import { foundryChangeEntries } from '../../lib/foundryChanges';
+import { buildPortraitInventory, overlappingClaims, portraitProvenanceOf } from '../../lib/portraitInventory';
 
 interface HeroCardPickerProps {
   heroName: string;
 }
 
-const VARIANT_LABEL: Record<string, string> = {
-  card: 'Card',
-  vertical: 'Vertical',
-  card_critical: 'Low HP',
-  card_gloat: 'Gloat',
-  minimap: 'Minimap',
-  small: 'Small',
-  other: 'Other',
+const VARIANT_LABEL_KEY: Record<string, string> = {
+  card: 'locker.cards.variants.card',
+  vertical: 'locker.cards.variants.vertical',
+  card_critical: 'locker.cards.variants.cardCritical',
+  card_gloat: 'locker.cards.variants.cardGloat',
+  minimap: 'locker.cards.variants.minimap',
+  small: 'locker.cards.variants.small',
+  other: 'locker.cards.variants.other',
 };
 
 /** Display order for the variant strip. The full "card" cover reads first,
@@ -73,7 +78,12 @@ interface PortraitFileGroup {
  */
 export default function HeroCardPicker({ heroName }: HeroCardPickerProps) {
   const { t } = useTranslation();
+  const variantLabel = useCallback((variant: string) => t(VARIANT_LABEL_KEY[variant] ?? 'locker.cards.variants.other'), [t]);
   const loadMods = useAppStore((s) => s.loadMods);
+  const mods = useAppStore((s) => s.mods);
+  const foundryShuffleIncluded = useAppStore((s) => s.foundryShuffleIncluded);
+  const toggleFoundryShuffleIncluded = useAppStore((s) => s.toggleFoundryShuffleIncluded);
+  const toggleMod = useAppStore((s) => s.toggleMod);
   const cardShuffleIncluded = useAppStore((s) => s.cardShuffleIncluded);
   const toggleCardShuffleIncluded = useAppStore((s) => s.toggleCardShuffleIncluded);
   // This component is remounted per hero (the parent LockerHeroView is keyed
@@ -140,9 +150,9 @@ export default function HeroCardPicker({ heroName }: HeroCardPickerProps) {
     const byEntry = new Map(slots.map((slot) => [slot.entry, slot.variant]));
     return coverageGap.map((entry) => {
       const variant = byEntry.get(entry) ?? entry;
-      return VARIANT_LABEL[variant] ?? variant;
+      return variantLabel(variant);
     });
-  }, [coverageGap, slots]);
+  }, [coverageGap, slots, variantLabel]);
 
   useEffect(() => {
     let active = true;
@@ -217,7 +227,7 @@ export default function HeroCardPicker({ heroName }: HeroCardPickerProps) {
     try {
       const path = await showOpenDialog({
         title: t('locker.cards.chooseImageForCard', {
-          variant: VARIANT_LABEL[slot.variant] ?? slot.variant,
+          variant: variantLabel(slot.variant),
         }),
         filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp'] }],
       });
@@ -311,6 +321,16 @@ export default function HeroCardPicker({ heroName }: HeroCardPickerProps) {
   // file usually ships several variants (card, vertical, low-HP, gloat...), and
   // apply works on the whole per-hero prefix, so the file is the selectable
   // unit and its variants are shown side by side for preview.
+  const portraitInventory = useMemo(() => buildPortraitInventory(mods), [mods]);
+  const inventoryEntries = useMemo(() => portraitInventory.byHero.get(heroName) ?? [], [portraitInventory, heroName]);
+  const inventoryByMetaKey = useMemo(() => new Map(inventoryEntries.map((entry) => [entry.metaKey, entry])), [inventoryEntries]);
+  const modByMetaKey = useMemo(() => new Map(mods.map((mod) => [mod.metaKey, mod])), [mods]);
+  const claimOverlaps = useMemo(() => overlappingClaims(inventoryEntries), [inventoryEntries]);
+  const slotPaths = useMemo(() => new Set(slots.map((slot) => slot.entry.replace(/\\/g, '/').replace(/^\/+/, '').toLowerCase())), [slots]);
+  const slotLabels = useMemo(() => Object.fromEntries(slots.map((slot) => [slot.entry.replace(/\\/g, '/').replace(/^\/+/, '').toLowerCase(), variantLabel(slot.variant)])), [slots, variantLabel]);
+  const portraitFoundryMods = useMemo(() => mods.filter((mod) => foundryChangeEntries(mod).some((entry) => slotPaths.has(entry))), [mods, slotPaths]);
+  const portraitFoundryChanges = useMemo(() => collectFoundryChanges(portraitFoundryMods).filter((entry) => entry.entries.some((path) => slotPaths.has(path))), [portraitFoundryMods, slotPaths]);
+
   const fileGroups = useMemo<PortraitFileGroup[]>(() => {
     const byFile = new Map<string, HeroPortrait[]>();
     for (const p of portraits) {
@@ -363,6 +383,16 @@ export default function HeroCardPicker({ heroName }: HeroCardPickerProps) {
         </p>
       )}
 
+      {claimOverlaps.length > 0 && (
+        <p className="rounded-md border border-amber-400/40 bg-amber-400/10 px-3 py-2 text-[11px] text-amber-200">{t('locker.cards.overlapNote', { count: claimOverlaps.length })}</p>
+      )}
+      {portraitFoundryChanges.length > 0 && (
+        <div className="rounded-[10px] border border-border/70 bg-bg-sunken/55 p-3">
+          <p className="text-xs font-semibold text-text-primary">{t('locker.cards.forgedPools')}</p>
+          <p className="mt-1 text-[11px] text-text-secondary">{t('locker.cards.forgedPoolsNote')}</p>
+          <div className="mt-2"><FoundryPoolList mods={portraitFoundryMods} changes={portraitFoundryChanges} included={foundryShuffleIncluded} onToggleShuffleKey={toggleFoundryShuffleIncluded} onToggleMod={(modId) => void toggleMod(modId)} onOpenInInstalled={(modId) => { window.location.hash = `#/?focusMod=${encodeURIComponent(modId)}`; }} /></div>
+        </div>
+      )}
       {fileGroups.length > 0 && (
         <div className="space-y-2.5">
           {fileGroups.map((group) => {
@@ -370,6 +400,8 @@ export default function HeroCardPicker({ heroName }: HeroCardPickerProps) {
             const isBusy = busySource === group.modFileName;
             const shuffleKey = shuffleCardKey(heroName, group.modFileName);
             const inShuffle = cardShuffleIncluded.has(shuffleKey);
+            const inventory = inventoryByMetaKey.get(group.modFileName);
+            const source = inventory ?? (() => { const mod = modByMetaKey.get(group.modFileName); return mod ? { enabled: mod.enabled, provenance: portraitProvenanceOf(mod) } : null; })();
             return (
               <div
                 key={group.modFileName}
@@ -388,6 +420,7 @@ export default function HeroCardPicker({ heroName }: HeroCardPickerProps) {
                     {group.modFileName.replace(/_dir\.vpk$/, '')}
                   </span>
                   <div className="flex flex-shrink-0 items-center gap-2">
+                    {source && (<span className="rounded-full border border-border/70 px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-text-secondary">{t(`locker.cards.provenance.${source.provenance}`)} {source.enabled ? t('locker.cards.enabled') : t('locker.cards.disabled')}</span>)}
                     <button
                       type="button"
                       disabled={busySource !== null}
@@ -419,17 +452,21 @@ export default function HeroCardPicker({ heroName }: HeroCardPickerProps) {
                       <div className="flex aspect-[3/4] items-center justify-center overflow-hidden rounded-md border border-border/50 bg-bg-primary/40">
                         <img
                           src={p.dataUrl}
-                          alt={`${heroName} ${VARIANT_LABEL[p.variant] ?? p.variant}`}
-                          title={`${VARIANT_LABEL[p.variant] ?? p.variant} · ${p.width}x${p.height} · ${p.formatName}`}
+                          alt={`${heroName} ${variantLabel(p.variant)}`}
+                          title={`${variantLabel(p.variant)} (${t('locker.cards.variantToken', { token: p.variant })}) Ã‚Â· ${p.width}x${p.height} Ã‚Â· ${p.formatName}`}
                           className="max-h-full max-w-full object-contain"
                         />
                       </div>
                       <figcaption className="mt-1 truncate text-center text-[9px] uppercase tracking-wide text-text-secondary">
-                        {VARIANT_LABEL[p.variant] ?? p.variant}
+                        {variantLabel(p.variant)}
                       </figcaption>
                     </figure>
                   ))}
                 </div>
+                <details className="relative z-10 border-t border-border/50 px-3 py-2">
+                  <summary className="cursor-pointer text-[11px] text-text-secondary hover:text-text-primary">{t('locker.cards.ownership')}</summary>
+                  <AssetSourcesPanel paths={[...slotPaths]} pathLabels={slotLabels} />
+                </details>
                 {isBusy && (
                   <span className="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm">
                     <Loader2 className="h-5 w-5 animate-spin text-white" />
@@ -489,13 +526,13 @@ export default function HeroCardPicker({ heroName }: HeroCardPickerProps) {
                     type="button"
                     disabled={customBusy}
                     onClick={() => handlePickVariant(slot)}
-                    title={`${VARIANT_LABEL[slot.variant] ?? slot.variant} · ${slot.width} x ${slot.height}`}
+                    title={`${variantLabel(slot.variant)} Ã‚Â· ${slot.width} x ${slot.height}`}
                     style={{ aspectRatio: `${slot.width} / ${slot.height}` }}
                     className="group relative flex w-full cursor-pointer items-center justify-center overflow-hidden rounded-md border border-border/50 bg-bg-primary/40 transition-colors hover:border-accent/50 disabled:cursor-not-allowed"
                   >
                     <img
                       src={pick ?? slot.baseDataUrl}
-                      alt={`${heroName} ${VARIANT_LABEL[slot.variant] ?? slot.variant}`}
+                      alt={`${heroName} ${variantLabel(slot.variant)}`}
                       className={`max-h-full max-w-full object-contain ${pick ? '' : 'opacity-30'}`}
                     />
                     <span className="absolute inset-0 flex items-center justify-center bg-black/0 text-white/0 transition-colors group-hover:bg-black/55 group-hover:text-white/90">
@@ -512,7 +549,7 @@ export default function HeroCardPicker({ heroName }: HeroCardPickerProps) {
                       }}
                       title={t('locker.cards.clearImage')}
                       aria-label={t('locker.cards.clearVariantImage', {
-                        variant: VARIANT_LABEL[slot.variant] ?? slot.variant,
+                        variant: variantLabel(slot.variant),
                       })}
                       className="absolute right-1 top-1 z-10 cursor-pointer rounded-full bg-black/75 p-1 text-white/90 shadow-sm ring-1 ring-white/10 transition-colors hover:bg-black/90 hover:text-white disabled:cursor-not-allowed"
                     >
@@ -521,7 +558,7 @@ export default function HeroCardPicker({ heroName }: HeroCardPickerProps) {
                   )}
                   <figcaption className="mt-1 text-center">
                     <span className="block truncate text-[9px] uppercase tracking-wide text-text-secondary">
-                      {VARIANT_LABEL[slot.variant] ?? slot.variant}
+                      {variantLabel(slot.variant)}
                     </span>
                     <span className="block text-[9px] tabular-nums text-text-secondary/70">
                       {slot.width} x {slot.height}

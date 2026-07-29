@@ -28,6 +28,8 @@ import type {
 
 interface AssetSourcesPanelProps {
   paths: string[];
+  /** Optional surface labels for exact paths, for example portrait variants. */
+  pathLabels?: Readonly<Record<string, string>>;
   /** Offered when the caller can mint a replacement for these exact paths (the
    *  sound rows open their swap panel). Omitted elsewhere, so the panel never
    *  advertises an action it cannot actually run. */
@@ -70,6 +72,7 @@ const TOKEN_SEPARATOR = '\n';
  */
 export default function AssetSourcesPanel({
   paths,
+  pathLabels,
   onCreateReplacement,
   poolTargets,
   onTogglePoolTarget,
@@ -180,7 +183,7 @@ export default function AssetSourcesPanel({
         <div className="mt-1 space-y-1 text-[10px] text-text-secondary">
           {winnerNames.map(({ path, name }) =>
             name ? (
-              <p key={path} className="truncate" title={path}>{t('foundry.sources.winner', { name })}</p>
+              <p key={path} className="truncate" title={path}>{pathLabels?.[path] ? `${pathLabels[path]}: ` : ''}{t('foundry.sources.winner', { name })}</p>
             ) : null
           )}
           {gating.incomplete && (
@@ -266,7 +269,7 @@ export default function AssetSourcesPanel({
                     }),
                     ...(source.wins.length ? [t('foundry.sources.isWinner')] : []),
                     ...(source.managed ? [] : [t('foundry.sources.unmanaged')]),
-                  ].join(' · ')}
+                  ].join(' Â· ')}
                 </p>
                 <p className="truncate" title={source.entries.join(', ')}>{source.entries.join(', ')}</p>
                 <div className="mt-1 flex flex-wrap gap-1">

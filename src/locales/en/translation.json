@@ -230,9 +230,9 @@
       "outputName": "Output name",
       "defaultName": "Foundry mod",
       "willCreate": "Will create: {{name}}.vpk",
-      "summary": "{{edits}} staged edits · {{files}} affected files",
+      "summary": "{{edits}} staged edits Â· {{files}} affected files",
       "empty": "Future sound, texture, recolor, and model edits will appear here before any build occurs.",
-      "editSummary": "{{files}} files · precedence {{precedence}}",
+      "editSummary": "{{files}} files Â· precedence {{precedence}}",
       "collisions_one": "{{count}} collision",
       "collisions_other": "{{count}} collisions",
       "collisionWinner": "{{file}}: {{winner}} wins",
@@ -304,6 +304,11 @@
     },
     "sound": {
       "searchPlaceholder": "Search sounds...",
+      "annotate": "Annotate",
+      "annotatedOnly": "Annotated only",
+      "baseGameLabel": "Base-game label:",
+      "existingSources": "Existing sources",
+      "existingSourcesHint": "Inspect installed VPKs that write these exact sound paths",
       "loading": "Reading sounds from your game files...",
       "play": "Audition",
       "poolPosition": "clip {{n}} of {{total}}",
@@ -405,7 +410,7 @@
       "disableHint": "Disable {{mod}} through the Installed list",
       "enableFailed": "Could not enable {{mod}}.",
       "disableFailed": "Could not disable {{mod}}.",
-      "meta": "{{provenance}} · priority {{priority}}",
+      "meta": "{{provenance}} Â· priority {{priority}}",
       "isWinner": "winner",
       "unmanaged": "not managed by Grimoire",
       "auditionHint": "Audition what {{mod}} writes at {{entry}}",
@@ -428,7 +433,7 @@
     "myChanges": {
       "empty": "No Foundry changes yet. Sound swaps and installed builds appear here and follow their normal Installed state.",
       "globalScope": "Global sounds",
-      "summary": "{{name}} · {{audio}} · {{pool}}",
+      "summary": "{{name}} Â· {{audio}} Â· {{pool}}",
       "seed": "seed {{seed}}",
       "enabled": "Enabled",
       "disabled": "Disabled",
@@ -671,7 +676,7 @@
       "left": "{{eta}} left"
     },
     "noDownloads": "No downloads",
-    "preparing": "Preparing…",
+    "preparing": "Preparingâ€¦",
     "queuedHeader_one": "Queued ({{count}})",
     "queuedHeader_other": "Queued ({{count}})",
     "remainingQueued_one": "{{count}} queued",
@@ -747,7 +752,7 @@
       "matchHistory": "Match History",
       "today": "Today",
       "yesterday": "Yesterday",
-      "recordedSummary": "Last {{count}} recorded matches · {{wins}}W {{losses}}L",
+      "recordedSummary": "Last {{count}} recorded matches Â· {{wins}}W {{losses}}L",
       "recordedOnSync": "Matches recorded locally on each sync",
       "winRatePercent": "{{rate}}% WR",
       "noMatchesRecordedYet": "No matches recorded yet",
@@ -839,10 +844,10 @@
   "conflicts": {
     "actions": {
       "clearIgnored": "Clear ignored",
-      "clearing": "Clearing…",
+      "clearing": "Clearingâ€¦",
       "disable": "Disable",
       "disableNamed": "Disable {{name}}",
-      "disabling": "Disabling…",
+      "disabling": "Disablingâ€¦",
       "ignore": "Ignore",
       "ignoreAll": "Ignore all",
       "ignoreAllTitle": "Move every active conflict pair to the Ignored section. Reversible per-pair via Unignore.",
@@ -850,7 +855,7 @@
       "ignoreCount_other": "Ignore {{count}}",
       "ignoreModEverywhere": "Ignore this mod everywhere",
       "ignoreTitle": "Stop flagging this pair as a conflict",
-      "ignoring": "Ignoring…",
+      "ignoring": "Ignoringâ€¦",
       "unignore": "Unignore"
     },
     "confirm": {
@@ -860,14 +865,14 @@
       "clearIgnoredTitle_other": "Clear {{count}} ignored conflicts?",
       "disableMessage": "{{name}} will be disabled and moved out of the addons folder. You can re-enable it from the Installed page.",
       "disableTitle": "Disable this mod?",
-      "ignoreAllHint": "Reversible — you can restore any pair individually with Unignore.",
+      "ignoreAllHint": "Reversible â€” you can restore any pair individually with Unignore.",
       "ignoreAllMessage": "Every currently active conflict pair will move to the Ignored section below.",
       "ignoreAllTitle_one": "Ignore all {{count}} conflict?",
       "ignoreAllTitle_other": "Ignore all {{count}} conflicts?"
     },
     "empty": {
-      "activeWithIgnored_one": "No active conflicts. {{count}} pair currently ignored — see below.",
-      "activeWithIgnored_other": "No active conflicts. {{count}} pairs currently ignored — see below.",
+      "activeWithIgnored_one": "No active conflicts. {{count}} pair currently ignored â€” see below.",
+      "activeWithIgnored_other": "No active conflicts. {{count}} pairs currently ignored â€” see below.",
       "noActive": "No active conflicts.",
       "noConflicts": {
         "title": "No Conflicts Detected",
@@ -892,7 +897,7 @@
     },
     "header": {
       "description": "Resolve conflicts between installed mods",
-      "noActiveDescription": "No active conflicts — review or restore your ignored pairs below."
+      "noActiveDescription": "No active conflicts â€” review or restore your ignored pairs below."
     },
     "ignored": {
       "clearTitle": "Restore conflict detection for every ignored pair",
@@ -1270,7 +1275,7 @@
       "noModsTitle": "No Mods Found",
       "noGamePathTitle": "No Game Path Set",
       "errorTitle": "Error Loading Mods",
-      "noSearchMatch": "No installed mods match “{{query}}”",
+      "noSearchMatch": "No installed mods match â€œ{{query}}â€",
       "noFilterMatch": "No installed mods match the active filters"
     },
     "actions": {
@@ -1607,7 +1612,7 @@
       "updateAvailableTitle": "A newer version is available on GameBanana",
       "mergedTitle_one": "Merged from {{count}} mod. Open details to unmerge.",
       "mergedTitle_other": "Merged from {{count}} mods. Open details to unmerge.",
-      "mergedBadge": "Merged · {{count}}",
+      "mergedBadge": "Merged Â· {{count}}",
       "noFilesEnabled": "No files enabled",
       "variantStatusTitle": "{{labels}} - click card to choose files",
       "revealInFolder": "Reveal in folder",
@@ -1746,8 +1751,8 @@
       },
       "preview": {
         "noMeshGeometry": "No mesh geometry",
-        "statsLabel_one": "{{count}} mesh · {{verts}} verts · span {{span}}",
-        "statsLabel_other": "{{count}} meshes · {{verts}} verts · span {{span}}",
+        "statsLabel_one": "{{count}} mesh Â· {{verts}} verts Â· span {{span}}",
+        "statsLabel_other": "{{count}} meshes Â· {{verts}} verts Â· span {{span}}",
         "orientationLabel": "Orientation:",
         "vanillaShell": "Vanilla shell",
         "heroScale": "Hero scale",
@@ -1800,14 +1805,14 @@
       },
       "conflict": {
         "heading": "A soul container is already enabled",
-        "body": "Only one soul container loads in-game at a time (they override the same model). Choose what to do with “{{name}}”:",
+        "body": "Only one soul container loads in-game at a time (they override the same model). Choose what to do with â€œ{{name}}â€:",
         "disableCurrent": "Disable the current one",
         "keepBoth": "Keep both enabled"
       },
       "errors": {
         "noMeshGeometry": "GLB preview loaded, but it has no mesh geometry.",
         "previewFailed": "Soul container preview failed: {{error}}",
-        "expectedGlb": "Expected a .glb file (got “{{name}}”).",
+        "expectedGlb": "Expected a .glb file (got â€œ{{name}}â€).",
         "dropPathUnresolved": "Could not resolve the dropped file path."
       },
       "dialog": {
@@ -1839,7 +1844,7 @@
       "highPolyWarning": "This model has {{count}} triangles, well above the {{threshold}} an urn usually needs. It will still build, but a very heavy model can hurt in-game performance.",
       "conflict": {
         "heading": "A spirit urn is already enabled",
-        "body": "Only one spirit urn loads in-game at a time (they override the same model). Choose what to do with “{{name}}”:"
+        "body": "Only one spirit urn loads in-game at a time (they override the same model). Choose what to do with â€œ{{name}}â€:"
       },
       "errors": {
         "previewFailed": "Spirit urn preview failed: {{error}}"
@@ -1885,22 +1890,22 @@
         "purple": "Purple",
         "pink": "Pink"
       },
-      "presetTitle": "{{name}} ({{hue}}°, S {{sat}}%, B {{bright}}%)",
+      "presetTitle": "{{name}} ({{hue}}Â°, S {{sat}}%, B {{bright}}%)",
       "swatchAria": {
         "prism": "Rainbow prism{{animated}}",
         "gradient": "{{label}} gradient{{animated}}",
         "single": "Hue {{hue}}, saturation {{sat}}%, brightness {{bright}}%"
       },
       "target": {
-        "rainbow": "Rainbow{{animated}} · rot {{rot}}° · S {{sat}}% · B {{bright}}%",
-        "gradient": "{{label}}{{animated}} · rot {{rot}}° · S {{sat}}% · B {{bright}}%",
-        "single": "{{hue}}° · S {{sat}}% · B {{bright}}%"
+        "rainbow": "Rainbow{{animated}} Â· rot {{rot}}Â° Â· S {{sat}}% Â· B {{bright}}%",
+        "gradient": "{{label}}{{animated}} Â· rot {{rot}}Â° Â· S {{sat}}% Â· B {{bright}}%",
+        "single": "{{hue}}Â° Â· S {{sat}}% Â· B {{bright}}%"
       },
       "applied": {
-        "rainbow": "Applied: Rainbow{{animated}} · rot {{rot}}°",
+        "rainbow": "Applied: Rainbow{{animated}} Â· rot {{rot}}Â°",
         "gradient": "Applied: {{label}} gradient{{animated}}",
-        "trippy": "Applied: Trippy {{style}} · {{animation}} · {{targets}}",
-        "single": "Applied: {{hue}}° / S {{sat}}% / B {{bright}}%"
+        "trippy": "Applied: Trippy {{style}} Â· {{animation}} Â· {{targets}}",
+        "single": "Applied: {{hue}}Â° / S {{sat}}% / B {{bright}}%"
       },
       "sweepSpectrum": "sweep the spectrum over each effect's lifetime",
       "sweepGradient": "sweep the gradient over each effect's lifetime",
@@ -1956,13 +1961,31 @@
       "heroCard": "Hero Card",
       "experimental": "Experimental",
       "intro": "Card art found in your installed mods. Each mod may ship several portrait variants; click a card to apply that mod's full set for {{hero}}, and click the applied card again to revert to default.",
+      "ownership": "Show installed sources and winners",
+      "variantToken": "variant token: {{token}}",
+      "overlapNote_one": "{{count}} recorded card path is claimed by more than one enabled mod. This only covers recorded paths.",
+      "overlapNote_other": "{{count}} recorded card paths are claimed by more than one enabled mod. This only covers recorded paths.",
+      "forgedPools": "Forged portrait shuffle",
+      "forgedPoolsNote": "These are the same Foundry launch pools. Opting one change in makes its whole contended-path group exclusive at launch.",
+      "enabled": "enabled",
+      "disabled": "disabled",
+      "provenance": { "locker": "Locker", "forged": "Forged", "downloaded": "Downloaded", "imported": "Imported", "third-party": "Third-party" },
+      "variants": {
+        "card": "Hero card",
+        "vertical": "Vertical card",
+        "cardCritical": "Low-health card",
+        "cardGloat": "Gloat card",
+        "minimap": "Minimap icon",
+        "small": "Compact hero portrait",
+        "other": "Other portrait variant"
+      },
       "decodingPortraits": "Decoding portraits...",
       "noCardArt": "No card art found in your installed mods for {{hero}}.",
       "applied": "Applied",
       "portraitCount_one": "{{count}} portrait",
       "portraitCount_other": "{{count}} portraits",
-      "fileGroupTitle_one": "{{file}} · {{count}} portrait",
-      "fileGroupTitle_other": "{{file}} · {{count}} portraits",
+      "fileGroupTitle_one": "{{file}} Â· {{count}} portrait",
+      "fileGroupTitle_other": "{{file}} Â· {{count}} portraits",
       "uploadYourOwn": "Upload your own",
       "slotCount_one": "{{count}} slot",
       "slotCount_other": "{{count}} slots",
@@ -1985,10 +2008,10 @@
     "trippy": {
       "loading": "Loading...",
       "description": "Paint {{hero}}'s body and gun textures with a flowing procedural pattern: the paint scrolls in game. This composes with anything applied on the Abilities surface.",
-      "summarySuffix": "· {{intensity}}% · scroll {{scroll}}%",
+      "summarySuffix": "Â· {{intensity}}% Â· scroll {{scroll}}%",
       "statusNone": "No trippy skin applied",
       "applied": "Applied",
-      "statusApplied": "Applied: {{style}} · {{intensity}}% · {{targets}}",
+      "statusApplied": "Applied: {{style}} Â· {{intensity}}% Â· {{targets}}",
       "scrollSpeed": "Scroll speed",
       "paint": "Paint",
       "bodyGun": "Body + Gun",
@@ -2091,7 +2114,7 @@
       "unassigned": "Unassigned",
       "unassignedDescription": "These mods couldn't be matched to a hero automatically. Tag one to move it into that hero's locker pile.",
       "noPreview": "No preview",
-      "sound": "Sound · ",
+      "sound": "Sound Â· ",
       "tagAsHero": "Tag as hero...",
       "tagAsHeroNamed": "Tag {{name}} as a hero",
       "heroNotFound": "Hero Not Found",
@@ -2115,7 +2138,7 @@
       "section": "Section",
       "skins": "Skins",
       "sounds": "Sounds",
-      "noSoundModsTagged": "No sound mods tagged for this hero yet. Tag one from Installed (multi-select → Tag).",
+      "noSoundModsTagged": "No sound mods tagged for this hero yet. Tag one from Installed (multi-select â†’ Tag).",
       "downloadASkinForThisHero": "Download a skin for this hero to manage it here."
     },
     "hero": {
@@ -2351,7 +2374,7 @@
       "createAProfileHint": "Create a profile under Profiles, add some mods, then come back to publish.",
       "updatedRelative": "updated {{date}}",
       "empty": "empty",
-      "publishArrow": "Publish →"
+      "publishArrow": "Publish â†’"
     }
   },
   "exportProfile": {
@@ -2361,9 +2384,9 @@
     "modsSkipped_other": "{{count}} mods skipped",
     "modsIncluded_one": "{{count}} mod included",
     "modsIncluded_other": "{{count}} mods included",
-    "crosshairSuffix": " · crosshair",
-    "autoexecSuffix_one": " · {{count}} autoexec command",
-    "autoexecSuffix_other": " · {{count}} autoexec commands",
+    "crosshairSuffix": " Â· crosshair",
+    "autoexecSuffix_one": " Â· {{count}} autoexec command",
+    "autoexecSuffix_other": " Â· {{count}} autoexec commands",
     "saveFile": "Save .modprofile.json file",
     "copied": "Copied to clipboard",
     "copyShareCode": "Copy share code",
@@ -2443,7 +2466,7 @@
     "parseAndResolve": "Parse & resolve",
     "resolvingContents": "Resolving profile contents...",
     "saveAs": "Save as",
-    "originallyBy": "· originally by {{author}}",
+    "originallyBy": "Â· originally by {{author}}",
     "includeAutoexecAria": "Include autoexec commands from this profile",
     "includeAutoexecCount_one": "Include {{count}} autoexec command",
     "includeAutoexecCount_other": "Include {{count}} autoexec commands",
@@ -2458,9 +2481,9 @@
     "showAllVariants": "Show all variants",
     "modsAlreadyInstalledLocally": "Mods already installed locally",
     "onDiskCount": "{{count}} on disk",
-    "priorityBadge": "· p{{priority}}",
-    "disabledBadge": "· disabled",
-    "nsfwSkippedBadge": "· NSFW skipped",
+    "priorityBadge": "Â· p{{priority}}",
+    "disabledBadge": "Â· disabled",
+    "nsfwSkippedBadge": "Â· NSFW skipped",
     "chooseDifferentVariant": "Choose a different variant from this mod",
     "variantCount_one": "{{count}} variant",
     "variantCount_other": "{{count}} variants",
@@ -2478,8 +2501,8 @@
     },
     "loadingFiles": "Loading files...",
     "importedAs": "Imported as \"{{name}}\"",
-    "progressSummary": "{{downloading}}↓ · {{queued}} queued · {{installed}} done",
-    "progressFailedSuffix": " · {{failed}} failed",
+    "progressSummary": "{{downloading}}â†“ Â· {{queued}} queued Â· {{installed}} done",
+    "progressFailedSuffix": " Â· {{failed}} failed",
     "selectedSummary": "{{selected}} of {{total}} selected"
   },
   "mergeMods": {
@@ -2541,7 +2564,7 @@
   },
   "mergedContents": {
     "disabledAtMerge": "Disabled at merge time",
-    "merged": "Merged · {{count}}",
+    "merged": "Merged Â· {{count}}",
     "created": "Created {{date}}",
     "sourcesStayOnDisk": "Sources stay on disk in the disabled folder. Unmerge restores them; the share code captures the list for re-downloading from GameBanana on another machine.",
     "sources": "Sources ({{count}})",
@@ -2751,7 +2774,7 @@
       "noHero": "No hero (item / UI / music)",
       "searchHeroesAria": "Search heroes",
       "heroFilterPlaceholder": "Filter...",
-      "noHeroesMatch": "No matches for “{{query}}”",
+      "noHeroesMatch": "No matches for â€œ{{query}}â€",
       "clearHeroSearch": "Clear",
       "category": "Category",
       "filterByCategory": "Filter by category",
@@ -2792,7 +2815,7 @@
       "downloading": "Downloading...",
       "sound": "SOUND",
       "outdated": "Outdated",
-      "outdatedPrefix": "Outdated · "
+      "outdatedPrefix": "Outdated Â· "
     },
     "errors": {
       "noDownloadableFiles": "No downloadable files found"
@@ -3220,9 +3243,9 @@
     "confirmDiscard": "Discard unsaved changes and create a new chat wheel?",
     "newWheelDraft": "New wheel draft: this is not installed yet. Save & install creates the managed add-on.",
     "loadSelected": "Load selected",
-    "openVpk": "Open VPK…",
+    "openVpk": "Open VPKâ€¦",
     "helpNote": "Only VPKs made by ChatLane can be opened. The embedded chatlane.yml is preserved on every save. Installation happens only when you choose Save & install.",
-    "validationChecking": "Checking YAML with ChatLane…",
+    "validationChecking": "Checking YAML with ChatLaneâ€¦",
     "validationValid": "ChatLane YAML is valid. Nothing has been installed.",
     "nameLabel": "Name",
     "yamlLabel": "ChatLane YAML",
@@ -3462,7 +3485,7 @@
       "openInInstalled": "Open in Installed",
       "whatItChanges": "What it changes",
       "events": "Events: {{events}}",
-      "reading": "Reading this mod’s write set",
+      "reading": "Reading this modâ€™s write set",
       "unknownWriteSet": "This mod records no entry paths, so what it overrides cannot be named without opening its VPK. Enabled state and load order still decide who wins.",
       "incomplete": "Some installed VPKs could not be read: {{mods}}",
       "audition": "Audition from this mod",
