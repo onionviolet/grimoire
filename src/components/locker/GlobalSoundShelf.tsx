@@ -91,7 +91,13 @@ export default function GlobalSoundShelf({ category, entries, shown }: GlobalSou
   }
 
   return (
-    <div className="space-y-1.5">
+    // The rows sit on a surface of their own. `SoundEntryRow` tints rather
+    // than fills (an enabled row is `bg-accent/10`), which reads correctly on
+    // the hero page's opaque pane but let the Global drill-in's background art
+    // through the moment these rows moved onto it. The visual pane solves the
+    // same problem per card, with `bg-bg-sunken` behind the artwork; rows get
+    // one shared surface instead, so the tint lands on this and not on the art.
+    <div className="space-y-1.5 rounded-xl border border-white/10 bg-bg-sunken/60 p-3 backdrop-blur-sm">
       {shown.map((entry) => (
         <SoundEntryRow
           key={entry.key}

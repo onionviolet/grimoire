@@ -1791,14 +1791,14 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
                 <h3 className="text-base font-semibold text-white drop-shadow-[0_2px_12px_rgba(0,0,0,0.6)]">
                   {GLOBAL_MOD_TYPE_LABELS[activeType]}
                 </h3>
-                <span className="text-xs text-white/60">
+                <span className="text-xs tabular-nums text-white/60">
                   {t('locker.page.modCount', { count: activeMods.length })}
                 </span>
                 {isPropContainer && (
                   <button
                     type="button"
                     onClick={activeType === 'spirit-urn' ? onImportUrn : onImportSoul}
-                    className="ml-auto inline-flex items-center gap-1.5 self-center rounded-lg border border-accent/40 bg-accent/10 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:border-accent/60 hover:bg-accent/20"
+                    className="ml-auto inline-flex items-center gap-1.5 self-center rounded-lg border border-accent/40 bg-accent/10 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:border-accent/60 hover:bg-accent/20 cursor-pointer"
                     title={activeType === 'spirit-urn' ? t('locker.urnImport.trigger.title') : t('locker.soulImport.trigger.title')}
                   >
                     {activeType === 'spirit-urn' ? <Box className="h-3.5 w-3.5" /> : <Ghost className="h-3.5 w-3.5" />}
@@ -1821,7 +1821,7 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
                   <button
                     type="button"
                     onClick={activeType === 'spirit-urn' ? onImportUrn : onImportSoul}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-accent/40 bg-accent/10 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:border-accent/60 hover:bg-accent/20"
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-accent/40 bg-accent/10 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:border-accent/60 hover:bg-accent/20 cursor-pointer"
                   >
                     {activeType === 'spirit-urn' ? <Box className="h-3.5 w-3.5" /> : <Ghost className="h-3.5 w-3.5" />}
                     {activeType === 'spirit-urn' ? t('locker.urnImport.trigger.label') : t('locker.soulImport.trigger.label')}
