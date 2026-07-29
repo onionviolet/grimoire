@@ -2800,7 +2800,32 @@
       "description": "Be the first to publish: open Profiles, pick one, and click Publish to Discover."
     },
     "card": {
-      "featured": "Featured"
+      "featured": "Featured",
+      "modsAvailable": "{{available}} of {{total}} mods available",
+      "modsAllAvailable": "All {{total}} mods available",
+      "modsAvailableHint": "Checked against GameBanana on {{date}}. Deleted or archived mods cannot be imported.",
+      "modsUnchecked": "Mod availability not checked yet",
+      "modsUncheckedHint": "This profile has not been revalidated against GameBanana. Import may still find a mod is gone.",
+      "missing_one": "{{count}} mod you do not have",
+      "missing_other": "{{count}} mods you do not have",
+      "missingHint": "Importing this profile will queue these downloads.",
+      "haveAll": "You already have every mod in this profile"
+    },
+    "stats": {
+      "ownerOnly": "Only you can see this",
+      "views_one": "{{count}} view",
+      "views_other": "{{count}} views",
+      "viewsUnavailable": "View counts are not available right now."
+    },
+    "offline": {
+      "title": "You are offline",
+      "description": "Discover needs a connection. Your installed mods and local profiles are unaffected.",
+      "retry": "Try again"
+    },
+    "busy": {
+      "title": "Grimoire Social is busy",
+      "description": "The service is over capacity right now. Nothing was lost: try again in a few minutes.",
+      "retry": "Try again"
     },
     "pagination": {
       "loadingMore": "Loading more...",
