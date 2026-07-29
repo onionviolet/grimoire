@@ -172,6 +172,12 @@ second sound editor.
 
 ## Lane 0.75: converge the Sound Locker into Locker
 
+> **Done.** The route work landed first and left the shell work unfinished: the
+> Global drill-in's Sounds tab returned a different page component, so selecting
+> it unmounted the shell and Visuals became unreachable. Lane 1 of
+> `docs/locker-consistency-pass.md` finished it, and that doc's Lanes 2 to 4
+> cover the rule, the route resolver, and the visual sweep that followed.
+
 Keep the Sound Locker's inventory model and rich rows; change its information
 architecture. It should be a Locker mode, not a sibling destination that makes
 the user traverse a second hero grid.
@@ -231,6 +237,13 @@ selected.
 
 ## Lane 1: inventory the weak states
 
+> **Superseded by `docs/locker-consistency-pass.md`.** That doc has its own
+> lane numbering and it wins where the two overlap. This lane's disabled-control
+> and empty-state requirements are carried by its Lane 9 ("Disabled controls
+> state their blocker") and Lane 10 ("One empty-state shape"), widened past
+> Locker and Foundry to Profiles, Conflicts, and the Foundry forge path. Read
+> this section as background, not as work to schedule.
+
 Audit Locker and Foundry for controls in these states:
 
 - Empty but actionable.
@@ -247,6 +260,13 @@ Acceptance: no interactive control in the audited surfaces relies only on color
 to communicate availability or consequence.
 
 ## Lane 2: establish the interaction patterns
+
+> **Superseded by `docs/locker-consistency-pass.md`.** Note that both docs have
+> a "Lane 2" and they are different; that one wins. This lane's patterns are
+> split across its Lane 8 (keyboard and assistive-tech floor: `useEscapeKey`,
+> tablist wiring, one live-region convention), Lane 9 (undo, blockers, pending
+> work), and Lane 10 (copy and state vocabulary). Read this section as
+> background, not as work to schedule.
 
 Make the following patterns consistent in shared components before applying
 them to individual surfaces:
@@ -265,6 +285,13 @@ Acceptance: a keyboard-only pass reaches every disclosure and adjustment, and
 focus has the same preview clarity as hover.
 
 ## Lane 3: add bounded adjustability
+
+> **Superseded by `docs/locker-consistency-pass.md`.** Its Lane 5 carries this:
+> one typed `uiPrefs` module over the keys that already exist, a registry that
+> names each key once with its default, and a Settings control that can reset
+> every remembered layout choice. The "stable default, can be reset" rule below
+> is the requirement that lane implements. Read this section as background, not
+> as work to schedule.
 
 Do not add controls merely because a property can vary. Add an adjustment only
 when it changes a visible outcome, has a stable default, and can be reset.
