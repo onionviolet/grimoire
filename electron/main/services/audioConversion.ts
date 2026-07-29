@@ -1,7 +1,7 @@
 /** Local, private conversion of Foundry input to vpkmerge's MP3 mint format. */
 import { spawn } from 'child_process';
 import { existsSync } from 'fs';
-import { rm } from 'fs/promises';
+import { mkdir, rm } from 'fs/promises';
 import { app } from 'electron';
 import ffmpegStatic from 'ffmpeg-static';
 import { basename, dirname, join } from 'path';
@@ -41,6 +41,9 @@ export async function prepareAudioForMint(inputPath: string): Promise<MintAudio>
     const dir = join(tmpdir(), `grimoire-audio-${randomUUID()}`);
     const output = join(dir, 'converted.mp3');
     try {
+        // FFmpeg does not create the output directory, it just fails with
+        // "No such file or directory", so make it before handing over the path.
+        await mkdir(dir, { recursive: true });
         await runFfmpeg(['-nostdin', '-hide_banner', '-loglevel', 'error', '-y', '-i', inputPath, '-map', '0:a:0', '-vn', '-ar', '44100', '-ac', '2', '-c:a', 'libmp3lame', '-q:a', '2', output]);
     } catch (error) {
         await rm(dir, { recursive: true, force: true }).catch(() => {});
