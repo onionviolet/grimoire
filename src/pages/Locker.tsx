@@ -63,7 +63,7 @@ import {
   type HeroCategory,
 } from '../lib/lockerUtils';
 import { shuffleSkinKey, shuffleSoundKey, type VariantChoice } from '../lib/lockerRandomizer';
-import { legacySoundTarget, lockerModeFromSearch, type LockerMode } from '../lib/lockerMode';
+import { resolveLockerRoute, type LockerMode } from '../lib/lockerMode';
 import {
   buildSoundInventory,
   countMods,
@@ -361,11 +361,17 @@ export default function Locker() {
 
   const navigate = useNavigate();
   const location = useLocation();
-  // `mode` now only selects the Global drill-in's Visuals/Sounds tab. It is read
-  // straight from the query with no remembered fallback: a stored preference
-  // would make a bare `/locker/global` open on whichever tab was used last,
-  // which is not what a plain link to Global should do.
-  const globalSection = lockerModeFromSearch(location.search);
+  // Which surface the URL names and which of its sections is selected, decided
+  // in one pure place (`resolveLockerRoute`, covered by lockerMode.test.ts)
+  // rather than by four regexes and two query reads scattered down this file.
+  // The section is read straight from the URL with no remembered fallback: a
+  // stored preference would make a bare `/locker/global` open on whichever tab
+  // was used last, which is not what a plain link to Global should do.
+  const route = useMemo(
+    () => resolveLockerRoute(location.pathname, location.search),
+    [location.pathname, location.search]
+  );
+  const globalSection = route.drillIn === 'global' ? route.section : null;
   const goToHero = useCallback(
     (hero: HeroCategory) => navigate(`/locker/hero/${hero.id}`),
     [navigate]
@@ -385,20 +391,14 @@ export default function Locker() {
     },
     [navigate, setBrowseUi]
   );
-  const selectedHeroRouteParam = useMemo(() => {
-    const match = location.pathname.match(/^\/locker\/hero\/([^/]+)\/?$/);
-    return match ? match[1] : null;
-  }, [location.pathname]);
+  const selectedHeroRouteParam = route.drillIn === 'hero' ? route.heroId : null;
   const selectedHeroId = useMemo(() => {
     if (selectedHeroRouteParam === null || !/^\d+$/.test(selectedHeroRouteParam)) {
       return null;
     }
     return Number(selectedHeroRouteParam);
   }, [selectedHeroRouteParam]);
-  const globalSelected = useMemo(
-    () => /^\/locker\/global\/?$/.test(location.pathname),
-    [location.pathname]
-  );
+  const globalSelected = route.drillIn === 'global';
 
   // Hero cards and ability effects can only be applied from inside a hero
   // drill-in, so the override overview is fresh enough if we (re)load it on
@@ -440,8 +440,8 @@ export default function Locker() {
   // them to the canonical routes so old bookmarks and Foundry handoffs land in
   // the right place instead of on the grid.
   useEffect(() => {
-    const target = legacySoundTarget(location.pathname);
-    if (!target) return;
+    if (route.drillIn !== 'legacy') return;
+    const target = route.legacy;
     if (target.kind === 'global') {
       navigate('/locker/global?mode=sounds', { replace: true });
       return;
@@ -455,17 +455,21 @@ export default function Locker() {
     const canonical = canonicalHeroName(target.hero);
     const match = baseHeroList.find((hero) => canonicalHeroName(hero.name) === canonical);
     navigate(match ? `/locker/hero/${match.id}?section=sounds` : '/locker', { replace: true });
-  }, [baseHeroList, location.pathname, navigate]);
+  }, [baseHeroList, navigate, route]);
 
   useEffect(() => {
-    if (selectedHeroId !== null || globalSelected) return;
+    // Grid only. A legacy `/locker/sounds?hero=<name>` carries the same query,
+    // and the rewrite above already owns it: both effects firing meant this one
+    // landed second and dropped the `?section=sounds` the other had just added,
+    // so the Foundry handoff opened the hero on Skins.
+    if (route.drillIn !== 'grid') return;
     const wanted = new URLSearchParams(location.search).get('hero');
     if (!wanted) return;
     if (!baseHeroList.length) return;
     const canonical = canonicalHeroName(wanted);
     const match = baseHeroList.find((hero) => canonicalHeroName(hero.name) === canonical);
     navigate(match ? `/locker/hero/${match.id}` : '/locker', { replace: true });
-  }, [baseHeroList, globalSelected, location.search, navigate, selectedHeroId]);
+  }, [baseHeroList, location.search, navigate, route]);
 
   useEffect(() => {
     let active = true;
@@ -1218,9 +1222,10 @@ export default function Locker() {
             skinList={selectedHeroMods}
             soundList={selectedHeroSoundList}
             skinCount={selectedHeroSkinCount}
-            initialSection={
-              new URLSearchParams(location.search).get('section') === 'sounds' ? 'sounds' : undefined
-            }
+            // Every section of this drill-in is addressable, not just sounds:
+            // a link that names a section it cannot open is the same defect as
+            // a tab that cannot be returned to.
+            initialSection={route.drillIn === 'hero' ? route.section : undefined}
             isFavorite={favoriteHeroes.has(overlayHero.id)}
             onBack={() => navigate('/locker')}
             onEditInFoundry={() => navigate(`/foundry?hero=${encodeURIComponent(overlayHero.name)}`)}
