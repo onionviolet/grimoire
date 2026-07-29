@@ -191,6 +191,7 @@ export default function HeroWorkshop({
 
   return (
     <HeroDetailFrame
+      surface="foundry"
       heroName={hero.name}
       // Third fallback step, matching the grid: a hero with no render still
       // gets their chip icon rather than dropping straight to bare text.
@@ -202,6 +203,16 @@ export default function HeroWorkshop({
       activeSection={section}
       onSectionChange={setSection}
       contentWidth="fluid"
+      railTop={
+        <div className="rounded-lg border border-accent/25 bg-accent/10 px-3 py-2 text-sm text-text-primary">
+          <p className="font-medium">{t('foundry.workshop.createNewMod', 'Create a new mod')}</p>
+          <p className="mt-0.5 text-xs text-text-secondary">
+            {stagedEdits.length > 0
+              ? t('foundry.workshop.stagedEdits', '{{count}} staged edit ready for the Build tray', { count: stagedEdits.length })
+              : t('foundry.workshop.stagedEditsEmpty', 'Stage an edit, then review it in the Build tray.')}
+          </p>
+        </div>
+      }
       topRight={
         <button
           type="button"

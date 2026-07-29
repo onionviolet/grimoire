@@ -206,6 +206,8 @@ export default function CardCropper({
                 value={zoom}
                 disabled={!img}
                 onChange={(e) => applyZoom(Number(e.target.value))}
+                aria-label={t('locker.crop.zoomLabel')}
+                aria-valuetext={t('locker.crop.zoomValue', { value: zoom.toFixed(1) })}
                 className="h-1 flex-1 cursor-pointer appearance-none rounded-full bg-border accent-accent disabled:cursor-not-allowed"
               />
               <span className="w-10 text-right text-[11px] tabular-nums text-text-secondary">
@@ -213,9 +215,10 @@ export default function CardCropper({
               </span>
               <button
                 type="button"
-                disabled={!img}
+                disabled={!img || zoom === 1}
                 onClick={() => applyZoom(1)}
-                title={t('locker.crop.resetZoom')}
+                aria-label={t('locker.crop.resetZoomTo')}
+                title={t('locker.crop.resetZoomTo')}
                 className="cursor-pointer rounded-md border border-border/60 p-1 text-text-secondary transition-colors hover:border-white/20 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <RotateCcw className="h-3.5 w-3.5" />

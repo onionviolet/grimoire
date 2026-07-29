@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { AlertTriangle, CheckCircle, RefreshCw, X, EyeOff, Eye, List, LayoutGrid, Trash2, Globe, Ban } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { AlertTriangle, CheckCircle, RefreshCw, X, EyeOff, Eye, List, LayoutGrid, Trash2, Globe, Ban, Search } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import {
   getConflicts,
@@ -29,6 +29,7 @@ import ConflictReorderActions from '../components/conflicts/ConflictReorderActio
 import ConflictFileList from '../components/conflicts/ConflictFileList';
 import { MenuRoot, MenuTrigger, MenuContent, MenuItem, MenuLabel } from '../components/common/menu';
 import Tx from '../components/translation/Tx';
+import { searchConflict } from '../lib/conflictSearch';
 
 const CONFLICTS_VIEW_MODE_KEY = 'grimoire:conflicts-view-mode';
 
@@ -186,6 +187,10 @@ export default function Conflicts() {
       return 'grid';
     }
   });
+  // Query state is intentionally local to this visit and never participates in
+  // loadConflicts, keeping search as inspection rather than another scan.
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   // Bulk-ignore confirmation. `ignoringAll` blocks the modal action while
   // the sequential ignoreConflict calls run so the user can't cancel
   // mid-iteration and leave the page in a partial state.
@@ -198,6 +203,18 @@ export default function Conflicts() {
   // that row's buttons during the round-trip without freezing the whole page.
   const [pendingPair, setPendingPair] = useState<string | null>(null);
   const { loadMods } = useAppStore();
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedSearch(search), 200);
+    return () => window.clearTimeout(timer);
+  }, [search]);
+
+  const clearSearch = () => {
+    // Clearing is an explicit recovery action, so do not leave stale filtered
+    // results on screen for the debounce window.
+    setSearch('');
+    setDebouncedSearch('');
+  };
 
   const loadConflicts = async () => {
     setLoading(true);
@@ -541,6 +558,41 @@ export default function Conflicts() {
     return modsMap.get(modId) || { id: modId, name: fallbackName, fileName: '', identity: modId };
   };
 
+  const filteredConflictResults = useMemo(() => {
+    return conflicts.flatMap((conflict) => {
+      const modA = modsMap.get(conflict.modA) || {
+        id: conflict.modA,
+        name: conflict.modAName,
+        fileName: '',
+        identity: conflict.modA,
+      };
+      const modB = modsMap.get(conflict.modB) || {
+        id: conflict.modB,
+        name: conflict.modBName,
+        fileName: '',
+        identity: conflict.modB,
+      };
+      const result = searchConflict({
+        conflictType: conflict.conflictType,
+        details: conflict.details,
+        files: conflict.files,
+        modA: {
+          name: modA.name,
+          fileName: modA.fileName,
+          sourceFileName: modA.sourceFileName,
+          variantLabel: getVariantLabel(modA),
+        },
+        modB: {
+          name: modB.name,
+          fileName: modB.fileName,
+          sourceFileName: modB.sourceFileName,
+          variantLabel: getVariantLabel(modB),
+        },
+      }, debouncedSearch);
+      return result.matches ? [{ conflict, matchingPaths: result.matchingPaths }] : [];
+    });
+  }, [conflicts, modsMap, debouncedSearch]);
+
   if (loading) {
     return <ConflictsSkeleton />;
   }
@@ -646,6 +698,46 @@ export default function Conflicts() {
         className="mb-6"
       />
 
+      {conflicts.length > 0 && (
+        <div className="mb-5 rounded-xl border border-border bg-bg-secondary p-3">
+          <label htmlFor="conflict-search" className="mb-1.5 block text-xs font-medium text-text-secondary">
+            Search active conflicts
+          </label>
+          <div className="flex items-center gap-2">
+            <Search className="h-4 w-4 flex-shrink-0 text-text-tertiary" aria-hidden />
+            <input
+              id="conflict-search"
+              type="search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape' && search) {
+                  event.preventDefault();
+                  clearSearch();
+                }
+              }}
+              placeholder="Mod name, filename, or game path"
+              className="min-w-0 flex-1 bg-transparent text-sm text-text-primary outline-none placeholder:text-text-tertiary"
+              aria-describedby="conflict-search-summary"
+            />
+            {search && (
+              <button
+                type="button"
+                onClick={clearSearch}
+                className="rounded px-2 py-1 text-xs text-text-secondary transition-colors hover:bg-bg-tertiary hover:text-text-primary"
+              >
+                Clear search
+              </button>
+            )}
+          </div>
+          <p id="conflict-search-summary" className="mt-2 text-xs text-text-secondary" aria-live="polite">
+            {debouncedSearch.trim()
+              ? `Showing ${filteredConflictResults.length} of ${conflicts.length} active conflicts`
+              : `${conflicts.length} active conflict${conflicts.length === 1 ? '' : 's'}. Search names, filenames, variant labels, shared paths, or conflict type.`}
+          </p>
+        </div>
+      )}
+
       {/* Empty active-conflict slot when every conflict has been dismissed.
           We don't redirect to the global empty state because the user still
           has the ignored list to manage — making everything disappear would
@@ -665,9 +757,16 @@ export default function Conflicts() {
         </div>
       )}
 
-      {viewMode === 'list' ? (
+      {debouncedSearch.trim() && filteredConflictResults.length === 0 ? (
+        <EmptyState
+          icon={Search}
+          title="No active conflicts match this search"
+          description="Try a different name or path fragment, or clear the search to see every active conflict."
+          action={<Button variant="secondary" onClick={clearSearch}>Clear search</Button>}
+        />
+      ) : viewMode === 'list' ? (
         <div className="space-y-3">
-          {conflicts.map((conflict, i) => {
+          {filteredConflictResults.map(({ conflict, matchingPaths }, i) => {
             const modA = getModInfo(conflict.modA, conflict.modAName);
             const modB = getModInfo(conflict.modB, conflict.modBName);
             const variantA = getVariantLabel(modA);
@@ -751,6 +850,7 @@ export default function Conflicts() {
                     busy={pendingPair === getConflictIgnoreKey(conflict)}
                     onIgnoreFile={(filePath) => handleIgnoreFile(conflict, filePath)}
                     onIgnoreFileEverywhere={(filePath) => handleIgnoreFileEverywhere(conflict, filePath)}
+                    highlightedFiles={matchingPaths}
                   />
                 )}
                 <ConflictReorderActions
@@ -767,7 +867,7 @@ export default function Conflicts() {
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {conflicts.map((conflict, i) => {
+          {filteredConflictResults.map(({ conflict, matchingPaths }, i) => {
             const modA = getModInfo(conflict.modA, conflict.modAName);
             const modB = getModInfo(conflict.modB, conflict.modBName);
             const variantA = getVariantLabel(modA);
@@ -904,6 +1004,7 @@ export default function Conflicts() {
                     busy={pendingPair === getConflictIgnoreKey(conflict)}
                     onIgnoreFile={(filePath) => handleIgnoreFile(conflict, filePath)}
                     onIgnoreFileEverywhere={(filePath) => handleIgnoreFileEverywhere(conflict, filePath)}
+                    highlightedFiles={matchingPaths}
                   />
                 )}
 

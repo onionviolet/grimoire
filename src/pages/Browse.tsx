@@ -3269,6 +3269,13 @@ export default function Browse() {
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape' && search) {
+                    e.preventDefault();
+                    setSearch('');
+                  }
+                }}
+                aria-label={t('browse.search.placeholder')}
                 placeholder={t('browse.search.placeholder')}
                 className="w-full h-10 bg-bg-secondary border border-border rounded-lg pl-3 pr-16 text-sm text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:ring-2 focus:ring-accent"
               />
@@ -3285,6 +3292,7 @@ export default function Browse() {
                   <button
                     type="button"
                     onClick={() => { setSearch(''); handleSearch(new Event('submit') as unknown as React.FormEvent); }}
+                    aria-label={t('browse.search.clear')}
                     className="p-1.5 text-text-secondary hover:text-text-primary transition-colors rounded-md hover:bg-bg-tertiary cursor-pointer"
                     title={t('browse.search.clear')}
                   >

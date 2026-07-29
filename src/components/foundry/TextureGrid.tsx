@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import type { TextureGridItem } from '../../types/foundry';
 import TextureCard from './TextureCard';
 import { visualAssetInspectionPaths } from './visualEdits';
+import { filterTextureGridItems } from './assetSearch';
 
 interface TextureGridProps {
   items: TextureGridItem[];
@@ -23,12 +24,7 @@ interface TextureGridProps {
  */
 export default function TextureGrid({ items, heroNames, search, heroFilter, onOpen, onReplace }: TextureGridProps) {
   const visible = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return items.filter((it) => {
-      if (heroFilter !== 'all' && it.hero !== heroFilter) return false;
-      if (!q) return true;
-      return it.label.toLowerCase().includes(q) || it.path.toLowerCase().includes(q);
-    });
+    return filterTextureGridItems(items, search, heroFilter);
   }, [items, search, heroFilter]);
 
   return (

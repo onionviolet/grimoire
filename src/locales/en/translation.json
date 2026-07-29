@@ -179,7 +179,10 @@
       "hide3dPreview": "Hide the 3D preview",
       "preview3dTitle": "{{hero}} preview",
       "previewBuilding": "Building preview",
-      "previewFailed": "Preview build failed: {{error}}"
+      "previewFailed": "Preview build failed: {{error}}",
+      "createNewMod": "Create a new mod",
+      "stagedEdits": "{{count}} staged edit ready for the Build tray",
+      "stagedEditsEmpty": "Stage an edit, then review it in the Build tray."
     },
     "subtools": {
       "heading": "Workshop",
@@ -195,9 +198,28 @@
     },
     "portraits": {
       "searchPlaceholder": "Search portraits...",
+      "coverage": "{{count}} portrait family available: {{variants}}",
       "empty": {
         "title": "No portraits match",
         "description": "No portrait families match that hero or search."
+      },
+      "notIndexed": {
+        "title": "No base-game portrait family found",
+        "description": "This hero has no indexed editable portrait family in this game build. Browse the global catalog or report the missing mapping."
+      },
+      "browseGlobal": "Browse global catalog"
+    },
+    "search": {
+      "clear": "Clear asset search",
+      "clearFilters": "Clear search and filters",
+      "assetScope": "Searches asset names and game paths.",
+      "portraitScope": "Searches portrait names, heroes, and game paths.",
+      "resultCount": "Showing {{visible}} of {{total}} assets"
+    },
+    "library": {
+      "empty": {
+        "title": "No assets match",
+        "description": "Try a different asset name or game-path fragment."
       }
     },
     "categories": {
@@ -397,6 +419,7 @@
       }
     },
     "sources": {
+      "inspecting": "Inspecting installed sources; actions will be available when this finishes.",
       "inspect": "Existing sources",
       "reinspect": "Re-inspect",
       "inspectHint": "Inspect installed VPKs that write this exact asset path",
@@ -1718,6 +1741,8 @@
       "applyError": "Could not set the image. Please try again.",
       "noGallery": "No images available. Upload a custom one above.",
       "reset": "Reset to default",
+      "resetSurface": "Reset {{surface}}",
+      "surfaceHint": "Framing applies only to {{surface}}. Reset removes this surface's custom image.",
       "useImage": "Use image",
       "appliedToast": "{{surface}} applied",
       "removedToast": "{{surface}} reset",
@@ -1731,7 +1756,9 @@
       "disabledBadgeTitle": "This mod is disabled and not loaded in-game",
       "deleteMod": "Delete {{name}}",
       "propEmpty": "No {{type}} installed yet. Import one from a 3D model (.glb) to get started.",
-      "typeEmpty": "No {{type}} installed yet. Find some in Browse and they'll show up here."
+      "typeEmpty": "No {{type}} installed yet. Find some in Browse and they'll show up here.",
+      "sectionLabel": "Global Locker section",
+      "visuals": "Visuals"
     },
     "soulImport": {
       "trigger": {
@@ -1969,7 +1996,13 @@
       "forgedPoolsNote": "These are the same Foundry launch pools. Opting one change in makes its whole contended-path group exclusive at launch.",
       "enabled": "enabled",
       "disabled": "disabled",
-      "provenance": { "locker": "Locker", "forged": "Forged", "downloaded": "Downloaded", "imported": "Imported", "third-party": "Third-party" },
+      "provenance": {
+        "locker": "Locker",
+        "forged": "Forged",
+        "downloaded": "Downloaded",
+        "imported": "Imported",
+        "third-party": "Third-party"
+      },
       "variants": {
         "card": "Hero card",
         "vertical": "Vertical card",
@@ -2059,7 +2092,10 @@
       "useCrop": "Use crop",
       "boxHint": "Drag the box to move it, drag a corner to resize. The selection is locked to the surface's shape.",
       "selectionSize": "Selection size",
-      "resetCrop": "Reset selection"
+      "resetCrop": "Reset selection",
+      "zoomLabel": "Zoom",
+      "zoomValue": "Zoom: {{value}}x (default 1.0x, fits the frame)",
+      "resetZoomTo": "Reset zoom to 1.0x"
     },
     "model": {
       "close3d": "Close 3D model",
@@ -2139,12 +2175,17 @@
       "skins": "Skins",
       "sounds": "Sounds",
       "noSoundModsTagged": "No sound mods tagged for this hero yet. Tag one from Installed (multi-select â†’ Tag).",
-      "downloadASkinForThisHero": "Download a skin for this hero to manage it here."
+      "downloadASkinForThisHero": "Download a skin for this hero to manage it here.",
+      "openHeroLooks_one": "{{hero}} looks: {{count}} installed mod",
+      "openHeroLooks_other": "{{hero}} looks: {{count}} installed mods",
+      "openHeroSounds_one": "{{hero}} sounds: {{count}} installed mod",
+      "openHeroSounds_other": "{{hero}} sounds: {{count}} installed mods"
     },
     "hero": {
       "skins": "Skins",
       "sounds": "Sounds",
       "cards": "Cards",
+      "cardsPortraits": "Cards & portraits",
       "effects": "Effects",
       "skinCount_one": "{{count}} skin",
       "skinCount_other": "{{count}} skins",
@@ -2161,7 +2202,8 @@
       "unfavorite": "Unfavorite",
       "lockerSections": "Locker sections",
       "hero3dModel": "{{hero}} 3D model",
-      "editInFoundry": "Edit in Foundry"
+      "editInFoundry": "Edit in Foundry",
+      "manageInstalled": "Manage installed"
     },
     "overlap": {
       "title": "Overlapping files",
@@ -2172,6 +2214,9 @@
       "intro_other": "{{count}} skins are enabled for this hero. They may write some of the same files.",
       "found_one": "{{count}} file is written by more than one enabled mod.",
       "found_other": "{{count}} files are written by more than one enabled mod."
+    },
+    "mode": {
+      "sounds": "Sounds"
     }
   },
   "profiles": {
@@ -3420,9 +3465,6 @@
     "recentHint": "Load this image into the frame"
   },
   "soundLocker": {
-    "title": "Sound Locker",
-    "description": "Every sound mod you have installed, filed under the hero it changes. Audition it, see exactly what it overrides, and turn it on or off.",
-    "showAllHeroes": "Show every hero",
     "labels": {
       "myLabel": "My label: {{label}}"
     },
@@ -3467,9 +3509,10 @@
     "hero": {
       "back": "Sound Locker",
       "sections": "Sound sections",
-      "openPicker": "Pick sounds per ability",
       "makeInFoundry": "Make a new one in Foundry",
-      "openShelf": "All sound mods for this hero",
+      "currentSelections": "Current selections",
+      "currentSelectionsDescription": "Choose the source Grimoire applies for each ability. These selections are independent of a mod's installed row above.",
+      "emptySection": "No installed sound mods in this section.",
       "modCount_one": "{{count}} mod",
       "modCount_other": "{{count}} mods",
       "empty": "No installed sound mods in this section for {{hero}}.",

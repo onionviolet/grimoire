@@ -1,6 +1,5 @@
 import { lazy, Suspense, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
 import {
   Star,
   Hammer,
@@ -17,7 +16,7 @@ import HeroSkinsPanel, { SkinLoadOrderStrip } from '../components/locker/HeroSki
 import HeroSkinOverlapPanel from '../components/locker/HeroSkinOverlapPanel';
 import { LockerModImagePicker } from '../components/locker/LockerModImagePicker';
 import HeroCardPicker from '../components/locker/HeroCardPicker';
-import HeroSoundPicker from '../components/locker/HeroSoundPicker';
+import HeroSoundShelf from '../components/locker/HeroSoundShelf';
 import HeroEffectsPanel from '../components/locker/HeroEffectsPanel';
 import FloatingModelPanel from '../components/locker/FloatingModelPanel';
 // three.js viewer is heavy; only pull the chunk when the user flips to 3D.
@@ -64,6 +63,8 @@ interface LockerHeroViewProps {
   onSetShuffleVariant?: (skinKey: string, choice: VariantChoice | null) => void;
   /** Whether the master shuffle switch is armed (keeps per-skin toggles visible). */
   shuffleArmed?: boolean;
+  /** Section to open on first render, for deep links like the grid's sound chip. */
+  initialSection?: SectionId;
 }
 
 type SectionId = 'skins' | 'sounds' | 'cards' | 'effects';
@@ -100,9 +101,9 @@ export function LockerHeroView({
   shuffleVariantChoices,
   onSetShuffleVariant,
   shuffleArmed,
+  initialSection,
 }: LockerHeroViewProps) {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   // Issue #208: the backdrop reflects the active skin's chosen Locker image, if
   // the user picked one (set per skin in the skins list below).
   const lockerModThumbnails = useAppStore((s) => s.lockerModThumbnails);
@@ -121,7 +122,9 @@ export function LockerHeroView({
   const hideHeroName = activeSkinKey ? Boolean(lockerBgHideHeroName[activeSkinKey]) : false;
   const [pickerOpen, setPickerOpen] = useState(false);
   const [view3d, setView3d] = useState(false);
-  const [section, setSection] = useState<SectionId>('skins');
+  // `?section=sounds` opens straight into the Sounds tab. It is only the
+  // initial value: once the user picks a section, the rail owns the choice.
+  const [section, setSection] = useState<SectionId>(initialSection ?? 'skins');
   const [poseSkinSelection, setPoseSkinSelection] = useState<{
     heroId: number;
     key: string;
@@ -171,8 +174,15 @@ export function LockerHeroView({
   // count, with empty sections disabled rather than hidden.
   const sections: Array<HeroDetailSection<SectionId>> = [
     { id: 'skins', label: t('locker.hero.skins'), icon: Shirt, count: skinCount },
-    { id: 'sounds', label: t('locker.hero.sounds'), icon: Music, count: soundCount, disabled: !hasSounds },
-    { id: 'cards', label: t('locker.hero.cards'), icon: Images, count: null },
+    {
+      id: 'sounds',
+      label: t('locker.hero.sounds'),
+      icon: Music,
+      count: soundCount,
+      disabled: !hasSounds,
+      disabledReason: !hasSounds ? t('locker.hero.noSounds', 'No installed sounds for this hero.') : undefined,
+    },
+    { id: 'cards', label: t('locker.hero.cardsPortraits', 'Cards & portraits'), icon: Images, count: null },
     { id: 'effects', label: t('locker.hero.effects'), icon: Sparkles, count: null },
   ];
 
@@ -222,7 +232,7 @@ export function LockerHeroView({
     ) : activeSection === 'effects' ? (
       <HeroEffectsPanel key={hero.name} heroName={hero.name} />
     ) : activeSection === 'sounds' ? (
-      <HeroSoundPicker heroName={hero.name} soundList={soundList} onSelect={onSelect} />
+      <HeroSoundShelf heroName={hero.name} soundList={soundList} onSelect={onSelect} />
     ) : (
       <HeroSkinsPanel
         mods={skinList}
@@ -246,6 +256,7 @@ export function LockerHeroView({
 
   return (
     <HeroDetailFrame
+      surface="locker"
       heroName={hero.name}
       backdropImage={backdropImage}
       heroIconUrl={hero.iconUrl}
@@ -274,16 +285,21 @@ export function LockerHeroView({
       railTop={
         /* The other half of the Foundry link: the Locker is where you manage
            what you have, Foundry is where you make more of it. */
-        onEditInFoundry ? (
-          <button
-            type="button"
-            onClick={onEditInFoundry}
-            className="flex w-full items-center gap-2 rounded-lg border border-border/70 px-3 py-2 text-sm text-text-secondary transition-colors hover:border-accent/60 hover:text-text-primary"
-          >
-            <Hammer className="w-4 h-4" />
-            {t('locker.hero.editInFoundry', 'Edit in Foundry')}
-          </button>
-        ) : null
+        <div className="space-y-2">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-text-secondary">
+            {t('locker.hero.manageInstalled', 'Manage installed')}
+          </p>
+          {onEditInFoundry ? (
+            <button
+              type="button"
+              onClick={onEditInFoundry}
+              className="flex w-full items-center gap-2 rounded-lg border border-border/70 px-3 py-2 text-sm text-text-secondary transition-colors hover:border-accent/60 hover:text-text-primary"
+            >
+              <Hammer className="w-4 h-4" />
+              {t('locker.hero.editInFoundry', 'Edit in Foundry')}
+            </button>
+          ) : null}
+        </div>
       }
       railExtra={
         /* Load order for stacked skins. Lives in the sidebar (not over the
@@ -295,18 +311,6 @@ export function LockerHeroView({
             onReorder={onReorderSkins}
             hideNsfwPreviews={hideNsfwPreviews}
           />
-        ) : activeSection === 'sounds' ? (
-          /* This section picks one source per ability; the Sound Locker shelf
-             is where the hero's whole sound inventory lives, including what it
-             overrides and who currently wins. */
-          <button
-            type="button"
-            onClick={() => navigate(`/locker/sounds?hero=${encodeURIComponent(hero.name)}`)}
-            className="flex w-full items-center gap-2 rounded-lg border border-border/70 px-3 py-2 text-sm text-text-secondary transition-colors hover:border-accent/60 hover:text-text-primary cursor-pointer"
-          >
-            <Music className="w-4 h-4" />
-            {t('soundLocker.hero.openShelf', 'All sound mods for this hero')}
-          </button>
         ) : null
       }
       /* Adjust the hero-detail backdrop image, and the live 3D model toggle.

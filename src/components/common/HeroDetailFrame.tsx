@@ -24,9 +24,13 @@ export interface HeroDetailSection<Id extends string = string> {
   /** Trailing count. `null`/omitted renders no count at all. */
   count?: number | null;
   disabled?: boolean;
+  /** Explain a disabled section without relying on a muted color alone. */
+  disabledReason?: string;
 }
 
 interface HeroDetailFrameProps<Id extends string> {
+  /** The same navigation mechanics serve distinct product moments. */
+  surface?: 'locker' | 'foundry';
   heroName: string;
   /**
    * Custom backdrop image that replaces the render chain entirely (Locker's
@@ -66,6 +70,7 @@ interface HeroDetailFrameProps<Id extends string> {
 }
 
 export default function HeroDetailFrame<Id extends string>({
+  surface,
   heroName,
   backdropImage,
   heroIconUrl,
@@ -92,7 +97,7 @@ export default function HeroDetailFrame<Id extends string>({
   const backdropSrc = backdropImage ?? renderSrc;
 
   return (
-    <div className="relative flex h-full overflow-hidden">
+    <div className="relative flex h-full flex-col overflow-y-auto lg:flex-row lg:overflow-hidden">
       {/* Hero backdrop, full-bleed behind every panel so it can bleed through
           the frosted-glass rail + selection column. The image is sized to the
           window height with natural aspect ratio (h-full w-auto) so wider
@@ -178,12 +183,14 @@ export default function HeroDetailFrame<Id extends string>({
 
       {/* Left rail: hero identity + section nav. Solid bg below lg; transparent
           on lg so the feathered glass shows through. */}
-      <div className="relative z-10 flex w-[260px] flex-shrink-0 flex-col gap-6 overflow-y-auto scrollbar-glass bg-bg-secondary p-6 animate-slide-in-left lg:w-[300px] lg:bg-transparent xl:w-[340px]">
+      <div className={`relative z-10 flex w-full flex-shrink-0 flex-col gap-4 bg-bg-secondary p-4 animate-slide-in-left lg:w-[300px] lg:gap-6 lg:overflow-y-auto lg:scrollbar-glass lg:bg-transparent lg:p-6 xl:w-[340px] ${
+        surface === 'foundry' ? 'lg:bg-accent/[0.025]' : ''
+      }`}>
         <div className="flex items-center justify-between gap-3">
           <button
             type="button"
             onClick={onBack}
-            className="flex w-fit items-center gap-2 text-sm text-text-secondary transition-colors hover:text-text-primary cursor-pointer"
+            className="flex w-fit items-center gap-2 rounded-sm text-sm text-text-secondary transition-colors hover:text-text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-accent cursor-pointer"
           >
             <ArrowLeft className="w-4 h-4" />
             {backLabel}
@@ -206,26 +213,30 @@ export default function HeroDetailFrame<Id extends string>({
           />
         )}
 
-        <nav aria-label={navLabel} className="flex flex-col gap-1.5">
-          {sections.map(({ id, label, icon: Icon, count, disabled }) => {
+        <nav aria-label={navLabel} className="grid grid-cols-2 gap-1.5 sm:grid-cols-4 lg:flex lg:flex-col">
+          {sections.map(({ id, label, icon: Icon, count, disabled, disabledReason }) => {
             const isActive = activeSection === id;
             return (
               <button
                 key={id}
                 type="button"
                 disabled={disabled}
+                title={disabled ? disabledReason : undefined}
+                aria-label={disabled && disabledReason ? `${label}: ${disabledReason}` : undefined}
                 aria-current={isActive ? 'page' : undefined}
                 onClick={() => onSectionChange(id)}
                 className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors ${
                   disabled
                     ? 'cursor-default border-transparent opacity-40'
                     : isActive
-                      ? 'border-accent/60 bg-accent/15 cursor-pointer'
-                      : 'border-transparent hover:bg-white/10 cursor-pointer'
+                      ? 'border-accent/60 bg-accent/15 cursor-pointer focus-visible:ring-2 focus-visible:ring-accent'
+                      : 'border-transparent hover:bg-white/10 cursor-pointer focus-visible:ring-2 focus-visible:ring-accent'
                 }`}
               >
                 <Icon className="h-4 w-4 flex-shrink-0 text-white/80" />
-                <span className="flex-1 truncate text-sm font-medium text-white">{label}</span>
+                <span className="flex-1 truncate text-sm font-medium text-white">
+                  {label}{disabled && disabledReason ? ` — ${disabledReason}` : ''}
+                </span>
                 {count !== null && count !== undefined && (
                   <span className="text-xs text-white/50">{count}</span>
                 )}
@@ -239,7 +250,7 @@ export default function HeroDetailFrame<Id extends string>({
 
       {/* Content pane: the active section. */}
       <div
-        className={`relative z-10 min-w-0 flex-1 overflow-y-auto scrollbar-glass bg-bg-primary lg:bg-transparent ${
+        className={`relative z-10 min-h-0 w-full flex-1 overflow-visible bg-bg-primary lg:overflow-y-auto lg:scrollbar-glass lg:bg-transparent ${
           contentWidth === 'capped' ? 'lg:flex-none lg:w-[480px] xl:w-[540px]' : ''
         }`}
       >

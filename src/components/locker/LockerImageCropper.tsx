@@ -471,6 +471,8 @@ export default function LockerImageCropper({
           value={zoom}
           disabled={!img}
           onChange={(e) => applyZoom(Number(e.target.value))}
+          aria-label={t('locker.crop.zoomLabel')}
+          aria-valuetext={t('locker.crop.zoomValue', { value: zoom.toFixed(1) })}
           className="h-1 flex-1 cursor-pointer appearance-none rounded-full bg-border accent-accent disabled:cursor-not-allowed disabled:opacity-50"
         />
         <span className="w-10 text-right text-[11px] tabular-nums text-text-secondary">{zoom.toFixed(1)}x</span>

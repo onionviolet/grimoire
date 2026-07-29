@@ -27,6 +27,11 @@ export type SoundCategory =
     | 'music'
     | 'announcer'
     | 'ui'
+    | 'ambience'
+    | 'npc'
+    | 'item'
+    | 'melee'
+    | 'shared'
     | 'other';
 
 /** Where an entry belongs: a hero's shelf, or the Global shelf. */
@@ -86,6 +91,11 @@ export const CATEGORY_ORDER: readonly SoundCategory[] = [
     'announcer',
     'music',
     'ui',
+    'ambience',
+    'npc',
+    'item',
+    'melee',
+    'shared',
     'other',
 ];
 
@@ -110,6 +120,11 @@ export function classifySoundToken(token: string): SoundCategory {
     if (/announcer/.test(value)) return 'announcer';
     if (/music|stinger|killstreak/.test(value)) return 'music';
     if (/(^|[/.])ui([/.]|$)|panorama|menu|hud/.test(value)) return 'ui';
+    if (/ambience|ambient/.test(value)) return 'ambience';
+    if (/npc|creep|neutral/.test(value)) return 'npc';
+    if (/item|pickup|shop/.test(value)) return 'item';
+    if (/melee|punch|swing/.test(value)) return 'melee';
+    if (/shared|generic|common/.test(value)) return 'shared';
     return 'other';
 }
 
@@ -169,6 +184,11 @@ function globalCategory(mod: Mod): SoundCategory {
     if (category.includes('music')) return 'music';
     if (category.includes('announcer')) return 'announcer';
     if (category === 'ui' || category === 'ui sounds') return 'ui';
+    if (category.includes('ambience') || category.includes('ambient')) return 'ambience';
+    if (category.includes('npc') || category.includes('creep')) return 'npc';
+    if (category.includes('item')) return 'item';
+    if (category.includes('melee')) return 'melee';
+    if (category.includes('shared') || category.includes('generic')) return 'shared';
     if (category.includes('killsound')) return 'other';
     return 'other';
 }

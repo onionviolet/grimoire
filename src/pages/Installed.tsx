@@ -4054,6 +4054,13 @@ export default function Installed() {
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape' && search) {
+                  e.preventDefault();
+                  setSearch('');
+                }
+              }}
+              aria-label={t('installed.filters.searchPlaceholder')}
               placeholder={t('installed.filters.searchPlaceholder')}
               className={`bg-bg-secondary border border-border rounded-lg pl-8 ${search ? 'pr-8' : 'pr-3'} py-2 text-sm text-text-primary placeholder:text-text-primary/55 focus:outline-none focus:ring-2 focus:ring-accent w-full`}
             />
@@ -4061,6 +4068,7 @@ export default function Installed() {
               <button
                 type="button"
                 onClick={() => setSearch('')}
+                aria-label={t('installed.filters.clearSearch')}
                 title={t('installed.filters.clearSearch')}
                 className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1 text-text-secondary hover:text-text-primary rounded-md hover:bg-bg-tertiary cursor-pointer"
               >

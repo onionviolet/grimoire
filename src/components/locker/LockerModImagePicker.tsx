@@ -401,7 +401,7 @@ export function LockerModImagePicker({
         actions={
           hasOverride ? (
             <Button variant="danger" size="sm" icon={Trash2} onClick={clear} disabled={busy}>
-              {t('locker.modImage.reset')}
+              {t('locker.modImage.resetSurface', 'Reset {{surface}}', { surface: surfaceLabel })}
             </Button>
           ) : undefined
         }
@@ -414,6 +414,13 @@ export function LockerModImagePicker({
           onChange={switchTab}
           label={t('locker.modImage.title')}
         />
+        <p className="mt-2 text-xs text-text-secondary">
+          {t(
+            'locker.modImage.surfaceHint',
+            'Framing applies only to {{surface}}. Reset removes this surface’s custom image.',
+            { surface: surfaceLabel },
+          )}
+        </p>
       </div>
 
       <div className="flex min-h-0 flex-1 gap-4 p-4">

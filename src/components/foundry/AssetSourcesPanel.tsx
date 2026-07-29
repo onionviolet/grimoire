@@ -178,6 +178,11 @@ export default function AssetSourcesPanel({
           {result ? t('foundry.sources.reinspect') : t('foundry.sources.inspect')}
         </button>
       </div>
+      {loading && (
+        <p className="mt-1 flex items-center gap-1 text-[10px] text-text-secondary" aria-live="polite">
+          {t('foundry.sources.inspecting', 'Inspecting installed sources; actions will be available when this finishes.')}
+        </p>
+      )}
       {error && <p className="mt-1 text-[10px] text-danger">{error}</p>}
       {result && (
         <div className="mt-1 space-y-1 text-[10px] text-text-secondary">

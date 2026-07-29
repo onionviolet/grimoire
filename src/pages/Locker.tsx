@@ -15,6 +15,7 @@ import { getActiveDeadlockPath, shouldBlurNsfw } from '../lib/appSettings';
 import { getAssetPath } from '../lib/assetPath';
 import HeroSkinsPanel from '../components/locker/HeroSkinsPanel';
 import { LockerHeroView } from './LockerHero';
+import SoundLocker from './SoundLocker';
 import ModThumbnail from '../components/ModThumbnail';
 import { ErrorBoundary } from '../components/common/ErrorBoundary';
 
@@ -62,6 +63,7 @@ import {
   type HeroCategory,
 } from '../lib/lockerUtils';
 import { shuffleSkinKey, shuffleSoundKey, type VariantChoice } from '../lib/lockerRandomizer';
+import { legacySoundTarget, lockerModeFromSearch } from '../lib/lockerMode';
 
 // Route changes flip the overlay state instantly, which unmounts the hero or
 // global panel on the next frame with no exit transition. Retain the last
@@ -352,6 +354,11 @@ export default function Locker() {
 
   const navigate = useNavigate();
   const location = useLocation();
+  // `mode` now only selects the Global drill-in's Visuals/Sounds tab. It is read
+  // straight from the query with no remembered fallback: a stored preference
+  // would make a bare `/locker/global` open on whichever tab was used last,
+  // which is not what a plain link to Global should do.
+  const globalSection = lockerModeFromSearch(location.search);
   const goToHero = useCallback(
     (hero: HeroCategory) => navigate(`/locker/hero/${hero.id}`),
     [navigate]
@@ -422,6 +429,27 @@ export default function Locker() {
   // id resolution happens on this side, once the category list has loaded. An
   // unknown name deliberately leaves the user on the grid rather than guessing a
   // hero; either way the query is dropped so a back-navigation cannot re-fire it.
+  // Legacy Sound Locker URLs predate folding sounds into the hero page. Rewrite
+  // them to the canonical routes so old bookmarks and Foundry handoffs land in
+  // the right place instead of on the grid.
+  useEffect(() => {
+    const target = legacySoundTarget(location.pathname);
+    if (!target) return;
+    if (target.kind === 'global') {
+      navigate('/locker/global?mode=sounds', { replace: true });
+      return;
+    }
+    if (target.kind === 'locker') {
+      navigate('/locker', { replace: true });
+      return;
+    }
+    // Needs the category list to turn a hero name into the id the route uses.
+    if (!baseHeroList.length) return;
+    const canonical = canonicalHeroName(target.hero);
+    const match = baseHeroList.find((hero) => canonicalHeroName(hero.name) === canonical);
+    navigate(match ? `/locker/hero/${match.id}?section=sounds` : '/locker', { replace: true });
+  }, [baseHeroList, location.pathname, navigate]);
+
   useEffect(() => {
     if (selectedHeroId !== null || globalSelected) return;
     const wanted = new URLSearchParams(location.search).get('hero');
@@ -893,6 +921,14 @@ export default function Locker() {
     );
   }
 
+  // A hero's sounds are a tab on that hero's page, not a second grid behind a
+  // mode switch: the hero page already had a Sounds section, and the mode only
+  // existed to reach a richer version of it. SoundLocker survives purely as the
+  // Global sounds shelf, which genuinely has no hero to hang off.
+  if (globalSelected && globalSection === 'sounds') {
+    return <SoundLocker />;
+  }
+
   return (
     <div ref={lockerScrollRef} className="h-full overflow-y-auto">
       {/* Shared gradient def for the active hero-card customization glyphs. */}
@@ -911,19 +947,6 @@ export default function Locker() {
             .join(' • ')}
         </div>
         <div className="flex items-center gap-3">
-          {/* Sounds have their own shelf now (docs/sound-locker-plan.md): this
-              grid is about what a hero looks like, that one is about what they
-              sound like. Always offered, since the Global sound shelf is
-              reachable nowhere else. */}
-          <button
-            type="button"
-            onClick={() => navigate('/locker/sounds')}
-            className="flex items-center gap-1.5 self-stretch rounded-sm border border-border bg-bg-secondary px-3 text-sm text-text-secondary transition-colors hover:bg-bg-tertiary hover:text-text-primary cursor-pointer"
-            title={t('soundLocker.description')}
-          >
-            <Music className="w-4 h-4" />
-            {t('soundLocker.title')}
-          </button>
           {heroesWithSkins > 0 && (
             <button
               type="button"
@@ -1035,6 +1058,9 @@ export default function Locker() {
               hideHeroName={heroHideName(hero.id)}
               isFavorite={favoriteHeroes.has(hero.id)}
               onNavigate={() => goToHero(hero)}
+              onOpenSounds={() => navigate(`/locker/hero/${hero.id}?section=sounds`)}
+              lookCount={countLockerSkins(heroMods.map.get(hero.id) ?? [])}
+              soundCount={countLockerSkins(heroSounds.map.get(hero.id) ?? [])}
               onBrowse={() => openHeroInBrowse(hero)}
               onToggleFavorite={() =>
                 toggleFavorite(hero.name)
@@ -1187,6 +1213,9 @@ export default function Locker() {
             skinList={selectedHeroMods}
             soundList={selectedHeroSoundList}
             skinCount={selectedHeroSkinCount}
+            initialSection={
+              new URLSearchParams(location.search).get('section') === 'sounds' ? 'sounds' : undefined
+            }
             isFavorite={favoriteHeroes.has(overlayHero.id)}
             onBack={() => navigate('/locker')}
             onEditInFoundry={() => navigate(`/foundry?hero=${encodeURIComponent(overlayHero.name)}`)}
@@ -1243,6 +1272,7 @@ export default function Locker() {
             onRequestDelete={(ids, name) => setDeletePrompt({ ids, name })}
             onImportSoul={() => setSoulImportOpen(true)}
             onImportUrn={() => setUrnImportOpen(true)}
+            onOpenSounds={() => navigate('/locker/global?mode=sounds')}
           />
         </div>
       )}
@@ -1328,6 +1358,9 @@ interface HeroGalleryCardProps {
   hideHeroName?: boolean;
   isFavorite: boolean;
   onNavigate: () => void;
+  onOpenSounds: () => void;
+  lookCount: number;
+  soundCount: number;
   onBrowse: () => void;
   onToggleFavorite: () => void;
 }
@@ -1397,6 +1430,7 @@ interface LockerGlobalViewProps {
   onImportSoul: () => void;
   /** Open the Spirit Urn GLB import modal (shown on the spirit-urn tab). */
   onImportUrn: () => void;
+  onOpenSounds: () => void;
 }
 
 /**
@@ -1404,7 +1438,7 @@ interface LockerGlobalViewProps {
  * frosted-glass carousel of cosmetic types (echoing the LockerHeroView shell's
  * art + blur language). Selecting a tile reveals that type's toggleable mods.
  */
-function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType, onRequestDelete, onImportSoul, onImportUrn }: LockerGlobalViewProps) {
+function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType, onRequestDelete, onImportSoul, onImportUrn, onOpenSounds }: LockerGlobalViewProps) {
   const { t } = useTranslation();
   const soundVolume = useAppStore((s) => s.soundVolume);
   // Every tab is selectable, empty or not. We still default the landing tab to
@@ -1540,6 +1574,30 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
           <span className="text-xs text-white/60">
             {t('locker.page.modCount', { count: total })}
           </span>
+        </div>
+
+        <div
+          role="tablist"
+          aria-label={t('locker.global.sectionLabel', 'Global Locker section')}
+          className="inline-flex w-fit rounded-md border border-border/70 bg-black/20 p-0.5 text-xs"
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={true}
+            className="rounded bg-accent/15 px-2.5 py-1.5 text-white cursor-pointer"
+          >
+            {t('locker.global.visuals', 'Visuals')}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={false}
+            onClick={onOpenSounds}
+            className="rounded px-2.5 py-1.5 text-text-secondary hover:text-white cursor-pointer"
+          >
+            {t('locker.mode.sounds', 'Sounds')}
+          </button>
         </div>
 
         <nav className="relative flex flex-col gap-1.5">
@@ -1993,6 +2051,9 @@ function HeroGalleryCard({
   hideHeroName,
   isFavorite,
   onNavigate,
+  onOpenSounds,
+  lookCount,
+  soundCount,
   onBrowse,
   onToggleFavorite,
 }: HeroGalleryCardProps) {
@@ -2060,10 +2121,7 @@ function HeroGalleryCard({
   };
 
   return (
-    <div
-      onClick={onNavigate}
-      className="group relative w-full overflow-hidden rounded-2xl border border-border bg-bg-secondary text-left shadow-sm transition-transform duration-300 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/70 cursor-pointer"
-    >
+    <div className="group relative w-full overflow-hidden rounded-2xl border border-border bg-bg-secondary text-left shadow-sm transition-transform duration-300 hover:-translate-y-1">
       <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent opacity-80" />
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.06),_transparent_55%)] opacity-60 transition-opacity duration-300 group-hover:opacity-100" />
       <div className="relative aspect-[3/4]">
@@ -2102,6 +2160,18 @@ function HeroGalleryCard({
           </div>
         )}
       </div>
+      {/* Looks is the card's primary action, so it stays the whole-card target
+          rather than a pill over the art. A transparent overlay button (not an
+          onClick on the wrapper div) keeps that target real for keyboard and
+          screen-reader users, and leaves the Sounds chip below as a sibling
+          instead of a nested button. */}
+      <button
+        type="button"
+        onClick={onNavigate}
+        aria-label={t('locker.page.openHeroLooks', { hero: hero.name, count: lookCount })}
+        title={t('locker.page.openHeroLooks', { hero: hero.name, count: lookCount })}
+        className="absolute inset-0 z-10 cursor-pointer rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/70"
+      />
       {/* Favorite toggle. Favorited cards keep a pinned filled star so the
           state reads at a glance in the sorted grid. Un-favorited cards keep
           the same slot but reveal a softer outline-star on hover, restoring
@@ -2115,7 +2185,7 @@ function HeroGalleryCard({
         }}
         aria-label={t('locker.page.browseHeroSkins', { hero: hero.name })}
         title={t('locker.page.browseHeroSkins', { hero: hero.name })}
-        className="absolute right-9 top-2 z-20 flex items-center justify-center rounded-full border border-white/30 bg-black/40 p-1 text-white/85 opacity-0 backdrop-blur-sm transition-opacity hover:bg-black/60 focus-visible:opacity-100 group-hover:opacity-100"
+        className="absolute right-9 top-2 z-20 flex items-center justify-center rounded-full border border-white/30 bg-black/40 p-1 text-white/85 opacity-0 backdrop-blur-sm transition-opacity hover:bg-black/60 focus:opacity-100 group-hover:opacity-100"
       >
         <ExternalLink className="h-3 w-3" />
       </button>
@@ -2131,7 +2201,7 @@ function HeroGalleryCard({
         className={`absolute right-2 top-2 z-20 flex items-center justify-center rounded-full border p-1 transition-opacity ${
           isFavorite
             ? 'border-yellow-400/60 bg-yellow-400/20 text-yellow-300 opacity-100'
-            : 'border-white/30 bg-black/40 text-white/85 backdrop-blur-sm opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-black/60'
+            : 'border-white/30 bg-black/40 text-white/85 backdrop-blur-sm opacity-0 group-hover:opacity-100 focus:opacity-100 hover:bg-black/60'
         }`}
       >
         <Star className={`w-3 h-3 ${isFavorite ? 'fill-current' : ''}`} />
@@ -2195,6 +2265,25 @@ function HeroGalleryCard({
           )}
         </div>
       )}
+      {/* The second route off this card. It sits bottom-left, clear of the
+          right-aligned name logo, and reveals on hover or keyboard focus like
+          the Browse and Favorite controls above: the card is poster art first,
+          and a permanent pill strip buried the hero name. Always in the tab
+          order, so the facet glyphs are never the only way to reach sounds. */}
+      <button
+        type="button"
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onOpenSounds();
+        }}
+        aria-label={t('locker.page.openHeroSounds', { hero: hero.name, count: soundCount })}
+        title={t('locker.page.openHeroSounds', { hero: hero.name, count: soundCount })}
+        className="absolute bottom-2 left-2 z-20 flex items-center gap-1 rounded-full border border-white/30 bg-black/55 px-2 py-1 text-[11px] font-medium text-white/90 opacity-0 backdrop-blur-sm transition-opacity hover:bg-black/70 focus:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent group-hover:opacity-100"
+      >
+        <Music className="h-3 w-3" aria-hidden />
+        <span className="tabular-nums">{soundCount}</span>
+      </button>
     </div>
   );
 }

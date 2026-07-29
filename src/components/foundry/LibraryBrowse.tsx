@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Library, Search, Loader2, AlertTriangle, Users } from 'lucide-react';
+import { Library, Loader2, AlertTriangle, Users } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { EmptyState } from '../common/PageComponents';
 import Tx from '../translation/Tx';
@@ -9,6 +9,8 @@ import type { TextureCategory, TextureGridItem } from '../../types/foundry';
 import PortraitEditor from './PortraitEditor';
 import TextureGrid from './TextureGrid';
 import TextureLightbox from './TextureLightbox';
+import FoundrySearchInput from './FoundrySearchInput';
+import { filterTextureGridItems } from './assetSearch';
 import { prepareVisualStagedEdit, visualAssetInspectionPaths, type VisualStagedEdit } from './visualEdits';
 
 interface LibraryBrowseProps {
@@ -105,6 +107,11 @@ export default function LibraryBrowse({ heroNames, initialCategory = 'ability-ic
       .map((code) => ({ code, name: heroNames.get(code) ?? code }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [items, heroNames]);
+  const visibleItems = useMemo(
+    () => filterTextureGridItems(items, search, heroFilter),
+    [items, search, heroFilter],
+  );
+  const hasActiveFilter = Boolean(search.trim()) || heroFilter !== 'all';
 
   return (
     <>
@@ -145,15 +152,13 @@ export default function LibraryBrowse({ heroNames, initialCategory = 'ability-ic
           </div>
         )}
 
-        <div className="relative min-w-[200px] flex-1">
-          <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder={t('foundry.filters.searchPlaceholder', 'Search assets...')}
-            className="w-full rounded-sm border border-border bg-bg-tertiary py-2 pl-9 pr-3 text-sm text-text-primary placeholder:text-text-secondary/60 focus:border-accent/50 focus:outline-none"
-          />
-        </div>
+        <FoundrySearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder={t('foundry.filters.searchPlaceholder', 'Search assets...')}
+          clearLabel={t('foundry.search.clear', 'Clear asset search')}
+          scope={t('foundry.search.assetScope', 'Searches asset names and game paths.')}
+        />
       </div>
 
       {/* Grid / states */}
@@ -169,15 +174,27 @@ export default function LibraryBrowse({ heroNames, initialCategory = 'ability-ic
           title={<Tx k="foundry.error.title" fallback="Couldn't read the catalog" />}
           description={error}
         />
+      ) : visibleItems.length === 0 ? (
+        <EmptyState
+          icon={Library}
+          title={<Tx k="foundry.library.empty.title" fallback="No assets match" />}
+          description={<Tx k="foundry.library.empty.description" fallback="Try a different asset name or game-path fragment." />}
+          action={hasActiveFilter ? <button type="button" onClick={() => { setSearch(''); setHeroFilter('all'); }} className="rounded-sm border border-border px-3 py-1.5 text-sm text-text-primary hover:border-accent/50">{t('foundry.search.clearFilters', 'Clear search and filters')}</button> : undefined}
+        />
       ) : (
+        <div className="space-y-2">
+          {hasActiveFilter && <p className="text-[11px] text-text-secondary">
+            {t('foundry.search.resultCount', 'Showing {{visible}} of {{total}} assets', { visible: visibleItems.length, total: items.length })}
+          </p>}
         <TextureGrid
-          items={items}
+          items={visibleItems}
           heroNames={heroNames}
-          search={search}
-          heroFilter={heroFilter}
+          search=""
+          heroFilter="all"
           onOpen={setLightbox}
           onReplace={replacingPath ? undefined : replace}
         />
+        </div>
       )}
 
       <PortraitEditor

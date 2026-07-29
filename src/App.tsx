@@ -8,7 +8,6 @@ import Browser from './pages/Browser';
 import Discover from './pages/Discover';
 import Servers from './pages/Servers';
 import Locker from './pages/Locker';
-import SoundLocker from './pages/SoundLocker';
 import Foundry from './pages/Foundry';
 import Conflicts from './pages/Conflicts';
 import Profiles from './pages/Profiles';
@@ -80,9 +79,8 @@ export default function App() {
             <Route path="browser" element={<Browser />} />
             <Route path="discover" element={<Discover />} />
             <Route path="servers" element={<Servers />} />
-            {/* More specific than `locker/*`, so router ranking sends the sound
-                shelves here and everything else to the Locker. */}
-            <Route path="locker/sounds/*" element={<SoundLocker />} />
+            {/* Legacy sound URLs are resolved by Locker itself, preserving
+                bookmarks while keeping Looks and Sounds one destination. */}
             <Route path="locker/*" element={<Locker />} />
             <Route path="foundry" element={<Foundry />} />
             <Route path="conflicts" element={<Conflicts />} />

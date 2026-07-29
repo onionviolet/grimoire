@@ -19,6 +19,10 @@ import { parseVpkDirectoryCached } from './vpk';
 import { vpkmergeBinaryPath, runVpkmerge } from './modMerger';
 import { getModMetadata } from './metadata';
 import type { HeroPortrait } from '../../../src/types/portrait';
+import {
+    portraitCodenameForHero,
+    portraitCodenamesForHero,
+} from '../../../src/lib/heroPortraitIdentity';
 
 // Display name -> panorama codename. This is the `class_name` namespace
 // (deadlock-api `hero_<codename>`, stripped of the `hero_` prefix) that hero
@@ -35,68 +39,10 @@ import type { HeroPortrait } from '../../../src/types/portrait';
 // Source of truth: assets.deadlock-api.com/v2/heroes `class_name`. Both
 // "Doorman" (GameBanana's category name) and "The Doorman" (the API/roster
 // name) are keyed so the lookup works whichever name flows in.
-const PANORAMA_CODENAME_BY_HERO: Readonly<Record<string, string>> = {
-    Abrams: 'atlas',
-    Apollo: 'fencer',
-    Bebop: 'bebop',
-    Billy: 'punkgoat',
-    Calico: 'nano',
-    Celeste: 'unicorn',
-    Doorman: 'doorman',
-    'The Doorman': 'doorman',
-    Drifter: 'drifter',
-    Dynamo: 'dynamo',
-    Graves: 'necro',
-    'Grey Talon': 'orion',
-    Haze: 'haze',
-    Holliday: 'astro',
-    Infernus: 'inferno',
-    Ivy: 'tengu',
-    Kelvin: 'kelvin',
-    'Lady Geist': 'ghost',
-    Lash: 'lash',
-    McGinnis: 'forge',
-    Mina: 'vampirebat',
-    Mirage: 'mirage',
-    'Mo & Krill': 'krill',
-    Paige: 'bookworm',
-    Paradox: 'chrono',
-    Pocket: 'synth',
-    Rem: 'familiar',
-    Seven: 'gigawatt',
-    Shiv: 'shiv',
-    Silver: 'werewolf',
-    Sinclair: 'magician',
-    Venator: 'priest',
-    Victor: 'frank',
-    Vindicta: 'hornet',
-    Viscous: 'viscous',
-    Vyper: 'viper',
-    Warden: 'warden',
-    Wraith: 'wraith',
-    Yamato: 'yamato',
-};
-
-// LEGACY panorama codenames. Six heroes were renamed during development; the
-// deadlock-api `class_name` (above) is the current name, but a lot of shipped
-// community icon packs (catlock, irl_hero_icons, "did you see that", ...) still
-// author their card art under the OLD codename. Verified against the user's
-// installed packs: e.g. "did_you_see_that_icons" ships `archer`/`engineer`/
-// `bull`/`spectre`/`digger`/`sumo`, never `orion`/`forge`/`atlas`/`ghost`/
-// `krill`/`dynamo`. We match BOTH so cards from old and new packs both show.
-const PANORAMA_CODENAME_ALIASES: Readonly<Record<string, string[]>> = {
-    'Grey Talon': ['archer'],
-    McGinnis: ['engineer'],
-    Abrams: ['bull'],
-    'Lady Geist': ['spectre'],
-    'Mo & Krill': ['digger'],
-    Dynamo: ['sumo'],
-};
-
 /** Resolve a hero display name (e.g. "Vindicta") to its primary panorama
  *  codename (e.g. "hornet"), or undefined when the name is unknown. */
 export function codenameForHero(heroName: string): string | undefined {
-    return PANORAMA_CODENAME_BY_HERO[heroName];
+    return portraitCodenameForHero(heroName);
 }
 
 /** Every panorama codename a hero's card art might be filed under: the current
@@ -104,9 +50,7 @@ export function codenameForHero(heroName: string): string | undefined {
  *  Card scanning and apply both iterate this so neither old nor new packs are
  *  missed. */
 export function codenamesForHero(heroName: string): string[] {
-    const primary = PANORAMA_CODENAME_BY_HERO[heroName];
-    if (!primary) return [];
-    return [primary, ...(PANORAMA_CODENAME_ALIASES[heroName] ?? [])];
+    return portraitCodenamesForHero(heroName);
 }
 
 function sanitize(value: string): string {

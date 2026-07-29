@@ -450,8 +450,10 @@ function SkinGroupCard({
             alt=""
             aria-hidden
             draggable={false}
-            className={`h-full w-full scale-[1.35] object-cover blur-2xl saturate-[1.4] transition-opacity duration-200 ${
-              groupActive ? 'opacity-55' : 'opacity-30 grayscale-[0.4]'
+            className={`h-full w-full scale-[1.35] object-cover blur-2xl saturate-[1.4] transition-[filter,opacity] duration-200 ${
+              groupActive
+                ? 'opacity-55'
+                : 'opacity-30 grayscale-[0.4] group-hover/card:opacity-55 group-hover/card:grayscale-0 group-focus-within/card:opacity-55 group-focus-within/card:grayscale-0'
             }`}
           />
           <div className="absolute inset-0 scrim-bottom" />
@@ -460,9 +462,15 @@ function SkinGroupCard({
 
       {/* Media: aspect-video cover, dimmed when the group is inactive. */}
       <div className="relative mb-2 aspect-video w-full overflow-hidden rounded-lg border border-white/[0.08] bg-bg-tertiary">
+        {/* Inactive skins rest desaturated so the active one reads first, but
+            hover and keyboard focus restore full colour: the point of the
+            thumbnail is to show what the skin actually looks like before you
+            pick it, and a permanently greyed swatch cannot do that. */}
         <div
           className={`h-full w-full transition-[filter,opacity] duration-200 ${
-            groupActive ? '' : 'grayscale-[0.6] opacity-[0.7]'
+            groupActive
+              ? ''
+              : 'grayscale-[0.6] opacity-[0.7] group-hover/card:grayscale-0 group-hover/card:opacity-100 group-focus-within/card:grayscale-0 group-focus-within/card:opacity-100'
           }`}
         >
           <ModThumbnail

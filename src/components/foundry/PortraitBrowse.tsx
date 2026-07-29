@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, Images, Loader2, Search, Users } from 'lucide-react';
+import { AlertTriangle, Images, Loader2, Users } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { EmptyState } from '../common/PageComponents';
 import Tx from '../translation/Tx';
 import { foundryThumbnails } from '../../lib/api';
+import { matchesPortraitHero, resolvePortraitHero } from '../../lib/heroPortraitIdentity';
 import { showToast } from '../../stores/toastStore';
 import type { TextureGridItem } from '../../types/foundry';
 import PortraitEditor from './PortraitEditor';
@@ -13,6 +14,7 @@ import {
   type PortraitFamilyGroup,
 } from './portraitFamily';
 import type { VisualStagedEdit } from './visualEdits';
+import FoundrySearchInput from './FoundrySearchInput';
 
 interface PortraitBrowseProps {
   /** codename -> display name, resolved once by the Foundry shell. */
@@ -43,6 +45,7 @@ export default function PortraitBrowse({ heroNames, hero, onStage }: PortraitBro
   const [search, setSearch] = useState('');
   const [heroFilter, setHeroFilter] = useState('all');
   const [editing, setEditing] = useState<TextureGridItem | null>(null);
+  const [reloadNonce, setReloadNonce] = useState(0);
 
   // Runs once on mount; `loading` starts true and `error` starts null, so the
   // effect only has to record the outcome.
@@ -63,7 +66,7 @@ export default function PortraitBrowse({ heroNames, hero, onStage }: PortraitBro
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [reloadNonce]);
 
   const families = useMemo(() => groupPortraitFamilies(items), [items]);
 
@@ -72,18 +75,23 @@ export default function PortraitBrowse({ heroNames, hero, onStage }: PortraitBro
     const codes = new Set<string>();
     for (const family of families) if (family.hero) codes.add(family.hero);
     return [...codes]
-      .map((code) => ({ code, name: heroNames.get(code) ?? code }))
+      .map((code) => ({ code, name: resolvePortraitHero(code)?.displayName ?? heroNames.get(code) ?? code }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [families, heroNames]);
 
-  const scope = hero ?? (heroFilter === 'all' ? null : heroFilter);
+  // A hero workshop has a roster codename, while the texture catalog has a
+  // panorama codename. They only meet through the shared portrait resolver.
+  const scope = hero ? (heroNames.get(hero) ?? hero) : (heroFilter === 'all' ? null : heroFilter);
+  const scopedFamilies = useMemo(
+    () => families.filter((family) => !scope || matchesPortraitHero(scope, family.hero)),
+    [families, scope],
+  );
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return families
+    return scopedFamilies
       .filter((family) => {
-        if (scope && family.hero !== scope) return false;
         if (!q) return true;
-        const heroName = family.hero ? (heroNames.get(family.hero) ?? family.hero) : '';
+        const heroName = family.hero ? (resolvePortraitHero(family.hero)?.displayName ?? heroNames.get(family.hero) ?? family.hero) : '';
         return (
           family.base.label.toLowerCase().includes(q) ||
           family.key.includes(q) ||
@@ -99,7 +107,11 @@ export default function PortraitBrowse({ heroNames, hero, onStage }: PortraitBro
         const nameB = b.hero ? (heroNames.get(b.hero) ?? b.hero) : '';
         return nameA.localeCompare(nameB) || a.key.localeCompare(b.key);
       });
-  }, [families, scope, search, heroNames]);
+  }, [scopedFamilies, search, heroNames]);
+  const targetVariants = useMemo(
+    () => [...new Set(scopedFamilies.flatMap((family) => family.variants.map((variant) => variant.key)))].sort(),
+    [scopedFamilies],
+  );
 
   const stageFamily = useCallback(
     (edits: VisualStagedEdit[]) => {
@@ -109,6 +121,7 @@ export default function PortraitBrowse({ heroNames, hero, onStage }: PortraitBro
     },
     [onStage, t],
   );
+  const hasActiveFilter = Boolean(search.trim()) || (!hero && heroFilter !== 'all');
 
   return (
     <>
@@ -133,15 +146,13 @@ export default function PortraitBrowse({ heroNames, hero, onStage }: PortraitBro
             </select>
           </div>
         )}
-        <div className="relative min-w-[200px] flex-1">
-          <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder={t('foundry.portraits.searchPlaceholder', 'Search portraits...')}
-            className="w-full rounded-sm border border-border bg-bg-tertiary py-2 pl-9 pr-3 text-sm text-text-primary placeholder:text-text-secondary/60 focus:border-accent/50 focus:outline-none"
-          />
-        </div>
+        <FoundrySearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder={t('foundry.portraits.searchPlaceholder', 'Search portraits...')}
+          clearLabel={t('foundry.search.clear', 'Clear asset search')}
+          scope={t('foundry.search.portraitScope', 'Searches portrait names, heroes, and game paths.')}
+        />
       </div>
 
       {/* Grid / states */}
@@ -151,11 +162,31 @@ export default function PortraitBrowse({ heroNames, hero, onStage }: PortraitBro
           <Tx k="foundry.loading" fallback="Building catalog from your game files..." />
         </div>
       ) : error ? (
+        <div className="space-y-3">
+          <EmptyState
+            icon={AlertTriangle}
+            variant="error"
+            title={<Tx k="foundry.error.title" fallback="Couldn't read the catalog" />}
+            description={error}
+          />
+          <button
+            type="button"
+            onClick={() => {
+              setLoading(true);
+              setError(null);
+              setReloadNonce((nonce) => nonce + 1);
+            }}
+            className="mx-auto block rounded-sm border border-border bg-bg-tertiary px-3 py-2 text-sm text-text-primary hover:border-accent/50"
+          >
+            {t('common.actions.retry', 'Retry')}
+          </button>
+        </div>
+      ) : scope && scopedFamilies.length === 0 ? (
         <EmptyState
-          icon={AlertTriangle}
-          variant="error"
-          title={<Tx k="foundry.error.title" fallback="Couldn't read the catalog" />}
-          description={error}
+          icon={Images}
+          title={<Tx k="foundry.portraits.notIndexed.title" fallback="No base-game portrait family found" />}
+          description={<Tx k="foundry.portraits.notIndexed.description" fallback="This hero has no indexed editable portrait family in this game build. Browse the global catalog or report the missing mapping." />}
+          action={<a href="/foundry?section=portraits" className="rounded-sm border border-border px-3 py-1.5 text-sm text-text-primary hover:border-accent/50">{t('foundry.portraits.browseGlobal', 'Browse global portrait catalog')}</a>}
         />
       ) : visible.length === 0 ? (
         <EmptyState
@@ -167,8 +198,19 @@ export default function PortraitBrowse({ heroNames, hero, onStage }: PortraitBro
               fallback="No portrait families match that hero or search."
             />
           }
+          action={hasActiveFilter ? <button type="button" onClick={() => { setSearch(''); if (!hero) setHeroFilter('all'); }} className="rounded-sm border border-border px-3 py-1.5 text-sm text-text-primary hover:border-accent/50">{t('foundry.search.clearFilters', 'Clear search and filters')}</button> : undefined}
         />
       ) : (
+        <div className="space-y-2">
+          {scope && <p className="text-sm text-text-secondary" aria-live="polite">
+            {t('foundry.portraits.coverage', 'Families available: {{count}} · Targets: {{variants}}', {
+              count: scopedFamilies.length,
+              variants: targetVariants.join(', '),
+            })}
+          </p>}
+          {hasActiveFilter && <p className="text-[11px] text-text-secondary">
+            {t('foundry.search.resultCount', 'Showing {{visible}} of {{total}} assets', { visible: visible.length, total: scopedFamilies.length })}
+          </p>}
         <div className="grid grid-cols-[repeat(auto-fill,minmax(168px,1fr))] gap-3">
           {visible.map((family) => (
             <FamilyCard
@@ -176,10 +218,11 @@ export default function PortraitBrowse({ heroNames, hero, onStage }: PortraitBro
               family={family}
               // A pinned-hero surface (the workshop section) says the hero
               // once in its own chrome; repeating it on every card is noise.
-              heroName={!hero && family.hero ? heroNames.get(family.hero) : undefined}
+              heroName={!hero && family.hero ? (resolvePortraitHero(family.hero)?.displayName ?? heroNames.get(family.hero)) : undefined}
               onOpen={() => setEditing(family.base)}
             />
           ))}
+        </div>
         </div>
       )}
 

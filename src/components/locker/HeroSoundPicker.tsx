@@ -32,6 +32,10 @@ interface HeroSoundPickerProps {
   /** Toggle a whole mod's enabled state. Used only for the "Other" bucket (VO
    *  / unclassified sounds) that can't be sliced to a single ability. */
   onSelect: (modId: string) => void;
+  /** Lets the Sound Locker embed the picker as a secondary, named panel while
+   * preserving the existing full-section presentation in the Looks detail. */
+  panelTitle?: string;
+  panelDescription?: string;
 }
 
 const VOLUME_MIN = -12;
@@ -410,7 +414,13 @@ function SoundToggleRow({
  * to a single ability (VO, unclassified) fall into "Other" and stay whole-mod
  * toggles.
  */
-export default function HeroSoundPicker({ heroName, soundList, onSelect }: HeroSoundPickerProps) {
+export default function HeroSoundPicker({
+  heroName,
+  soundList,
+  onSelect,
+  panelTitle,
+  panelDescription,
+}: HeroSoundPickerProps) {
   const { t } = useTranslation();
   const loadMods = useAppStore((s) => s.loadMods);
   const soundVolume = useAppStore((s) => s.soundVolume);
@@ -643,13 +653,13 @@ export default function HeroSoundPicker({ heroName, soundList, onSelect }: HeroS
     <section className="space-y-3 border-t border-border/60 pt-5">
       <div className="flex items-center gap-2">
         <Music className="h-4 w-4 text-accent" />
-        <h3 className="text-sm font-semibold text-text-primary">{t('locker.sounds.soundsByAbility')}</h3>
+        <h3 className="text-sm font-semibold text-text-primary">{panelTitle ?? t('locker.sounds.soundsByAbility')}</h3>
         <span className="rounded-full border border-accent/40 bg-accent/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent">
           {t('locker.sounds.experimental')}
         </span>
       </div>
       <p className="text-xs text-text-secondary">
-        {t('locker.sounds.intro', { hero: heroName })}
+        {panelDescription ?? t('locker.sounds.intro', { hero: heroName })}
       </p>
 
       {changed && (

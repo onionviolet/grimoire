@@ -13,6 +13,8 @@ interface ConflictFileListProps {
   onIgnoreFile: (filePath: string) => void;
   /** Silence a file for every mod pair (never flag it as a conflict again). */
   onIgnoreFileEverywhere: (filePath: string) => void;
+  /** Matching paths from the active conflict search. */
+  highlightedFiles?: string[];
 }
 
 /**
@@ -25,9 +27,14 @@ export default function ConflictFileList({
   busy,
   onIgnoreFile,
   onIgnoreFileEverywhere,
+  highlightedFiles = [],
 }: ConflictFileListProps) {
   const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
+  const [userOpen, setUserOpen] = useState(false);
+  // A path search should explain itself without making the person rediscover
+  // the disclosure that contains the match. This is derived state so clearing
+  // the query restores the person's own disclosure choice.
+  const open = userOpen || highlightedFiles.length > 0;
 
   if (files.length === 0) return null;
 
@@ -35,7 +42,7 @@ export default function ConflictFileList({
     <div className="border-t border-border/60">
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => setUserOpen((v) => !v)}
         aria-expanded={open}
         className="flex w-full items-center gap-1.5 px-4 py-2 text-xs text-text-secondary transition-colors hover:text-text-primary cursor-pointer"
       >
@@ -53,7 +60,9 @@ export default function ConflictFileList({
               <MenuTrigger asChild>
                 <li className="flex items-center gap-2 rounded data-[state=open]:bg-bg-tertiary/60">
                   <span
-                    className="min-w-0 flex-1 truncate font-mono text-[11px] text-text-tertiary"
+                    className={`min-w-0 flex-1 truncate font-mono text-[11px] ${
+                      highlightedFiles.includes(file) ? 'text-yellow-300' : 'text-text-tertiary'
+                    }`}
                     title={file}
                   >
                     {file}

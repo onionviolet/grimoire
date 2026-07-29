@@ -643,7 +643,7 @@ export default function HeroCardPicker({ heroName }: HeroCardPickerProps) {
           imageDataUrl={cropping.sourceDataUrl}
           targetWidth={cropping.slot.width}
           targetHeight={cropping.slot.height}
-          variantLabel={VARIANT_LABEL[cropping.slot.variant] ?? cropping.slot.variant}
+          variantLabel={variantLabel(cropping.slot.variant)}
           onCancel={() => setCropping(null)}
           onCrop={handleCropDone}
         />
