@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { AlertTriangle, Check, ChevronDown, ExternalLink, Loader2, Pencil, Power, RefreshCw, Trash2, Volume2 } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 import { showToast } from '../../stores/toastStore';
@@ -14,8 +15,10 @@ import {
 import type { FoundryAssetSourcesInspection, SoundAnnotation } from '../../types/foundry';
 import type { Mod } from '../../types/mod';
 
+/** Grouping key only. Empty means global scope; the heading translates it at
+ *  render time so the group key never depends on the active language. */
 function scopeFor(mod: Mod): string {
-  return mod.lockerHero?.trim() || (mod.soundSwap?.heroCodename ? mod.soundSwap.heroCodename : 'Global sounds');
+  return mod.lockerHero?.trim() || mod.soundSwap?.heroCodename || '';
 }
 
 /** Catalog rows name the source `.vsnd`; a VPK carries the compiled `.vsnd_c`. */
@@ -44,6 +47,7 @@ function writeSetFor(mod: Mod): string[] {
  * recorded write set, not by trusting this mod's own enabled flag.
  */
 export default function MySoundChanges() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const mods = useAppStore((state) => state.mods);
   const toggleMod = useAppStore((state) => state.toggleMod);
@@ -84,23 +88,27 @@ export default function MySoundChanges() {
     });
   }, []);
 
-  if (!changes.length) return <p className="rounded-sm border border-dashed border-border p-3 text-sm text-text-secondary">No Foundry sound changes yet. Forged sound swaps will appear here and follow their normal Installed state.</p>;
+  if (!changes.length) return <p className="rounded-sm border border-dashed border-border p-3 text-sm text-text-secondary">{t('foundry.myChanges.empty')}</p>;
   return <div className="space-y-3">
     {groups.map(([scope, entries]) => <section key={scope} className="rounded-sm border border-border">
-      <h3 className="border-b border-border px-3 py-2 text-sm font-medium text-text-primary">{scope}</h3>
+      <h3 className="border-b border-border px-3 py-2 text-sm font-medium text-text-primary">{scope || t('foundry.myChanges.globalScope')}</h3>
       {entries.map((mod) => {
         const editing = open[mod.id];
         const value = rename[mod.id] ?? mod.name;
+        const summary = [
+          t('foundry.myChanges.summary', { name: mod.name, audio: mod.soundSwap?.audioFileName, pool: mod.soundSwap?.pool }),
+          ...(mod.soundSwap?.poolSeed != null ? [t('foundry.myChanges.seed', { seed: mod.soundSwap.poolSeed })] : []),
+        ].join(' · ');
         return <div key={mod.id} className="border-b border-border/60 px-3 py-2 last:border-b-0">
           <div className="flex items-center gap-2">
             <Volume2 size={14} className="text-accent" />
-            <div className="min-w-0 flex-1"><p className="truncate text-sm text-text-primary">{mod.soundSwap?.event}</p><p className="truncate text-[11px] text-text-secondary">{mod.name} · {mod.soundSwap?.audioFileName} · {mod.soundSwap?.pool}{mod.soundSwap?.poolSeed != null ? ` · seed ${mod.soundSwap.poolSeed}` : ''}</p></div>
-            <span className={`text-[11px] ${mod.enabled ? 'text-green-400' : 'text-text-secondary'}`}>{mod.enabled ? 'Enabled' : 'Disabled'}</span>
-            <button type="button" onClick={() => void toggleMod(mod.id)} title={mod.enabled ? 'Disable' : 'Enable'} className="rounded-sm border border-border p-1.5 text-text-secondary hover:text-text-primary"><Power size={13} /></button>
-            <button type="button" onClick={() => setOpen((current) => ({ ...current, [mod.id]: !editing }))} title="Rename" className="rounded-sm border border-border p-1.5 text-text-secondary hover:text-text-primary">{editing ? <ChevronDown size={13} /> : <Pencil size={13} />}</button>
-            <button type="button" onClick={() => { if (window.confirm(`Delete ${mod.name}?`)) void deleteMod(mod.id); }} title="Delete" className="rounded-sm border border-border p-1.5 text-red-300 hover:text-red-200"><Trash2 size={13} /></button>
+            <div className="min-w-0 flex-1"><p className="truncate text-sm text-text-primary">{mod.soundSwap?.event}</p><p className="truncate text-[11px] text-text-secondary">{summary}</p></div>
+            <span className={`text-[11px] ${mod.enabled ? 'text-green-400' : 'text-text-secondary'}`}>{mod.enabled ? t('foundry.myChanges.enabled') : t('foundry.myChanges.disabled')}</span>
+            <button type="button" onClick={() => void toggleMod(mod.id)} title={mod.enabled ? t('foundry.myChanges.disable') : t('foundry.myChanges.enable')} className="rounded-sm border border-border p-1.5 text-text-secondary hover:text-text-primary"><Power size={13} /></button>
+            <button type="button" onClick={() => setOpen((current) => ({ ...current, [mod.id]: !editing }))} title={t('foundry.myChanges.rename')} className="rounded-sm border border-border p-1.5 text-text-secondary hover:text-text-primary">{editing ? <ChevronDown size={13} /> : <Pencil size={13} />}</button>
+            <button type="button" onClick={() => { if (window.confirm(t('foundry.myChanges.deleteConfirm', { name: mod.name }))) void deleteMod(mod.id); }} title={t('foundry.myChanges.delete')} className="rounded-sm border border-border p-1.5 text-red-300 hover:text-red-200"><Trash2 size={13} /></button>
           </div>
-          {editing && <form className="mt-2 flex gap-2" onSubmit={(event) => { event.preventDefault(); const name = value.trim(); if (name) void editLocalMod(mod.id, { name }).then(() => setOpen((current) => ({ ...current, [mod.id]: false }))); }}><input aria-label="Sound change name" value={value} onChange={(event) => setRename((current) => ({ ...current, [mod.id]: event.target.value }))} className="min-w-0 flex-1 rounded-sm border border-border bg-bg-primary px-2 py-1 text-sm text-text-primary" /><button className="rounded-sm bg-accent px-2 text-sm text-bg-primary">Save</button></form>}
+          {editing && <form className="mt-2 flex gap-2" onSubmit={(event) => { event.preventDefault(); const name = value.trim(); if (name) void editLocalMod(mod.id, { name }).then(() => setOpen((current) => ({ ...current, [mod.id]: false }))); }}><input aria-label={t('foundry.myChanges.nameLabel')} value={value} onChange={(event) => setRename((current) => ({ ...current, [mod.id]: event.target.value }))} className="min-w-0 flex-1 rounded-sm border border-border bg-bg-primary px-2 py-1 text-sm text-text-primary" /><button className="rounded-sm bg-accent px-2 text-sm text-bg-primary">{t('foundry.myChanges.save')}</button></form>}
           <SoundChangeDetails
             mod={mod}
             annotations={annotations}
@@ -127,6 +135,7 @@ function SoundChangeDetails({
   onSaveAnnotation: (key: string, name: string, note: string) => Promise<void>;
   onOpenInInstalled: (modId: string) => void;
 }) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const [inspection, setInspection] = useState<FoundryAssetSourcesInspection | null>(null);
   const [inspectError, setInspectError] = useState<string | null>(null);
@@ -182,7 +191,10 @@ function SoundChangeDetails({
       const missing = wanted.filter((path) => !present.has(path));
       if (missing.length) {
         showToast(
-          `Cannot re-forge: ${missing.length} recorded audio file${missing.length === 1 ? '' : 's'} moved or was deleted (${missing.map((path) => path.split(/[\\/]/).pop()).join(', ')}). Re-author this change from the Sound browser instead.`,
+          t('foundry.myChanges.reforgeMissing', {
+            count: missing.length,
+            files: missing.map((path) => path.split(/[\\/]/).pop()).join(', '),
+          }),
           { tone: 'error', duration: 9000 }
         );
         return;
@@ -190,7 +202,9 @@ function SoundChangeDetails({
       const preflight = await foundryInspectAssetSources(writeSet);
       if (preflight.unreadableMods.length) {
         showToast(
-          `Cannot re-forge while ${preflight.unreadableMods.map((entry) => entry.modName).join(', ')} cannot be inspected.`,
+          t('foundry.myChanges.reforgeUnreadable', {
+            mods: preflight.unreadableMods.map((entry) => entry.modName).join(', '),
+          }),
           { tone: 'error', duration: 9000 }
         );
         return;
@@ -199,7 +213,7 @@ function SoundChangeDetails({
       // existing one is left alone: removing it is the user's call in Installed.
       const others = preflight.sources.filter((source) => source.modId !== mod.id && source.enabled);
       if (others.length && !window.confirm(
-        `${others.map((source) => source.modName).join(', ')} also write these paths. Re-forge a separate managed replacement anyway?`
+        t('foundry.myChanges.reforgeConflict', { mods: others.map((source) => source.modName).join(', ') })
       )) return;
       await foundrySwapSound({
         heroCodename: mod.soundSwap!.heroCodename,
@@ -211,7 +225,7 @@ function SoundChangeDetails({
         assignments: recorded.assignments,
         poolMode: mod.soundSwap!.poolMode,
         poolSeed: mod.soundSwap!.poolSeed,
-        name: `${mod.name} (re-forged)`,
+        name: t('foundry.myChanges.reforgedName', { name: mod.name }),
         loop: mod.soundSwap!.loop,
         trimStartMs: recorded.trimStartMs,
         trimEndMs: recorded.trimEndMs,
@@ -219,13 +233,13 @@ function SoundChangeDetails({
       });
       await useAppStore.getState().loadMods({ silent: true });
       setInspection(null);
-      showToast(`Re-forged "${mod.name}". The original was left untouched.`, { tone: 'success', duration: 6000 });
+      showToast(t('foundry.myChanges.reforgeDone', { name: mod.name }), { tone: 'success', duration: 6000 });
     } catch (cause) {
       showToast(cause instanceof Error ? cause.message : String(cause), { tone: 'error', duration: 8000 });
     } finally {
       setReforging(false);
     }
-  }, [recorded, reforging, writeSet, mod]);
+  }, [recorded, reforging, writeSet, mod, t]);
 
   return (
     <div className="mt-1.5 text-[11px] text-text-secondary">
@@ -236,42 +250,44 @@ function SoundChangeDetails({
         className="flex items-center gap-1 rounded-sm px-1 py-0.5 hover:text-text-primary"
       >
         <ChevronDown size={11} className={expanded ? '' : '-rotate-90'} />
-        Event details{writeSet.length ? ` · ${writeSet.length} recorded path${writeSet.length === 1 ? '' : 's'}` : ''}
+        {writeSet.length
+          ? `${t('foundry.myChanges.eventDetails')} · ${t('foundry.myChanges.recordedPaths', { count: writeSet.length })}`
+          : t('foundry.myChanges.eventDetails')}
       </button>
       {expanded && (
         <div className="mt-1 space-y-1.5 rounded-sm border border-border bg-bg-tertiary/40 p-2">
           {writeSet.length === 0 ? (
-            <p>This change predates recorded write sets, so its live winner cannot be resolved and it cannot be re-forged. Re-author it from the Sound browser to gain both.</p>
+            <p>{t('foundry.myChanges.noWriteSet')}</p>
           ) : inspecting ? (
-            <p className="flex items-center gap-1"><Loader2 size={11} className="animate-spin" /> Resolving the active winner...</p>
+            <p className="flex items-center gap-1"><Loader2 size={11} className="animate-spin" /> {t('foundry.myChanges.resolving')}</p>
           ) : inspectError ? (
             <p className="flex items-start gap-1 text-danger">
               <AlertTriangle size={11} className="mt-px shrink-0" />
-              <span>{inspectError} <button type="button" onClick={() => { setInspectError(null); void inspect(); }} className="underline">Try again</button></span>
+              <span>{inspectError} <button type="button" onClick={() => { setInspectError(null); void inspect(); }} className="underline">{t('foundry.myChanges.tryAgain')}</button></span>
             </p>
           ) : inspection ? (
             <>
               {inspection.unreadableMods.length > 0 && (
                 <p className="flex items-start gap-1 text-danger">
                   <AlertTriangle size={11} className="mt-px shrink-0" />
-                  <span>{inspection.unreadableMods.map((entry) => entry.modName).join(', ')} could not be inspected, so this picture is incomplete.</span>
+                  <span>{t('foundry.myChanges.incompleteInspection', { mods: inspection.unreadableMods.map((entry) => entry.modName).join(', ') })}</span>
                 </p>
               )}
               {losses.length === 0 ? (
-                <p className="text-text-primary">{mod.enabled ? 'This change wins every path it writes.' : 'Disabled, so nothing here is active.'}</p>
+                <p className="text-text-primary">{mod.enabled ? t('foundry.myChanges.winsAll') : t('foundry.myChanges.disabledInactive')}</p>
               ) : (
                 losses.map((loss) => (
                   <div key={loss.path} className="flex flex-wrap items-center gap-1">
-                    <span className="truncate text-danger" title={loss.path}>Overridden at {loss.path}</span>
-                    <span>by {loss.winnerName}</span>
+                    <span className="truncate text-danger" title={loss.path}>{t('foundry.myChanges.overriddenAt', { path: loss.path })}</span>
+                    <span>{t('foundry.myChanges.overriddenBy', { winner: loss.winnerName })}</span>
                     <button type="button" onClick={() => onOpenInInstalled(loss.winnerId)} className="flex items-center gap-1 rounded-sm border border-border px-1.5 py-0.5 hover:text-text-primary">
-                      <ExternalLink size={10} /> Open the winner
+                      <ExternalLink size={10} /> {t('foundry.myChanges.openWinner')}
                     </button>
                   </div>
                 ))
               )}
               <button type="button" onClick={() => void inspect()} className="flex items-center gap-1 rounded-sm border border-border px-1.5 py-0.5 hover:text-text-primary">
-                <RefreshCw size={10} /> Re-check
+                <RefreshCw size={10} /> {t('foundry.myChanges.recheck')}
               </button>
             </>
           ) : null}
@@ -282,16 +298,16 @@ function SoundChangeDetails({
               onClick={() => setAnnotationOpen((value) => !value)}
               className="flex items-center gap-1 rounded-sm border border-border px-1.5 py-0.5 hover:text-text-primary"
             >
-              <Pencil size={10} /> {annotation ? 'Edit annotation' : 'Annotate the source sound'}
+              <Pencil size={10} /> {annotation ? t('foundry.myChanges.editAnnotation') : t('foundry.myChanges.addAnnotation')}
             </button>
             <button
               type="button"
               disabled={!recorded || reforging}
               onClick={() => void reforge()}
-              title={recorded ? 'Rebuild this change from its recorded clip-to-audio assignments' : 'This change has no recorded assignments to rebuild from'}
+              title={recorded ? t('foundry.myChanges.reforgeHint') : t('foundry.myChanges.reforgeUnavailable')}
               className="flex items-center gap-1 rounded-sm border border-border px-1.5 py-0.5 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40"
             >
-              {reforging ? <Loader2 size={10} className="animate-spin" /> : <RefreshCw size={10} />} Re-forge
+              {reforging ? <Loader2 size={10} className="animate-spin" /> : <RefreshCw size={10} />} {t('foundry.myChanges.reforge')}
             </button>
           </div>
           {recorded && (
@@ -325,21 +341,22 @@ function AnnotationEditor({
   annotation?: SoundAnnotation;
   onSave: (name: string, note: string) => Promise<void>;
 }) {
+  const { t } = useTranslation();
   const [name, setName] = useState(annotation?.name ?? '');
   const [note, setNote] = useState(annotation?.note ?? '');
   const [busy, setBusy] = useState(false);
   return (
     <div className="space-y-1 rounded-sm border border-border bg-bg-secondary p-2">
-      <p className="text-text-secondary">Annotations describe the base-game sound, not this mod. They are shared with the Sound browser.</p>
-      <input aria-label="My label" value={name} onChange={(event) => setName(event.target.value)} placeholder="My label (optional)" className="w-full rounded-sm border border-border bg-bg-primary px-2 py-1 text-text-primary" />
-      <textarea aria-label="My note" value={note} onChange={(event) => setNote(event.target.value)} rows={2} placeholder="What this sound is, or where you found it" className="w-full resize-y rounded-sm border border-border bg-bg-primary px-2 py-1 text-text-primary" />
+      <p className="text-text-secondary">{t('foundry.myChanges.annotationNote')}</p>
+      <input aria-label={t('foundry.myChanges.myLabel')} value={name} onChange={(event) => setName(event.target.value)} placeholder={t('foundry.myChanges.myLabelPlaceholder')} className="w-full rounded-sm border border-border bg-bg-primary px-2 py-1 text-text-primary" />
+      <textarea aria-label={t('foundry.myChanges.myNote')} value={note} onChange={(event) => setNote(event.target.value)} rows={2} placeholder={t('foundry.myChanges.myNotePlaceholder')} className="w-full resize-y rounded-sm border border-border bg-bg-primary px-2 py-1 text-text-primary" />
       <button
         type="button"
         disabled={busy}
         onClick={async () => { setBusy(true); try { await onSave(name, note); } finally { setBusy(false); } }}
         className="flex items-center gap-1 rounded-sm bg-accent px-2 py-1 text-bg-primary disabled:opacity-40"
       >
-        <Check size={11} /> Save
+        <Check size={11} /> {t('foundry.myChanges.save')}
       </button>
     </div>
   );

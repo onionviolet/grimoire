@@ -55,8 +55,8 @@ export default function LibraryBrowse({ heroNames, initialCategory = 'ability-ic
         imagePath,
         name: t('foundry.texture.defaultReplacementName', '{{label}} replacement', { label: item.label || 'Texture' }),
         inspect: foundryInspectAssetSources,
-        confirm: (modNames) => window.confirm(`Existing enabled sources: ${modNames.join(', ')}. Continue to create a separate managed replacement?`),
-        unreadableMessage: 'Cannot replace this asset while installed VPK sources are unreadable. Resolve those VPKs and inspect again.',
+        confirm: (modNames) => window.confirm(t('foundry.texture.stageConflict', { mods: modNames.join(', ') })),
+        unreadableMessage: t('foundry.texture.stageUnreadable'),
       });
       if (!staged) return;
       onStage(staged);
