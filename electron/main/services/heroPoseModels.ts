@@ -328,7 +328,9 @@ function effectVersionFile(key: string): string {
     return join(modelDir(key), EFFECT_VERSION_FILENAME);
 }
 
-interface ModelClipInfo {
+/** One row of `vpkmerge model clips --json`. Exported for the rigged-clip
+ *  ranking tests, which replay clip lists captured from the shipped pak. */
+export interface ModelClipInfo {
     name: string;
     frameCount: number;
     fps: number;
@@ -408,7 +410,10 @@ function riggedClipScore(clip: ModelClipInfo): number {
     return score;
 }
 
-function chooseRiggedClip(clips: ModelClipInfo[]): ModelClipInfo | null {
+/** The single clip the rigged export plays, or null when the model carries no
+ *  animated clip (which makes the caller fall back to the static pose). Exported
+ *  for tests. */
+export function chooseRiggedClip(clips: ModelClipInfo[]): ModelClipInfo | null {
     const candidates = clips.filter(isAnimatedClip);
     if (candidates.length === 0) return null;
     return candidates.sort((a, b) => {
@@ -850,9 +855,13 @@ async function runHeroPoseExportForSources(
                     '--base',
                     pak01,
                     '--pose',
-                    // Refuse to bake a static bind/T-pose: a clipless WIP hero
-                    // (Apollo, Billy, Celeste, Mina, Paige, Rem) errors here and the
-                    // Locker falls back to the 2D portrait instead of an unposed model.
+                    // Refuse to bake a static bind/T-pose: a model carrying no pose
+                    // clip errors here and the Locker falls back to the 2D portrait
+                    // instead of showing an unposed model. The formerly clipless WIP
+                    // heroes (Apollo, Billy, Celeste, Mina, Paige) have since shipped
+                    // pose clips and all export cleanly, so this guard is now a
+                    // safety net for future WIP additions rather than a live filter
+                    // (re-verified against the installed pak, 2026-07-28).
                     '--require-pose',
                     '--out',
                     out,
