@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node scripts/dev-driver.mjs:*)",
+      "Bash(pnpm exec vitest run:*)",
+      "Bash(pnpm lint:*)",
+      "Bash(pnpm build:*)",
+      "Bash(pnpm exec tsc:*)",
+      "Bash(pnpm i18n:check:*)",
+      "Bash(pnpm i18n:manifest:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git branch:*)",
+      "Bash(git stash list:*)",
+      "PowerShell(node scripts/dev-driver.mjs:*)",
+      "PowerShell(pnpm exec vitest run:*)",
+      "PowerShell(pnpm lint:*)",
+      "PowerShell(pnpm build:*)",
+      "PowerShell(git status:*)",
+      "PowerShell(git diff:*)",
+      "PowerShell(git log:*)"
+    ]
+  }
+}

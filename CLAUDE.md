@@ -69,6 +69,29 @@ pnpm package:linux                                # Package for Linux (AppImage 
 pnpm package:win                                  # Package for Windows (NSIS + portable)
 ```
 
+## Driving a Running Dev Build
+
+`scripts/dev-driver.mjs` talks to the renderer over the Chrome DevTools Protocol, so a check can be a question about the DOM ("what do these rows say?") rather than a guess about pixels. Start the app with the port open, then drive it:
+
+```bash
+GRIMOIRE_DEV_CDP_PORT=9222 pnpm dev
+```
+
+```bash
+node scripts/dev-driver.mjs route foundry
+```
+
+Commands: `eval`, `evalfile` (for expressions that lose a fight with shell quoting), `text <sel>`, `html <sel>`, `click <sel>`, `fill <sel> <value>`, `select <sel> <value>`, `route <name>`, `viewport <w> <h>`, `shot <file.png>`, `targets`. Selectors support a synthetic `:has-text(...)`, e.g. `button:has-text(My changes)`.
+
+`shot` writes a PNG that can be read back, so visual checks are possible. Prefer `text`/`html` anyway: they say *why* something is wrong, a screenshot only says *that* it looks wrong.
+
+Notes:
+
+- The port is env-gated, not `is.dev`-gated, because it evaluates arbitrary code in the renderer. It is never set in a packaged build (`electron/main/index.ts`).
+- The app mounts a HashRouter, so `route` sets `location.hash`; driving `pathname` changes the URL bar and nothing else.
+- This drives the **working tree**, not the installed Grimoire. Uncommitted changes are what you are testing. The installed build is a separate app with its own userData, so it is not affected by anything done here.
+- Opening `localhost:5173` in a plain browser is not a substitute: `window.electronAPI` is absent there, so anything touching IPC fails.
+
 ## Databases (runtime, in app userData dir)
 
 - **mods-cache.db** - GameBanana mod catalog cache with FTS5 search. Tables: `mods`, `mods_fts`, `sync_state`
