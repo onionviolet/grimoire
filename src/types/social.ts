@@ -5,21 +5,24 @@
 import type { ProfileDetail, UserPublic } from '@grimoire/social-types';
 
 /**
- * TEMPORARY SHIM. Remove this and read the fields off ProfileDetail directly.
+ * Forward-declaration of wire fields this fork's service may not serve.
  *
  * `mods_available`, `mods_revalidated_at`, `unavailable_mod_ids` and
  * `view_count` were added to the wire schema in the sibling repo
- * (`../grimoire-social/packages/social-types`, commit 5f870bd). That commit is
- * not published: the sibling's only remote is `Slush97/grimoire-social`, which
- * this fork does not own, and CI checks that repository out fresh. So a local
- * build resolves the new fields through the on-disk link and a CI build does
- * not, which is exactly how these two reads passed review and still broke the
- * pipeline.
+ * (`../grimoire-social/packages/social-types`, commit 5f870bd) along with the
+ * revalidation cron and view counter that populate them. That work is not
+ * published: the sibling's only remote is `Slush97/grimoire-social`, which this
+ * fork does not own, and CI checks that repository out fresh.
  *
- * This is deliberately a widening of ProfileDetail with the same optional and
- * nullable shape the sibling declares, not a competing definition: the client
- * must not start believing something different about the wire format. Delete it
- * the moment the sibling change is reachable from CI.
+ * Grimoire deliberately points at the upstream deployment, which does not run
+ * that cron. So these fields are expected to be ABSENT in practice, not merely
+ * null, and every consumer must treat absent as "this service does not report
+ * it" and render nothing. See resolveModsAvailability for that split.
+ *
+ * This is a widening of ProfileDetail with exactly the optional and nullable
+ * shape the sibling declares, not a competing definition: the client must not
+ * start believing something different about the wire format. It stops being
+ * needed only if the sibling change becomes reachable from CI.
  */
 export type ProfileDetailWithAvailability = ProfileDetail & {
     view_count?: number | null;

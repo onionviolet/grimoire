@@ -23,6 +23,11 @@ interface ModsAvailableBadgeProps {
  * The unknown state is load-bearing. A profile the cron has never looked at
  * gets an explicitly neutral "not checked yet" badge rather than a reassuring
  * green one, because we genuinely do not know.
+ *
+ * The unsupported state renders nothing at all. That is a different situation:
+ * the service is not reporting availability whatsoever, so a "not checked yet"
+ * badge on every single card would be permanent furniture advertising a check
+ * that will never run.
  */
 export default function ModsAvailableBadge({
   profile,
@@ -38,6 +43,8 @@ export default function ModsAvailableBadge({
 
   const base =
     'inline-flex items-center gap-1 text-[11px] leading-tight px-1.5 py-0.5 rounded-sm border';
+
+  if (availability.kind === 'unsupported') return null;
 
   if (availability.kind === 'unknown') {
     return (

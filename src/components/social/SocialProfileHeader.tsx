@@ -366,7 +366,11 @@ export default function SocialProfileHeader({
               {missing && <MissingModsBadge summary={missing} />}
             </div>
 
-            {isOwner && (
+            {/* `undefined` means the service does not report view counts at
+                all, so there is nothing to say and the row is dropped. `null`
+                means it does report them but has none for this profile yet,
+                which is worth telling the owner about. */}
+            {isOwner && viewCount !== undefined && (
               <div
                 className="text-xs text-text-tertiary inline-flex items-center gap-1.5"
                 title={t('discover.stats.ownerOnly')}

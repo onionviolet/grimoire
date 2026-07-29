@@ -19,6 +19,10 @@ import type { PortableProfile } from '../../types/portableProfile';
 // ---------- 1. Upstream availability ----------
 
 export type ModsAvailability =
+    /** The service does not report availability at all (the field is absent
+     *  from the response, not null). Render nothing: a permanent "not checked"
+     *  badge on every card is noise about a check that is never coming. */
+    | { kind: 'unsupported' }
     /** Never revalidated. NOT the same as healthy: we simply have not looked.
      *  The server sends null for this and the UI must not round it up. */
     | { kind: 'unknown' }
@@ -31,9 +35,16 @@ export interface AvailabilityInput {
     mods_revalidated_at?: number | null;
 }
 
+// The optional-vs-nullable split on the wire is meaningful and is the whole
+// reason this distinguishes three empty-ish states rather than one. Absent
+// means the service predates the revalidation cron (Grimoire may well be
+// pointed at a deployment that will never run it), so there is nothing to say.
+// Null means that service does track availability but has not looked at this
+// profile yet, which the user should see.
 export function resolveModsAvailability(profile: AvailabilityInput): ModsAvailability {
     const { mods_available: available, mod_count: total } = profile;
-    if (available === null || available === undefined) return { kind: 'unknown' };
+    if (available === undefined) return { kind: 'unsupported' };
+    if (available === null) return { kind: 'unknown' };
     // A negative or over-large count would mean the server and the blob
     // disagree. Clamp instead of rendering "13 of 12 mods available".
     const clamped = Math.max(0, Math.min(available, total));

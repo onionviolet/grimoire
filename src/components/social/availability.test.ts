@@ -31,8 +31,15 @@ describe('resolveModsAvailability', () => {
         });
     });
 
-    it('treats an absent field the same as null (old server build)', () => {
-        expect(resolveModsAvailability({ mod_count: 12 })).toEqual({ kind: 'unknown' });
+    // Absent and null are different answers, and conflating them put a
+    // permanent "not checked yet" badge on every card when Grimoire points at
+    // a service without the revalidation cron.
+    it('reports unsupported when the service omits the field entirely', () => {
+        expect(resolveModsAvailability({ mod_count: 12 })).toEqual({ kind: 'unsupported' });
+    });
+
+    it('does not round an unsupported service up to all-available either', () => {
+        expect(resolveModsAvailability({ mod_count: 12 }).kind).not.toBe('all');
     });
 
     it('never rounds unknown up to all-available', () => {

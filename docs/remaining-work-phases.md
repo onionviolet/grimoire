@@ -385,10 +385,24 @@ were committed to `../grimoire-social` but cannot be pushed: that repo's only
 remote is `Slush97/grimoire-social`, which this fork does not own, and CI checks
 it out fresh. So a local build resolves the new fields through the on-disk
 workspace link and CI does not. `ProfileDetailWithAvailability`
-(`src/types/social.ts`) widens `ProfileDetail` to bridge that gap and is marked
-for deletion. To close it properly: fork `grimoire-social` to `onionviolet`,
-repoint the sibling remote and `ci.yml`'s hardcoded `repository:` checkout, push
-the three unpushed commits there, then delete the shim.
+(`src/types/social.ts`) widens `ProfileDetail` to bridge that gap.
+
+**Decided 2026-07-29: this fork relies on the upstream deployment**
+(`grimoire-social.slusheliott.workers.dev`), so the revalidation cron and view
+counter added in wave 3 will not run against it. The four availability fields
+are therefore expected to be absent, not null, and the client now distinguishes
+the two: absent means "this service does not report it" and renders nothing,
+null means "reports it, has not checked this profile yet" and shows the neutral
+badge. Without that split every Discover card carried a permanent "not checked
+yet" badge advertising a check that was never coming.
+
+Consequences to keep in mind: the availability badge, the gone-mods list and
+owner view counts are dormant UI against the upstream service, and the three
+commits in `../grimoire-social` are unpublished local work. To activate any of
+it, either fork `grimoire-social` to `onionviolet` (repoint the sibling remote,
+`ci.yml`'s hardcoded `repository:` checkout, and the baked
+`GRIMOIRE_SOCIAL_BASE_URL` in `release.yml`, then deploy with migration 0005),
+or offer the cron and counter upstream as a pull request.
 
 Note for any future sibling-repo change: **the local gate cannot catch this
 class of break.** `pnpm typecheck` resolves the sibling from disk, so it stays
