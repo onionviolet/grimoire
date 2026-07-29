@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   Eye,
 } from 'lucide-react';
+import type { ProfileDetailWithAvailability } from '../../types/social';
 import { Button, Badge } from '../common/ui';
 import { Textarea } from '../common/forms';
 import {
@@ -80,7 +81,10 @@ export default function SocialProfileHeader({
   // that window would be worse than saying nothing.
   const modsLoaded = useAppStore((s) => s.modsLoaded);
 
-  const [detail, setDetail] = useState<SocialProfileDetail | null>(null);
+  // Typed through the availability shim so the two owner/availability reads
+  // below compile against the CI-resolved copy of the wire types too. See
+  // ProfileDetailWithAvailability for why that differs from a local build.
+  const [detail, setDetail] = useState<ProfileDetailWithAvailability | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<ClassifiedSocialError | null>(null);
   const [hasCrosshair, setHasCrosshair] = useState(false);
