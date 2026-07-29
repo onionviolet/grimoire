@@ -36,30 +36,47 @@ export const PRESET_SOURCE_URL = 'https://github.com/Sqooky/OptimizationLock';
 
 /** ConVars exposed as reversible user controls in Settings. Values are only
  * written when the user changes a control; they are not forced by the FPS
- * preset itself. */
+ * preset itself.
+ *
+ * `gameDefault` is the value the engine uses when gameinfo.gi carries no line
+ * for the key. It is deliberately null for every HUD toggle: nobody has read
+ * these back off a running build, and shipping a guess is exactly the
+ * "app-chosen value presented as the game default" problem the value-state
+ * badge exists to prevent. A null default still classifies correctly (no line
+ * means the game's own value applies); it only means the UI cannot preview
+ * what that value is. Fill one in only after confirming it in the game
+ * console (`<convar>` with no argument prints the default). */
 export const HUD_CONVARS = [
-    { key: 'citadel_unit_status_use_new', on: 'true', off: 'false' },
-    { key: 'citadel_unit_status_use_v2', on: 'true', off: 'false' },
-    { key: 'citadel_unit_status_single_bar_mode', on: 'true', off: 'false' },
-    { key: 'citadel_unit_status_use_v2_for_nonplayers', on: 'true', off: 'false' },
-    { key: 'citadel_unit_status_allies_see_thru_walls', on: 'true', off: 'false' },
-    { key: 'citadel_hud_objective_health_enabled', on: '2', off: '0' },
-    { key: 'citadel_damage_offscreen_indicator_disabled', on: 'false', off: 'true' },
-    { key: 'citadel_damage_text_show_effectiveness', on: '1', off: '0' },
+    { key: 'citadel_unit_status_use_new', on: 'true', off: 'false', gameDefault: null },
+    { key: 'citadel_unit_status_use_v2', on: 'true', off: 'false', gameDefault: null },
+    { key: 'citadel_unit_status_single_bar_mode', on: 'true', off: 'false', gameDefault: null },
+    { key: 'citadel_unit_status_use_v2_for_nonplayers', on: 'true', off: 'false', gameDefault: null },
+    { key: 'citadel_unit_status_allies_see_thru_walls', on: 'true', off: 'false', gameDefault: null },
+    { key: 'citadel_hud_objective_health_enabled', on: '2', off: '0', gameDefault: null },
+    { key: 'citadel_damage_offscreen_indicator_disabled', on: 'false', off: 'true', gameDefault: null },
+    { key: 'citadel_damage_text_show_effectiveness', on: '1', off: '0', gameDefault: null },
 ] as const;
 
 // Review against the live game's ConVars after Deadlock updates. Keep these
 // advanced controls bounded: they are client-side presentation/readability
 // settings, not gameplay settings.
+//
+// `gameDefault` is the engine's stock value for the key and is the single
+// authoritative copy: the renderer must not carry its own fallback number,
+// because a renderer-side fallback gets drawn as though the game had chosen
+// it. Two uses: the slider position when gameinfo.gi has no line, and the
+// value-state badge (an untagged line still sitting on the stock value counts
+// as "game default", not as somebody's override). A line whose value is
+// outside [min, max] is badged out of range and never silently clamped.
 export const ADVANCED_GAMEINFO_CONVARS = [
-    { key: 'citadel_unit_status_allies_see_thru_walls_max_distance', min: 0, max: 200, step: 5 },
-    { key: 'citadel_minimap_unit_click_radius', min: 400, max: 1200, step: 25 },
-    { key: 'citadel_minimap_player_width', min: 4, max: 12, step: 0.5 },
-    { key: 'citadel_minimap_local_player_width', min: 6, max: 16, step: 0.5 },
-    { key: 'citadel_minimap_max_icon_shrink', min: 0.4, max: 1, step: 0.05 },
-    { key: 'citadel_minimap_overlap_scan_distance', min: 0, max: 40, step: 1 },
-    { key: 'citadel_minimap_zip_line_thickness', min: 1, max: 8, step: 0.5 },
-    { key: 'minimap_update_rate_hz', min: 5, max: 60, step: 5 },
+    { key: 'citadel_unit_status_allies_see_thru_walls_max_distance', min: 0, max: 200, step: 5, gameDefault: 40 },
+    { key: 'citadel_minimap_unit_click_radius', min: 400, max: 1200, step: 25, gameDefault: 800 },
+    { key: 'citadel_minimap_player_width', min: 4, max: 12, step: 0.5, gameDefault: 8 },
+    { key: 'citadel_minimap_local_player_width', min: 6, max: 16, step: 0.5, gameDefault: 12 },
+    { key: 'citadel_minimap_max_icon_shrink', min: 0.4, max: 1, step: 0.05, gameDefault: 0.8 },
+    { key: 'citadel_minimap_overlap_scan_distance', min: 0, max: 40, step: 1, gameDefault: 20 },
+    { key: 'citadel_minimap_zip_line_thickness', min: 1, max: 8, step: 0.5, gameDefault: 6 },
+    { key: 'minimap_update_rate_hz', min: 5, max: 60, step: 5, gameDefault: 5 },
 ] as const;
 
 /** Engine-section edits outside ConVars. The SceneSystem shadow/fog keys are

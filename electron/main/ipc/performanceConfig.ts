@@ -7,6 +7,7 @@ import {
     applyPerformanceConfig,
     setPerformanceHudConvars,
     setPerformanceAdvancedConvars,
+    clearPerformanceConvars,
     getPerformanceConfigStatus,
     removePerformanceConfig,
     resetPerformanceConfigOverrides,
@@ -30,6 +31,14 @@ ipcMain.handle('set-performance-hud-convars', (_event, values: Record<string, bo
 
 ipcMain.handle('set-performance-advanced-convars', (_event, values: Record<string, number>): PerformanceConfigStatus => {
     return setPerformanceAdvancedConvars(getActiveDeadlockPath(), values);
+});
+
+// clear-performance-convars (per-control "reset to game default": removes
+// Grimoire's line for each key instead of writing a value of our choosing).
+// The key list is filtered against the managed tables in the service, so a
+// renderer bug cannot reach an unrelated line in gameinfo.gi.
+ipcMain.handle('clear-performance-convars', (_event, keys: string[]): PerformanceConfigStatus => {
+    return clearPerformanceConvars(getActiveDeadlockPath(), Array.isArray(keys) ? keys : []);
 });
 
 // remove-performance-config

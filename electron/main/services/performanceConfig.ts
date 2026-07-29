@@ -13,7 +13,11 @@ import { createHash } from 'crypto';
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { getGameinfoPath } from './deadlock';
-import type { PerformanceConfigStatus } from '../../../src/types/electron';
+import type {
+    PerformanceConfigStatus,
+    PerformanceConvarOrigin,
+    PerformanceConvarState,
+} from '../../../src/types/electron';
 import {
     CONVARS,
     ADVANCED_GAMEINFO_CONVARS,
@@ -26,6 +30,20 @@ import {
 
 const MARKER = 'grimoire-perf';
 const BEGIN_RE = /Grimoire Performance Config BEGIN \(preset=([\w-]+) v([\w.]+)\)/;
+
+// The four inline marker shapes Grimoire writes, as recognizers. Managed
+// (preset) edits use `added` / `was` / `removed`; the unmanaged single-ConVar
+// path uses `hud-added` / `hud-was`. Kept together so the read side (status,
+// provenance) and the write side (apply, remove, clear) can never drift apart
+// on the exact bytes. Note `// grimoire-perf added` is not a substring of
+// `// grimoire-perf hud-added`, so the plain-token tests stay unambiguous.
+const ADDED_TOKEN = `// ${MARKER} added`;
+const HUD_ADDED_TOKEN = `// ${MARKER} hud-added`;
+const WAS_RE = new RegExp(`^(.*?) // ${MARKER} was ("[^"]*"|\\S+)\\s*$`);
+// hud-was puts the marker before the line's trailing comment (see
+// setConvarsInUnmanagedFile), so group 3 carries whatever followed it.
+const HUD_WAS_RE = new RegExp(`^(.*?) // ${MARKER} hud-was ("[^"]*"|\\S+)(.*)$`);
+const REMOVED_RE = new RegExp(`^([ \\t]*)// ${MARKER} removed: (.*)$`);
 const GAMEINFO_BACKUP_SUFFIX = '.grimoire-bak';
 // Applied-state sidecar, stored next to gameinfo.gi (game updates replace
 // gameinfo.gi but leave foreign files alone). Owned by the main process only,
@@ -168,6 +186,190 @@ const quote = (v: string) => `"${v.replace(/^"|"$/g, '')}"`;
 const unquote = (v: string) => v.replace(/^"|"$/g, '');
 
 // ---------------------------------------------------------------------------
+// Per-ConVar provenance
+//
+// Every user-facing control is badged with where its current value came from.
+// Only the main process can answer that honestly: it takes the inline markers,
+// the sidecar overrides and the preset tables together. The renderer used to
+// carry its own fallback numbers and drew them as though the game had picked
+// them, which is the exact confusion these states exist to remove.
+// ---------------------------------------------------------------------------
+
+const HUD_BY_KEY = new Map<string, (typeof HUD_CONVARS)[number]>(
+    HUD_CONVARS.map((entry) => [entry.key, entry])
+);
+const ADVANCED_BY_KEY = new Map<string, (typeof ADVANCED_GAMEINFO_CONVARS)[number]>(
+    ADVANCED_GAMEINFO_CONVARS.map((entry) => [entry.key, entry])
+);
+/** Every ConVar the card exposes. The clear path refuses anything outside it,
+ *  so a renderer bug can never delete an unrelated line. */
+const USER_FACING_KEYS = new Set<string>([...HUD_BY_KEY.keys(), ...ADVANCED_BY_KEY.keys()]);
+const PRESET_CONVAR_VALUES = new Map<string, string>(CONVARS.map(([key, value]) => [key, value]));
+
+/** One active `key "value"` line for a user-facing ConVar, plus which Grimoire
+ *  marker (if any) tags it. `stock` is the pre-Grimoire value the was/hud-was
+ *  marker recorded, which is the most trustworthy game default we ever have:
+ *  it came out of this user's own file. */
+interface ConvarLineInfo {
+    value: string;
+    marker: 'added' | 'was' | 'hud-added' | 'hud-was' | null;
+    stock: string | null;
+}
+
+interface ConvarLineScan {
+    /** Active entries, last occurrence wins (that is the one the engine ends
+     *  up honoring in a file that carries duplicates). */
+    active: Map<string, ConvarLineInfo>;
+    /** Stock values parked in `removed:` marker comments, i.e. keys the user
+     *  reset to the game default. Lets the badge name the value even though no
+     *  active line exists. */
+    removedStock: Map<string, string>;
+}
+
+function scanConvarLines(normalized: string): ConvarLineScan {
+    const scan: ConvarLineScan = { active: new Map(), removedStock: new Map() };
+    const range = findSectionByPath(normalized, ['ConVars']);
+    if (!range) return scan;
+
+    for (const line of normalized.slice(range.bodyStart, range.bodyEnd).split('\n')) {
+        const removed = REMOVED_RE.exec(line);
+        if (removed) {
+            const key = entryKey(removed[2]);
+            const entry = key ? matchEntryLine(removed[2], key) : null;
+            if (key && entry && USER_FACING_KEYS.has(key)) {
+                scan.removedStock.set(key, unquote(entry.value));
+            }
+            continue;
+        }
+        const key = entryKey(line);
+        if (!key || !USER_FACING_KEYS.has(key)) continue;
+        const entry = matchEntryLine(line, key);
+        if (!entry) continue;
+
+        let marker: ConvarLineInfo['marker'] = null;
+        let stock: string | null = null;
+        if (line.includes(ADDED_TOKEN)) marker = 'added';
+        else if (line.includes(HUD_ADDED_TOKEN)) marker = 'hud-added';
+        else {
+            const was = WAS_RE.exec(line);
+            const hudWas = was ? null : HUD_WAS_RE.exec(line);
+            if (was) {
+                marker = 'was';
+                stock = unquote(was[2]);
+            } else if (hudWas) {
+                marker = 'hud-was';
+                stock = unquote(hudWas[2]);
+            }
+        }
+        scan.active.set(key, { value: unquote(entry.value), marker, stock });
+    }
+    return scan;
+}
+
+/** gameinfo.gi values are text, but "8" and "8.0" are the same slider
+ *  position. Compare numerically when both sides parse, exactly otherwise. */
+function valuesEqual(a: string, b: string): boolean {
+    if (a === b) return true;
+    if (a.trim() === '' || b.trim() === '') return false;
+    const na = Number(a);
+    const nb = Number(b);
+    return Number.isFinite(na) && Number.isFinite(nb) && na === nb;
+}
+
+/** Where one control's value came from. `supported` is false when the line
+ *  holds something this control cannot represent (a non-numeric slider value,
+ *  a toggle value that is neither its on nor its off token); the caller has
+ *  already decided that, because only it knows the control's shape. */
+function classifyOrigin(args: {
+    info: ConvarLineInfo | null;
+    supported: boolean;
+    applied: boolean;
+    presetValue: string | null;
+    gameDefault: string | null;
+    override: OverrideEntry | undefined;
+}): PerformanceConvarOrigin {
+    const { info, supported, applied, presetValue, gameDefault, override } = args;
+    // No line at all: the engine's built-in value is what runs.
+    if (!info) return 'game-default';
+    if (!supported) return 'unsupported';
+    if (info.marker === null) {
+        // A line Grimoire never tagged. If it still carries the value we know
+        // the engine ships, nothing has been overridden yet.
+        if (gameDefault !== null && valuesEqual(info.value, gameDefault)) return 'game-default';
+        return 'user-override';
+    }
+    // A recorded sidecar deviation settles it: the user moved this away from
+    // whatever the preset writes.
+    if (override?.value !== undefined && override.value !== presetValue) return 'user-override';
+    if (applied && presetValue !== null && info.value === presetValue) return 'managed-preset';
+    return 'user-override';
+}
+
+/** Provenance for every user-facing ConVar. `rawContent` may use either EOL
+ *  style. Returns an empty record only when there is no ConVars section to
+ *  read, which the renderer treats as "cannot inspect" rather than "default". */
+function computeConvarStates(
+    rawContent: string,
+    gameinfoPath: string
+): Record<string, PerformanceConvarState> {
+    const normalized = rawContent.includes('\r\n')
+        ? rawContent.split('\r\n').join('\n')
+        : rawContent;
+    if (!findSectionByPath(normalized, ['ConVars'])) return {};
+
+    const applied = BEGIN_RE.test(normalized);
+    const scan = scanConvarLines(normalized);
+    const overrides = readAppliedState(gameinfoPath)?.overrides ?? {};
+    const states: Record<string, PerformanceConvarState> = {};
+
+    const build = (
+        key: string,
+        supported: boolean,
+        gameDefaultFallback: string | null,
+        outOfRange: boolean
+    ): PerformanceConvarState => {
+        const info = scan.active.get(key) ?? null;
+        const presetValue = PRESET_CONVAR_VALUES.get(key) ?? null;
+        // Prefer values observed in this user's own file over the table.
+        const gameDefault =
+            info?.stock ?? scan.removedStock.get(key) ?? gameDefaultFallback ?? null;
+        const origin = classifyOrigin({
+            info,
+            supported,
+            applied,
+            presetValue,
+            gameDefault,
+            override: overrides[`ConVars/${key}`],
+        });
+        return {
+            origin,
+            value: info?.value ?? null,
+            presetValue,
+            gameDefault,
+            ...(outOfRange ? { outOfRange: true } : {}),
+        };
+    };
+
+    for (const entry of HUD_CONVARS) {
+        const value = scan.active.get(entry.key)?.value;
+        const supported = value === undefined || value === entry.on || value === entry.off;
+        states[entry.key] = build(entry.key, supported, entry.gameDefault, false);
+    }
+    for (const entry of ADVANCED_GAMEINFO_CONVARS) {
+        const raw = scan.active.get(entry.key)?.value;
+        const numeric = raw === undefined ? null : Number(raw);
+        const supported = raw === undefined || (raw.trim() !== '' && Number.isFinite(numeric));
+        // Out of range is not "unsupported": we understand the number fine, we
+        // just refuse to draw it on a slider that cannot reach it. Replacing it
+        // takes an explicit confirmation in the UI, never a silent clamp.
+        const outOfRange =
+            supported && numeric !== null && (numeric < entry.min || numeric > entry.max);
+        states[entry.key] = build(entry.key, supported, String(entry.gameDefault), outOfRange);
+    }
+    return states;
+}
+
+// ---------------------------------------------------------------------------
 // Overrides: harvest hand edits so they survive reapply and wipes
 // ---------------------------------------------------------------------------
 
@@ -197,11 +399,9 @@ function presetKeyIndex(): Map<string, { okey: string; value: string } | null> {
 function harvestOverrides(content: string): Overrides {
     const idx = presetKeyIndex();
     const overrides: Overrides = {};
-    const addedToken = `// ${MARKER} added`;
-    const wasRe = new RegExp(`^(.*?) // ${MARKER} was ("[^"]*"|\\S+)\\s*$`);
 
     for (const line of content.split('\n')) {
-        const addedAt = line.indexOf(addedToken);
+        const addedAt = line.indexOf(ADDED_TOKEN);
         if (addedAt >= 0) {
             const body = line.slice(0, addedAt);
             const isCommented = /^[ \t]*\/\//.test(body);
@@ -224,7 +424,7 @@ function harvestOverrides(content: string): Overrides {
             }
             continue;
         }
-        const was = wasRe.exec(line);
+        const was = WAS_RE.exec(line);
         if (was) {
             const key = entryKey(was[1]);
             const entry = key ? matchEntryLine(was[1], key) : null;
@@ -438,29 +638,37 @@ export function setPerformanceHudConvars(
     deadlockPath: string | null,
     values: Record<string, boolean>
 ): PerformanceConfigStatus {
-    const allowed = new Map<string, (typeof HUD_CONVARS)[number]>(HUD_CONVARS.map((entry) => [entry.key, entry]));
     const convarValues: Record<string, string> = {};
     for (const [key, enabled] of Object.entries(values)) {
-        const entry = allowed.get(key);
+        const entry = HUD_BY_KEY.get(key);
         if (entry) convarValues[key] = enabled ? entry.on : entry.off;
     }
-    return setPerformanceConvarValues(deadlockPath, convarValues, allowed);
+    return setPerformanceConvarValues(deadlockPath, convarValues, HUD_BY_KEY);
 }
 
+/** Write advanced numeric ConVars. Out-of-range input is refused outright
+ *  rather than dropped or clamped: silently ignoring it made the UI report
+ *  success while gameinfo.gi kept its old value, and clamping would replace a
+ *  deliberate out-of-range number with one Grimoire picked. The card confirms
+ *  a replacement with the user before it ever gets here. */
 export function setPerformanceAdvancedConvars(
     deadlockPath: string | null,
     values: Record<string, number>
 ): PerformanceConfigStatus {
-    const allowed = new Map<string, { key: string; min: number; max: number; step: number }>(
-        ADVANCED_GAMEINFO_CONVARS.map((entry) => [entry.key, entry])
-    );
     const convarValues: Record<string, string> = {};
     for (const [key, value] of Object.entries(values)) {
-        const entry = allowed.get(key);
-        if (!entry || !Number.isFinite(value) || value < entry.min || value > entry.max) continue;
+        const entry = ADVANCED_BY_KEY.get(key);
+        if (!entry) return status('error', `${key} is not a Grimoire-managed setting.`);
+        if (!Number.isFinite(value)) return status('error', `${key} was given a value that is not a number.`);
+        if (value < entry.min || value > entry.max) {
+            return status(
+                'error',
+                `${key} must be between ${entry.min} and ${entry.max}. Grimoire will not clamp ${value} for you; reset the setting or edit gameinfo.gi directly.`
+            );
+        }
         convarValues[key] = String(value);
     }
-    return setPerformanceConvarValues(deadlockPath, convarValues, allowed);
+    return setPerformanceConvarValues(deadlockPath, convarValues, ADVANCED_BY_KEY);
 }
 
 function setPerformanceConvarValues(
@@ -521,7 +729,8 @@ function setConvarsInUnmanagedFile(
         writeFileSync(gameinfoPath, crlf ? content.split('\n').join('\r\n') : content, 'utf-8');
         return {
             ...status('not-applied', 'HUD ConVars are configured in gameinfo.gi.'),
-            convarValues: readHudConvarValues(content),
+            convarValues: readUserConvarValues(content),
+            convarStates: computeConvarStates(content, gameinfoPath),
         };
     } catch (err) {
         return status('error', `Failed to update HUD ConVars: ${err}`);
@@ -547,8 +756,6 @@ function braceCount(content: string): number {
 
 // Reverse every marked line. Input and output are LF-normalized.
 function removeMarkers(content: string): string {
-    const wasRe = new RegExp(`^(.*?) // ${MARKER} was ("[^"]*"|\\S+)\\s*$`);
-    const removedRe = new RegExp(`^([ \\t]*)// ${MARKER} removed: (.*)$`);
     const out: string[] = [];
     for (const line of content.split('\n')) {
         // Block header/footer + injected entries: drop the line entirely.
@@ -556,14 +763,14 @@ function removeMarkers(content: string): string {
         // installed OptimizationLock config (full of "OptimizationLock"
         // comments of its own) is never touched.
         if (
-            line.includes(`// ${MARKER} added`) ||
+            line.includes(ADDED_TOKEN) ||
             line.includes(`[${MARKER}]`) ||
             /Grimoire Performance Config (BEGIN|END)/.test(line)
         ) {
             continue;
         }
         // Edited stock entry: restore the recorded original value.
-        const was = wasRe.exec(line);
+        const was = WAS_RE.exec(line);
         if (was) {
             const key = entryKey(was[1]);
             const entry = key ? matchEntryLine(was[1], key) : null;
@@ -573,7 +780,7 @@ function removeMarkers(content: string): string {
             }
         }
         // Commented-out stock entry: bring the original line back.
-        const removed = removedRe.exec(line);
+        const removed = REMOVED_RE.exec(line);
         if (removed) {
             out.push(`${removed[1]}${removed[2]}`);
             continue;
@@ -602,6 +809,143 @@ export function removePerformanceConfig(deadlockPath: string | null): Performanc
         return status('not-applied', 'Performance config removed; stock values restored.');
     } catch (err) {
         return status('error', `Failed to remove performance config: ${err}`);
+    }
+}
+
+/** Reset user-facing ConVars to the game default by *removing* Grimoire's line
+ *  for them, never by writing a number Grimoire picked.
+ *
+ *  Three shapes, one per marker:
+ *  - `added` / `hud-added` (a line Grimoire injected): delete it outright. The
+ *    key was not in the user's file before us, so leaving nothing behind is
+ *    exactly the pre-Grimoire state.
+ *  - `was` (a stock line the preset edited): rewrite it as a `removed:` marker
+ *    comment carrying the original line. The engine then falls back to its own
+ *    default, Remove still restores the user's file byte for byte, and reapply
+ *    reads the key as deleted (harvestOverrides records `omit`), so the preset
+ *    does not quietly re-add it on the next apply.
+ *  - `hud-was` (a stock line edited in a hand-managed file): restore the
+ *    original line and drop the marker. Commenting out a line in a file the
+ *    user maintains themselves would be presumptuous; here the stock value is
+ *    the honest end state.
+ *
+ *  Untagged lines are never touched (the marker-tagged-lines-only invariant),
+ *  so a value the user typed into gameinfo.gi by hand is reported as
+ *  not-clearable instead of being silently deleted. Clearing nothing writes
+ *  nothing and says so. */
+export function clearPerformanceConvars(
+    deadlockPath: string | null,
+    keys: string[]
+): PerformanceConfigStatus {
+    if (!deadlockPath) return status('error', 'Deadlock path not configured.');
+    const gameinfoPath = getGameinfoPath(deadlockPath);
+    if (!existsSync(gameinfoPath)) {
+        return status('error', 'gameinfo.gi not found. Configure your Deadlock path first.');
+    }
+    const targets = [...new Set(keys.filter((key) => USER_FACING_KEYS.has(key)))];
+    if (targets.length === 0) {
+        return status('error', 'No Grimoire-managed setting was named, so nothing was reset.');
+    }
+
+    try {
+        const original = readFileSync(gameinfoPath, 'utf-8');
+        const crlf = original.includes('\r\n');
+        let content = crlf ? original.split('\r\n').join('\n') : original;
+        const range = findSectionByPath(content, ['ConVars']);
+        if (!range) {
+            const restorable = canRestoreBackup(gameinfoPath, original);
+            const how = restorable
+                ? 'Restore the Grimoire backup below, or verify game files in Steam, then try again.'
+                : 'Verify game files in Steam and try again.';
+            return status(
+                'error',
+                `gameinfo.gi has no ConVars section, so it cannot be inspected. ${how}`,
+                0,
+                restorable
+            );
+        }
+        const managed = BEGIN_RE.test(content);
+        const lines = content.slice(range.bodyStart, range.bodyEnd).split('\n');
+
+        const cleared: string[] = [];
+        for (const key of targets) {
+            let touched = false;
+            // Walk backwards: lines are spliced out, and a hand-edited file can
+            // carry the same key more than once (all of them have to go, or the
+            // engine keeps honoring the survivor).
+            for (let i = lines.length - 1; i >= 0; i--) {
+                const line = lines[i];
+                if (entryKey(line) !== key) continue;
+                if (line.includes(ADDED_TOKEN) || line.includes(HUD_ADDED_TOKEN)) {
+                    lines.splice(i, 1);
+                    touched = true;
+                    continue;
+                }
+                const was = WAS_RE.exec(line);
+                if (was) {
+                    const entry = matchEntryLine(was[1], key);
+                    if (!entry) continue;
+                    const indent = /^[ \t]*/.exec(line)![0];
+                    const stock = `${entry.prefix}${was[2]}${entry.suffix}`;
+                    lines[i] = `${indent}// ${MARKER} removed: ${stock.trim()}`;
+                    touched = true;
+                    continue;
+                }
+                const hudWas = HUD_WAS_RE.exec(line);
+                if (hudWas) {
+                    const entry = matchEntryLine(hudWas[1], key);
+                    if (!entry) continue;
+                    lines[i] = `${entry.prefix}${hudWas[2]}${hudWas[3]}`;
+                    touched = true;
+                }
+            }
+            if (touched) cleared.push(key);
+        }
+
+        if (cleared.length === 0) {
+            // Honest no-op: nothing Grimoire wrote is in the way, so there is
+            // no override to remove and the file stays untouched.
+            const current = getPerformanceConfigStatus(deadlockPath);
+            return {
+                ...current,
+                message:
+                    'Nothing to reset: Grimoire has no line of its own for those settings, so gameinfo.gi was left alone.',
+            };
+        }
+
+        content = content.slice(0, range.bodyStart) + lines.join('\n') + content.slice(range.bodyEnd);
+        if (braceCount(content) !== braceCount(original)) {
+            return status('error', 'Reset produced an unbalanced gameinfo.gi; no changes were written.');
+        }
+
+        const finalText = crlf ? content.split('\n').join('\r\n') : content;
+        writeFileSync(gameinfoPath, finalText, 'utf-8');
+
+        // Managed files carry a sidecar: record the reset as an `omit` for
+        // preset keys (so the next apply respects it) and drop the stored
+        // deviation for everything else. Refreshing the content hash keeps the
+        // status out of the false "hand edited" state.
+        if (managed) {
+            const sidecar = readAppliedState(gameinfoPath);
+            const overrides: Overrides = { ...(sidecar?.overrides ?? {}) };
+            for (const key of cleared) {
+                const okey = `ConVars/${key}`;
+                if (PRESET_CONVAR_VALUES.has(key)) overrides[okey] = { omit: true };
+                else delete overrides[okey];
+            }
+            writeAppliedState(gameinfoPath, true, sha256(finalText), overrides);
+        }
+
+        const missed = targets.length - cleared.length;
+        const missedNote = missed
+            ? ` ${missed} had no Grimoire line to remove and was left as-is.`
+            : '';
+        return {
+            ...getPerformanceConfigStatus(deadlockPath),
+            message: `Reset ${cleared.length} setting${cleared.length === 1 ? '' : 's'} to the game default.${missedNote}`,
+        };
+    } catch (err) {
+        return status('error', `Failed to reset performance ConVars: ${err}`);
     }
 }
 
@@ -653,7 +997,8 @@ export function getPerformanceConfigStatus(deadlockPath: string | null): Perform
 
     try {
         const content = readFileSync(gameinfoPath, 'utf-8');
-        const convarValues = readHudConvarValues(content);
+        const convarValues = readUserConvarValues(content);
+        const convarStates = computeConvarStates(content, gameinfoPath);
         const begin = BEGIN_RE.exec(content);
         if (begin) {
             // The sidecar records a hash of the exact bytes Grimoire wrote, so
@@ -677,6 +1022,7 @@ export function getPerformanceConfigStatus(deadlockPath: string | null): Perform
                 handEdited,
                 overrideCount,
                 convarValues,
+                convarStates,
                 message: handEdited
                     ? `${base}${overrideNote} The file has manual edits: Reapply folds them into your overrides.`
                     : `${base}${overrideNote}`,
@@ -709,28 +1055,28 @@ export function getPerformanceConfigStatus(deadlockPath: string | null): Perform
                 savedOverrides
                 ),
                 convarValues,
+                convarStates,
             };
         }
         return {
             ...status('not-applied', 'Performance config is not applied.'),
             convarValues,
+            convarStates,
         };
     } catch (err) {
         return status('error', `Failed to read gameinfo.gi: ${err}`);
     }
 }
 
-function readHudConvarValues(content: string): Record<string, string> {
+/** Current values for every user-facing ConVar, HUD toggles and advanced
+ *  sliders alike. This used to filter to HUD keys only, which meant the
+ *  advanced sliders read `undefined` even immediately after the user set one
+ *  and permanently claimed to be sitting on the game default. */
+function readUserConvarValues(content: string): Record<string, string> {
     const normalized = content.includes('\r\n') ? content.split('\r\n').join('\n') : content;
-    const range = findSectionByPath(normalized, ['ConVars']);
-    if (!range) return {};
-    const body = normalized.slice(range.bodyStart, range.bodyEnd);
     const values: Record<string, string> = {};
-    for (const line of body.split(/\r?\n/)) {
-        const key = entryKey(line);
-        if (!key || !HUD_CONVARS.some((entry) => entry.key === key)) continue;
-        const match = matchEntryLine(line, key);
-        if (match) values[key] = unquote(match.value);
+    for (const [key, info] of scanConvarLines(normalized).active) {
+        values[key] = info.value;
     }
     return values;
 }
