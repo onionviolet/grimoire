@@ -74,6 +74,7 @@ import { showToast } from '../stores/toastStore';
 import { useAppStore, type BrowseArtistRef } from '../stores/appStore';
 import { getActiveDeadlockPath } from '../lib/appSettings';
 import { isImprintPending } from '../lib/imprintPending';
+import { readPref, writePref, CARD_SIZE_MIN as CARD_SIZE_MULTIPLIER_FLOOR, CARD_SIZE_MAX as CARD_SIZE_MULTIPLIER_CEILING } from '../lib/uiPrefs';
 import { getConflicts, openModsFolder, readImageDataUrl, showOpenDialog, getModDetails, getModFileList, downloadMod, createSnapshot, detectUnknownModFilters, detectUnknownModCacheBulk, cancelUnknownModDetection, onUnknownModDetectionProgress, applyUnknownModMatch, applyUnknownCustomMod, associateUnknownMod, listUnknownModFiles, browseMods, mergeMods, unmergeMod, extractMergeSource, addMergeSources, reorderMods as apiReorderMods, setModIgnoreUpdates, getLockerOverview, revealModInFolder, dmmMigrateScan, dmmMigrateExecute, imprintAllInstalled, onImprintAllInstalledProgress, imprintPreflight, readImprintDetails, getModelCompatibilityReport, applyModelCompatibilityFix, launchModded } from '../lib/api';
 import type { UnmergeModResult, ImprintAllInstalledResult, ImprintInstalledProgress, ImprintPreflightResult, ImprintDetails } from '../lib/api';
 import type { ModConflict } from '../lib/api';
@@ -741,9 +742,10 @@ const CARD_SIZE_BASE = 118;
 const CARD_SIZE_VW = 7;
 const CARD_SIZE_VH = 3;
 const CARD_SIZE_MAX = 300;
-const CARD_SIZE_MULTIPLIER_MIN = 0.8;
-const CARD_SIZE_MULTIPLIER_MAX = 2;
-const CARD_SIZE_MULTIPLIER_DEFAULT = 1;
+// Bounds come from the shared preference, so this grid and Browse's cannot
+// drift apart on what the slider means.
+const CARD_SIZE_MULTIPLIER_MIN = CARD_SIZE_MULTIPLIER_FLOOR;
+const CARD_SIZE_MULTIPLIER_MAX = CARD_SIZE_MULTIPLIER_CEILING;
 const CARD_SIZE_MULTIPLIER_STEP = 0.1;
 // Below this multiplier the grid drops to the dense "compact" card (shorter
 // media frame, fewer chips, single-line tags). The size slider doesn't expose a
@@ -751,19 +753,20 @@ const CARD_SIZE_MULTIPLIER_STEP = 0.1;
 // the treatment, same as the old px threshold did before the slider became a
 // responsive multiplier.
 const CARD_SIZE_COMPACT_MULTIPLIER = 0.95;
-const INSTALLED_CARD_SIZE_MULTIPLIER_KEY = 'installedCardSizeMultiplier';
 // localStorage key for the user-dragged position of the floating select bar.
+// A dragged position is not a view preference, so it stays out of uiPrefs:
+// "reset view preferences" should not move the user's bar back.
 const SELECT_BAR_POS_KEY = 'installedSelectBarPos';
 
 function clampCardSizeMultiplier(value: number): number {
   return Math.min(CARD_SIZE_MULTIPLIER_MAX, Math.max(CARD_SIZE_MULTIPLIER_MIN, value));
 }
 
+// Card size is one shared preference, not one per grid: this and Browse drive
+// the same control over the same kind of grid, and tuning it here used to
+// leave Browse untouched. uiPrefs reads either page's old key.
 function readInstalledCardSizeMultiplier(): number {
-  const raw = localStorage.getItem(INSTALLED_CARD_SIZE_MULTIPLIER_KEY);
-  if (raw == null || raw === '') return CARD_SIZE_MULTIPLIER_DEFAULT;
-  const stored = Number(raw);
-  return Number.isFinite(stored) ? clampCardSizeMultiplier(stored) : CARD_SIZE_MULTIPLIER_DEFAULT;
+  return readPref('cardSize');
 }
 
 function getCardSizeCss(multiplier: number): string {
@@ -877,20 +880,15 @@ export default function Installed() {
     [visibleMods]
   );
   // Layout = the user's structural choice (cards grid vs horizontal list).
-  const [layout, setLayout] = useState<'grid' | 'list'>(() => {
-    const stored = localStorage.getItem('installedLayout');
-    if (stored === 'grid' || stored === 'list') return stored;
-    // Migrate from the old three-mode key: only 'list' carried structure.
-    return localStorage.getItem('installedViewMode') === 'list' ? 'list' : 'grid';
-  });
+  const [layout, setLayout] = useState<'grid' | 'list'>(() => readPref('installedLayout'));
   const [cardSizeMultiplier, setCardSizeMultiplierState] = useState(readInstalledCardSizeMultiplier);
   useEffect(() => {
-    localStorage.setItem('installedLayout', layout);
+    writePref('installedLayout', layout);
   }, [layout]);
   const setCardSizeMultiplier = useCallback((nextMultiplier: number) => {
     const clampedMultiplier = clampCardSizeMultiplier(nextMultiplier);
     setCardSizeMultiplierState(clampedMultiplier);
-    localStorage.setItem(INSTALLED_CARD_SIZE_MULTIPLIER_KEY, String(clampedMultiplier));
+    writePref('cardSize', clampedMultiplier);
   }, []);
   // Style + card-size live behind a single dropdown so they don't eat a row of
   // toolbar width. Same relative/click-outside pattern as the filter popover.
@@ -916,10 +914,10 @@ export default function Installed() {
   // Fix unknown can be dismissed by right-clicking it; right-clicking the small
   // stub it leaves behind brings it back. Persisted so the choice sticks.
   const [fixUnknownHidden, setFixUnknownHidden] = useState(
-    () => localStorage.getItem('installedFixUnknownHidden') === '1',
+    () => readPref('installedFixUnknownHidden'),
   );
   useEffect(() => {
-    localStorage.setItem('installedFixUnknownHidden', fixUnknownHidden ? '1' : '0');
+    writePref('installedFixUnknownHidden', fixUnknownHidden);
   }, [fixUnknownHidden]);
   const cardSizeGridStyle = useMemo(
     () => getCardSizeGridStyle(cardSizeMultiplier),
@@ -995,26 +993,14 @@ export default function Installed() {
       imprintMountedRef.current = false;
     };
   }, []);
-  const [sortMode, setSortMode] = useState<'priority' | 'recent' | 'name'>(() => {
-    const stored = localStorage.getItem('installedSortMode');
-    return stored === 'recent' || stored === 'name' ? stored : 'priority';
-  });
+  const [sortMode, setSortMode] = useState<'priority' | 'recent' | 'name'>(() =>
+    readPref('installedSort')
+  );
   // Source + status are independent toggles (both on = no filter). Source
   // persists; status resets per session like the type selection.
-  const [sourceSel, setSourceSel] = useState<('gamebanana' | 'local')[]>(() => {
-    try {
-      const stored: unknown = JSON.parse(localStorage.getItem('installedSourceSel') ?? 'null');
-      if (Array.isArray(stored)) {
-        const valid = Array.from(
-          new Set(stored.filter((v): v is 'gamebanana' | 'local' => v === 'gamebanana' || v === 'local'))
-        );
-        if (valid.length > 0) return valid;
-      }
-    } catch {
-      /* fall through to default */
-    }
-    return ['gamebanana', 'local'];
-  });
+  const [sourceSel, setSourceSel] = useState<('gamebanana' | 'local')[]>(() =>
+    readPref('installedSource')
+  );
   const [statusSel, setStatusSel] = useState<('enabled' | 'disabled')[]>(['enabled', 'disabled']);
   const [heroFilter, setHeroFilter] = useState('all');
   const [tagFilter, setTagFilter] = useState<string[]>([]);
@@ -1032,16 +1018,16 @@ export default function Installed() {
   // behavior (pinned first, then the manual drag order); 'name' sorts A to Z
   // inside those same pin bands.
   const [disabledSortMode, setDisabledSortMode] = useState<'custom' | 'name'>(() =>
-    localStorage.getItem('installedDisabledSort') === 'name' ? 'name' : 'custom'
+    readPref('installedDisabledSort')
   );
   useEffect(() => {
-    localStorage.setItem('installedSortMode', sortMode);
+    writePref('installedSort', sortMode);
   }, [sortMode]);
   useEffect(() => {
-    localStorage.setItem('installedDisabledSort', disabledSortMode);
+    writePref('installedDisabledSort', disabledSortMode);
   }, [disabledSortMode]);
   useEffect(() => {
-    localStorage.setItem('installedSourceSel', JSON.stringify(sourceSel));
+    writePref('installedSource', sourceSel);
   }, [sourceSel]);
   useEffect(() => {
     if (!filterOpen) return;

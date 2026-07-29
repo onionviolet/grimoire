@@ -1216,6 +1216,13 @@
       "blockListClear": "Use built-in list only",
       "blockListError": "Custom list failed to load: ",
       "blockListHint": "Any hosts file or plain list of domains, one per line. The built-in list is deliberately small; point this at a real filter list for full coverage."
+    },
+    "viewPrefs": {
+      "title": "Reset view preferences",
+      "description": "Put every remembered layout choice back to its default: card size, grid or list, sort order, and the filters that persist. Your mods, lists, favorites, and settings are untouched.",
+      "allDefault": "Everything is already at its default.",
+      "changedCount_one": "{{count}} preference differs from its default.",
+      "changedCount_other": "{{count}} preferences differ from their default."
     }
   },
   "crosshair": {

@@ -30,8 +30,7 @@ import ConflictFileList from '../components/conflicts/ConflictFileList';
 import { MenuRoot, MenuTrigger, MenuContent, MenuItem, MenuLabel } from '../components/common/menu';
 import Tx from '../components/translation/Tx';
 import { searchConflict } from '../lib/conflictSearch';
-
-const CONFLICTS_VIEW_MODE_KEY = 'grimoire:conflicts-view-mode';
+import { readPref, writePref } from '../lib/uiPrefs';
 
 /** Wraps a conflict card's mod thumbnail in a right-click menu. The thumbnails
  *  are how you tell the two sides apart (the shared file path is identical), so
@@ -180,13 +179,7 @@ export default function Conflicts() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [disableTarget, setDisableTarget] = useState<ModWithThumbnail | null>(null);
-  const [viewMode, setViewMode] = useState<ViewMode>(() => {
-    try {
-      return localStorage.getItem(CONFLICTS_VIEW_MODE_KEY) === 'list' ? 'list' : 'grid';
-    } catch {
-      return 'grid';
-    }
-  });
+  const [viewMode, setViewMode] = useState<ViewMode>(() => readPref('conflictsViewMode'));
   // Query state is intentionally local to this visit and never participates in
   // loadConflicts, keeping search as inspection rather than another scan.
   const [search, setSearch] = useState('');
@@ -532,11 +525,7 @@ export default function Conflicts() {
   }, []);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(CONFLICTS_VIEW_MODE_KEY, viewMode === 'list' ? 'list' : 'grid');
-    } catch {
-      // localStorage may be unavailable.
-    }
+    writePref('conflictsViewMode', viewMode === 'list' ? 'list' : 'grid');
   }, [viewMode]);
 
   const confirmDisable = async () => {

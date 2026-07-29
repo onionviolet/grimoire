@@ -64,6 +64,7 @@ import {
 } from '../lib/lockerUtils';
 import { shuffleSkinKey, shuffleSoundKey, type VariantChoice } from '../lib/lockerRandomizer';
 import { resolveLockerRoute, type LockerMode } from '../lib/lockerMode';
+import { readPref, writePref } from '../lib/uiPrefs';
 import {
   buildSoundInventory,
   countMods,
@@ -231,16 +232,11 @@ export default function Locker() {
   );
   const [categoriesLoading, setCategoriesLoading] = useState(false);
   const [categoriesError, setCategoriesError] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'gallery' | 'list'>(() => {
-    const stored = localStorage.getItem('lockerViewMode');
-    return stored === 'list' ? 'list' : 'gallery';
-  });
+  const [viewMode, setViewMode] = useState<'gallery' | 'list'>(() => readPref('lockerViewMode'));
   // When on, heroes without any assigned skins/sounds are hidden so the grid
   // only shows the heroes you've actually customized. Favorited heroes stay
   // visible regardless. Persisted alongside viewMode.
-  const [hideEmptyHeroes, setHideEmptyHeroes] = useState(
-    () => localStorage.getItem('lockerHideEmpty') === 'true'
-  );
+  const [hideEmptyHeroes, setHideEmptyHeroes] = useState(() => readPref('lockerHideEmpty'));
   const [abilityRecolorSupport, setAbilityRecolorSupport] = useState<Record<string, boolean>>({});
   // Soul-container GLB import (lazy three.js modal), openable from the global
   // Locker tab. Mirrors the Installed-page trigger.
@@ -352,11 +348,11 @@ export default function Locker() {
   }, []);
 
   useEffect(() => {
-    localStorage.setItem('lockerViewMode', viewMode);
+    writePref('lockerViewMode', viewMode);
   }, [viewMode]);
 
   useEffect(() => {
-    localStorage.setItem('lockerHideEmpty', String(hideEmptyHeroes));
+    writePref('lockerHideEmpty', hideEmptyHeroes);
   }, [hideEmptyHeroes]);
 
   const navigate = useNavigate();

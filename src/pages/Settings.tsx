@@ -20,6 +20,7 @@ import {
 import { showToast } from '../stores/toastStore';
 import { useBackdropDismiss } from '../components/common/useBackdropDismiss';
 import { getActiveDeadlockPath, shouldBlurNsfw } from '../lib/appSettings';
+import { changedPrefCount, resetAllPrefs } from '../lib/uiPrefs';
 import { formatDateParts } from '../lib/dateFormat';
 import { Card, Badge, Toggle, Button } from '../components/common/ui';
 import { Input, Textarea } from '../components/common/forms';
@@ -94,6 +95,9 @@ export default function Settings() {
   const [previewResult, setPreviewResult] = useState<string | null>(null);
   const [previewConfirmOpen, setPreviewConfirmOpen] = useState(false);
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
+  // Read once on mount: nothing else on this page changes a view preference,
+  // and the reset reloads, so a live subscription would buy nothing.
+  const [changedPrefs] = useState(changedPrefCount);
   const [resetResult, setResetResult] = useState<string | null>(null);
   const [saltIngestStatus, setSaltIngestStatus] = useState<SaltIngestStatus | null>(null);
   const [hiddenCreatorsOpen, setHiddenCreatorsOpen] = useState(false);
@@ -1604,6 +1608,43 @@ export default function Settings() {
               </div>
               <Button
                 onClick={() => setResetConfirmOpen(true)}
+                variant="secondary"
+                size="sm"
+                icon={RefreshCw}
+              >
+                <Tx k="common.actions.reset" fallback="Reset" />
+              </Button>
+            </div>
+
+            <div className="h-px bg-white/5" />
+
+            <div className="flex justify-between items-start gap-4">
+              <div>
+                <h4 className="font-medium text-sm">
+                  <Tx k="settings.viewPrefs.title" fallback="Reset view preferences" />
+                </h4>
+                <p className="text-xs text-text-secondary mt-1">
+                  <Tx
+                    k="settings.viewPrefs.description"
+                    fallback="Put every remembered layout choice back to its default: card size, grid or list, sort order, and the filters that persist. Your mods, lists, favorites, and settings are untouched."
+                  />
+                </p>
+                <p className="text-xs text-text-secondary mt-2 tabular-nums">
+                  {changedPrefs === 0
+                    ? t('settings.viewPrefs.allDefault', 'Everything is already at its default.')
+                    : t('settings.viewPrefs.changedCount', { count: changedPrefs })}
+                </p>
+              </div>
+              {/* A reload rather than a state broadcast: these values are read
+                  once into component state on mount all over the app, so
+                  clearing storage alone would leave every open surface showing
+                  the preference it had already read. */}
+              <Button
+                onClick={() => {
+                  resetAllPrefs();
+                  window.location.reload();
+                }}
+                disabled={changedPrefs === 0}
                 variant="secondary"
                 size="sm"
                 icon={RefreshCw}

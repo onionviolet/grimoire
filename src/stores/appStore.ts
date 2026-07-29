@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { Mod, AppSettings, AppearanceSurface, EditLocalModArgs, GlobalModType } from '../types/mod';
 import type { ImportCustomModArgs, ImportCustomModResult } from '../types/electron';
 import { getActiveDeadlockPath } from '../lib/appSettings';
+import { readPref, writePref } from '../lib/uiPrefs';
 import { setDateFormat } from '../lib/dateFormat';
 import i18n, { applyLanguagePreference } from '../i18n';
 import * as api from '../lib/api';
@@ -127,53 +128,20 @@ export interface BrowseArtistRef {
   kofiUrl?: string;
 }
 
-// layout + sort behave like preferences. Cache them in localStorage so they
-// survive app restarts. The rest of BrowseUiState is session-only: search
-// queries and filters shouldn't follow across launches.
-const LAYOUT_KEY = 'browseLayout';
-const SORT_KEY = 'browseSort';
-const SOUND_VOLUME_KEY = 'grimoire:sound-preview-volume';
-// Pre-slider key holding 'grid' | 'compact' | 'dense' | 'list'. Read once for
-// migration so existing users keep a comparable layout and card size.
-const LEGACY_VIEW_MODE_KEY = 'browseViewMode';
-
-const SORT_OPTIONS: BrowseSortOption[] = ['default', 'popular', 'recent', 'updated', 'views', 'name'];
-
+// layout + sort behave like preferences, so they live in the uiPrefs registry
+// (key names, defaults, codecs, and the legacy-key migration all in one place).
+// The rest of BrowseUiState is session-only: search queries and filters
+// shouldn't follow across launches.
 function readPersistedLayout(): BrowseLayout {
-  try {
-    const stored = localStorage.getItem(LAYOUT_KEY);
-    if (stored === 'grid' || stored === 'list') return stored;
-    // Migrate from the old four-mode key: only 'list' carried structure.
-    if (localStorage.getItem(LEGACY_VIEW_MODE_KEY) === 'list') return 'list';
-  } catch {
-    // localStorage may be unavailable (e.g. SSR, restricted contexts).
-  }
-  return 'grid';
+  return readPref('browseLayout');
 }
 
 function readPersistedSort(): BrowseSortOption {
-  try {
-    const stored = localStorage.getItem(SORT_KEY);
-    if (stored && (SORT_OPTIONS as string[]).includes(stored)) {
-      return stored as BrowseSortOption;
-    }
-  } catch {
-    // ignore
-  }
-  return 'default';
+  return readPref('browseSort');
 }
 
 function readPersistedSoundVolume(): number {
-  try {
-    const raw = localStorage.getItem(SOUND_VOLUME_KEY);
-    if (raw !== null) {
-      const n = Number(raw);
-      if (Number.isFinite(n)) return Math.min(1, Math.max(0, n));
-    }
-  } catch {
-    // localStorage may be unavailable.
-  }
-  return 0.7;
+  return readPref('soundVolume');
 }
 
 const DEFAULT_BROWSE_UI: BrowseUiState = {
@@ -1003,11 +971,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   setSoundVolume: (volume: number) => {
     const next = Math.max(0, Math.min(1, volume));
     set({ soundVolume: next });
-    try {
-      localStorage.setItem(SOUND_VOLUME_KEY, String(next));
-    } catch {
-      // localStorage may be unavailable.
-    }
+    writePref('soundVolume', next);
   },
 
   setPreviewAudioPlaying: (playing: boolean) => {
@@ -1015,21 +979,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   // Patch Browse UI state. Use a partial so callers can update one field at
-  // a time without restating the rest. layout + sort also mirror to
-  // localStorage so they persist across app restarts.
+  // a time without restating the rest. layout + sort also persist, so they
+  // survive app restarts.
   setBrowseUi: (partial: Partial<BrowseUiState>) => {
     set({ browseUi: { ...get().browseUi, ...partial } });
-    try {
-      if (partial.layout !== undefined) {
-        localStorage.setItem(LAYOUT_KEY, partial.layout);
-      }
-      if (partial.sort !== undefined) {
-        localStorage.setItem(SORT_KEY, partial.sort);
-      }
-    } catch {
-      // localStorage write may fail (quota, restricted context); state still
-      // updates in memory so the user's current session works.
-    }
+    if (partial.layout !== undefined) writePref('browseLayout', partial.layout);
+    if (partial.sort !== undefined) writePref('browseSort', partial.sort);
   },
 
   resetBrowseUi: () => {

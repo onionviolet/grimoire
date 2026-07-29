@@ -71,6 +71,7 @@ import {
 } from '../lib/api';
 import { getActiveDeadlockPath } from '../lib/appSettings';
 import { useStableCallback } from '../lib/useStableCallback';
+import { readPref, writePref, CARD_SIZE_MIN, CARD_SIZE_MAX } from '../lib/uiPrefs';
 import type {
   GameBananaMod,
   GameBananaModDetails,
@@ -137,12 +138,9 @@ type ModDetailsNavigationDirection = 'previous' | 'next';
 // shape as Mods, so they browse and install through the existing parameterized
 // section path. The section list is otherwise data-driven from CategoryTree.
 const SECTION_WHITELIST = new Set(['Mod', 'Sound', 'Wip']);
-const BROWSE_CARD_DESIGN_STORAGE_KEY = 'browseCardDesign';
-const BROWSE_DETAILS_VIEW_STORAGE_KEY = 'browseDetailsView';
 // Below this window width the docked sidebar would crush the grid, so we force
 // the centered modal regardless of the saved preference.
 const BROWSE_SIDEBAR_MIN_WINDOW_WIDTH = 760;
-const BROWSE_SIDEBAR_WIDTH_KEY = 'browseDetailsSidebarWidth';
 const BROWSE_SIDEBAR_WIDTH_MIN = 320;
 const BROWSE_SIDEBAR_WIDTH_DEFAULT = 420;
 // The grid always keeps at least this much room; the sidebar's effective width
@@ -236,8 +234,10 @@ function clampSidebarWidth(value: number, ceiling: number): number {
 
 function readBrowseSidebarWidth(): number {
   if (typeof window === 'undefined') return BROWSE_SIDEBAR_WIDTH_DEFAULT;
-  const stored = Number(window.localStorage.getItem(BROWSE_SIDEBAR_WIDTH_KEY));
-  return Number.isFinite(stored) && stored > 0
+  // Stored loosely and clamped here: the ceiling is the live window, which the
+  // preference registry cannot see.
+  const stored = readPref('browseSidebarWidth');
+  return stored > 0
     ? clampSidebarWidth(stored, sidebarWidthCeilingFor(window.innerWidth))
     : BROWSE_SIDEBAR_WIDTH_DEFAULT;
 }
@@ -332,11 +332,11 @@ const BROWSE_CARD_SIZE_BASE = 118;
 const BROWSE_CARD_SIZE_VW = 0.07;
 const BROWSE_CARD_SIZE_VH = 0.03;
 const BROWSE_CARD_SIZE_MAX = 300;
-const BROWSE_CARD_SIZE_MULTIPLIER_MIN = 0.8;
-const BROWSE_CARD_SIZE_MULTIPLIER_MAX = 2;
-const BROWSE_CARD_SIZE_MULTIPLIER_DEFAULT = 1;
+// Bounds come from the shared preference, so this grid and Installed's cannot
+// drift apart on what the slider means.
+const BROWSE_CARD_SIZE_MULTIPLIER_MIN = CARD_SIZE_MIN;
+const BROWSE_CARD_SIZE_MULTIPLIER_MAX = CARD_SIZE_MAX;
 const BROWSE_CARD_SIZE_MULTIPLIER_STEP = 0.1;
-const BROWSE_CARD_SIZE_MULTIPLIER_KEY = 'browseCardSizeMultiplier';
 
 type BrowseReadableDensity = 'micro' | 'compact' | 'full';
 type BrowseViewportMetrics = {
@@ -359,11 +359,11 @@ function clampBrowseCardSizeMultiplier(value: number): number {
   return clampNumber(value, BROWSE_CARD_SIZE_MULTIPLIER_MIN, BROWSE_CARD_SIZE_MULTIPLIER_MAX);
 }
 
+// Card size is one shared preference, not one per grid: this and Installed
+// drive the same control over the same kind of grid, and tuning it here used
+// to leave Installed untouched. uiPrefs reads either page's old key.
 function readBrowseCardSizeMultiplier(): number {
-  const raw = localStorage.getItem(BROWSE_CARD_SIZE_MULTIPLIER_KEY);
-  if (raw == null || raw === '') return BROWSE_CARD_SIZE_MULTIPLIER_DEFAULT;
-  const stored = Number(raw);
-  return Number.isFinite(stored) ? clampBrowseCardSizeMultiplier(stored) : BROWSE_CARD_SIZE_MULTIPLIER_DEFAULT;
+  return readPref('cardSize');
 }
 
 function getBrowseCardSizeCss(multiplier: number): string {
@@ -1156,7 +1156,7 @@ export default function Browse() {
   const setBrowseCardSizeMultiplier = useCallback((nextMultiplier: number) => {
     const clampedMultiplier = clampBrowseCardSizeMultiplier(nextMultiplier);
     setBrowseCardSizeMultiplierState(clampedMultiplier);
-    localStorage.setItem(BROWSE_CARD_SIZE_MULTIPLIER_KEY, String(clampedMultiplier));
+    writePref('cardSize', clampedMultiplier);
   }, []);
   const browseNsfwContentMode: BrowseNsfwContentMode =
     settings?.browseNsfwContentMode ??
@@ -1314,19 +1314,19 @@ export default function Browse() {
   const [creatorToHide, setCreatorToHide] = useState<HiddenCreator | null>(null);
   const [browseCardDesign, setBrowseCardDesignState] = useState<BrowseCardDesign>(() => {
     if (typeof window === 'undefined') return 'readable';
-    return window.localStorage.getItem(BROWSE_CARD_DESIGN_STORAGE_KEY) === 'classic' ? 'classic' : 'readable';
+    return readPref('browseCardDesign');
   });
   const setBrowseCardDesign = useCallback((design: BrowseCardDesign) => {
     setBrowseCardDesignState(design);
-    window.localStorage.setItem(BROWSE_CARD_DESIGN_STORAGE_KEY, design);
+    writePref('browseCardDesign', design);
   }, []);
   const [browseDetailsView, setBrowseDetailsViewState] = useState<BrowseDetailsView>(() => {
     if (typeof window === 'undefined') return 'modal';
-    return window.localStorage.getItem(BROWSE_DETAILS_VIEW_STORAGE_KEY) === 'sidebar' ? 'sidebar' : 'modal';
+    return readPref('browseDetailsView');
   });
   const setBrowseDetailsView = useCallback((view: BrowseDetailsView) => {
     setBrowseDetailsViewState(view);
-    window.localStorage.setItem(BROWSE_DETAILS_VIEW_STORAGE_KEY, view);
+    writePref('browseDetailsView', view);
   }, []);
   // The sidebar only wins when there's room for it; on a narrow window it would
   // squeeze the grid into uselessness, so we fall back to the centered modal.
@@ -1383,7 +1383,7 @@ export default function Browse() {
       // Persist the raw width (not the window-capped value) so widening the
       // window later restores the size the user actually picked.
       setBrowseSidebarWidthState((w) => {
-        window.localStorage.setItem(BROWSE_SIDEBAR_WIDTH_KEY, String(w));
+        writePref('browseSidebarWidth', w);
         return w;
       });
     };
