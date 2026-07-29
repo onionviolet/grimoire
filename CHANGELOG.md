@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented here. Format is loosely based on [Keep a Changelog](https://keepachangelog.com/), and the project adheres to semantic versioning.
 
-## [1.25.173] - 2026-07-29
+## [1.25.1722] - 2026-07-29
 
 Locker and Foundry are one object at two moments: the Locker manages what you
 have, Foundry makes more of it. Each had learned only half of the same lesson.
