@@ -221,7 +221,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
             animated,
             gradient,
         ),
-    previewHeroColor: (heroName: string, hue: number, saturation: number, brightness: number) =>
+    // Resolves null when the hero has no renderable swatch (particle-only).
+    previewHeroColor: (
+        heroName: string,
+        hue: number,
+        saturation: number,
+        brightness: number,
+    ): Promise<string | null> =>
         ipcRenderer.invoke('preview-hero-color', heroName, hue, saturation, brightness),
     revertHeroColor: (heroName: string) =>
         ipcRenderer.invoke('revert-hero-color', heroName),

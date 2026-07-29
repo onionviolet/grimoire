@@ -280,15 +280,20 @@ export default function HeroColorPicker({ heroName, onAppliedChange }: HeroColor
       previewHeroColor(heroName, hue, saturation, brightness)
         .then((url) => {
           if (cancelled || !mounted.current) return;
+          if (url === null) {
+            // This hero has no swatch to render at all: stop retrying every
+            // tick and just show the CSS chip.
+            setPreviewFailed(true);
+            setPreviewUnavailable(true);
+            return;
+          }
           setPreviewUrl(url);
           setPreviewFailed(false);
         })
-        .catch((err) => {
+        .catch(() => {
           if (cancelled || !mounted.current) return;
+          // A genuine (possibly transient) failure: keep trying on later ticks.
           setPreviewFailed(true);
-          // A particle-only hero has no swatch to render: stop retrying every
-          // tick and just show the CSS chip. Other (transient) errors keep trying.
-          if (String(err).includes('particle-only')) setPreviewUnavailable(true);
         })
         .finally(() => {
           if (!cancelled && mounted.current) setPreviewLoading(false);

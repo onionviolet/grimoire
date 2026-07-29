@@ -741,12 +741,13 @@ export interface ElectronAPI {
         animated: boolean,
         gradient: string | null,
     ) => Promise<ApplyHeroPrismResult>;
+    /** Resolves null when the hero has no renderable swatch (particle-only). */
     previewHeroColor: (
         heroName: string,
         hue: number,
         saturation: number,
         brightness: number,
-    ) => Promise<string>;
+    ) => Promise<string | null>;
     revertHeroColor: (heroName: string) => Promise<ApplyHeroColorResult>;
     getActiveHeroColor: (heroName: string) => Promise<ActiveHeroColor | null>;
     previewTrippySprite: (opts: TrippySpriteOptions) => Promise<TrippySpriteResult>;

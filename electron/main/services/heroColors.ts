@@ -676,11 +676,31 @@ export function getActiveHeroColor(heroName: string): ActiveHeroColor | null {
 }
 
 /**
+ * The vpkmerge engine reports "this recipe is particle-only, there is no
+ * representative texture to preview" as a plain failure message. The wording
+ * lives in the sibling vpkmerge repo, not here, so match it loosely and keep
+ * the match in exactly this one spot: everything downstream (IPC, preload,
+ * renderer) sees only `null` vs a throw.
+ */
+function isParticleOnlyFailure(err: unknown): boolean {
+    const message = err instanceof Error ? err.message : String(err);
+    return message.toLowerCase().includes('particle-only');
+}
+
+/**
  * Render a fast PNG swatch of a hero's recolor (the recipe's representative
  * ability texture, recolored to the target) for the live picker preview. Returns
  * a `data:image/png;base64,...` URL. No bake/re-encode, so it is cheap enough to
  * call as the user drags (the renderer still debounces). Reads the base game VFX
  * from pak01.
+ *
+ * Returns null when this hero simply has no renderable swatch (a particle-only
+ * recipe: the recolor is real, there is just no representative texture to draw).
+ * That is a permanent property of the hero, so the caller should stop asking
+ * rather than retry on every slider tick. A throw stays a genuine, possibly
+ * transient failure. This is the one place the engine's wording is classified:
+ * Electron IPC flattens errors to message strings, so the distinction has to be
+ * carried by the return type, not by an Error subclass.
  */
 export async function previewHeroColor(
     deadlockPath: string,
@@ -688,7 +708,7 @@ export async function previewHeroColor(
     hue: number,
     saturation: number,
     brightness: number,
-): Promise<string> {
+): Promise<string | null> {
     const codename = colorCodenameForHero(heroName);
     if (!codename) {
         throw new Error(`Ability color recolor isn't available for ${heroName} yet.`);
@@ -719,6 +739,9 @@ export async function previewHeroColor(
         ]);
         const png = await fs.readFile(tmpPng);
         return `data:image/png;base64,${png.toString('base64')}`;
+    } catch (err) {
+        if (isParticleOnlyFailure(err)) return null;
+        throw err;
     } finally {
         await fs.unlink(tmpPng).catch(() => {});
     }

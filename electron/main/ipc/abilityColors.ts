@@ -72,7 +72,9 @@ ipcMain.handle(
         hue: number,
         saturation: number,
         brightness: number,
-    ): Promise<string> => {
+        // null means "this hero has no renderable swatch"; the renderer stops
+        // asking instead of retrying on every slider tick.
+    ): Promise<string | null> => {
         const deadlockPath = getActiveDeadlockPath();
         if (!deadlockPath) throw new Error('No Deadlock path configured');
         return previewHeroColor(deadlockPath, heroName, hue, saturation, brightness);

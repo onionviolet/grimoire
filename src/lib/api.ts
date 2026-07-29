@@ -375,13 +375,17 @@ export async function applyHeroPrism(
   );
 }
 
-/** Render a fast PNG swatch of the recolor target as a data URL (live preview). */
+/**
+ * Render a fast PNG swatch of the recolor target as a data URL (live preview).
+ * Resolves null when this hero has no renderable swatch, in which case the
+ * caller should stop asking and keep the CSS chip fallback.
+ */
 export async function previewHeroColor(
   heroName: string,
   hue: number,
   saturation: number,
   brightness: number
-): Promise<string> {
+): Promise<string | null> {
   return window.electronAPI.previewHeroColor(heroName, hue, saturation, brightness);
 }
 
