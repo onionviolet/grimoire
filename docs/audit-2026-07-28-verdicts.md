@@ -326,11 +326,15 @@ scope; flag it and move on unless told otherwise.
 
 Useful context, not scope.
 
+Verdicts below are the audit's, recorded as run. Where later work has closed a
+gap, a **Resolved** note is appended to the row; the original wording is left
+intact so this file stays a snapshot of what was true on the audit date.
+
 | Area | Verdict | Note |
 | --- | --- | --- |
-| Locker hero card apply | SHIPPED, one renderer gap | Apply/swap/revert/custom/teardown/hiding all confirmed. But `heroCards.ts:361` and `:389` return `missingSourceFileNames` and `HeroCardPicker.tsx:153`, `:206` read only `activeSourceFileName` and discard it, so a vanished source drops a card silently. One-line fix into the existing `actionError`. |
+| Locker hero card apply | SHIPPED, one renderer gap | Apply/swap/revert/custom/teardown/hiding all confirmed. But `heroCards.ts:361` and `:389` return `missingSourceFileNames` and `HeroCardPicker.tsx:153`, `:206` read only `activeSourceFileName` and discard it, so a vanished source drops a card silently. One-line fix into the existing `actionError`. **Resolved 2026-07-28 (`b629833`):** both apply paths now report the dropped names through `reportMissingSources` (`HeroCardPicker.tsx:147`) into `actionError`, via the new `locker.cards.missingSources` key. Deviation 5 in `locker-hero-card-apply.md` updated to match. |
 | VFX recolor roster | SHIPPED | 38 heroes pinned (`heroColors.ts:55`-`:94`), every one with a matching `recipe_for` arm in `vpkmerge-core/src/hero_recolor.rs:71`. The "only Paige and Celeste" claim was two heroes out of date by 36. Remaining work is in-game screenshots, not code. |
-| VFX preview fallback | SHIPPED, brittle | `HeroColorPicker.tsx:291` detects "no preview texture" by substring-matching `'particle-only'` in the engine's error string. A reworded engine message makes the picker retry a doomed preview on every slider tick. No test. |
+| VFX preview fallback | SHIPPED, brittle | `HeroColorPicker.tsx:291` detects "no preview texture" by substring-matching `'particle-only'` in the engine's error string. A reworded engine message makes the picker retry a doomed preview on every slider tick. No test. **Resolved 2026-07-28 (`711cb7f`):** the substring match is gone. `previewHeroColor` returns `Promise<string \| null>` (null means no renderable swatch, do not retry; a throw stays a transient failure), classified once in `heroColors.ts` and threaded through IPC, preload, `electron.ts`, and `api.ts`. Covered by `heroColors.previewHeroColor.test.ts`. |
 | Chat Wheel | SHIPPED, thin tests | Validation tested (`chatWheel.test.ts:29`, `:44`, converter faked, which the spec permits). YAML round-trip tested (`chatWheelModel.test.ts:7`, `:11`). Nothing tests `chat-wheel:read` or `chat-wheel:starter`, so the VPK round-trip and reset are unverified. The experimental gate is enforced on the sidebar entry (`Sidebar.tsx:514`) but not on the route itself. |
 | Overflow W1-W10 | SHIPPED | `deadlock.ts:209`, `:217`, `:238`, `:268` and callers. Doc accurate. |
 | Deadworks servers | SHIPPED | `deadlock.ts:298`, `:326`; `system.ts:34`, `:198`, `:273`, `:355`; `deadworksServers.ts:380`. Doc accurate, including the gameinfo weaving. |
