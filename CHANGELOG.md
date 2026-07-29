@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented here. Format is loosely based on [Keep a Changelog](https://keepachangelog.com/), and the project adheres to semantic versioning.
 
+## [1.25.1721] - 2026-07-28
+
+Maintenance release. No user-facing behaviour changes over 1.25.172.
+
+### Fixed
+- **Discover owner view counts and the gone-mods list could compile away.** The
+  two reads that surface them were typed against a copy of the shared wire
+  schema that only exists on a local checkout, so a packaged build could ship
+  with those fields silently absent. They are now typed against the same schema
+  the build pipeline resolves.
+
 ## [1.25.172] - 2026-07-28
 
 ### Added
