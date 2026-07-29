@@ -1,3 +1,7 @@
+import type { FoundryForgeEdit, FoundryForgeRequest } from '../../types/foundry';
+import type { FoundryStagedSoundEdit } from './soundStagedEdit';
+import type { VisualStagedEdit } from './visualEdits';
+
 /**
  * A source-mod-free description of work waiting to be forged.  The tray is
  * deliberately renderer-only: collecting edits must never disable, move, or
@@ -88,4 +92,80 @@ export function analyzeStagedEdits(edits: readonly FoundryStagedEdit[]): BuildTr
 
 export function affectedFileCount(edits: readonly FoundryStagedEdit[]): number {
   return new Set(edits.flatMap((edit) => edit.affectedFiles.map(normalizeEntryPath)).filter(Boolean)).size;
+}
+
+/**
+ * Both live authoring flows land in the same tray, so the tray (not each
+ * browse panel) is what decides whether a staged edit is buildable.  These two
+ * guards are the only place that decision is made, and they key off the
+ * serialized payload rather than the label so a renamed edit stays buildable.
+ */
+export function isStagedSoundEdit(edit: FoundryStagedEdit): edit is FoundryStagedSoundEdit {
+  return edit.kind === 'sound' && 'request' in edit;
+}
+
+export function isStagedVisualEdit(edit: FoundryStagedEdit): edit is VisualStagedEdit {
+  return edit.kind === 'texture' && 'source' in edit;
+}
+
+/** The first staged edit the forge cannot build yet, so the tray can name the
+ *  kind instead of failing inside the build with a generic error. */
+export function unsupportedStagedEditKind(edits: readonly FoundryStagedEdit[]): FoundryEditKind | null {
+  return edits.find((edit) => !isStagedSoundEdit(edit) && !isStagedVisualEdit(edit))?.kind ?? null;
+}
+
+/**
+ * Every file on disk the build still has to read.  A staged edit records a path
+ * rather than the bytes, so a file the user moved or deleted between staging
+ * and forging would otherwise blow up halfway through the build.  The tray
+ * checks these first and blocks with the names.
+ */
+export function stagedEditSourceFiles(edits: readonly FoundryStagedEdit[]): string[] {
+  const files: string[] = [];
+  for (const edit of edits) {
+    if (isStagedSoundEdit(edit)) {
+      // Assignments are the authoritative write set (audioPath is only the
+      // single-donor fallback), so collect both and dedupe.
+      files.push(edit.request.audioPath);
+      for (const assignment of edit.request.assignments ?? []) files.push(assignment.audioPath);
+    } else if (isStagedVisualEdit(edit)) {
+      files.push(edit.source.imagePath);
+    }
+  }
+  return [...new Set(files.filter((file) => typeof file === 'string' && file.trim().length > 0))];
+}
+
+/**
+ * Which staged source files the still-on-disk check did not find.  The check
+ * answers with the files that survived, so absence is the signal: a path the
+ * responder never mentions is missing, and a responder that omits everything
+ * blocks everything rather than quietly building half a mod.
+ */
+export function missingSourceFiles(requested: readonly string[], present: readonly string[]): string[] {
+  const found = new Set(present);
+  return requested.filter((file) => !found.has(file));
+}
+
+/**
+ * Turn the reviewed selection into the typed build request.  Main re-derives
+ * the same review from `edits` and refuses a `confirmation` that no longer
+ * matches, so this must serialize exactly what the user just read: the same
+ * normalized paths, the same collision winners.
+ */
+export function toForgeRequest(name: string, review: BuildTrayReview): FoundryForgeRequest {
+  const edits: FoundryForgeEdit[] = review.selected.map((edit) => {
+    if (isStagedSoundEdit(edit)) return { id: edit.id, kind: 'sound', precedence: edit.precedence, request: edit.request };
+    if (isStagedVisualEdit(edit)) return { id: edit.id, kind: 'texture', precedence: edit.precedence, request: edit.source };
+    // Unreachable via the UI (it pre-checks with unsupportedStagedEditKind),
+    // but never guess a build for a kind the forge does not implement.
+    throw new Error(`Unsupported staged edit kind: ${edit.kind}`);
+  });
+  return {
+    name: normalizeOutputName(name),
+    edits,
+    confirmation: {
+      writeSet: review.writeSet.map(normalizeEntryPath),
+      collisionWinners: review.collisions.map(({ file, winner }) => ({ file: normalizeEntryPath(file), editId: winner.id })),
+    },
+  };
 }

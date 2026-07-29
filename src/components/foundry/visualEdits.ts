@@ -1,4 +1,4 @@
-import type { TextureCategory, TextureEntry } from '../../types/foundry';
+import type { FoundryAssetSourcesInspection, TextureCategory, TextureEntry } from '../../types/foundry';
 import type { FoundryStagedEdit } from './buildTray';
 
 /** Serializable visual authoring input. This stays separate from the current
@@ -28,6 +28,40 @@ export function serializeVisualReplacement(draft: VisualReplacementDraft): Visua
     precedence: 0,
     source: { ...draft, entryPath },
   };
+}
+
+/** What a visual authoring surface has to supply to stage safely. `inspect` is
+ * the read-only exact-path source inspection; `confirm` is the acknowledgement
+ * that an already-enabled owner is being layered over, not edited. */
+export interface VisualStageContext {
+  item: TextureEntry;
+  catalog: readonly TextureEntry[];
+  imagePath: string;
+  name: string;
+  inspect: (paths: string[]) => Promise<FoundryAssetSourcesInspection>;
+  confirm: (modNames: string[]) => boolean;
+  unreadableMessage: string;
+}
+
+/**
+ * The one staging path every visual authoring surface goes through, so the
+ * catalog grid and the hero-scoped texture list cannot drift apart on which
+ * checks run.  Nothing here installs, enables, or reorders: an unreadable VPK
+ * blocks the ambiguous action outright, and an enabled owner only needs an
+ * explicit acknowledgement that this becomes a separate layered replacement.
+ * Returns `null` when the user declines that acknowledgement.
+ */
+export async function prepareVisualStagedEdit(context: VisualStageContext): Promise<VisualStagedEdit | null> {
+  const sources = await context.inspect(visualAssetInspectionPaths(context.item, context.catalog));
+  if (sources.unreadableMods.length > 0) throw new Error(context.unreadableMessage);
+  const enabled = sources.sources.filter((source) => source.enabled);
+  if (enabled.length > 0 && !context.confirm(enabled.map((source) => source.modName))) return null;
+  return serializeVisualReplacement({
+    entryPath: context.item.path,
+    imagePath: context.imagePath,
+    name: context.name,
+    category: context.item.category,
+  });
 }
 
 /** The catalog calls hero cards, portraits, and their state variants one visual

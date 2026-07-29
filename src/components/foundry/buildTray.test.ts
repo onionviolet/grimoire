@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { affectedFileCount, analyzeStagedEdits, normalizeOutputName, reviewStagedEdits } from './buildTray';
+import {
+  affectedFileCount,
+  analyzeStagedEdits,
+  normalizeOutputName,
+  missingSourceFiles,
+  reviewStagedEdits,
+  stagedEditSourceFiles,
+  toForgeRequest,
+  unsupportedStagedEditKind,
+} from './buildTray';
+import { serializeSoundStagedEdit } from './soundStagedEdit';
+import { serializeVisualReplacement } from './visualEdits';
 
 describe('Foundry build tray model', () => {
   it('keeps source-free staged edits and resolves a collision by precedence', () => {
@@ -34,5 +45,77 @@ describe('Foundry build tray model', () => {
       affectedFiles: ['panorama\\icon.vtex_c', 'panorama/icon.vtex_c'], precedence: 1,
     };
     expect(analyzeStagedEdits([edit])).toEqual([]);
+  });
+});
+
+describe('one reviewed write set across both live authoring flows', () => {
+  // Exactly what SoundBrowse/GlobalSoundBrowse and LibraryBrowse/TextureBrowse
+  // hand the tray, so the review under test is the one users actually get.
+  const sound = serializeSoundStagedEdit({
+    id: 'sound:dash',
+    title: 'Dash audio',
+    precedence: 1,
+    request: {
+      heroCodename: 'abrams', heroName: 'Abrams', event: 'Hero_Dash', name: 'Dash audio',
+      audioPath: 'C:/audio/dash.mp3',
+      assignments: [{ clipPath: '\\sounds\\dash.vsnd', audioPath: 'C:/audio/dash.mp3' }],
+    },
+  });
+  const visual = serializeVisualReplacement({
+    entryPath: '/Sounds/Dash.VSND_C',
+    imagePath: 'C:/art/dash.png',
+    name: 'Dash icon',
+    category: 'ability-icon',
+  });
+
+  it('merges sound and visual edits into one normalized write set', () => {
+    const review = reviewStagedEdits([visual, sound], new Set([visual.id, sound.id]));
+    expect(review.writeSet).toEqual(['sounds/dash.vsnd_c']);
+    expect(review.selected).toHaveLength(2);
+  });
+
+  it('resolves a cross-kind collision by precedence, not by the kind that staged first', () => {
+    const soundWins = reviewStagedEdits([visual, sound], new Set([visual.id, sound.id]));
+    expect(soundWins.collisions).toHaveLength(1);
+    expect(soundWins.collisions[0].winner.id).toBe(sound.id);
+
+    // Restaging the visual edit last must flip the winner: the tray's precedence
+    // is the only authority, and it is symmetric across kinds.
+    const visualLast = { ...visual, precedence: 2 };
+    const visualWins = reviewStagedEdits([sound, visualLast], new Set([sound.id, visualLast.id]));
+    expect(visualWins.collisions[0].winner.id).toBe(visualLast.id);
+  });
+
+  it('serializes both kinds into one build request whose confirmation matches the review', () => {
+    const review = reviewStagedEdits([visual, sound], new Set([visual.id, sound.id]));
+    const request = toForgeRequest('  My: Forge  ', review);
+
+    expect(request.name).toBe('My- Forge');
+    expect(request.edits.map((edit) => edit.kind)).toEqual(['texture', 'sound']);
+    expect(request.confirmation).toEqual({
+      writeSet: ['sounds/dash.vsnd_c'],
+      collisionWinners: [{ file: 'sounds/dash.vsnd_c', editId: sound.id }],
+    });
+    // The texture edit carries its authoring input, never a generated VPK path.
+    expect(request.edits[0]).toMatchObject({ kind: 'texture', request: { imagePath: 'C:/art/dash.png' } });
+  });
+
+  it('collects every source file both kinds still need on disk, deduped', () => {
+    expect(stagedEditSourceFiles([visual, sound])).toEqual(['C:/art/dash.png', 'C:/audio/dash.mp3']);
+  });
+
+  it('treats an unmentioned source file as missing so the forge is blocked', () => {
+    const sources = stagedEditSourceFiles([visual, sound]);
+    expect(missingSourceFiles(sources, sources)).toEqual([]);
+    expect(missingSourceFiles(sources, ['C:/art/dash.png'])).toEqual(['C:/audio/dash.mp3']);
+    // An answer that lists nothing must block everything, never pass silently.
+    expect(missingSourceFiles(sources, [])).toEqual(sources);
+  });
+
+  it('names an unbuildable kind rather than guessing a build for it', () => {
+    const recolor = { id: 'recolor', kind: 'recolor' as const, title: 'Recolor', affectedFiles: ['materials/a.vmat_c'], precedence: 3 };
+    expect(unsupportedStagedEditKind([visual, sound])).toBeNull();
+    expect(unsupportedStagedEditKind([visual, recolor])).toBe('recolor');
+    expect(() => toForgeRequest('x', reviewStagedEdits([recolor], new Set([recolor.id])))).toThrow('Unsupported staged edit kind');
   });
 });
