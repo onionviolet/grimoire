@@ -35,25 +35,44 @@ async function pageTarget() {
 }
 
 /**
- * One request/response over the target's WebSocket. A fresh socket per command
- * keeps the CLI stateless; the cost is a connect per call, which is irrelevant
- * next to the render it is inspecting.
+ * A sequence of requests over ONE socket, resolving to the last result.
+ *
+ * A fresh socket per command keeps the CLI stateless, which is fine for asking
+ * questions but wrong for anything the browser scopes to the debugging session.
+ * `Emulation.setDeviceMetricsOverride` is the one that bites: Chrome reverts
+ * the override when the socket closes, so `viewport 900 800` followed by a
+ * separate `eval` measures the real window and quietly reports that the narrow
+ * layout is fine. Calls that must share a session go in one `sendAll`.
  */
-function send(wsUrl, method, params = {}) {
+function sendAll(wsUrl, calls) {
     return new Promise((resolve, reject) => {
         const ws = new WebSocket(wsUrl, { headers: { Origin: 'http://127.0.0.1' } });
+        let index = 0;
+        let last;
         const timer = setTimeout(() => {
             ws.close();
-            reject(new Error(`CDP ${method} timed out after 20s`));
+            reject(new Error(`CDP ${calls[index]?.[0]} timed out after 20s`));
         }, 20_000);
-        ws.addEventListener('open', () => ws.send(JSON.stringify({ id: 1, method, params })));
+        const issue = () => ws.send(JSON.stringify({ id: index + 1, method: calls[index][0], params: calls[index][1] ?? {} }));
+        ws.addEventListener('open', issue);
         ws.addEventListener('message', (event) => {
             const message = JSON.parse(event.data);
-            if (message.id !== 1) return;
+            if (message.id !== index + 1) return;
+            if (message.error) {
+                clearTimeout(timer);
+                ws.close();
+                reject(new Error(`${calls[index][0]}: ${message.error.message}`));
+                return;
+            }
+            last = message.result;
+            index += 1;
+            if (index < calls.length) {
+                issue();
+                return;
+            }
             clearTimeout(timer);
             ws.close();
-            if (message.error) reject(new Error(`${method}: ${message.error.message}`));
-            else resolve(message.result);
+            resolve(last);
         });
         ws.addEventListener('error', () => {
             clearTimeout(timer);
@@ -62,20 +81,33 @@ function send(wsUrl, method, params = {}) {
     });
 }
 
-async function evaluate(expression) {
-    const page = await pageTarget();
-    const result = await send(page.webSocketDebuggerUrl, 'Runtime.evaluate', {
+/** One request/response, its own socket. */
+function send(wsUrl, method, params = {}) {
+    return sendAll(wsUrl, [[method, params]]);
+}
+
+const evaluateCall = (expression) => [
+    'Runtime.evaluate',
+    {
         expression,
         awaitPromise: true,
         returnByValue: true,
         // User-gesture semantics: without this, click handlers gated on
         // transient activation (file pickers, media) silently do nothing.
         userGesture: true,
-    });
+    },
+];
+
+function unwrap(result) {
     if (result.exceptionDetails) {
         throw new Error(result.exceptionDetails.exception?.description || result.exceptionDetails.text);
     }
     return result.result.value;
+}
+
+async function evaluate(expression, before = []) {
+    const page = await pageTarget();
+    return unwrap(await sendAll(page.webSocketDebuggerUrl, [...before, evaluateCall(expression)]));
 }
 
 /** `:has-text(...)` is not a real selector, so resolve it ourselves: match the
@@ -193,6 +225,23 @@ try {
             }
             break;
         }
+        case 'at': {
+            // `viewport W H` then a separate `eval` cannot observe a narrow
+            // layout: the override dies with the socket that set it. This does
+            // both on one socket, so the expression really is evaluated at that
+            // width. The app's minimum window width is 900, so 900 is the
+            // narrowest size worth reproducing.
+            //
+            //   dev-driver.mjs at 900x800 "document.scrollingElement.scrollWidth"
+            const [size, ...expr] = rest;
+            const [w, h] = String(size).split('x').map(Number);
+            if (!w || !h) throw new Error('usage: dev-driver.mjs at <width>x<height> "<expression>"');
+            const value = await evaluate(expr.join(' '), [
+                ['Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: 1, mobile: false }],
+            ]);
+            console.log(typeof value === 'string' ? value : JSON.stringify(value, null, 2));
+            break;
+        }
         case 'shot': {
             const page = await pageTarget();
             const { data } = await send(page.webSocketDebuggerUrl, 'Page.captureScreenshot', { format: 'png' });
@@ -206,7 +255,7 @@ try {
             break;
         }
         default:
-            console.log('usage: dev-driver.mjs <eval|evalfile|text|html|click|fill|select|route|viewport|shot|targets> [argument]');
+            console.log('usage: dev-driver.mjs <eval|evalfile|text|html|click|fill|select|route|viewport|at|shot|targets> [argument]');
             process.exitCode = 1;
     }
 } catch (error) {

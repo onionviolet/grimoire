@@ -1,19 +1,18 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { FileWarning, Hammer } from 'lucide-react';
 import SoundEntryRow from './SoundEntryRow';
 import HeroSoundPicker from './HeroSoundPicker';
+import { useSoundAnnotations } from './useSoundAnnotations';
 import { useClipPlayer } from '../foundry/useClipPlayer';
 import { useAppStore } from '../../stores/appStore';
-import { foundrySoundAnnotations } from '../../lib/api';
 import {
   buildSoundInventory,
   entriesInCategory,
   overlappingClaims,
   type SoundCategory,
 } from '../../lib/soundInventory';
-import type { SoundAnnotation } from '../../types/foundry';
 import type { Mod } from '../../types/mod';
 
 /**
@@ -60,23 +59,8 @@ export default function HeroSoundShelf({ heroName, soundList, onSelect }: HeroSo
   const navigate = useNavigate();
   const player = useClipPlayer();
   const mods = useAppStore((s) => s.mods);
-  const [annotations, setAnnotations] = useState<Record<string, SoundAnnotation>>({});
+  const annotations = useSoundAnnotations();
   const [category, setCategory] = useState<SoundCategory>('ability');
-
-  useEffect(() => {
-    let active = true;
-    foundrySoundAnnotations()
-      .then((result) => {
-        if (active) setAnnotations(result);
-      })
-      .catch(() => {
-        // Annotations are provenance detail, not the inventory itself: a
-        // failure here must not blank the rows.
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
 
   const entries = useMemo(
     () => buildSoundInventory(mods).byHero.get(heroName) ?? [],

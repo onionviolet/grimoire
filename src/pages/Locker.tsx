@@ -1,7 +1,7 @@
-import { lazy, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ComponentType, type SVGProps } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ComponentType, type KeyboardEvent as ReactKeyboardEvent, type SVGProps } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Box, Check, ChevronDown, ChevronsDownUp, ChevronsUpDown, ExternalLink, Filter, Ghost, Images, Layers, MoreVertical, Music, Palette, PowerOff, Shield, Shirt, Shuffle, Sparkles, Star, Trash2 } from 'lucide-react';
+import { ArrowLeft, Box, Check, ChevronDown, ChevronsDownUp, ChevronsUpDown, ExternalLink, Filter, Ghost, Hammer, Images, Layers, MoreVertical, Music, Palette, PowerOff, Shield, Shirt, Shuffle, Sparkles, Star, Trash2 } from 'lucide-react';
 import { useAppStore } from '../stores/appStore';
 import {
   getGamebananaCategories,
@@ -15,7 +15,7 @@ import { getActiveDeadlockPath, shouldBlurNsfw } from '../lib/appSettings';
 import { getAssetPath } from '../lib/assetPath';
 import HeroSkinsPanel from '../components/locker/HeroSkinsPanel';
 import { LockerHeroView } from './LockerHero';
-import SoundLocker from './SoundLocker';
+import GlobalSoundShelf from '../components/locker/GlobalSoundShelf';
 import ModThumbnail from '../components/ModThumbnail';
 import { ErrorBoundary } from '../components/common/ErrorBoundary';
 
@@ -63,7 +63,14 @@ import {
   type HeroCategory,
 } from '../lib/lockerUtils';
 import { shuffleSkinKey, shuffleSoundKey, type VariantChoice } from '../lib/lockerRandomizer';
-import { legacySoundTarget, lockerModeFromSearch } from '../lib/lockerMode';
+import { legacySoundTarget, lockerModeFromSearch, type LockerMode } from '../lib/lockerMode';
+import {
+  buildSoundInventory,
+  countMods,
+  entriesInCategory,
+  type SoundCategory,
+} from '../lib/soundInventory';
+import { GLOBAL_SOUND_SECTIONS, globalSoundSectionLabel } from '../lib/globalSoundSections';
 
 // Route changes flip the overlay state instantly, which unmounts the hero or
 // global panel on the next frame with no exit transition. Retain the last
@@ -921,13 +928,11 @@ export default function Locker() {
     );
   }
 
-  // A hero's sounds are a tab on that hero's page, not a second grid behind a
-  // mode switch: the hero page already had a Sounds section, and the mode only
-  // existed to reach a richer version of it. SoundLocker survives purely as the
-  // Global sounds shelf, which genuinely has no hero to hang off.
-  if (globalSelected && globalSection === 'sounds') {
-    return <SoundLocker />;
-  }
+  // Global sounds deliberately does NOT early-return a different component
+  // here. It is a section of the Global drill-in, so it renders inside
+  // LockerGlobalView's right pane: switching to it must leave the background
+  // art, the glass rail, and the tablist mounted, or Visuals becomes
+  // unreachable from Sounds. See docs/design-overhaul-brief.md, "Shell rule".
 
   return (
     <div ref={lockerScrollRef} className="h-full overflow-y-auto">
@@ -1272,7 +1277,10 @@ export default function Locker() {
             onRequestDelete={(ids, name) => setDeletePrompt({ ids, name })}
             onImportSoul={() => setSoulImportOpen(true)}
             onImportUrn={() => setUrnImportOpen(true)}
-            onOpenSounds={() => navigate('/locker/global?mode=sounds')}
+            section={globalSection ?? 'looks'}
+            onSelectSection={(next) =>
+              navigate(next === 'sounds' ? '/locker/global?mode=sounds' : '/locker/global')
+            }
           />
         </div>
       )}
@@ -1430,17 +1438,32 @@ interface LockerGlobalViewProps {
   onImportSoul: () => void;
   /** Open the Spirit Urn GLB import modal (shown on the spirit-urn tab). */
   onImportUrn: () => void;
-  onOpenSounds: () => void;
+  /** Which section of this drill-in is showing, from `?mode=`. */
+  section: LockerMode;
+  /** Select a section. Writes `?mode=` without leaving the drill-in. */
+  onSelectSection: (section: LockerMode) => void;
 }
+
+/** Section tabs, in tablist order. Drives arrow-key movement. */
+const GLOBAL_SECTION_TABS: readonly LockerMode[] = ['looks', 'sounds'];
 
 /**
  * Drill-in panel for the Global card: a Deadlock environment backdrop under a
  * frosted-glass carousel of cosmetic types (echoing the LockerHeroView shell's
  * art + blur language). Selecting a tile reveals that type's toggleable mods.
+ *
+ * Two sections, Visuals and Sounds, share this one shell. The rail is the same
+ * affordance in both: it lists cosmetic types with counts under Visuals, and
+ * global sound categories with counts under Sounds. That is why the sound
+ * shelf carries no category filter of its own; a second inline filter next to
+ * an idle rail was the shape being fixed.
  */
-function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType, onRequestDelete, onImportSoul, onImportUrn, onOpenSounds }: LockerGlobalViewProps) {
+function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType, onRequestDelete, onImportSoul, onImportUrn, section, onSelectSection }: LockerGlobalViewProps) {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const soundVolume = useAppStore((s) => s.soundVolume);
+  const mods = useAppStore((s) => s.mods);
+  const isSounds = section === 'sounds';
   // Every tab is selectable, empty or not. We still default the landing tab to
   // the first populated type (or a prop container when nothing is installed),
   // so the view opens on something meaningful rather than a blank pane.
@@ -1453,8 +1476,13 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
   // Sliding active-tab highlight, mirroring the main sidebar's glide: one
   // indicator element animates between the tab rows rather than each row
   // toggling its own background (which snaps). Refs feed its measured position.
-  const tabRefs = useRef<Map<GlobalModType, HTMLButtonElement | null>>(new Map());
+  // Keyed by rail row id, which is a GlobalModType under Visuals and a
+  // SoundCategory under Sounds, so the indicator glides in both sections.
+  const tabRefs = useRef<Map<string, HTMLButtonElement | null>>(new Map());
   const [tabIndicator, setTabIndicator] = useState<{ top: number; height: number } | null>(null);
+  // Refs for the two section tabs, so arrow-key movement can follow focus.
+  const sectionTabRefs = useRef<Map<LockerMode, HTMLButtonElement | null>>(new Map());
+  const sectionTabsId = useId();
   // Open retag menu, anchored in viewport coords (fixed-positioned) so it never
   // clips against the scrolling card pane. Null when closed.
   const [retagMenu, setRetagMenu] = useState<{ id: string; x: number; y: number } | null>(null);
@@ -1479,12 +1507,59 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
   // state), so the active tab is simply whatever the user picked.
   const activeType = selectedType;
   const activeMods = groups[activeType] ?? [];
+
+  // Sounds section. The inventory is built here rather than in the shelf
+  // because the rail needs the per-category counts, and one pass over the mod
+  // list feeds both. Nothing about how it resolves changes.
+  const globalSoundEntries = useMemo(() => buildSoundInventory(mods).global, [mods]);
+  const soundCounts = useMemo(
+    () =>
+      GLOBAL_SOUND_SECTIONS.map((id) => ({
+        id,
+        count: entriesInCategory(globalSoundEntries, id).length,
+      })),
+    [globalSoundEntries]
+  );
+  // Null until the user picks, so the landing category can track the first
+  // populated one as the mod list loads. Once picked it sticks, empty or not:
+  // every category is listed with its count exactly as the visual rail lists
+  // empty types, and an empty one must open its own empty state rather than
+  // silently bounce back, which would make the row a dead control.
+  const [selectedSoundCategory, setSelectedSoundCategory] = useState<SoundCategory | null>(null);
+  const activeSoundCategory: SoundCategory =
+    selectedSoundCategory ??
+    soundCounts.find((entry) => entry.count > 0)?.id ??
+    GLOBAL_SOUND_SECTIONS[0];
+  const shownSoundEntries = useMemo(
+    () => entriesInCategory(globalSoundEntries, activeSoundCategory),
+    [globalSoundEntries, activeSoundCategory]
+  );
+
+  // Which rail row is highlighted, and which key the right pane is fading on.
+  const activeRailKey: string = isSounds ? `sound:${activeSoundCategory}` : activeType;
   // Track the active row's box so the highlight can glide to it. Measured in a
   // layout effect (pre-paint) to avoid a one-frame jump on first mount.
   useLayoutEffect(() => {
-    const el = tabRefs.current.get(activeType);
+    const el = tabRefs.current.get(activeRailKey);
     if (el) setTabIndicator({ top: el.offsetTop, height: el.offsetHeight });
-  }, [activeType]);
+  }, [activeRailKey]);
+
+  // Roving arrow-key movement across the section tabs, with focus following the
+  // selection (the tablist is a real one now, so it has to behave like one).
+  const onSectionTabKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
+    const index = GLOBAL_SECTION_TABS.indexOf(section);
+    let next = index;
+    if (event.key === 'ArrowRight') next = (index + 1) % GLOBAL_SECTION_TABS.length;
+    else if (event.key === 'ArrowLeft')
+      next = (index - 1 + GLOBAL_SECTION_TABS.length) % GLOBAL_SECTION_TABS.length;
+    else if (event.key === 'Home') next = 0;
+    else if (event.key === 'End') next = GLOBAL_SECTION_TABS.length - 1;
+    else return;
+    event.preventDefault();
+    const target = GLOBAL_SECTION_TABS[next];
+    if (target !== section) onSelectSection(target);
+    sectionTabRefs.current.get(target)?.focus();
+  };
   // Soul containers and spirit urns share the single-select + live-3D-tile
   // treatment (frosted glass, content-stable key, active badge, import button).
   const isPropContainer = isPropContainerType(activeType);
@@ -1571,8 +1646,10 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
           <h2 className="text-lg font-semibold text-white drop-shadow-[0_2px_12px_rgba(0,0,0,0.6)]">
             {t('locker.page.global')}
           </h2>
-          <span className="text-xs text-white/60">
-            {t('locker.page.modCount', { count: total })}
+          <span className="text-xs tabular-nums text-white/60">
+            {t('locker.page.modCount', {
+              count: isSounds ? countMods(globalSoundEntries) : total,
+            })}
           </span>
         </div>
 
@@ -1581,23 +1658,32 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
           aria-label={t('locker.global.sectionLabel', 'Global Locker section')}
           className="inline-flex w-fit rounded-md border border-border/70 bg-black/20 p-0.5 text-xs"
         >
-          <button
-            type="button"
-            role="tab"
-            aria-selected={true}
-            className="rounded bg-accent/15 px-2.5 py-1.5 text-white cursor-pointer"
-          >
-            {t('locker.global.visuals', 'Visuals')}
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={false}
-            onClick={onOpenSounds}
-            className="rounded px-2.5 py-1.5 text-text-secondary hover:text-white cursor-pointer"
-          >
-            {t('locker.mode.sounds', 'Sounds')}
-          </button>
+          {GLOBAL_SECTION_TABS.map((tab) => {
+            const selected = tab === section;
+            return (
+              <button
+                key={tab}
+                ref={(el) => {
+                  sectionTabRefs.current.set(tab, el);
+                }}
+                type="button"
+                role="tab"
+                id={`${sectionTabsId}-tab-${tab}`}
+                aria-controls={`${sectionTabsId}-panel-${tab}`}
+                aria-selected={selected}
+                tabIndex={selected ? 0 : -1}
+                onClick={() => onSelectSection(tab)}
+                onKeyDown={onSectionTabKeyDown}
+                className={`rounded px-2.5 py-1.5 cursor-pointer ${
+                  selected ? 'bg-accent/15 text-white' : 'text-text-secondary hover:text-white'
+                }`}
+              >
+                {tab === 'sounds'
+                  ? t('locker.mode.sounds', 'Sounds')
+                  : t('locker.global.visuals', 'Visuals')}
+              </button>
+            );
+          })}
         </div>
 
         <nav className="relative flex flex-col gap-1.5">
@@ -1613,29 +1699,43 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
               }}
             />
           )}
-          {GLOBAL_MOD_TYPE_ORDER.map((type) => {
-            const items = groups[type];
-            const isActive = type === activeType;
-            const isEmpty = items.length === 0;
-            // Every tab is clickable, empty or not: an empty tab opens its own
-            // empty state (the importer for prop containers, a Browse hint for
-            // the rest), which is more discoverable than a dead disabled row.
+          {/* One rail, two vocabularies: cosmetic types under Visuals, global
+              sound categories under Sounds. Both list every entry with its
+              count, empty ones included, and every row is clickable: an empty
+              row opens its own empty state, which is more discoverable than a
+              dead disabled row. */}
+          {(isSounds
+            ? soundCounts.map(({ id, count }) => ({
+                key: `sound:${id}`,
+                label: globalSoundSectionLabel(t, id),
+                count,
+                onSelect: () => setSelectedSoundCategory(id),
+              }))
+            : GLOBAL_MOD_TYPE_ORDER.map((type) => ({
+                key: type as string,
+                label: GLOBAL_MOD_TYPE_LABELS[type],
+                count: groups[type].length,
+                onSelect: () => setSelectedType(type),
+              }))
+          ).map((row) => {
+            const isActive = row.key === activeRailKey;
+            const isEmpty = row.count === 0;
             return (
               <button
-                key={type}
+                key={row.key}
                 ref={(el) => {
-                  tabRefs.current.set(type, el);
+                  tabRefs.current.set(row.key, el);
                 }}
                 type="button"
-                onClick={() => setSelectedType(type)}
+                onClick={row.onSelect}
                 className={`relative z-10 flex cursor-pointer items-center gap-3 rounded-lg border border-transparent px-3 py-2.5 text-left transition-colors ${
                   isActive ? '' : 'hover:bg-white/10'
                 }`}
               >
                 <span className={`flex-1 truncate text-sm font-medium text-white ${isEmpty && !isActive ? 'opacity-50' : ''}`}>
-                  {GLOBAL_MOD_TYPE_LABELS[type]}
+                  {row.label}
                 </span>
-                <span className="text-xs text-white/50">{items.length}</span>
+                <span className="text-xs tabular-nums text-white/50">{row.count}</span>
               </button>
             );
           })}
@@ -1645,9 +1745,42 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
       {/* Right pane: the selected type's mods as cards. Keyed on the active type
           so its content re-runs the fade on every tab switch (the tab-content
           transition), which doubles as the drill-in entrance on first mount. */}
-      <div ref={paneRef} className="relative z-10 flex-1 overflow-y-auto scrollbar-glass">
-        <div key={activeType} className="space-y-4 p-6 animate-fade-in">
-          {activeType ? (
+      <div
+        ref={paneRef}
+        role="tabpanel"
+        id={`${sectionTabsId}-panel-${section}`}
+        aria-labelledby={`${sectionTabsId}-tab-${section}`}
+        tabIndex={0}
+        className="relative z-10 flex-1 overflow-y-auto scrollbar-glass focus:outline-none"
+      >
+        <div key={activeRailKey} className="space-y-4 p-6 animate-fade-in">
+          {isSounds ? (
+            <>
+              {/* Same heading treatment as a visual type: the two sections of
+                  this drill-in should differ only in their content region. */}
+              <div className="flex items-baseline gap-2">
+                <h3 className="text-base font-semibold text-white drop-shadow-[0_2px_12px_rgba(0,0,0,0.6)]">
+                  {globalSoundSectionLabel(t, activeSoundCategory)}
+                </h3>
+                <span className="text-xs tabular-nums text-white/60">
+                  {t('locker.page.modCount', { count: countMods(shownSoundEntries) })}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => navigate('/foundry?tool=globalSound')}
+                  className="ml-auto inline-flex items-center gap-1.5 self-center rounded-lg border border-accent/40 bg-accent/10 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:border-accent/60 hover:bg-accent/20 cursor-pointer"
+                >
+                  <Hammer className="h-3.5 w-3.5" />
+                  {t('soundLocker.global.makeNew', 'Make one in Foundry')}
+                </button>
+              </div>
+              <GlobalSoundShelf
+                category={activeSoundCategory}
+                entries={globalSoundEntries}
+                shown={shownSoundEntries}
+              />
+            </>
+          ) : activeType ? (
             <>
               <div className="flex items-baseline gap-2">
                 <h3 className="text-base font-semibold text-white drop-shadow-[0_2px_12px_rgba(0,0,0,0.6)]">

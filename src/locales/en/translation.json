@@ -3106,33 +3106,42 @@
       "sectionTitle": "HUD and advanced gameinfo.gi settings",
       "controls": {
         "citadel_unit_status_use_v2": {
-          "label": "New health bars",
-          "description": "Use the alternate health bars for heroes, NPCs, and other units."
+          "label": "New health bars (v2)",
+          "description": "Draw heroes, NPCs, and other units with the v2 unit-status bars. Current builds read this flag."
+        },
+        "citadel_unit_status_use_new": {
+          "label": "New health bars (original flag)",
+          "description": "The first-generation flag, which some builds still read. The Autoexec page writes this same ConVar to autoexec.cfg, and autoexec runs after gameinfo.gi, so a line there wins over this toggle."
         },
         "citadel_unit_status_use_v2_for_nonplayers": {
           "label": "Health bars for NPCs",
-          "description": "Use the alternate health bars for NPCs and other non-player units."
+          "description": "Extend the v2 bars to troopers, guardians, and other non-player units rather than heroes only. It applies on top of the v2 bars, so it does nothing while those are off."
         },
         "citadel_unit_status_single_bar_mode": {
           "label": "Numeric / single-bar health",
-          "description": "Use the single-bar health presentation when supported by the current game build."
+          "description": "Show health as one continuous bar with a number instead of the segmented default. Builds that dropped this presentation ignore the flag."
         },
         "citadel_unit_status_allies_see_thru_walls": {
           "label": "Ally health through walls",
-          "description": "Show allied unit health status through walls."
+          "description": "Show allied unit health through walls, out to the ally wall distance set in the advanced sliders below."
         },
         "citadel_hud_objective_health_enabled": {
           "label": "Objective health bars",
-          "description": "Show health information for objectives and major map units."
+          "description": "Show health on map objectives. This ConVar has levels rather than on/off: Grimoire writes 2 (the fullest) or 0, and a 1 set by hand is left alone and badged unsupported."
         },
         "citadel_damage_offscreen_indicator_disabled": {
           "label": "Offscreen damage indicators",
-          "description": "Show damage indicators for units outside your view."
+          "description": "Show damage indicators for units outside your view. The underlying ConVar is a disable flag, so switching this on writes false."
         },
         "citadel_damage_text_show_effectiveness": {
           "label": "Damage effectiveness text",
-          "description": "Show effectiveness information alongside damage numbers."
+          "description": "Add the engine's own effectiveness percentage to each damage number: how much of the base damage that hit landed for, after per-hit multipliers such as bullet falloff at range. It is not an armor or resistance readout, so a point-blank hit still reads 100% against an armored target."
         }
+      },
+      "presetNote": {
+        "on": "The performance preset turns this on.",
+        "off": "The performance preset turns this off.",
+        "value": "The performance preset writes {{value}}."
       }
     },
     "reset": "Reset to game default",
@@ -3476,7 +3485,12 @@
       "music": "Music",
       "announcer": "Announcer",
       "ui": "Interface",
-      "other": "Other"
+      "other": "Other",
+      "ambience": "Ambience",
+      "npc": "NPC",
+      "item": "Items",
+      "melee": "Shared melee",
+      "shared": "Shared"
     },
     "provenance": {
       "locker": "Locker",
@@ -3485,36 +3499,19 @@
       "imported": "Imported",
       "third-party": "Third-party"
     },
-    "card": {
-      "modCount_one": "{{count}} mod",
-      "modCount_other": "{{count}} mods",
-      "summary_one": "{{count}} mod, {{enabled}} on",
-      "summary_other": "{{count}} mods, {{enabled}} on",
-      "none": "Nothing installed"
-    },
-    "empty": {
-      "title": "No sound mods installed",
-      "description": "Download a sound mod, or forge one in Foundry, and it lands here under its hero."
-    },
     "global": {
-      "title": "Global sounds",
-      "description": "Installed sound mods that belong to no hero: announcers, killstreak music, interface sounds, and anything Grimoire could not classify.",
       "makeNew": "Make one in Foundry",
-      "back": "Sound Locker",
       "empty": {
-        "title": "No global sound mods",
         "description": "Announcer packs, killstreak music, and interface sounds show up here once you install one."
-      }
+      },
+      "categoryEmpty": "No installed {{type}} sound mods yet."
     },
     "hero": {
-      "back": "Sound Locker",
       "sections": "Sound sections",
       "makeInFoundry": "Make a new one in Foundry",
       "currentSelections": "Current selections",
       "currentSelectionsDescription": "Choose the source Grimoire applies for each ability. These selections are independent of a mod's installed row above.",
       "emptySection": "No installed sound mods in this section.",
-      "modCount_one": "{{count}} mod",
-      "modCount_other": "{{count}} mods",
       "empty": "No installed sound mods in this section for {{hero}}.",
       "overlapWarning_one": "{{count}} sound file is claimed by more than one enabled mod here. Only the highest-priority mod is heard; expand a row to see who wins.",
       "overlapWarning_other": "{{count}} sound files are claimed by more than one enabled mod here. Only the highest-priority mod is heard; expand a row to see who wins."

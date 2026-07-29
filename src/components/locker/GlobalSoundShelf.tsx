@@ -1,0 +1,108 @@
+import { useCallback, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
+import { AudioLines, Hammer } from 'lucide-react';
+import SoundEntryRow from './SoundEntryRow';
+import { useSoundAnnotations } from './useSoundAnnotations';
+import { useClipPlayer } from '../foundry/useClipPlayer';
+import { useAppStore } from '../../stores/appStore';
+import { globalSoundSectionLabel } from '../../lib/globalSoundSections';
+import type { SoundCategory, SoundInventoryEntry } from '../../lib/soundInventory';
+
+/**
+ * The Global sounds shelf: installed sound mods that belong to no hero
+ * (announcers, killstreak music, interface sounds, shared melee, and anything
+ * Grimoire could not classify).
+ *
+ * This was a page (`src/pages/SoundLocker.tsx`) with its own `PageHeader` and
+ * its own Back button, reached by the Global drill-in's Sounds tab returning a
+ * different component. Selecting the tab therefore unmounted the drill-in
+ * shell, which is why Visuals became unreachable from Sounds. It is now a body
+ * component rendered into `LockerGlobalView`'s right pane, mirroring
+ * `HeroSoundShelf`: no header, no back control, no page padding of its own.
+ *
+ * The owning shell supplies the category (its rail lists global sound
+ * categories exactly as it lists visual types) and the pane heading, so this
+ * renders rows and an empty state and nothing else.
+ */
+
+interface GlobalSoundShelfProps {
+  /** The rail's selected category. The shell owns the selection. */
+  category: SoundCategory;
+  /** Every global entry, already built by the shell (it needs the counts too). */
+  entries: readonly SoundInventoryEntry[];
+  /** Entries in the selected category, in display order. */
+  shown: readonly SoundInventoryEntry[];
+}
+
+export default function GlobalSoundShelf({ category, entries, shown }: GlobalSoundShelfProps) {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  const mods = useAppStore((s) => s.mods);
+  const toggleMod = useAppStore((s) => s.toggleMod);
+  const annotations = useSoundAnnotations();
+  const player = useClipPlayer();
+
+  const audioUrls = useMemo(() => {
+    const map: Record<string, string | undefined> = {};
+    for (const mod of mods) if (mod.audioUrl) map[mod.id] = mod.audioUrl;
+    return map;
+  }, [mods]);
+
+  const openInInstalled = useCallback(
+    (modId: string) => navigate(`/?focusMod=${encodeURIComponent(modId)}`),
+    [navigate]
+  );
+  // The store reports whether the toggle stuck; the shelf renders from the mod
+  // list either way, so the row only needs to know when the call has settled.
+  const toggleEnabled = useCallback(
+    async (modId: string) => {
+      await toggleMod(modId);
+    },
+    [toggleMod]
+  );
+
+  if (shown.length === 0) {
+    // Same dashed empty box the visual pane uses for an empty type, so the two
+    // sections of this drill-in differ only in their content.
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-white/15 bg-bg-sunken/30 px-6 py-12 text-center">
+        <AudioLines className="h-8 w-8 text-white/40" />
+        <p className="max-w-sm text-sm text-white/70">
+          {entries.length === 0
+            ? t(
+                'soundLocker.global.empty.description',
+                'Announcer packs, killstreak music, and interface sounds show up here once you install one.'
+              )
+            : t('soundLocker.global.categoryEmpty', 'No installed {{type}} sound mods yet.', {
+                type: globalSoundSectionLabel(t, category),
+              })}
+        </p>
+        <button
+          type="button"
+          onClick={() => navigate('/foundry?tool=globalSound')}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-accent/40 bg-accent/10 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:border-accent/60 hover:bg-accent/20 cursor-pointer"
+        >
+          <Hammer className="h-3.5 w-3.5" />
+          {t('soundLocker.global.makeNew', 'Make one in Foundry')}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-1.5">
+      {shown.map((entry) => (
+        <SoundEntryRow
+          key={entry.key}
+          entry={entry}
+          annotations={annotations}
+          audioUrl={audioUrls[entry.modId]}
+          player={player}
+          onToggleEnabled={toggleEnabled}
+          onOpenInInstalled={openInInstalled}
+        />
+      ))}
+    </div>
+  );
+}
