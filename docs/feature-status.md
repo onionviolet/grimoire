@@ -2,7 +2,8 @@
 
 Status snapshot: 2026-07-28, re-verified against the working tree at v1.25.171
 by the audit in [spec-audit-prompt.md](./spec-audit-prompt.md), then updated on
-2026-07-28 for wave 1 (Foundry source actions and merge review). This is an
+2026-07-28 for wave 1 (Foundry source actions and merge review) and wave 2
+(combined Foundry output, performance ConVar provenance). This is an
 implementation inventory, not a substitute for the manual in-game validation
 required before a release.
 
@@ -25,7 +26,20 @@ required before a release.
   user saves through a native dialog (`services/foundryForge.ts:45`,
   `ipc/foundry.ts:104`, `components/foundry/FoundryBuildTray.tsx:48`). It is
   deliberately export-only: build parts never enter Installed, and a cancelled
-  save leaves both the mod library and the staged edits untouched.
+  save leaves both the mod library and the staged edits untouched. As of wave 2
+  the tray is shared by both Foundry modes, so an edit staged in the hero-first
+  `HeroWorkshop` is reviewable and forgeable rather than stranded; `TextureBrowse`
+  stages through the same path as `LibraryBrowse`; the confirmation is in-app and
+  shows the full exact write set; and a missing recorded source file (audio or
+  PNG) blocks the forge by name instead of failing partway through the build.
+- **Per-ConVar provenance in the performance card.** Every user-facing HUD and
+  advanced ConVar carries a main-process-computed state (game default, managed
+  preset, user override, unsupported) plus an out-of-range flag, badged per
+  control (`services/performanceConfig.ts`, `components/performance/
+  PerformanceConfigCard.tsx`). A per-control reset removes Grimoire's line for
+  that key rather than writing an app-chosen number, an out-of-range stored value
+  requires explicit confirmation instead of a silent clamp, and edits stage into
+  a pending panel with apply and discard rather than auto-committing.
 - **Non-MP3 sound input.** WAV, OGG, FLAC, M4A, AAC, and Opus are transcoded
   locally to MP3 by the bundled FFmpeg before the mint path runs
   (`services/audioConversion.ts:38`, `services/foundryCatalog.ts:257`).
@@ -52,6 +66,12 @@ required before a release.
 1. **Combined output covers sound and texture only.** `FoundryForgeEdit`
    (`src/types/foundry.ts:320`) admits `sound` and `texture`; recolor and model
    edits have no staged-edit serializer and cannot enter a combined build.
+1a. **Performance ConVar game defaults are unverified against the game.** The
+   eight advanced defaults were moved out of the renderer constant that held
+   them, not read off a running build, so a wrong number badges an untagged
+   stock line as "Your override". All eight HUD toggles carry a null game
+   default, so an unset toggle is badged honestly but cannot preview what the
+   game will do. Both are data-only fixes once someone reads the console.
 2. **Asset source actions are unverified in game.** The panel and
    `My sound changes` now carry the full action set, but no in-game check has
    confirmed that an audition of an installed VPK's clip matches what the
@@ -107,7 +127,7 @@ the corresponding exact-path inspection or preflight.
 | Asset sources foundation | mod store + read-only merge analysis | normalized-path owner query with enabled/disabled contenders, provenance, uncertainty, and winner | fixture tests for ordering, third-party and unreadable VPKs |
 | Sound sources and pools | asset sources foundation | event-row source inspection, safe actions, assignment preview and persisted seed | discovery, seed, cancel and rollback tests |
 | Visual replacement preflight | asset sources foundation | source panel and explicit preflight on existing visual cards | portrait-family and single-icon path fixtures |
-| Combined Foundry output | staged-edit serializers for every supported kind | one confirmed named VPK with the reviewed write set | collision, cancellation and installed-state regression tests |
+| Combined Foundry output | staged-edit serializers for every supported kind | one confirmed named VPK with the reviewed write set | collision, cancellation and installed-state regression tests (landed wave 2; a live forge and a real save-dialog cancel are still unrun) |
 | Models, VFX and advanced composition | trustworthy catalog paths + composition design | only bounded, inspectable extensions of the source/preflight model | performance and correctness budgets agreed before UI exposure |
 
 **Non-negotiable invariants.** Exact normalized VPK paths are the ownership

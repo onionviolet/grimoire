@@ -78,13 +78,40 @@ Closed 2026-07-28 (wave 0.5):
    now uses its own `staged` key instead of reusing the install path's `done`,
    which had been claiming a staged edit was installed.
 
+Closed 2026-07-28 (wave 2):
+
+3. ~~No installed-state regression test for cancellation.~~ The cancel path is
+   now covered at the orchestrator level. The real defect was not where this
+   item assumed: `ipc/foundry.ts`'s `finally` did fire on a cancelled save
+   dialog, but `buildFoundryForgeVpk`'s own `finally` could reject an
+   already-successful build when a per-part cleanup rejected, orphaning the
+   merged temp directory it was about to return. Part cleanups are now
+   best-effort, and build/export/cleanup moved into
+   `forgeAndExportFoundryVpk` so a cleanup failure can never rewrite the
+   user-visible outcome. Cancelling now reports it and keeps the staged edits;
+   only a real export clears the tray.
+
+Also landed in wave 2, beyond the original item text:
+
+- The tray reached only catalog (tool-first) mode. `HeroWorkshop`, the primary
+  hero-first flow, rendered no tray at all, so an edit staged there could never
+  be reviewed or forged. Both modes now share one tray and one staged-edit list.
+- `TextureBrowse` had no staging affordance; it now stages through the same
+  `prepareVisualStagedEdit` path as `LibraryBrowse`, so the two cannot drift.
+- `window.confirm` replaced with an in-app confirmation showing the output name,
+  the full exact write set, and the collision winners.
+- A missing-source preflight over `foundry:checkAudioPaths` blocks a forge whose
+  recorded audio or PNG has moved, and a failed check blocks rather than
+  proceeding.
+
 Still open:
 
-3. No installed-state regression test for cancellation, and `FoundryForgeEdit`
-   admits only `sound` and `texture` — recolor and model have no serializer.
+`FoundryForgeEdit` admits only `sound` and `texture`: recolor and model have no
+serializer, and the tray refuses them explicitly rather than silently dropping
+them.
 
-Exit gate: a cancellation regression test, and a manual forge of one sound and
-one texture into a single VPK.
+Exit gate: a manual forge of one sound and one texture into a single VPK, and a
+real native-save-dialog cancel. Neither has been run against the game.
 
 Depends on: nothing. Slice G is no longer blocked behind the build itself.
 
@@ -176,26 +203,45 @@ Exit gate: per-hero, an in-game screenshot of the recolored abilities.
 
 Depends on: nothing. Runs independently of everything else.
 
-## Phase 6 — Performance config **[verified]**
+## Phase 6 — Performance config **[6b landed 2026-07-28, wave 2]**
 
-Confirmed absent: `PRESET_ID` is a single constant
-(`performanceConfigData.ts:32`), so there is no multi-preset applier; the card
-offers only a bulk `resetPerformanceConfigOverrides`
-(`PerformanceConfigCard.tsx:295`), a card-level applied/edited badge (`:208`),
-and a per-control "using game default" hint (`:360`). An out-of-range stored
-value is silently replaced by the control default (`:333`).
+`PRESET_ID` is still a single constant (`performanceConfigData.ts`), so there is
+still no multi-preset applier.
 
+Closed 2026-07-28 (wave 2):
+
+- **6b.** ~~Phase A of [performance-convars-followup-plan.md](./performance-convars-followup-plan.md).~~
+  Per-control reset now removes Grimoire's line for that key (dropping the
+  sidecar override, uncommenting nothing, leaving untagged lines alone) instead
+  of writing an app-chosen number, via `clearPerformanceConvars` and the
+  `clear-performance-convars` channel. Value-state badges are computed in the
+  main process from `convarStates`, the only side that can see the sidecar, the
+  markers, and the preset data at once. Out-of-range values are badged and
+  require explicit confirmation; the slider no longer parks on a clamped
+  position as if that were the file's real value. Toggles and sliders both stage
+  into an explicit pending panel with apply and discard.
+
+  Two root causes were fixed along the way that the item text did not name:
+  `readHudConvarValues` filtered to HUD keys only, so `convarValues` never
+  carried an advanced key and every slider reported "using the game default"
+  forever; and the authoritative game defaults lived in a renderer constant,
+  which is exactly the app-chosen-value-as-game-default problem. Defaults now
+  live in `performanceConfigData.ts` and the card derives from status.
+  `setPerformanceAdvancedConvars` also stopped silently dropping out-of-range
+  input while reporting success.
+
+Still open:
 
 - **6a.** Phase 2 of [performance-config-integration.md](./performance-config-integration.md):
   id-keyed multi-preset applier + manifest UI over the curated Sqooky upstream.
-- **6b.** Phase A of [performance-convars-followup-plan.md](./performance-convars-followup-plan.md):
-  per-control reset-to-game-default, value-state badges (default / preset / user
-  override / unsupported), out-of-range warning instead of silent clamp, pending
-  vs applied summary.
+
+Unverified against the game: the eight advanced `gameDefault` numbers were moved
+from the renderer, not read off a running build. HUD `gameDefault` is `null` for
+all eight toggles, so an unset toggle is badged "Game default" but cannot preview
+what the game will actually do (`citadel_damage_offscreen_indicator_disabled` is
+an inverted flag and the one to check first). Filling these in is data-only.
 
 `video.txt` auto-apply stays out of scope (machine-specific; guided merge only).
-
-Depends on: 6b is independently shippable and cheaper; do it first.
 
 ## Phase 7 — 3D preview fidelity **[verified: 7a and 7b are done]**
 
