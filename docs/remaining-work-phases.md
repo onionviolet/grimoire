@@ -349,6 +349,57 @@ Depends on: the Worker side (`../grimoire-social`) leads every item; the client
 follows. 8b carries moderation cost that was postponed deliberately — re-decide
 before starting, do not drift into it.
 
+## Phase 8.5 — Banked from the wave 4 planning pass (2026-07-28)
+
+Scoped but deliberately not started. Recorded here so the reasoning is not lost.
+
+**The important one: verification debt.** Four waves have landed with a green
+repository gate and **zero in-game validation**. That is the real risk on this
+board, and no amount of further code reduces it. The cheapest useful hour:
+
+1. Forge one sound and one texture into a single VPK, save it, mount it, and
+   confirm you hear and see both.
+2. Cancel the save dialog once and confirm nothing changed in Installed.
+3. Mount a merged VPK built from a reviewed source order.
+4. Enable `Preview > Debug > Rigged` (leave Cloth off) and look at Seven
+   (`gigawatt_prisoner`), per section 8 of
+   [rigged-preview-spike.md](./rigged-preview-spike.md).
+
+If any of those fails, that failure outranks everything below it.
+
+**Deploy landmine, social 1.5.** Migration 0005 is applied nowhere and the
+profile routes select its columns, so `/v1/profiles` returns 500 until it runs.
+Harmless today (nothing is deployed) and ordering-sensitive whenever the Worker
+next ships. Apply the migration before deploying, not after.
+
+**Updater housekeeping (new, not previously tracked).**
+`services/updater.ts` has no cleanup path of any kind: electron-updater's
+download cache accumulates old installers and stale partial downloads under the
+per-user updater cache, and nothing prunes them. Add a bounded sweep (keep the
+pending install for the current target, drop everything older) on a successful
+install or at startup. Local `release/` output is a separate, developer-side
+concern and is gitignored.
+
+**Deferred client work, in rough value order:**
+
+1. Social gone-mods list: render GameBanana's own mod titles in place of the
+   current `GameBanana: #123, #456` tooltip. Client-only, no Worker change, no
+   new translation key (decided 2026-07-28: reuse upstream data rather than
+   author new copy).
+2. The TOS gate drift (`PublishDialog.tsx:14`): design puts it at first login,
+   the code fires it at first publish and stores acceptance in localStorage.
+   **This is a decision, not a bug.** Either move the gate or correct the design
+   doc; do not let an agent pick.
+3. Phase 4b, the merge recipe schema. Assessed 2026-07-28 as **the least
+   important thing on the board**: pure groundwork for 4c/4d, no standalone
+   user benefit, and nothing breaks without it. Do not start it before the
+   Foundry work below, and not at all unless 4c is actually wanted.
+
+**Blocked on a clean working tree:** Phase 2's remaining item (recolor and model
+serializers for `FoundryForgeEdit`) and Phase 3 item 3 (launch-shuffle controls
+in Foundry). Both were kept out of wave 4 only because `src/components/foundry/*`
+had uncommitted local work in flight.
+
 ## Phase 9 — Blocked / deliberately deferred
 
 Do not start these because adjacent UI exists:

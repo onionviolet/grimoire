@@ -94,6 +94,10 @@ required before a release.
    (`gigawatt_prisoner`, the worst case on every axis) per section 8 of
    [rigged-preview-spike.md](./rigged-preview-spike.md), the release flag stays
    false and the static posed preview remains the default.
+1d. **The updater never cleans up after itself.** `services/updater.ts` has no
+   pruning path: electron-updater's download cache keeps old installers and
+   stale partial downloads, and nothing removes them. Banked in Phase 8.5 of
+   [remaining-work-phases.md](./remaining-work-phases.md).
 1a. **Performance ConVar game defaults are unverified against the game.** The
    eight advanced defaults were moved out of the renderer constant that held
    them, not read off a running build, so a wrong number badges an untagged
