@@ -19,7 +19,6 @@ import {
   Volume2,
 } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
-import { canonicalHeroName } from '../../lib/lockerUtils';
 import { showToast } from '../../stores/toastStore';
 import {
   foundryCheckAudioPaths,
@@ -36,6 +35,7 @@ import { foundryShuffleKey, groupFoundryShufflePools } from '../../lib/foundryCh
 import {
   collectFoundryChanges,
   filterFoundryChanges,
+  scopeFoundryChangesToHero,
   groupFoundryChanges,
   sortFoundryChanges,
   type FoundryChangeEntry,
@@ -104,11 +104,7 @@ export default function MyChanges({ onAddNew, heroName }: MyChangesProps) {
 
   const all = useMemo(() => {
     const changes = collectFoundryChanges(mods);
-    if (!heroName) return changes;
-    const wanted = canonicalHeroName(heroName);
-    // Hero scoping compares canonical names so an alias recorded by one surface
-    // still matches the roster name another surface used.
-    return changes.filter((entry) => entry.heroName && canonicalHeroName(entry.heroName) === wanted);
+    return heroName ? scopeFoundryChangesToHero(changes, heroName) : changes;
   }, [mods, heroName]);
   const visible = useMemo(
     () => sortFoundryChanges(filterFoundryChanges(all, { filter, query }), sort),

@@ -31,9 +31,21 @@ import {
   type VisualStagedEdit,
 } from './visualEdits';
 
+/**
+ * The minimum a family member has to be for the coverage reasoning to apply: it
+ * has to name the exact entry it writes. `TextureEntry` satisfies this, and so
+ * does the Locker's `CustomCardSlot` (whose `entry` is a real VPK entry path),
+ * which is what lets both surfaces share the reasoning without sharing a
+ * component. Only `portraitFamilyVariants` needs a full catalog entry, because
+ * only it derives the family from the catalog.
+ */
+export interface PortraitFamilyItem {
+  path: string;
+}
+
 /** One discovered member of a portrait family. `item` is the catalog entry, so
  *  the exact entry path stays the ownership key throughout. */
-export interface PortraitVariant<T extends TextureEntry = TextureEntry> {
+export interface PortraitVariant<T extends PortraitFamilyItem = TextureEntry> {
   item: T;
   /** The exact, normalized VPK entry path this variant writes. */
   path: string;
@@ -161,7 +173,7 @@ export function cropToTargetRect(
 }
 
 /** Which image a single variant will be written from, and where it came from. */
-export interface PortraitFamilyPlanEntry<T extends TextureEntry = TextureEntry> {
+export interface PortraitFamilyPlanEntry<T extends PortraitFamilyItem = TextureEntry> {
   variant: PortraitVariant<T>;
   imagePath: string;
   origin: 'family' | 'override';
@@ -173,7 +185,7 @@ export interface PortraitFamilyPlanEntry<T extends TextureEntry = TextureEntry> 
  * with neither is deliberately absent from the plan rather than defaulted, so
  * the coverage check below can refuse the whole stage.
  */
-export function planPortraitFamilyEdits<T extends TextureEntry>(
+export function planPortraitFamilyEdits<T extends PortraitFamilyItem>(
   variants: readonly PortraitVariant<T>[],
   familyImagePath: string | null,
   overrides: Readonly<Record<string, string>> = {},
@@ -196,7 +208,7 @@ export function planPortraitFamilyEdits<T extends TextureEntry>(
  * the whole family, so staging a subset would quietly under-deliver against the
  * warning the user just acknowledged: the caller blocks on a non-empty result.
  */
-export function portraitFamilyCoverageGap<T extends TextureEntry>(
+export function portraitFamilyCoverageGap<T extends PortraitFamilyItem>(
   variants: readonly PortraitVariant<T>[],
   familyImagePath: string | null,
   overrides: Readonly<Record<string, string>> = {},

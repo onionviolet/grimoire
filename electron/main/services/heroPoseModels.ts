@@ -32,6 +32,7 @@ import { runVpkmerge, runVpkmergeStdout, verifyVpkOutput } from './modMerger';
 import { SOURCE2_EXTRAS_VERSION } from '../../../src/lib/source2ExtrasVersion';
 import { codenamesForHero } from './heroPortraits';
 import { getCitadelPath, getAddonsPath, getDisabledPath } from './deadlock';
+import { resolvePreviewVpk } from './previewVpkRegistry';
 
 export const HERO_POSE_SCHEME = 'grimoire-hero';
 
@@ -129,8 +130,15 @@ function sanitize(value: string): string {
  *  still. Lowercased because the skin half is a VPK name, unique case-
  *  insensitively. */
 export interface HeroPoseSkinSource {
+    /** Identity of the source. Normally an installed mod's `pakNN_dir.vpk` name,
+     *  resolved against the addons folder. For a preview source (below) it is a
+     *  stable synthetic id instead, and nothing is resolved against addons. */
     metaKey: string;
     priority: number;
+    /** Handle for a temporary build registered in `previewVpkRegistry` (the
+     *  Foundry build tray preview). When set, `metaKey` is never looked up in
+     *  the addons folder: this source is not, and must not become, installed. */
+    previewId?: string;
 }
 
 /**
@@ -594,6 +602,7 @@ function normalizeSkinSources(skinSources: HeroPoseSkinSource[] = []): HeroPoseS
         byKey.set(metaKey, {
             metaKey,
             priority: Number.isFinite(source.priority) ? source.priority : 0,
+            ...(source.previewId ? { previewId: source.previewId } : {}),
         });
     }
     return [...byKey.values()].sort(
@@ -603,15 +612,23 @@ function normalizeSkinSources(skinSources: HeroPoseSkinSource[] = []): HeroPoseS
 
 type ResolvedSource = HeroPoseSkinSource & { path: string };
 
-/** Resolve each skin source's metaKey to an on-disk VPK, dropping any that can't
- *  be found (mirrors the old inline resolve in resolvePoseSource). */
+/** Resolve each skin source to an on-disk VPK, dropping any that can't be found
+ *  (mirrors the old inline resolve in resolvePoseSource).
+ *
+ *  A source carrying a `previewId` is a temporary build that no installed mod
+ *  owns, so it is traded back through the registry rather than looked up in the
+ *  addons folder. An id the registry no longer knows resolves to nothing and the
+ *  source is dropped, which degrades a stale preview to the installed stack
+ *  alone instead of failing the whole export. */
 async function resolveSources(
     deadlockPath: string,
     skinSources: HeroPoseSkinSource[]
 ): Promise<ResolvedSource[]> {
     const resolved: ResolvedSource[] = [];
     for (const source of skinSources) {
-        const path = await resolveSkinVpk(deadlockPath, source.metaKey);
+        const path = source.previewId
+            ? resolvePreviewVpk(source.previewId)
+            : await resolveSkinVpk(deadlockPath, source.metaKey);
         if (path) resolved.push({ ...source, path });
     }
     return resolved;

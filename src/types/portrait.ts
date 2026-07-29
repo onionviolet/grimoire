@@ -54,8 +54,19 @@ export interface SoulModelInfo {
 }
 
 export interface HeroPoseSkinSource {
+  /** Identity of the source. Normally an installed mod's `pakNN_dir.vpk` name,
+   *  resolved against the addons folder. For a preview source (below) it is a
+   *  stable synthetic id instead, and nothing is resolved against addons. */
   metaKey: string;
   priority: number;
+  /**
+   * Handle for an ad-hoc build that no installed mod owns: the Foundry build
+   * tray's temporary preview VPK. Main registers the build and hands back this
+   * id, so the renderer never names a path on disk (a renderer-supplied path
+   * would go straight into vpkmerge, and main owns that trust boundary).
+   * When set, `metaKey` is not looked up in the addons folder.
+   */
+  previewId?: string;
 }
 
 /**

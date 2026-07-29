@@ -373,6 +373,38 @@ export async function applyHeroSound(
     };
 }
 
+/**
+ * The exact clip entries an apply would write for (hero, slot) from `sourceKey`,
+ * without applying anything.
+ *
+ * This is the pre-write half of the disclosure the Locker was missing: the
+ * picker can name the real normalized entries before the user commits, instead
+ * of the user discovering the overlap later on the Conflicts page. Exact entry
+ * paths are the ownership key, so this reads the source VPK's directory rather
+ * than inferring anything from the mod's label or classification counts.
+ *
+ * Read-only in every sense: it parses a VPK directory and touches nothing else.
+ * An unknown source or a source with no clips for this slot is an empty list,
+ * not an error, because this runs speculatively for every candidate row.
+ */
+export async function heroSoundWriteSet(
+    deadlockPath: string,
+    heroName: string,
+    slot: AbilitySlot,
+    sourceKey: string,
+): Promise<string[]> {
+    const vpks = await listAddonVpks(deadlockPath);
+    const src = vpks.find((v) => v.metaKey === sourceKey);
+    if (!src) return [];
+    try {
+        return abilitySoundClipsForSlot(src.path, heroName, slot);
+    } catch {
+        // An unreadable VPK narrows what is known; it does not justify blocking
+        // the whole panel. The caller shows the source with no write set.
+        return [];
+    }
+}
+
 /** Remove hero X's ability-`slot` sound, reverting to whatever else ships it. */
 export async function revertHeroSound(
     deadlockPath: string,

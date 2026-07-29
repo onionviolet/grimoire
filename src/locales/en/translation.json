@@ -154,7 +154,12 @@
     "heroes": {
       "subtitle": "Pick a hero to edit their look, abilities, voice, and icons.",
       "search": "Search heroes",
-      "noMatch": "No heroes match that search."
+      "noMatch": "No heroes match that search.",
+      "inDevelopment": "In development",
+      "changeCount_one": "{{count}} change you made for this hero",
+      "changeCount_other": "{{count}} changes you made for this hero",
+      "favorite": "Favorite this hero",
+      "unfavorite": "Remove from favorites"
     },
     "workshop": {
       "appearance": "Appearance",
@@ -168,7 +173,12 @@
         "title": "More per-ability editing coming",
         "body": "Per-ability icon and VFX color editing will land here next, one row per ability. For now, recolor all ability VFX at once under Appearance, and browse ability icons under Icons & Textures."
       },
-      "myChanges": "My changes"
+      "myChanges": "My changes",
+      "show3dPreview": "Preview the build tray on the 3D model",
+      "hide3dPreview": "Hide the 3D preview",
+      "preview3dTitle": "{{hero}} preview",
+      "previewBuilding": "Building preview",
+      "previewFailed": "Preview build failed: {{error}}"
     },
     "subtools": {
       "heading": "Workshop",
@@ -1921,7 +1931,16 @@
       "applied": "Applied",
       "use": "Use",
       "on": "On",
-      "off": "Off"
+      "off": "Off",
+      "whatThisWrites": "What this writes",
+      "readingWriteSets": "Reading write sets",
+      "writeSetUnknown": "No readable write set for these sources.",
+      "writeSetSummary_one": "{{count}} entry is written for {{hero}} ability {{slot}} by these sources.",
+      "writeSetSummary_other": "{{count}} entries are written for {{hero}} ability {{slot}} by these sources.",
+      "pickOverwrites_one": "Applying this takes over {{count}} entry from the source applied now.",
+      "pickOverwrites_other": "Applying this takes over {{count}} entries from the source applied now.",
+      "pickReverts_one": "{{count}} entry the current source supplies reverts to the game default.",
+      "pickReverts_other": "{{count}} entries the current source supplies revert to the game default."
     },
     "cards": {
       "heroCard": "Hero Card",
@@ -1949,7 +1968,9 @@
       "chooseImageForCard": "Choose an image for the {{variant}} card",
       "exportDialogTitle": "Export {{hero}} custom card",
       "exportedToast": "Exported to {{path}}",
-      "missingSources": "Some cards were dropped because their source mod's VPK is no longer installed: {{names}}"
+      "missingSources": "Some cards were dropped because their source mod's VPK is no longer installed: {{names}}",
+      "partialFamily_one": "{{count}} card variant will keep its stock art: {{variants}}.",
+      "partialFamily_other": "{{count}} card variants will keep their stock art: {{variants}}."
     },
     "trippy": {
       "loading": "Loading...",
@@ -2108,6 +2129,16 @@
       "lockerSections": "Locker sections",
       "hero3dModel": "{{hero}} 3D model",
       "editInFoundry": "Edit in Foundry"
+    },
+    "overlap": {
+      "title": "Overlapping files",
+      "scan": "Find overlapping files",
+      "rescan": "Rescan",
+      "none": "No enabled mod overlaps these skins.",
+      "intro_one": "{{count}} skin is enabled for this hero.",
+      "intro_other": "{{count}} skins are enabled for this hero. They may write some of the same files.",
+      "found_one": "{{count}} file is written by more than one enabled mod.",
+      "found_other": "{{count}} files are written by more than one enabled mod."
     }
   },
   "profiles": {
@@ -3341,6 +3372,11 @@
       "low_hp": "Low HP",
       "gloat": "Gloat",
       "minimap": "Minimap"
-    }
+    },
+    "useCurrentArt": "Use current art",
+    "useCurrentArtHint": "Load the game's own art for this variant into the frame",
+    "currentArtUnavailable": "The current art for this entry could not be decoded.",
+    "recentTitle": "Recently used",
+    "recentHint": "Load this image into the frame"
   }
 }

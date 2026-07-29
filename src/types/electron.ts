@@ -737,6 +737,14 @@ export interface ElectronAPI {
     ) => Promise<ApplyHeroSoundResult>;
     revertHeroSound: (heroName: string, slot: AbilitySlot) => Promise<ApplyHeroSoundResult>;
     getActiveHeroSounds: (heroName: string) => Promise<ActiveHeroSound[]>;
+    /** The exact normalized entries an ability-sound apply would write, read
+     *  without applying anything. Empty when the source is unknown, ships no
+     *  clip for that slot, or could not be read. */
+    getHeroSoundWriteSet: (
+        heroName: string,
+        slot: import('./mod').AbilitySlot,
+        sourceKey: string
+    ) => Promise<string[]>;
     getHeroColorSupport: (heroName: string) => Promise<boolean>;
     applyHeroColor: (
         heroName: string,
@@ -1166,6 +1174,11 @@ export interface ElectronAPI {
          *  and return its absolute path, which is what the visual staging
          *  contract records. Writes nothing into the game directory. */
         stagePortraitImage: (dataUrl: string) => Promise<string>;
+        /** Portrait images the user framed before, newest first, so an edit no
+         *  longer requires a fresh file drop every time. */
+        listPortraitImages: () => Promise<
+            Array<{ path: string; dataUrl: string; mtimeMs: number }>
+        >;
         /** A 128px `grimoire-foundry:` preview of a recorded source image, or
          *  null when it is gone, too large, or not decodable. Never returns a
          *  filesystem path. */
@@ -1196,6 +1209,14 @@ export interface ElectronAPI {
         forgeInstall: (
             req: import('./foundry').FoundryForgeRequest
         ) => Promise<import('./mod').Mod[]>;
+        /** Build the tray into a throwaway VPK for the 3D preview. Resolves to
+         *  an opaque handle for a pose source's `previewId`. Nothing is
+         *  installed and the addons folder is not touched. */
+        buildTrayPreview: (
+            req: import('./foundry').FoundryForgeRequest
+        ) => Promise<string>;
+        /** Drop a preview build and its temp directory. Idempotent. */
+        releaseTrayPreview: (previewId: string) => Promise<void>;
     };
     browser: {
         filterStats: () => Promise<import('./foundry').BrowserFilterStats>;

@@ -336,6 +336,20 @@ export async function revertHeroSound(
   return window.electronAPI.revertHeroSound(heroName, slot);
 }
 
+/**
+ * The exact normalized entries applying this source for (hero, slot) would
+ * write, read without writing anything. Feeds the picker's pre-write
+ * disclosure: exact entry paths are the ownership key, so the panel never
+ * infers an overlap from a label or a classification count.
+ */
+export async function getHeroSoundWriteSet(
+  heroName: string,
+  slot: AbilitySlot,
+  sourceKey: string
+): Promise<string[]> {
+  return window.electronAPI.getHeroSoundWriteSet(heroName, slot, sourceKey);
+}
+
 export async function getActiveHeroSounds(heroName: string): Promise<ActiveHeroSound[]> {
   return window.electronAPI.getActiveHeroSounds(heroName);
 }
@@ -1446,6 +1460,14 @@ export async function foundryVoiceclipFile(vsndPath: string): Promise<string | n
 /** Park a portrait-editor PNG bake on disk and get the absolute path back. The
  *  visual staging contract records a path, not bytes, so an editor-authored
  *  image has to land in this bounded userData cache before it can be staged. */
+/** Portrait images the user has framed before, newest first. Intake reuse: the
+ *  editor offers these back instead of demanding a file drop every time. */
+export async function foundryListPortraitImages(): Promise<
+  Array<{ path: string; dataUrl: string; mtimeMs: number }>
+> {
+  return window.electronAPI.foundry.listPortraitImages();
+}
+
 export async function foundryStagePortraitImage(dataUrl: string): Promise<string> {
   return window.electronAPI.foundry.stagePortraitImage(dataUrl);
 }
@@ -1540,6 +1562,24 @@ export async function foundryForgeInstall(
   req: import('../types/foundry').FoundryForgeRequest
 ): Promise<import('../types/mod').Mod[]> {
   return window.electronAPI.foundry.forgeInstall(req);
+}
+
+/**
+ * Build the staged edits into a throwaway VPK so they can be seen on the live
+ * 3D model before anything is forged. Returns an opaque handle to pass as a
+ * pose source's `previewId`; nothing is installed and the addons folder is not
+ * touched. Always pair with `foundryReleaseTrayPreview`.
+ */
+export async function foundryBuildTrayPreview(
+  req: import('../types/foundry').FoundryForgeRequest
+): Promise<string> {
+  return window.electronAPI.foundry.buildTrayPreview(req);
+}
+
+/** Drop a preview build and its temp directory. Safe to call with a handle that
+ *  main has already released. */
+export async function foundryReleaseTrayPreview(previewId: string): Promise<void> {
+  return window.electronAPI.foundry.releaseTrayPreview(previewId);
 }
 
 export async function getChatWheelStatus(): Promise<{ available: boolean; path?: string; error?: string }> {

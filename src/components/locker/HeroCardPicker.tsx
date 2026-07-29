@@ -18,6 +18,10 @@ import {
 import { showToast } from '../../stores/toastStore';
 import { useAppStore } from '../../stores/appStore';
 import CardCropper from './CardCropper';
+import {
+  portraitFamilyCoverageGap,
+  type PortraitVariant,
+} from '../foundry/portraitFamily';
 import type { CustomCardSlot, HeroPortrait } from '../../types/portrait';
 import { shuffleCardKey } from '../../lib/lockerRandomizer';
 
@@ -103,6 +107,42 @@ export default function HeroCardPicker({ heroName }: HeroCardPickerProps) {
   const hasPicks = Object.keys(picks).length > 0;
   // Dirty == there are picks that differ from what's applied. Drives the button.
   const dirty = hasPicks && picksSig !== appliedSig;
+
+  // A hero card is a family, not one image, and the Locker used to set one
+  // surface at a time with no notion that the others exist. Reuses Foundry's
+  // coverage reasoning rather than a second copy of it: each slot carries the
+  // exact `.vtex_c` entry it replaces, so the ownership key is a real entry path
+  // on both sides.
+  //
+  // Unlike the Foundry editor this warns instead of refusing. Foundry refuses
+  // because its staging preflight already warned about the whole family, so
+  // delivering a subset would under-deliver against something the user just
+  // acknowledged. The Locker has no such preflight: an unfilled slot is simply
+  // not written, and a custom main card with stock low-HP art is a legitimate
+  // thing to want.
+  const coverageGap = useMemo(() => {
+    if (!hasPicks) return [];
+    // `path` is the slot's real `.vtex_c` entry, so the family reasoning keys on
+    // an exact entry path here exactly as it does in Foundry.
+    const variants: PortraitVariant<CustomCardSlot & { path: string }>[] = slots.map((slot) => ({
+      item: { ...slot, path: slot.entry },
+      path: slot.entry,
+      key: slot.variant,
+      anchor: false,
+    }));
+    const overrides = Object.fromEntries(
+      slots.filter((slot) => picks[slot.variant]).map((slot) => [slot.entry, slot.variant])
+    );
+    return portraitFamilyCoverageGap(variants, null, overrides);
+  }, [slots, picks, hasPicks]);
+
+  const uncoveredVariants = useMemo(() => {
+    const byEntry = new Map(slots.map((slot) => [slot.entry, slot.variant]));
+    return coverageGap.map((entry) => {
+      const variant = byEntry.get(entry) ?? entry;
+      return VARIANT_LABEL[variant] ?? variant;
+    });
+  }, [coverageGap, slots]);
 
   useEffect(() => {
     let active = true;
@@ -491,6 +531,21 @@ export default function HeroCardPicker({ heroName }: HeroCardPickerProps) {
               );
             })}
           </div>
+
+          {/* Partial-family warning: name the variants that will keep their
+              stock art, so an incomplete card is a choice rather than a
+              surprise noticed in-game. */}
+          {uncoveredVariants.length > 0 && (
+            <p className="flex items-start gap-1.5 rounded-md border border-amber-400/40 bg-amber-400/10 px-2.5 py-1.5 text-[11px] leading-snug text-amber-300">
+              <AlertCircle className="mt-px h-3.5 w-3.5 flex-shrink-0" />
+              <span>
+                {t('locker.cards.partialFamily', {
+                  count: uncoveredVariants.length,
+                  variants: uncoveredVariants.join(', '),
+                })}
+              </span>
+            </p>
+          )}
 
           <div className="flex flex-wrap items-center gap-2">
             <button

@@ -5,6 +5,7 @@ import type { Mod } from '../../types/mod';
 // rules, and two copies of an ownership rule is how the two surfaces would
 // quietly disagree about what a change owns.
 import { compiledSoundEntry, normalizeChangeEntry } from '../../lib/foundryChanges';
+import { canonicalHeroName } from '../../lib/lockerUtils';
 
 export { compiledSoundEntry, normalizeChangeEntry };
 
@@ -124,6 +125,35 @@ export function collectFoundryChanges(mods: readonly Mod[]): FoundryChangeEntry[
 
 /** Which shelf a row sits on. Visual rows split by catalog category so
  *  "portraits" is a thing the user can actually ask for. */
+/**
+ * Scope changes to one hero. Canonical names on both sides so an alias recorded
+ * by one surface still matches the roster name another surface used, and an
+ * unscoped change is excluded rather than shown under a hero it does not belong
+ * to.
+ */
+export function scopeFoundryChangesToHero(
+  entries: readonly FoundryChangeEntry[],
+  heroName: string,
+): FoundryChangeEntry[] {
+  const wanted = canonicalHeroName(heroName);
+  return entries.filter((entry) => entry.heroName && canonicalHeroName(entry.heroName) === wanted);
+}
+
+/**
+ * How many changes the user has authored per hero, keyed by canonical hero
+ * name. Derived from the same rows `My changes` lists, so the grid badge and
+ * the workshop's own list can never disagree about what counts.
+ */
+export function countFoundryChangesByHero(mods: readonly Mod[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const entry of collectFoundryChanges(mods)) {
+    if (!entry.heroName) continue;
+    const key = canonicalHeroName(entry.heroName);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return counts;
+}
+
 export type FoundryChangeFilter = 'all' | 'sound' | TextureCategory;
 
 export function changeFilterOf(entry: FoundryChangeEntry): FoundryChangeFilter {

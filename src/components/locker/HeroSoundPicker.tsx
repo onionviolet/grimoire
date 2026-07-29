@@ -1,13 +1,26 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Music, Loader2, AlertCircle, Check, Volume2, RefreshCw } from 'lucide-react';
+import {
+  Music,
+  Loader2,
+  AlertCircle,
+  Check,
+  Volume2,
+  RefreshCw,
+  ChevronDown,
+  ChevronRight,
+  FileWarning,
+} from 'lucide-react';
 import {
   applyHeroSound,
   getActiveHeroSounds,
   getGameRunningStatus,
   getHeroAbilitySlots,
+  getHeroSoundWriteSet,
   revertHeroSound,
 } from '../../lib/api';
+import AssetSourcesPanel from '../foundry/AssetSourcesPanel';
+import { pickConsequence, type PickConsequence } from './soundPickConsequence';
 import { useAppStore } from '../../stores/appStore';
 import AudioPreviewPlayer from '../AudioPreviewPlayer';
 import type { Mod, HeroAbilitySlot, AbilitySlot, AbilitySoundParams } from '../../types/mod';
@@ -137,6 +150,91 @@ function ParamSliders({
   );
 }
 
+/** A candidate source's real write set, keyed by metaKey. Absent = not loaded. */
+type WriteSets = ReadonlyMap<string, string[]>;
+
+/**
+ * The pre-write half of the trade with Foundry: Foundry stages an edit next to a
+ * tray that reports the collision first, while the Locker wrote on click and let
+ * the user find the overlap later on the Conflicts page. This says the same
+ * thing at the point of action, without a modal: a picker whose speed is the
+ * point should not grow a confirmation step.
+ *
+ * On demand rather than eagerly, because it parses each candidate's VPK
+ * directory: the same on-demand contract `AssetSourcesPanel` already keeps.
+ */
+function SlotWriteDisclosure({
+  slot,
+  mods,
+  heroName,
+  writeSets,
+  loading,
+  open,
+  onToggle,
+}: {
+  slot: AbilitySlot;
+  mods: Mod[];
+  heroName: string;
+  writeSets: WriteSets;
+  loading: boolean;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  const { t } = useTranslation();
+  const paths = useMemo(
+    () => [...new Set(mods.flatMap((mod) => writeSets.get(mod.metaKey) ?? []))].sort(),
+    [mods, writeSets]
+  );
+
+  return (
+    <div className="mt-2 border-t border-border/50 pt-2">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-text-secondary hover:text-text-primary cursor-pointer"
+      >
+        {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+        {t('locker.sounds.whatThisWrites')}
+      </button>
+      {open && (
+        <div className="mt-1.5">
+          {loading ? (
+            <div className="flex items-center gap-1.5 text-[10px] text-text-secondary">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              {t('locker.sounds.readingWriteSets')}
+            </div>
+          ) : paths.length === 0 ? (
+            <p className="text-[10px] text-text-secondary/70">
+              {t('locker.sounds.writeSetUnknown')}
+            </p>
+          ) : (
+            <>
+              <p className="text-[10px] text-text-secondary">
+                {t('locker.sounds.writeSetSummary', {
+                  count: paths.length,
+                  hero: heroName,
+                  slot,
+                })}
+              </p>
+              <ul className="mt-1 space-y-0.5 text-[10px] text-text-secondary/80">
+                {paths.map((path) => (
+                  <li key={path} className="truncate" title={path}>
+                    {path}
+                  </li>
+                ))}
+              </ul>
+              {/* "What else already writes these files", inline, so the answer no
+                  longer lives one page away on Conflicts. */}
+              <AssetSourcesPanel paths={paths} />
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** One selectable source for a single ability slot. Clicking applies this
  *  source's clips for the slot into the Locker sound VPK; clicking the active
  *  one reverts the slot. The source mod's own enabled state is irrelevant (the
@@ -152,6 +250,7 @@ function SoundSourceRow({
   params,
   saving,
   soundVolume,
+  consequence,
   onPick,
   onParamChange,
 }: {
@@ -164,6 +263,9 @@ function SoundSourceRow({
   params: AbilitySoundParams;
   saving: boolean;
   soundVolume: number;
+  /** What this pick would take over and drop, once the write sets are known.
+   *  Null while unknown or when nothing is applied for the slot. */
+  consequence: PickConsequence | null;
   onPick: () => void;
   onParamChange: (next: AbilitySoundParams) => void;
 }) {
@@ -205,6 +307,20 @@ function SoundSourceRow({
           <span className="flex-shrink-0 text-[9px] uppercase tracking-wide text-text-secondary">{t('locker.sounds.use')}</span>
         )}
       </button>
+      {/* Disclose before writing, next to the control rather than in a modal:
+          the whole (hero, slot) selection is rebuilt on pick, so the applied
+          source stops supplying every entry it owned. */}
+      {consequence && (consequence.takenOver > 0 || consequence.reverted > 0) && (
+        <p className="flex items-start gap-1 px-2.5 pb-1.5 text-[10px] text-amber-300/90">
+          <FileWarning className="mt-px h-3 w-3 flex-shrink-0" />
+          <span>
+            {t('locker.sounds.pickOverwrites', { count: consequence.takenOver })}
+            {consequence.reverted > 0
+              ? ` ${t('locker.sounds.pickReverts', { count: consequence.reverted })}`
+              : ''}
+          </span>
+        </p>
+      )}
       {/* GameBanana preview clip. Sibling of the pick button (not nested) so its
           own controls stopPropagation without fighting the pick action. */}
       {mod.audioUrl && (
@@ -319,6 +435,12 @@ export default function HeroSoundPicker({ heroName, soundList, onSelect }: HeroS
   const [gameRunning, setGameRunning] = useState(false);
   // Per-slot debounce timers for the slider re-apply.
   const commitTimers = useRef<Map<AbilitySlot, ReturnType<typeof setTimeout>>>(new Map());
+  // Pre-write disclosure state. Exact entry paths per candidate source, keyed
+  // `${slot}:${metaKey}`, loaded only for the slot the user opened: reading them
+  // parses each candidate's VPK directory.
+  const [writeSets, setWriteSets] = useState<Map<string, string[]>>(new Map());
+  const [disclosedSlot, setDisclosedSlot] = useState<AbilitySlot | null>(null);
+  const [writeSetsLoading, setWriteSetsLoading] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -474,6 +596,49 @@ export default function HeroSoundPicker({ heroName, soundList, onSelect }: HeroS
 
   const anyBusy = busyKey !== null || savingSlot !== null;
 
+  // Load the open slot's write sets. Re-runs when the applied source changes so
+  // the disclosure describes what is actually applied right now, not what was
+  // applied when the user opened it.
+  useEffect(() => {
+    if (disclosedSlot === null) return;
+    const candidates = bySlot.get(disclosedSlot) ?? [];
+    if (candidates.length === 0) return;
+    let cancelled = false;
+    setWriteSetsLoading(true);
+    void Promise.all(
+      candidates.map(async (mod) => {
+        const files = await getHeroSoundWriteSet(heroName, disclosedSlot, mod.metaKey).catch(
+          () => [] as string[]
+        );
+        return [`${disclosedSlot}:${mod.metaKey}`, files] as const;
+      })
+    )
+      .then((entries) => {
+        if (cancelled) return;
+        setWriteSets((prev) => {
+          const next = new Map(prev);
+          for (const [key, files] of entries) next.set(key, files);
+          return next;
+        });
+      })
+      .finally(() => {
+        if (!cancelled) setWriteSetsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [disclosedSlot, bySlot, heroName, activeBySlot]);
+
+  /** Per-slot view of the loaded write sets, keyed by metaKey. */
+  const writeSetsForSlot = (slot: AbilitySlot): ReadonlyMap<string, string[]> => {
+    const map = new Map<string, string[]>();
+    for (const [key, files] of writeSets) {
+      const prefix = `${slot}:`;
+      if (key.startsWith(prefix)) map.set(key.slice(prefix.length), files);
+    }
+    return map;
+  };
+
   return (
     <section className="space-y-3 border-t border-border/60 pt-5">
       <div className="flex items-center gap-2">
@@ -529,6 +694,10 @@ export default function HeroSoundPicker({ heroName, soundList, onSelect }: HeroS
           {slots.map((slot) => {
             const mods = bySlot.get(slot.slot) ?? [];
             const activeSource = activeBySlot.get(slot.slot);
+            const slotWriteSets = writeSetsForSlot(slot.slot);
+            const appliedFiles = activeSource ? slotWriteSets.get(activeSource) : undefined;
+            const applied =
+              activeSource && appliedFiles ? { metaKey: activeSource, files: appliedFiles } : null;
             return (
               <div
                 key={slot.slot}
@@ -553,24 +722,48 @@ export default function HeroSoundPicker({ heroName, soundList, onSelect }: HeroS
                   </div>
                 </div>
                 {mods.length > 0 ? (
-                  <div className="space-y-1.5">
-                    {mods.map((mod) => (
-                      <SoundSourceRow
-                        key={mod.id}
-                        mod={mod}
-                        heroName={heroName}
-                        slot={slot.slot}
-                        isActive={activeSource === mod.metaKey}
-                        isBusy={busyKey === `${slot.slot}:${mod.metaKey}`}
-                        anyBusy={anyBusy}
-                        params={paramsBySlot.get(slot.slot) ?? {}}
-                        saving={savingSlot === slot.slot}
-                        soundVolume={soundVolume}
-                        onPick={() => handlePick(slot.slot, mod)}
-                        onParamChange={(next) => handleParamChange(slot.slot, next)}
-                      />
-                    ))}
-                  </div>
+                  <>
+                    <div className="space-y-1.5">
+                      {mods.map((mod) => {
+                        const candidateFiles = slotWriteSets.get(mod.metaKey);
+                        return (
+                          <SoundSourceRow
+                            key={mod.id}
+                            mod={mod}
+                            heroName={heroName}
+                            slot={slot.slot}
+                            isActive={activeSource === mod.metaKey}
+                            isBusy={busyKey === `${slot.slot}:${mod.metaKey}`}
+                            anyBusy={anyBusy}
+                            params={paramsBySlot.get(slot.slot) ?? {}}
+                            saving={savingSlot === slot.slot}
+                            soundVolume={soundVolume}
+                            consequence={
+                              candidateFiles
+                                ? pickConsequence(applied, {
+                                    metaKey: mod.metaKey,
+                                    files: candidateFiles,
+                                  })
+                                : null
+                            }
+                            onPick={() => handlePick(slot.slot, mod)}
+                            onParamChange={(next) => handleParamChange(slot.slot, next)}
+                          />
+                        );
+                      })}
+                    </div>
+                    <SlotWriteDisclosure
+                      slot={slot.slot}
+                      mods={mods}
+                      heroName={heroName}
+                      writeSets={slotWriteSets}
+                      loading={writeSetsLoading && disclosedSlot === slot.slot}
+                      open={disclosedSlot === slot.slot}
+                      onToggle={() =>
+                        setDisclosedSlot((current) => (current === slot.slot ? null : slot.slot))
+                      }
+                    />
+                  </>
                 ) : (
                   <p className="text-[11px] text-text-secondary/70">{t('locker.sounds.noSoundModForAbility')}</p>
                 )}

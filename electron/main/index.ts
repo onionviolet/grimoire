@@ -117,6 +117,7 @@ import { attachBrowserFilter, configureFilter } from './services/browserContentF
 import { backfillMissingMetadataHashes } from './services/metadata';
 import { backfillImprintedFlags } from './services/imprintMods';
 import { destroyDiscordRpc } from './services/discordRpc';
+import { releaseAllPreviewVpks } from './services/previewVpkRegistry';
 import { startSaltIngest } from './services/saltIngest';
 
 let mainWindow: BrowserWindow | null = null;
@@ -622,6 +623,10 @@ if (!gotTheLock) {
     // user's profile the moment Grimoire quits (no-op if RPC was never enabled).
     app.on('before-quit', () => {
         destroyDiscordRpc();
+        // Backstop for Foundry's 3D tray previews: the renderer releases each
+        // build when the panel closes, but a renderer that dies without doing
+        // so must not leave its temp VPKs behind.
+        void releaseAllPreviewVpks();
     });
 }
 

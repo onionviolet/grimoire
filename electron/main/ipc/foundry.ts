@@ -25,8 +25,12 @@ import { scanMods } from '../services/mods';
 import { buildHeroEffectVpkForExport } from '../services/heroColors';
 import { exportVpkViaDialog } from '../services/foundryExport';
 import { buildFoundryForgeVpk, forgeAndExportFoundryVpk } from '../services/foundryForge';
-import { writeFoundryPortraitImage } from '../services/foundryPortraitImages';
+import {
+    listFoundryPortraitImages,
+    writeFoundryPortraitImage,
+} from '../services/foundryPortraitImages';
 import { ensureSourceThumbnail } from '../services/foundrySourceThumbs';
+import { registerPreviewVpk, releasePreviewVpk } from '../services/previewVpkRegistry';
 import { runVpkmergeStdout, vpkmergeBinaryPath } from '../services/modMerger';
 import {
     exportSoundAnnotations,
@@ -118,6 +122,33 @@ ipcMain.handle(
         );
     }
 );
+/**
+ * Build the tray into a VPK that exists only to be looked at.
+ *
+ * Temporary in the strong sense: `buildFoundryForgeVpk` writes into a fresh temp
+ * directory and nothing here copies it anywhere, so the addons folder is never
+ * touched, `loadMods` is never called, and Installed does not change. The build
+ * is registered rather than returned as a path, so the renderer holds an opaque
+ * handle and the pose pipeline (not the renderer) decides what file that means.
+ *
+ * The caller releases the previous preview before asking for a new one, and on
+ * unmount. `releaseAllPreviewVpks` on quit is the backstop for a renderer that
+ * dies without doing either.
+ */
+ipcMain.handle(
+    'foundry:buildTrayPreview',
+    async (_e, request: FoundryForgeRequest): Promise<string> => {
+        const deadlockPath = requireDeadlockPath();
+        const built = await buildFoundryForgeVpk(deadlockPath, request);
+        return registerPreviewVpk(built.vpkPath, built.cleanup);
+    }
+);
+
+ipcMain.handle('foundry:releaseTrayPreview', async (_e, previewId: string): Promise<void> => {
+    if (typeof previewId !== 'string' || !previewId.trim()) return;
+    await releasePreviewVpk(previewId);
+});
+
 ipcMain.handle('foundry:exportSoundAnnotations', async () => exportSoundAnnotations());
 ipcMain.handle('foundry:importSoundAnnotations', async (_e, content: string) =>
     importSoundAnnotations(content)
@@ -197,6 +228,13 @@ ipcMain.handle('foundry:stagePortraitImage', async (_e, dataUrl: string): Promis
 // renderer already knows about from mod provenance, caches a 128px PNG under the
 // existing Foundry thumbnail root, and hands back a `grimoire-foundry:` URL. It
 // never returns a filesystem path, so the renderer gains no new read reach.
+// The reuse half of the editor's image intake: images the user already framed,
+// offered back so a portrait edit no longer requires a file drop every time.
+// Read-only over the existing staging cache; adds no new store.
+ipcMain.handle('foundry:listPortraitImages', async (): Promise<import('../services/foundryPortraitImages').StagedPortraitImage[]> => {
+    return listFoundryPortraitImages();
+});
+
 ipcMain.handle('foundry:sourceThumbnail', async (_e, sourcePath: string): Promise<string | null> => {
     if (typeof sourcePath !== 'string') return null;
     return ensureSourceThumbnail(sourcePath);

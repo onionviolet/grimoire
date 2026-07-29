@@ -1,7 +1,12 @@
 import { ipcMain } from 'electron';
 import { getActiveDeadlockPath } from '../services/settings';
 import { getHeroAbilitySlots } from '../services/abilitySounds';
-import { applyHeroSound, revertHeroSound, getActiveHeroSounds } from '../services/heroSounds';
+import {
+    applyHeroSound,
+    revertHeroSound,
+    getActiveHeroSounds,
+    heroSoundWriteSet,
+} from '../services/heroSounds';
 import type {
     AbilitySlot,
     AbilitySoundParams,
@@ -43,6 +48,18 @@ ipcMain.handle(
         const deadlockPath = getActiveDeadlockPath();
         if (!deadlockPath) throw new Error('No Deadlock path configured');
         return revertHeroSound(deadlockPath, heroName, slot);
+    },
+);
+
+// Pre-write disclosure: the exact entries an apply would write, so the picker
+// can say what a pick overwrites before it writes rather than leaving the user
+// to find out on the Conflicts page. Writes nothing.
+ipcMain.handle(
+    'get-hero-sound-write-set',
+    async (_, heroName: string, slot: AbilitySlot, sourceKey: string): Promise<string[]> => {
+        const deadlockPath = getActiveDeadlockPath();
+        if (!deadlockPath) return [];
+        return heroSoundWriteSet(deadlockPath, heroName, slot, sourceKey);
     },
 );
 

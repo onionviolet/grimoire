@@ -1,10 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AlertTriangle, Check, Images, Layers, Loader2, Undo2, Upload } from 'lucide-react';
+import { AlertTriangle, Check, History, Images, Layers, Loader2, Undo2, Upload } from 'lucide-react';
 import { Modal } from '../common/Modal';
 import { Button, ModalHeader } from '../common/ui';
 import LockerImageCropper from '../locker/LockerImageCropper';
-import { foundryFullImage, foundryInspectAssetSources, foundryStagePortraitImage } from '../../lib/api';
+import {
+  foundryFullImage,
+  foundryInspectAssetSources,
+  foundryListPortraitImages,
+  foundryStagePortraitImage,
+} from '../../lib/api';
 import type { TextureGridItem } from '../../types/foundry';
 import type { VisualStagedEdit } from './visualEdits';
 import {
@@ -94,6 +99,10 @@ export default function PortraitEditor({ item, catalog, heroName, initialFile, o
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sourceSize, setSourceSize] = useState<PixelSize | null>(null);
+  // Intake reuse, borrowed from the Locker picker: images the user framed before
+  // and the game's own art for the entry being edited. A file drop is now one
+  // way in rather than the only one.
+  const [recent, setRecent] = useState<Array<{ path: string; dataUrl: string }>>([]);
 
   // Reset per opened entry: a previous family's bakes must never leak into a
   // different portrait.
@@ -173,6 +182,60 @@ export default function PortraitEditor({ item, catalog, heroName, initialFile, o
   useEffect(() => {
     if (initialFile) void pick(initialFile);
   }, [initialFile, pick]);
+
+  /** Load any already-decoded image straight into the crop frame. Shared by the
+   *  recent strip and the "use the current art" button, because both hand over
+   *  a data URL and neither should re-open a file dialog to do it. */
+  const loadIntoFrame = useCallback(
+    async (dataUrl: string) => {
+      try {
+        const img = await loadImage(dataUrl);
+        setSource(dataUrl);
+        setSourceSize({ width: img.naturalWidth, height: img.naturalHeight });
+        setError(null);
+      } catch {
+        setError(t('portraitEditor.imageReadFailed', "That image couldn't be read."));
+      }
+    },
+    [t]
+  );
+
+  // Refresh the recent strip each time the editor opens on an entry: staging in
+  // a previous session (or a previous open) is exactly what makes it useful.
+  useEffect(() => {
+    if (!item) return;
+    let cancelled = false;
+    void foundryListPortraitImages()
+      .then((images) => {
+        if (!cancelled) setRecent(images.map(({ path, dataUrl }) => ({ path, dataUrl })));
+      })
+      .catch(() => {
+        // A missing cache is an empty strip, not an error worth a banner.
+        if (!cancelled) setRecent([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [item]);
+
+  /** Load the game's own art for the variant being authored, so the stock
+   *  portrait can be recropped or repainted without leaving the app. */
+  const loadCurrentArt = useCallback(async () => {
+    if (!item) return;
+    setBusy(true);
+    try {
+      const url = await foundryFullImage(item.category, activePath || item.path);
+      if (!url) {
+        setError(t('portraitEditor.currentArtUnavailable'));
+        return;
+      }
+      await loadIntoFrame(url);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }, [item, activePath, loadIntoFrame, t]);
 
   // Bake the framed region at the template's real pixel size, park it on disk,
   // and record the returned path against the slot being authored.
@@ -268,15 +331,27 @@ export default function PortraitEditor({ item, catalog, heroName, initialFile, o
                     ? t('portraitEditor.target', { width: activeTarget.width, height: activeTarget.height })
                     : t('portraitEditor.targetUnknown', 'Template size unknown')}
                 </span>
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => fileRef.current?.click()}
-                  className="inline-flex cursor-pointer items-center gap-1 rounded-sm border border-border px-2 py-1 text-text-secondary transition-colors hover:border-accent/50 hover:text-text-primary disabled:opacity-50"
-                >
-                  <Upload size={12} />
-                  {t('portraitEditor.choose', 'Choose image')}
-                </button>
+                <span className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void loadCurrentArt()}
+                    title={t('portraitEditor.useCurrentArtHint')}
+                    className="inline-flex cursor-pointer items-center gap-1 rounded-sm border border-border px-2 py-1 text-text-secondary transition-colors hover:border-accent/50 hover:text-text-primary disabled:opacity-50"
+                  >
+                    <Images size={12} />
+                    {t('portraitEditor.useCurrentArt')}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => fileRef.current?.click()}
+                    className="inline-flex cursor-pointer items-center gap-1 rounded-sm border border-border px-2 py-1 text-text-secondary transition-colors hover:border-accent/50 hover:text-text-primary disabled:opacity-50"
+                  >
+                    <Upload size={12} />
+                    {t('portraitEditor.choose', 'Choose image')}
+                  </button>
+                </span>
               </div>
 
               <LockerImageCropper
@@ -301,6 +376,37 @@ export default function PortraitEditor({ item, catalog, heroName, initialFile, o
                   e.target.value = '';
                 }}
               />
+
+              {/* Images already framed in this or an earlier session. The
+                  staging cache is content-addressed, so this is a record of
+                  real work rather than a second store to keep in sync. */}
+              {recent.length > 0 && (
+                <div>
+                  <p className="mb-1 flex items-center gap-1 text-[11px] text-text-secondary">
+                    <History size={12} />
+                    {t('portraitEditor.recentTitle')}
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {recent.map((image) => (
+                      <button
+                        key={image.path}
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void loadIntoFrame(image.dataUrl)}
+                        title={t('portraitEditor.recentHint')}
+                        className="h-12 w-12 overflow-hidden rounded-sm border border-border transition-colors hover:border-accent/60 disabled:opacity-50 cursor-pointer"
+                      >
+                        <img
+                          src={image.dataUrl}
+                          alt=""
+                          className="h-full w-full object-cover"
+                          draggable={false}
+                        />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {upscales && activeTarget && sourceSize && (
                 <p className="flex items-start gap-2 rounded-sm border border-yellow-500/30 bg-yellow-500/10 p-2 text-[11px] text-yellow-300">

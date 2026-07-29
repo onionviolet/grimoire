@@ -1,32 +1,40 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ArrowLeft,
+  Box,
   Layers3,
+  Loader2,
   Sparkles,
   Swords,
   Volume2,
   Image as ImageIcon,
   ListChecks,
-  type LucideIcon,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { FoundryForgeRequest, HeroInfo } from '../../types/foundry';
 import type { Mod } from '../../types/mod';
+import type { HeroPoseSkinSource } from '../../types/portrait';
 import {
-  getHeroRenderPath,
-  getHeroNamePath,
-  getHeroWikiUrl,
+  getHeroChipIconPath,
+  inferHeroFromTitle,
+  isLockerManagedMod,
 } from '../../lib/lockerUtils';
+import HeroDetailFrame, { type HeroDetailSection } from '../common/HeroDetailFrame';
 import HeroEffectsPanel from '../locker/HeroEffectsPanel';
 import HeroSoundPicker from '../locker/HeroSoundPicker';
+import FloatingModelPanel from '../locker/FloatingModelPanel';
 import SoundBrowse from './SoundBrowse';
 import TextureBrowse from './TextureBrowse';
 import LibraryBrowse from './LibraryBrowse';
 import FoundryBuildTray from './FoundryBuildTray';
 import MyChanges from './MyChanges';
 import type { FoundryStagedEdit } from './buildTray';
+import { useTrayPreview } from './useTrayPreview';
 import Tx from '../translation/Tx';
 import { useAppStore } from '../../stores/appStore';
+// three.js viewer is heavy; only pull the chunk when the user flips to 3D, the
+// same way the Locker does. It must not enter the Foundry bundle for users who
+// never open the preview.
+const HeroPoseViewer = lazy(() => import('../locker/HeroPoseViewer'));
 
 interface HeroWorkshopProps {
   hero: HeroInfo;
@@ -84,12 +92,14 @@ export default function HeroWorkshop({
   const loadMods = useAppStore((s) => s.loadMods);
   const toggleMod = useAppStore((s) => s.toggleMod);
   const [section, setSection] = useState<SectionId>('appearance');
-  const [renderStep, setRenderStep] = useState(0);
-  const [nameFailed, setNameFailed] = useState(false);
   // The workshop is a full-bleed hero view, so the tray docks on demand rather
   // than permanently eating width. Staging opens it: an edit the user cannot
   // see landing is an edit they cannot review.
   const [trayOpen, setTrayOpen] = useState(false);
+  // The other half of the trade with the Locker: Foundry could review a write
+  // set but never look at it. Authoring a visual edit blind is the largest
+  // quality gap in the app, so the workshop gets the Locker's 3D panel.
+  const [view3d, setView3d] = useState(false);
   const stage = useCallback((edit: FoundryStagedEdit) => {
     onStage(edit);
     setTrayOpen(true);
@@ -103,6 +113,55 @@ export default function HeroWorkshop({
     if (!modsLoaded) void loadMods();
   }, [modsLoaded, loadMods]);
 
+  // The whole point of the preview is to answer "what will this look like in my
+  // game", not "what does this look like on a vanilla model", so the tray build
+  // stacks on top of whatever the user already has enabled for this hero.
+  const enabledHeroSkins = useMemo(
+    () =>
+      mods.filter(
+        (mod: Mod) =>
+          mod.enabled &&
+          isLockerManagedMod(mod) &&
+          (mod.lockerHero ?? inferHeroFromTitle(mod.name))?.toLowerCase() ===
+            hero.name.toLowerCase()
+      ),
+    [mods, hero.name]
+  );
+
+  // Lower priority wins a file conflict (see modLoadOrder), so "above the
+  // enabled stack" means one below the lowest priority currently in it.
+  const previewPriority = useMemo(
+    () => Math.min(0, ...enabledHeroSkins.map((mod: Mod) => mod.priority)) - 1,
+    [enabledHeroSkins]
+  );
+
+  const trayPreview = useTrayPreview(stagedEdits, view3d);
+
+  const poseSkinSources = useMemo<HeroPoseSkinSource[]>(() => {
+    const sources: HeroPoseSkinSource[] = enabledHeroSkins.map((mod: Mod) => ({
+      metaKey: mod.metaKey,
+      priority: mod.priority,
+    }));
+    if (trayPreview.previewId) {
+      sources.push({
+        // Stable synthetic identity: the pose cache is content-addressed on
+        // (metaKey, size, mtime), so a rebuilt preview VPK invalidates it for
+        // free and needs no bespoke invalidation rule.
+        metaKey: 'foundry-tray-preview',
+        priority: previewPriority,
+        previewId: trayPreview.previewId,
+      });
+    }
+    return sources.sort(
+      (a, b) => b.priority - a.priority || a.metaKey.localeCompare(b.metaKey)
+    );
+  }, [enabledHeroSkins, previewPriority, trayPreview.previewId]);
+
+  const poseSourceKey =
+    poseSkinSources
+      .map((source) => `${source.priority}:${source.metaKey}:${source.previewId ?? ''}`)
+      .join('|') || 'vanilla';
+
   const heroSoundMods = useMemo(
     () =>
       mods.filter((mod: Mod) =>
@@ -111,7 +170,7 @@ export default function HeroWorkshop({
     [mods, hero.name],
   );
 
-  const sections: Array<{ id: SectionId; label: string; icon: LucideIcon }> = [
+  const sections: Array<HeroDetailSection<SectionId>> = [
     { id: 'appearance', label: t('foundry.workshop.appearance', 'Appearance'), icon: Sparkles },
     { id: 'abilities', label: t('foundry.workshop.abilities', 'Abilities'), icon: Swords },
     { id: 'voice', label: t('foundry.workshop.voice', 'Voice'), icon: Volume2 },
@@ -119,98 +178,40 @@ export default function HeroWorkshop({
     { id: 'myChanges', label: t('foundry.workshop.myChanges', 'My changes'), icon: ListChecks },
   ];
 
-  const renderSrc =
-    renderStep === 0
-      ? getHeroRenderPath(hero.name)
-      : renderStep === 1
-        ? getHeroWikiUrl(hero.name)
-        : '';
-
   return (
-    <div className="relative flex h-full overflow-hidden">
-      {/* Hero render backdrop, anchored right, behind the frosted rail. */}
-      <div className="hidden lg:block absolute inset-0 bg-bg-primary animate-hero-zoom-in overflow-hidden">
-        {renderSrc ? (
-          <img
-            src={renderSrc}
-            alt={hero.name}
-            onError={() => setRenderStep((s) => s + 1)}
-            className="absolute top-0 right-0 h-full w-auto max-w-none"
-          />
-        ) : null}
-        <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-black/50 to-transparent" />
-      </div>
-
-      {/* Feathered frosted glass behind the rail + content, so the render bleeds
-          through to clear on the right. */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-y-0 left-0 z-[5] hidden lg:block lg:w-[1040px] xl:w-[1160px]"
-      >
-        <div
-          className="absolute inset-0"
-          style={{
-            backdropFilter: 'blur(40px) saturate(130%)',
-            WebkitBackdropFilter: 'blur(40px) saturate(130%)',
-            WebkitMaskImage: 'linear-gradient(to right, black 0%, black 44%, transparent 94%)',
-            maskImage: 'linear-gradient(to right, black 0%, black 44%, transparent 94%)',
-          }}
-        />
-        <div
-          className="absolute inset-0"
-          style={{
-            background:
-              'linear-gradient(to right, var(--color-bg-secondary) 0%, rgba(26,26,26,0.95) 42%, rgba(26,26,26,0.7) 62%, rgba(26,26,26,0.3) 80%, transparent 96%)',
-          }}
-        />
-      </div>
-
-      {/* Left rail: hero identity + section nav + build tray. */}
-      <div className="relative z-10 flex w-[280px] flex-shrink-0 flex-col gap-5 overflow-y-auto scrollbar-glass bg-bg-secondary p-5 animate-slide-in-left lg:bg-transparent xl:w-[320px]">
+    <HeroDetailFrame
+      heroName={hero.name}
+      // Third fallback step, matching the grid: a hero with no render still
+      // gets their chip icon rather than dropping straight to bare text.
+      heroIconUrl={getHeroChipIconPath(hero.name)}
+      backLabel={t('foundry.workshop.back', 'All heroes')}
+      onBack={onBack}
+      navLabel={t('foundry.workshop.sections', 'Workshop sections')}
+      sections={sections}
+      activeSection={section}
+      onSectionChange={setSection}
+      contentWidth="fluid"
+      topRight={
         <button
           type="button"
-          onClick={onBack}
-          className="flex w-fit items-center gap-2 text-sm text-text-secondary transition-colors hover:text-text-primary cursor-pointer"
+          onClick={() => setView3d((open) => !open)}
+          aria-pressed={view3d}
+          title={
+            view3d
+              ? t('foundry.workshop.hide3dPreview', 'Hide the 3D preview')
+              : t('foundry.workshop.show3dPreview', 'Preview the build tray on the 3D model')
+          }
+          className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
+            view3d
+              ? 'border-accent/60 bg-accent/20 text-text-primary'
+              : 'border-border/70 bg-bg-secondary/70 text-text-secondary hover:text-text-primary backdrop-blur'
+          }`}
         >
-          <ArrowLeft className="w-4 h-4" />
-          {t('foundry.workshop.back', 'All heroes')}
+          <Box className="h-3.5 w-3.5" />
+          3D
         </button>
-
-        {nameFailed ? (
-          <h2 className="text-2xl font-bold text-white drop-shadow-[0_2px_12px_rgba(0,0,0,0.6)]">
-            {hero.name}
-          </h2>
-        ) : (
-          <img
-            src={getHeroNamePath(hero.name)}
-            alt={hero.name}
-            className="h-8 w-auto self-start object-contain"
-            onError={() => setNameFailed(true)}
-          />
-        )}
-
-        <nav aria-label={t('foundry.workshop.sections', 'Workshop sections')} className="flex flex-col gap-1.5">
-          {sections.map(({ id, label, icon: Icon }) => {
-            const isActive = section === id;
-            return (
-              <button
-                key={id}
-                type="button"
-                aria-current={isActive ? 'page' : undefined}
-                onClick={() => setSection(id)}
-                className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors cursor-pointer ${
-                  isActive
-                    ? 'border-accent/60 bg-accent/15'
-                    : 'border-transparent hover:bg-white/10'
-                }`}
-              >
-                <Icon className="h-4 w-4 flex-shrink-0 text-white/80" />
-                <span className="flex-1 truncate text-sm font-medium text-white">{label}</span>
-              </button>
-            );
-          })}
-        </nav>
-
+      }
+      railExtra={
         <button
           type="button"
           onClick={() => setTrayOpen((open) => !open)}
@@ -226,60 +227,99 @@ export default function HeroWorkshop({
               : t('foundry.buildTray.panelToggle', 'Build tray')}
           </span>
         </button>
-      </div>
-
-      {/* Content pane: the active section. */}
-      <div className="relative z-10 min-w-0 flex-1 overflow-y-auto scrollbar-glass">
-        <div className="space-y-4 p-6">
-          {section === 'appearance' ? (
-            <HeroEffectsPanel key={hero.name} heroName={hero.name} />
-          ) : section === 'abilities' ? (
-            <div className="space-y-6">
-              <HeroSoundPicker
-                heroName={hero.name}
-                soundList={heroSoundMods}
-                onSelect={(modId) => void toggleMod(modId)}
+      }
+      after={
+        <>
+          {trayOpen && (
+            <div className="relative z-10 overflow-y-auto scrollbar-glass">
+              <FoundryBuildTray
+                edits={stagedEdits}
+                outputName={outputName}
+                onOutputNameChange={onOutputNameChange}
+                onForge={onForge}
+                onInstall={onInstall}
+                onRemove={onRemoveStagedEdit}
+                className="h-full bg-bg-secondary/80"
               />
-              {/* Each ability card lists its gameplay sounds with play + Swap (drop
-                  your own MP3), forged through the soundswap engine. The ability
-                  axis lives here (not under Voice); Voice is VO only. */}
-              <SoundBrowse heroes={scopedRoster} heroNames={heroNames} only="gameplay" onStage={stage} />
-              <AbilitiesComingNote />
             </div>
-          ) : section === 'voice' ? (
-            <SoundBrowse heroes={scopedRoster} heroNames={heroNames} only="voice" onStage={stage} />
-          ) : section === 'icons' ? (
-            <div className="space-y-8">
-              <TextureBrowse heroes={scopedRoster} heroNames={heroNames} onStage={stage} />
-              <div className="space-y-2">
-                <h4 className="text-sm font-semibold text-white/90">
-                  {t('foundry.workshop.abilityIcons', 'Ability & item icons')}
-                </h4>
-                <LibraryBrowse heroNames={heroNames} initialCategory="ability-icon" onStage={stage} />
-              </div>
-            </div>
-          ) : section === 'myChanges' ? (
-            // Scoped to this hero: the workshop is a per-hero surface, so a
-            // global change would read as belonging to a hero it does not.
-            <MyChanges heroName={hero.name} onAddNew={() => setSection('icons')} />
-          ) : null}
-        </div>
-      </div>
+          )}
 
-      {trayOpen && (
-        <div className="relative z-10 overflow-y-auto scrollbar-glass">
-          <FoundryBuildTray
-            edits={stagedEdits}
-            outputName={outputName}
-            onOutputNameChange={onOutputNameChange}
-            onForge={onForge}
-            onInstall={onInstall}
-            onRemove={onRemoveStagedEdit}
-            className="h-full bg-bg-secondary/80"
+          {/* The staged edits, built into a throwaway VPK and stacked over the
+              user's own enabled skins. Mounted only while open so the heavy
+              three.js chunk loads on demand. */}
+          {view3d && (
+            <FloatingModelPanel
+              title={t('foundry.workshop.preview3dTitle', '{{hero}} preview', { hero: hero.name })}
+              onClose={() => setView3d(false)}
+            >
+              <Suspense
+                fallback={
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <Loader2 className="h-6 w-6 animate-spin text-white/80" />
+                  </div>
+                }
+              >
+                <HeroPoseViewer
+                  key={`${hero.name}:${poseSourceKey}`}
+                  heroName={hero.name}
+                  skinSources={poseSkinSources}
+                />
+              </Suspense>
+              {trayPreview.building && (
+                <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-center p-2">
+                  <span className="flex items-center gap-2 rounded-full bg-black/60 px-3 py-1 text-xs text-white/80 backdrop-blur">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    {t('foundry.workshop.previewBuilding', 'Building preview')}
+                  </span>
+                </div>
+              )}
+              {trayPreview.error && (
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 p-2 text-center">
+                  <span className="rounded-full bg-red-500/20 px-3 py-1 text-xs text-red-200 backdrop-blur">
+                    {t('foundry.workshop.previewFailed', 'Preview build failed: {{error}}', {
+                      error: trayPreview.error,
+                    })}
+                  </span>
+                </div>
+              )}
+            </FloatingModelPanel>
+          )}
+        </>
+      }
+    >
+      {section === 'appearance' ? (
+        <HeroEffectsPanel key={hero.name} heroName={hero.name} />
+      ) : section === 'abilities' ? (
+        <div className="space-y-6">
+          <HeroSoundPicker
+            heroName={hero.name}
+            soundList={heroSoundMods}
+            onSelect={(modId) => void toggleMod(modId)}
           />
+          {/* Each ability card lists its gameplay sounds with play + Swap (drop
+              your own MP3), forged through the soundswap engine. The ability
+              axis lives here (not under Voice); Voice is VO only. */}
+          <SoundBrowse heroes={scopedRoster} heroNames={heroNames} only="gameplay" onStage={stage} />
+          <AbilitiesComingNote />
         </div>
-      )}
-    </div>
+      ) : section === 'voice' ? (
+        <SoundBrowse heroes={scopedRoster} heroNames={heroNames} only="voice" onStage={stage} />
+      ) : section === 'icons' ? (
+        <div className="space-y-8">
+          <TextureBrowse heroes={scopedRoster} heroNames={heroNames} onStage={stage} />
+          <div className="space-y-2">
+            <h4 className="text-sm font-semibold text-white/90">
+              {t('foundry.workshop.abilityIcons', 'Ability & item icons')}
+            </h4>
+            <LibraryBrowse heroNames={heroNames} initialCategory="ability-icon" onStage={stage} />
+          </div>
+        </div>
+      ) : section === 'myChanges' ? (
+        // Scoped to this hero: the workshop is a per-hero surface, so a
+        // global change would read as belonging to a hero it does not.
+        <MyChanges heroName={hero.name} onAddNew={() => setSection('icons')} />
+      ) : null}
+    </HeroDetailFrame>
   );
 }
 

@@ -74,6 +74,61 @@ export async function writeFoundryPortraitImage(dataUrl: string): Promise<string
     return target;
 }
 
+/** One previously staged portrait image, offered back as an intake source. */
+export interface StagedPortraitImage {
+    path: string;
+    /** The PNG re-encoded as a data URL, so the renderer can show and re-crop it
+     *  without a privileged scheme for a handful of card-sized files. */
+    dataUrl: string;
+    mtimeMs: number;
+}
+
+/**
+ * The most recently staged portrait images, newest first.
+ *
+ * The Foundry editor previously required a file drop every single time, while
+ * the Locker's picker could reuse images it already had. This is the reuse half:
+ * the staging cache is already a content-addressed record of every image the
+ * user framed, so offering it back costs no new store.
+ *
+ * Read-only, and bounded by `limit` so a large cache cannot turn into a large
+ * IPC payload.
+ */
+export async function listFoundryPortraitImages(limit = 12): Promise<StagedPortraitImage[]> {
+    try {
+        const dir = portraitEditsRoot();
+        const names = await fs.readdir(dir);
+        const stats = await Promise.all(
+            names
+                .filter((name) => name.toLowerCase().endsWith('.png'))
+                .map(async (name) => {
+                    const path = join(dir, name);
+                    const info = await fs.stat(path).catch(() => null);
+                    return info?.isFile() ? { path, mtimeMs: info.mtimeMs } : null;
+                })
+        );
+        const newest = stats
+            .filter((entry): entry is NonNullable<typeof entry> => !!entry)
+            .sort((a, b) => b.mtimeMs - a.mtimeMs)
+            .slice(0, Math.max(0, limit));
+        const loaded = await Promise.all(
+            newest.map(async (entry) => {
+                const bytes = await fs.readFile(entry.path).catch(() => null);
+                if (!bytes) return null;
+                return {
+                    path: entry.path,
+                    dataUrl: `data:image/png;base64,${bytes.toString('base64')}`,
+                    mtimeMs: entry.mtimeMs,
+                };
+            })
+        );
+        return loaded.filter((entry): entry is StagedPortraitImage => !!entry);
+    } catch {
+        // A missing cache root just means nothing has been staged yet.
+        return [];
+    }
+}
+
 /** Keep the staging cache under its budget, newest-first. Best effort: a missing
  *  root or an in-use file must never fail a staging attempt. */
 export async function prunePortraitEdits(keepBytes = KEEP_BYTES): Promise<void> {

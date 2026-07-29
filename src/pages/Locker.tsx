@@ -10,6 +10,7 @@ import {
   setModGlobalType,
   setModLockerHero,
 } from '../lib/api';
+import { migrateLegacyHeroFavorites, useHeroFavorites } from '../lib/heroFavorites';
 import { getActiveDeadlockPath, shouldBlurNsfw } from '../lib/appSettings';
 import { getAssetPath } from '../lib/assetPath';
 import HeroSkinsPanel from '../components/locker/HeroSkinsPanel';
@@ -37,7 +38,6 @@ import { Tag, ToggleIndicator } from '../components/common/ui';
 import { Skeleton } from '../components/common/Skeleton';
 import { HeroSelect } from '../components/common/HeroSelect';
 import {
-  FAVORITE_HEROES_KEY,
   GLOBAL_MOD_TYPE_LABELS,
   GLOBAL_MOD_TYPE_ORDER,
   activeLockerSkin,
@@ -58,7 +58,6 @@ import {
   isLockerManagedSound,
   isPropContainerType,
   modLoadOrder,
-  readStoredFavorites,
   type GlobalModGroups,
   type HeroCategory,
 } from '../lib/lockerUtils';
@@ -270,9 +269,10 @@ export default function Locker() {
   // first render. A useEffect-driven load would race against the save effect
   // under StrictMode: the save closure captures `[]`, clobbers localStorage,
   // and StrictMode's replayed load reads the empty value and wins.
-  const [favoriteHeroes, setFavoriteHeroes] = useState<number[]>(() =>
-    readStoredFavorites()
-  );
+  // Favorites are shared with the Foundry grid, keyed by canonical hero name
+  // (Foundry has no GameBanana category ids to key on). The id set below is
+  // derived so this page's existing id-based comparisons keep working.
+  const { favorites: favoriteHeroNames, toggleFavorite } = useHeroFavorites();
   // Applied Locker overrides (hero card art + ability sounds + ability recolors
   // + trippy paints), keyed by hero name. Lives off the mod list, so it's
   // fetched separately and feeds the per-hero card/effect indicator icons.
@@ -343,10 +343,6 @@ export default function Locker() {
   }, []);
 
   useEffect(() => {
-    localStorage.setItem(FAVORITE_HEROES_KEY, JSON.stringify(favoriteHeroes));
-  }, [favoriteHeroes]);
-
-  useEffect(() => {
     localStorage.setItem('lockerViewMode', viewMode);
   }, [viewMode]);
 
@@ -399,6 +395,23 @@ export default function Locker() {
 
   // Build basic hero list first (needed for mod categorization)
   const baseHeroList = useMemo(() => buildHeroList(categories), [categories]);
+  // The shared (name-keyed) favorites, projected back onto this page's category
+  // ids so the existing sort/filter/card comparisons are unchanged.
+  // One-time translation of the legacy id list into names, done here because
+  // this is the only surface with a roster that can map ids to heroes.
+  useEffect(() => {
+    migrateLegacyHeroFavorites(baseHeroList);
+  }, [baseHeroList]);
+
+  const favoriteHeroes = useMemo(
+    () =>
+      new Set(
+        baseHeroList
+          .filter((hero) => favoriteHeroNames.includes(canonicalHeroName(hero.name)))
+          .map((hero) => hero.id)
+      ),
+    [baseHeroList, favoriteHeroNames]
+  );
   const heroNamesForColorSupport = useMemo(
     () => Array.from(new Set(baseHeroList.map((hero) => hero.name))).sort((a, b) => a.localeCompare(b)),
     [baseHeroList]
@@ -574,8 +587,8 @@ export default function Locker() {
   // Sorted hero list for display
   const heroList = useMemo(() => {
     return [...baseHeroList].sort((a, b) => {
-      const aFav = favoriteHeroes.includes(a.id);
-      const bFav = favoriteHeroes.includes(b.id);
+      const aFav = favoriteHeroes.has(a.id);
+      const bFav = favoriteHeroes.has(b.id);
       // Favorites first
       if (aFav !== bFav) return aFav ? -1 : 1;
       // Then heroes with any applied customization: anything active in-game floats
@@ -602,7 +615,7 @@ export default function Locker() {
   const displayedHeroList = useMemo(() => {
     if (!hideEmptyHeroes) return heroList;
     return heroList.filter((hero) => {
-      if (favoriteHeroes.includes(hero.id)) return true;
+      if (favoriteHeroes.has(hero.id)) return true;
       return (
         countLockerSkins(heroMods.map.get(hero.id) ?? []) > 0 ||
         countLockerSkins(heroSounds.map.get(hero.id) ?? []) > 0
@@ -1007,15 +1020,11 @@ export default function Locker() {
               inShufflePool={shuffleOnLaunch && shufflePoolHeroes.has(hero.id)}
               cardImage={heroCardImage(hero.id)}
               hideHeroName={heroHideName(hero.id)}
-              isFavorite={favoriteHeroes.includes(hero.id)}
+              isFavorite={favoriteHeroes.has(hero.id)}
               onNavigate={() => goToHero(hero)}
               onBrowse={() => openHeroInBrowse(hero)}
               onToggleFavorite={() =>
-                setFavoriteHeroes((prev) =>
-                  prev.includes(hero.id)
-                    ? prev.filter((id) => id !== hero.id)
-                    : [...prev, hero.id]
-                )
+                toggleFavorite(hero.name)
               }
             />
           ))}
@@ -1075,13 +1084,9 @@ export default function Locker() {
               shuffleArmed={shuffleOnLaunch}
               soundShuffleIncluded={soundShuffleIncluded}
               onToggleSoundShuffleIncluded={toggleSoundShuffleIncluded}
-              isFavorite={favoriteHeroes.includes(hero.id)}
+              isFavorite={favoriteHeroes.has(hero.id)}
               onToggleFavorite={() =>
-                setFavoriteHeroes((prev) =>
-                  prev.includes(hero.id)
-                    ? prev.filter((id) => id !== hero.id)
-                    : [...prev, hero.id]
-                )
+                toggleFavorite(hero.name)
               }
               hideNsfwPreviews={shouldBlurNsfw(settings)}
             />
@@ -1169,15 +1174,11 @@ export default function Locker() {
             skinList={selectedHeroMods}
             soundList={selectedHeroSoundList}
             skinCount={selectedHeroSkinCount}
-            isFavorite={favoriteHeroes.includes(overlayHero.id)}
+            isFavorite={favoriteHeroes.has(overlayHero.id)}
             onBack={() => navigate('/locker')}
             onEditInFoundry={() => navigate(`/foundry?hero=${encodeURIComponent(overlayHero.name)}`)}
             onToggleFavorite={() =>
-              setFavoriteHeroes((prev) =>
-                prev.includes(overlayHero.id)
-                  ? prev.filter((id) => id !== overlayHero.id)
-                  : [...prev, overlayHero.id]
-              )
+              toggleFavorite(overlayHero.name)
             }
             onSelect={(modId) => setActiveSkin(overlayHero.id, modId)}
             onToggleVariant={(modId) => toggleHeroVariant(overlayHero.id, modId)}

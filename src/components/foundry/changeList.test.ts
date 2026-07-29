@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   changeFilterOf,
   collectFoundryChanges,
+  countFoundryChangesByHero,
   filterFoundryChanges,
+  scopeFoundryChangesToHero,
   groupFoundryChanges,
   sortFoundryChanges,
 } from './changeList';
@@ -157,5 +159,53 @@ describe('groupFoundryChanges', () => {
             mod({ id: 'abrams', textureReplacement: { entryPath: 'a/three.png', imageFileName: 'z.png', category: 'other', heroName: 'Abrams' } }),
         ]);
         expect(groupFoundryChanges(rows).map(([scope]) => scope)).toEqual(['Abrams', 'Zed', '']);
+    });
+});
+
+describe('per-hero scoping and counts', () => {
+    const mods = [
+        mod({
+            id: 'abrams-sound',
+            lockerHero: 'Abrams',
+            soundSwap: { event: 'ability.one', heroCodename: 'atlas', audioFileName: 'a.mp3', reforge: { assignments: [{ clipPath: 'sounds/a.vsnd' }] } },
+        } as Partial<Mod>),
+        mod({
+            id: 'abrams-texture',
+            lockerHero: 'Abrams',
+            textureReplacement: { entryPath: 'panorama/atlas.png', imageFileName: 'b.png', category: 'hero-image' },
+        } as Partial<Mod>),
+        mod({
+            id: 'mina-texture',
+            lockerHero: 'Mina',
+            textureReplacement: { entryPath: 'panorama/mina.png', imageFileName: 'c.png', category: 'hero-image' },
+        } as Partial<Mod>),
+        mod({
+            id: 'unscoped-texture',
+            textureReplacement: { entryPath: 'panorama/ui.png', imageFileName: 'd.png', category: 'other' },
+        } as Partial<Mod>),
+    ];
+
+    it('scopes to one hero and excludes changes that belong to no hero', () => {
+        const scoped = scopeFoundryChangesToHero(collectFoundryChanges(mods), 'Abrams');
+        expect(scoped.map((entry) => entry.id).sort()).toEqual(['abrams-sound', 'abrams-texture']);
+    });
+
+    it('counts per hero from the same rows My changes lists', () => {
+        const counts = countFoundryChangesByHero(mods);
+        expect(counts.get('Abrams')).toBe(2);
+        expect(counts.get('Mina')).toBe(1);
+    });
+
+    it('does not attribute an unscoped change to any hero', () => {
+        const counts = countFoundryChangesByHero(mods);
+        // Four rows collected, three attributed: the unscoped one is nobody's.
+        expect([...counts.values()].reduce((sum, n) => sum + n, 0)).toBe(3);
+    });
+
+    it('agrees with the scoped list, so a badge cannot promise a row the workshop will not show', () => {
+        const counts = countFoundryChangesByHero(mods);
+        for (const hero of ['Abrams', 'Mina']) {
+            expect(counts.get(hero)).toBe(scopeFoundryChangesToHero(collectFoundryChanges(mods), hero).length);
+        }
     });
 });

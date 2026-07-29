@@ -211,6 +211,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
         ipcRenderer.invoke('revert-hero-sound', heroName, slot),
     getActiveHeroSounds: (heroName: string) =>
         ipcRenderer.invoke('get-active-hero-sounds', heroName),
+    getHeroSoundWriteSet: (heroName: string, slot: number, sourceKey: string): Promise<string[]> =>
+        ipcRenderer.invoke('get-hero-sound-write-set', heroName, slot, sourceKey),
     getHeroColorSupport: (heroName: string) =>
         ipcRenderer.invoke('get-hero-color-support', heroName),
     applyHeroColor: (heroName: string, hue: number, saturation: number, brightness: number) =>
@@ -680,6 +682,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
         voiceclipFile: (vsndPath: string) => ipcRenderer.invoke('foundry:voiceclipFile', vsndPath),
         stagePortraitImage: (dataUrl: string): Promise<string> =>
             ipcRenderer.invoke('foundry:stagePortraitImage', dataUrl),
+        listPortraitImages: () => ipcRenderer.invoke('foundry:listPortraitImages'),
         sourceThumbnail: (sourcePath: string): Promise<string | null> =>
             ipcRenderer.invoke('foundry:sourceThumbnail', sourcePath),
         warmCache: () => ipcRenderer.invoke('foundry:warmCache'),
@@ -702,6 +705,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
             ipcRenderer.invoke('foundry:forge', req),
         forgeInstall: (req: import('../../src/types/foundry').FoundryForgeRequest) =>
             ipcRenderer.invoke('foundry:forgeInstall', req),
+        buildTrayPreview: (req: import('../../src/types/foundry').FoundryForgeRequest): Promise<string> =>
+            ipcRenderer.invoke('foundry:buildTrayPreview', req),
+        releaseTrayPreview: (previewId: string): Promise<void> =>
+            ipcRenderer.invoke('foundry:releaseTrayPreview', previewId),
     },
 
     // In-app browser: read-only view of the ad/tracker filter's state.
