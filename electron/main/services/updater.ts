@@ -4,6 +4,7 @@ import type { UpdateInfo } from 'electron-updater';
 import { app, BrowserWindow } from 'electron';
 import log from 'electron-log';
 import { isValidSemver } from './version';
+import { pruneUpdaterCache } from './updaterCache';
 
 export type InstallSource = 'managed' | 'appimage' | 'standard' | 'fork';
 
@@ -84,6 +85,14 @@ function sendStatusToRenderer() {
 
 export function initUpdater(window: BrowserWindow) {
     mainWindow = window;
+    // Sweep stale downloads even when the updater itself is switched off: a
+    // managed install may still hold installers from before it was packaged,
+    // and there is no other code path that would ever clear them.
+    void pruneUpdaterCache(app.name)
+        .then((removed) => {
+            if (removed) log.info(`[Updater] Pruned ${removed} stale download(s).`);
+        })
+        .catch(() => {});
     if (updaterDisabled) {
         log.info('[Updater] System package install detected; in-app updater disabled.');
         return;
