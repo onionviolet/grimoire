@@ -4,7 +4,7 @@ import { join, basename, extname, resolve } from 'path';
 import { tmpdir } from 'os';
 import { BrowserWindow } from 'electron';
 import { getDisabledPath } from './deadlock';
-import { extractArchive, isArchive, checkOneClickOptOut, scanSuspiciousFiles, resolveInstallableVpk, type ExtractedVpk } from './extract';
+import { extractArchive, isArchive, checkOneClickOptOut, scanSuspiciousFiles, resolveInstallableVpk, type ExtractedVpk, type RejectedVpk } from './extract';
 import { buildVpkIndexBySize } from './vpkVariantIndex';
 import { randomUUID } from 'crypto';
 import { setModMetadataWithHash, getModMetadata } from './metadata';
@@ -789,8 +789,9 @@ async function executeDownload(
         mainWindow?.webContents.send('download-extracting', { modId, fileId });
 
         let extractedVpks: ExtractedVpk[];
+        const rejected: RejectedVpk[] = [];
         try {
-            extractedVpks = await extractArchive(downloadPath, workDir);
+            extractedVpks = await extractArchive(downloadPath, workDir, { rejected });
         } catch (extractError) {
             const errorMsg = extractError instanceof Error ? extractError.message : String(extractError);
 
@@ -821,6 +822,23 @@ async function executeDownload(
             throw extractError;
         }
         console.log(`[downloadMod] Extracted ${extractedVpks.length} VPK files:`, extractedVpks);
+
+        // Nothing survived the identity gate. Finishing quietly here is what
+        // made a mod look like it had simply vanished: the queue reported
+        // success and no row ever appeared. Say what was actually in the
+        // archive instead.
+        if (extractedVpks.length === 0) {
+            const message = rejected.length > 0
+                ? `Nothing in this download is a VPK the game can load. ${rejected.map((r) => r.reason).join(' ')}`
+                : 'No .vpk file was found inside this download.';
+            mainWindow?.webContents.send('download-error', {
+                modId,
+                fileId,
+                errorCode: 'NO_USABLE_VPK',
+                message,
+            });
+            throw new Error(message);
+        }
 
         // Rename VPKs to avoid conflicts
         const renamed = await renameVpksToAvoidConflicts(deadlockPath, targetPath, extractedVpks, details.name);
@@ -1322,8 +1340,9 @@ async function executeOneClickDownload(
         mainWindow?.webContents.send('download-extracting', { modId, fileId });
 
         let extractedVpks: ExtractedVpk[];
+        const rejected: RejectedVpk[] = [];
         try {
-            extractedVpks = await extractArchive(downloadPath, workDir);
+            extractedVpks = await extractArchive(downloadPath, workDir, { rejected });
         } catch (extractError) {
             const errorMsg =
                 extractError instanceof Error ? extractError.message : String(extractError);
@@ -1348,6 +1367,21 @@ async function executeOneClickDownload(
                 await fs.unlink(downloadPath).catch(() => { });
             }
             throw extractError;
+        }
+
+        // Same as the queue path: an install that gates everything away must
+        // say so rather than completing into an empty library.
+        if (extractedVpks.length === 0) {
+            const message = rejected.length > 0
+                ? `Nothing in this download is a VPK the game can load. ${rejected.map((r) => r.reason).join(' ')}`
+                : 'No .vpk file was found inside this download.';
+            mainWindow?.webContents.send('download-error', {
+                modId,
+                fileId,
+                errorCode: 'NO_USABLE_VPK',
+                message,
+            });
+            throw new Error(message);
         }
 
         const renamed = await renameVpksToAvoidConflicts(deadlockPath, targetPath, extractedVpks, oneClickModName);

@@ -116,7 +116,7 @@ describe('checkVpkFile (on disk)', () => {
 });
 
 describe('extractArchive (identity gate on extraction results)', () => {
-    it('drops an archive entry that only looks like a VPK, and reports the type', async () => {
+    it('leaves an archive entry that only looks like a VPK out of the install set, and reports the type', async () => {
         const root = scratchDir();
         const dest = join(root, 'out');
         mkdirSync(dest, { recursive: true });
@@ -134,6 +134,8 @@ describe('extractArchive (identity gate on extraction results)', () => {
         expect(rejected).toHaveLength(1);
         expect(rejected[0].fileName).toBe('notes_dir.vpk');
         expect(rejected[0].format).toBe('unknown');
+        // The gate picks what to install; it does not destroy what it skipped.
+        expect(existsSync(join(dest, 'notes_dir.vpk'))).toBe(true);
     });
 
     it('installs the inner VPK when an archive entry wraps exactly one', async () => {
@@ -155,9 +157,11 @@ describe('extractArchive (identity gate on extraction results)', () => {
         expect(readFileSync(extracted[0].path).subarray(29).toString('utf8')).toBe('INNER');
         // The original name is preserved for the installed-slot naming.
         expect(extracted[0].fileName).toBe('pak62_dir.vpk');
+        // The wrapper itself is still in the staging dir, not unlinked.
+        expect(existsSync(join(dest, 'pak62_dir.vpk'))).toBe(true);
     });
 
-    it('refuses to guess when the wrapper holds several VPKs', async () => {
+    it('offers every VPK when the wrapper holds several, labelled by the wrapper', async () => {
         const root = scratchDir();
         const dest = join(root, 'out');
         mkdirSync(dest, { recursive: true });
@@ -170,7 +174,14 @@ describe('extractArchive (identity gate on extraction results)', () => {
         const archive = join(root, 'ambiguous.zip');
         outer.writeZip(archive);
 
-        expect(await extractArchive(archive, dest)).toHaveLength(0);
+        // Ambiguous is not the same as unwanted. Dropping the bundle made the
+        // whole mod disappear from the install; both inner VPKs are handed to
+        // the picker instead, and the wrapper survives on disk.
+        const extracted = await extractArchive(archive, dest);
+        expect(extracted.map((e) => e.fileName).sort()).toEqual(['a_dir.vpk', 'b_dir.vpk']);
+        expect(extracted.every((e) => checkVpkFile(e.path).valid)).toBe(true);
+        expect(extracted.every((e) => e.archiveFolder === 'pak62')).toBe(true);
+        expect(existsSync(join(dest, 'pak62_dir.vpk'))).toBe(true);
     });
 });
 

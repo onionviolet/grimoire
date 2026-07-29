@@ -214,8 +214,13 @@ function archiveFormatFromExtension(filePath: string): ArchiveFormat | null {
  * Returns the list of extracted files that are REAL VPKs. Anything named
  * `*.vpk` inside the archive that turns out to be something else is either
  * unwrapped (when it is itself an archive wrapping exactly one VPK, which is
- * the case that shipped six inert mods into a real library) or dropped and
- * reported through `options.rejected`.
+ * the case that shipped six inert mods into a real library) or left out of the
+ * install set and reported through `options.rejected`.
+ *
+ * The gate decides what gets INSTALLED; it never decides what gets to exist.
+ * Rejected entries stay on disk in `destDir` (a staging dir owned by the
+ * caller) so an optional addon, a nested bundle or a readme the gate could not
+ * identify is still there for the caller to look at.
  */
 export async function extractArchive(
     archivePath: string,
@@ -246,7 +251,12 @@ export async function extractArchive(
 /**
  * Apply the VPK identity gate to a freshly extracted set. Valid VPKs pass
  * through untouched; an entry that is really an archive is unwrapped when it
- * contains exactly one VPK; everything else is removed from disk and recorded.
+ * contains exactly one VPK; everything else is recorded and left where it is.
+ *
+ * Nothing is deleted here. The gate is a detector, and a detector that is
+ * unsure about a file has no business destroying it: an entry it cannot
+ * identify is far more likely to be an optional addon or a multi-VPK bundle
+ * than garbage.
  */
 async function validateExtractedVpks(
     entries: ExtractedVpk[],
@@ -265,52 +275,84 @@ async function validateExtractedVpks(
         }
 
         if (depth < 1 && isUnpackableArchiveFormat(check.format)) {
-            const innerPath = await unwrapSingleInnerVpk(entry.path, destDir, check.format, taken);
-            if (innerPath) {
+            const inner = await unwrapInnerVpks(entry.path, destDir, check.format, taken);
+            if (inner.length === 1) {
                 console.warn(
                     `[extractArchive] ${entry.fileName} was a ${check.label}; installed the single VPK it contained instead.`
                 );
-                try { unlinkSync(entry.path); } catch { /* best-effort */ }
-                kept.push({ ...entry, path: innerPath });
+                // The wrapper stays in the staging dir; only the VPK we pulled
+                // out of it goes into the install set. The wrapper's name is
+                // kept so the installed slot is named after the file the user
+                // recognises.
+                kept.push({ ...entry, path: inner[0].path });
+                continue;
+            }
+            if (inner.length > 1) {
+                // Several VPKs inside one wrapper: the old code dropped the
+                // whole thing as ambiguous, which made the mod disappear from
+                // the install entirely. Hand all of them to the caller instead
+                // and let the multi-VPK picker ask which to keep. The wrapper
+                // name becomes the variant label, the same role a variant
+                // folder plays for a normally packed archive.
+                console.warn(
+                    `[extractArchive] ${entry.fileName} was a ${check.label} holding ${inner.length} VPKs; offering all of them.`
+                );
+                const label = archiveStem(entry.fileName);
+                for (const vpk of inner) {
+                    kept.push({
+                        path: vpk.path,
+                        fileName: vpk.fileName,
+                        archiveFolder: vpk.archiveFolder ?? label,
+                    });
+                }
                 continue;
             }
         }
 
-        console.warn(`[extractArchive] Dropping ${entry.fileName}: ${check.reason ?? 'not a VPK'}`);
+        console.warn(
+            `[extractArchive] Not installing ${entry.fileName}: ${check.reason ?? 'not a VPK'} (left in ${destDir})`
+        );
         options.rejected?.push({
             fileName: entry.fileName,
             format: check.format,
             label: check.label,
             reason: describeVpkRejection(entry.fileName, check),
         });
-        try { unlinkSync(entry.path); } catch { /* best-effort */ }
     }
 
     return kept;
 }
 
+/** An archive's name without its extension, used as a variant label. */
+function archiveStem(fileName: string): string {
+    const base = basename(fileName);
+    const ext = base.toLowerCase().endsWith('_dir.vpk') ? base.slice(-8) : extname(base);
+    return base.slice(0, base.length - ext.length) || base;
+}
+
 /**
- * When `filePath` is really an archive containing exactly one VPK, extract that
- * VPK into `destDir` and return its path. Returns null when the archive holds
- * zero or several VPKs (ambiguous: we will not guess which one the user meant)
- * or cannot be read.
+ * When `filePath` is really an archive, extract every VPK it contains into
+ * `destDir` and return them. An empty array means it held no VPKs at all, or
+ * could not be read. Callers decide what to do with more than one: the archive
+ * paths offer them all through the picker, the bare-file paths refuse to guess.
  */
-async function unwrapSingleInnerVpk(
+async function unwrapInnerVpks(
     filePath: string,
     destDir: string,
     format: ArchiveFormat,
     taken: Set<string>
-): Promise<string | null> {
+): Promise<ExtractedVpk[]> {
     const scratch = createTempDir('grimoire-unwrap');
     try {
         const inner = await extractArchive(filePath, scratch, { format, depth: 1 });
-        if (inner.length !== 1) return null;
-        const destPath = join(destDir, uniqueDestName(basename(inner[0].path), taken));
-        copyFileSync(inner[0].path, destPath);
-        return destPath;
+        return inner.map((vpk) => {
+            const destPath = join(destDir, uniqueDestName(basename(vpk.path), taken));
+            copyFileSync(vpk.path, destPath);
+            return { ...vpk, path: destPath };
+        });
     } catch (error) {
         console.warn(`[extractArchive] Could not unwrap ${basename(filePath)}:`, error);
-        return null;
+        return [];
     } finally {
         try { rmDirRecursive(scratch); } catch { /* ignore cleanup errors */ }
     }
@@ -337,8 +379,10 @@ export async function resolveInstallableVpk(
     if (check.valid) return { path: filePath };
 
     if (isUnpackableArchiveFormat(check.format)) {
-        const inner = await unwrapSingleInnerVpk(filePath, workDir, check.format, new Set());
-        if (inner) return { path: inner, unwrappedFrom: check.label };
+        // Bare-file adoption has no picker to fall back on, so it still refuses
+        // to guess between several inner VPKs. Nothing is removed either way.
+        const inner = await unwrapInnerVpks(filePath, workDir, check.format, new Set());
+        if (inner.length === 1) return { path: inner[0].path, unwrappedFrom: check.label };
         throw new Error(
             `${displayName} is a ${check.label}, not a VPK, and it does not contain exactly one VPK to install instead.`
         );
