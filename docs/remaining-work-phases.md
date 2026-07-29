@@ -380,6 +380,21 @@ pending install for the current target, drop everything older) on a successful
 install or at startup. Local `release/` output is a separate, developer-side
 concern and is gitignored.
 
+**Sibling-repo drift, and the shim holding it together.** The wave 3 wire fields
+were committed to `../grimoire-social` but cannot be pushed: that repo's only
+remote is `Slush97/grimoire-social`, which this fork does not own, and CI checks
+it out fresh. So a local build resolves the new fields through the on-disk
+workspace link and CI does not. `ProfileDetailWithAvailability`
+(`src/types/social.ts`) widens `ProfileDetail` to bridge that gap and is marked
+for deletion. To close it properly: fork `grimoire-social` to `onionviolet`,
+repoint the sibling remote and `ci.yml`'s hardcoded `repository:` checkout, push
+the three unpushed commits there, then delete the shim.
+
+Note for any future sibling-repo change: **the local gate cannot catch this
+class of break.** `pnpm typecheck` resolves the sibling from disk, so it stays
+green while CI fails. Verify by temporarily reverting the sibling file and
+running `pnpm exec tsc -b --force`.
+
 **Deferred client work, in rough value order:**
 
 1. Social gone-mods list: render GameBanana's own mod titles in place of the
