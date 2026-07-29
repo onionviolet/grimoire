@@ -212,8 +212,6 @@
       "selectAll": "Select all",
       "clearSelection": "Clear selection",
       "remove": "Remove from tray",
-      "stage": "Add to build tray",
-      "staged": "In build tray",
       "panelToggle": "Build tray",
       "openWithCount": "Build tray ({{count}})",
       "writeSet": "Final write set ({{count}})",
