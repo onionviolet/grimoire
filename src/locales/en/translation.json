@@ -439,9 +439,9 @@
         "all": "All",
         "ui": "Interface",
         "music": "Music",
-        "item": "Shop items",
+        "item": "Items",
         "gameplay": "Gameplay",
-        "npc": "NPCs",
+        "npc": "NPC",
         "ambience": "Ambience",
         "voice": "Voice",
         "other": "Other"
@@ -3624,12 +3624,11 @@
       "music": "Music",
       "announcer": "Announcer",
       "ui": "Interface",
-      "other": "Other",
       "ambience": "Ambience",
       "npc": "NPC",
       "item": "Items",
-      "melee": "Shared melee",
-      "shared": "Shared"
+      "melee": "Melee",
+      "unclassified": "Needs classification"
     },
     "provenance": {
       "locker": "Locker",

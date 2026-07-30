@@ -51,12 +51,21 @@ const CATEGORY_ICON: Record<GlobalSoundCategory, typeof AudioLines> = {
     other: AudioLines,
 };
 
+// One vocabulary across surfaces: a user who learns "Items" or "NPC" on the
+// Locker's Global shelf must find the same word here. Two names for one thing
+// is how the app came to have three sound taxonomies (see the plan's S2).
+//
+// `gameplay` and `other` deliberately have no Locker equivalent: these are the
+// engine's own groupings of the base game's 1100 sounds, not a classification
+// Grimoire made, and the base-game melee pool lives under `gameplay`. Adding a
+// Melee group here means teaching the catalog engine about it, not renaming a
+// label.
 const CATEGORY_FALLBACK: Record<GlobalSoundCategory, string> = {
     ui: 'Interface',
     music: 'Music',
-    item: 'Shop items',
+    item: 'Items',
     gameplay: 'Gameplay',
-    npc: 'NPCs',
+    npc: 'NPC',
     ambience: 'Ambience',
     voice: 'Voice',
     other: 'Other',

@@ -31,14 +31,14 @@ import type { Mod } from '../../types/mod';
 
 /** Sections a hero shelf can show, in reading order. Global-only categories
  *  (announcer, music, ui) never appear here: they have no hero. */
-const HERO_SECTIONS: readonly SoundCategory[] = ['ability', 'voice', 'weapon', 'movement', 'other'];
+const HERO_SECTIONS: readonly SoundCategory[] = ['ability', 'voice', 'weapon', 'movement', 'unclassified'];
 
 const SECTION_FALLBACK: Record<string, string> = {
   ability: 'Abilities',
   voice: 'Voice',
   weapon: 'Weapon',
   movement: 'Movement',
-  other: 'Other',
+  unclassified: 'Needs classification',
 };
 
 /** Which Foundry workshop section authors this kind of sound. Voice lines live

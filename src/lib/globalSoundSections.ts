@@ -18,8 +18,10 @@ export const GLOBAL_SOUND_SECTIONS: readonly SoundCategory[] = [
   'npc',
   'item',
   'melee',
-  'shared',
-  'other',
+  // Last, and visually distinct in the rail: it is a work queue of things the
+  // app could not classify, not a kind of sound. `shared` and `shared melee`
+  // used to sit here and were both implementation leaks (see soundInventory).
+  'unclassified',
 ];
 
 /** English fallbacks, for the window between a key landing in the en catalog
@@ -31,9 +33,8 @@ const GLOBAL_SECTION_FALLBACK: Record<string, string> = {
   ambience: 'Ambience',
   npc: 'NPC',
   item: 'Items',
-  melee: 'Shared melee',
-  shared: 'Shared',
-  other: 'Other',
+  melee: 'Melee',
+  unclassified: 'Needs classification',
 };
 
 /** The rail (and pane heading) label for a global sound category. */

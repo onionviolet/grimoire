@@ -75,6 +75,7 @@ import {
   type SoundCategory,
 } from '../lib/soundInventory';
 import { GLOBAL_SOUND_SECTIONS, globalSoundSectionLabel } from '../lib/globalSoundSections';
+import { useDiscoveredSoundPaths } from '../components/locker/useDiscoveredSoundPaths';
 import {
   appendHeroTypeaheadCharacter,
   backspaceHeroTypeahead,
@@ -1718,7 +1719,14 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
   // Sounds section. The inventory is built here rather than in the shelf
   // because the rail needs the per-category counts, and one pass over the mod
   // list feeds both. Nothing about how it resolves changes.
-  const globalSoundEntries = useMemo(() => buildSoundInventory(mods).global, [mods]);
+  // Read what each unrecorded sound mod actually writes, so the rail classifies
+  // on the mod's own VPK entries instead of the category its author picked on
+  // GameBanana. This is what moves item sounds off the Announcer shelf.
+  const discoveredPaths = useDiscoveredSoundPaths(mods);
+  const globalSoundEntries = useMemo(
+    () => buildSoundInventory(mods, { discoveredPaths }).global,
+    [mods, discoveredPaths]
+  );
   const soundCounts = useMemo(
     () =>
       GLOBAL_SOUND_SECTIONS.map((id) => ({

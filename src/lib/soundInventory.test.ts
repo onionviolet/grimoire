@@ -64,8 +64,110 @@ describe('classifySoundToken', () => {
         expect(classifySoundToken('sounds/ui/click.vsnd')).toBe('ui');
     });
 
-    it('says other rather than inventing a category', () => {
-        expect(classifySoundToken('Something.Entirely.Unknown')).toBe('other');
+    it('says unclassified rather than inventing a category', () => {
+        expect(classifySoundToken('Something.Entirely.Unknown')).toBe('unclassified');
+    });
+
+    /**
+     * The Stage 0 fixture. Every path here was read out of a real installed mod
+     * in the dev build on 2026-07-30 (see the known-issue section of
+     * docs/global-locker-foundry-ux-plan.md), not invented for the test, because
+     * the defect being fixed came from rules written against imagined paths.
+     */
+    describe('the installed corpus', () => {
+        it('files player melee under Melee, not under a category named after a folder', () => {
+            // The whole `Shared` / `Shared melee` defect: this pool lives in a
+            // directory literally called `shared`.
+            expect(classifySoundToken('sounds/player/melee/shared/charged_melee_full.vsnd_c')).toBe('melee');
+            expect(classifySoundToken('sounds/player/melee/shared/melee_parry_success.vsnd_c')).toBe('melee');
+            expect(classifySoundToken('sounds/player/melee/heavy_swing_03.vsnd_c')).toBe('melee');
+        });
+
+        it('files item-modifier sounds under Items, which is where the Announcer shelf came from', () => {
+            expect(classifySoundToken('sounds/mods/tech/refresher/refresher_cast.vsnd_c')).toBe('item');
+            expect(classifySoundToken('sounds/mods/tech/magic_carpet/magiccarpet_lp.vsnd_c')).toBe('item');
+            expect(classifySoundToken('sounds/mods/armor/colossus/colossus_cast.vsnd_c')).toBe('item');
+            expect(classifySoundToken('sounds/mods/armor/trophy_collector/trophy_collector_proc.vsnd_c')).toBe('item');
+            expect(classifySoundToken('soundevents/mods/armor.vsndevts_c')).toBe('item');
+        });
+
+        it('files neutral camp and creep sounds under NPC', () => {
+            expect(classifySoundToken('sounds/npc/neutrals/vaults/vault_hit_heavy_01.vsnd_c')).toBe('npc');
+            expect(classifySoundToken('soundevents/npc/neut_vaults.vsndevts')).toBe('npc');
+            expect(classifySoundToken('XPTrooperCreepKill')).toBe('npc');
+            expect(classifySoundToken('SexySinners-BreedToSucceed')).toBe('npc');
+        });
+
+        it('lets the directory beat a word in the filename', () => {
+            // A music pack whose clips sit under `menu/shop`. Word-matching read
+            // that as Interface or Items; it is neither.
+            expect(classifySoundToken('sounds/music/menu/shop/bau_01.vsnd_c')).toBe('music');
+            expect(classifySoundToken('sounds/music/match_intro/music_match_start_king_160bpm.vsnd_c')).toBe('music');
+            // And a UI pack whose clips are songs.
+            expect(classifySoundToken('sounds/ui/ui_pause_lp_greenroom.vsnd_c')).toBe('ui');
+            expect(classifySoundToken('soundevents/ui.vsndevts_c')).toBe('ui');
+        });
+
+        it('keeps hero content where it was', () => {
+            expect(classifySoundToken('sounds/vo/astro/astro_ally_shiv_multikill_03.vsnd_c')).toBe('voice');
+            expect(classifySoundToken('sounds/abilities/vampirebat/a1_rake/vampirebat_rake_cast_02.vsnd_c')).toBe('ability');
+            expect(classifySoundToken('soundevents/vo/generated_vo_hero_familiar.vsndevts_c')).toBe('voice');
+        });
+
+        it('still refuses to guess from a name alone', () => {
+            expect(classifySoundToken('Pak92')).toBe('unclassified');
+            expect(classifySoundToken('sounds/mystery/thing_01.vsnd_c')).toBe('unclassified');
+        });
+    });
+});
+
+describe('classification evidence', () => {
+    /** The six mods that sat on the Announcer shelf, with what they really write. */
+    const announcerShelf = [
+        mod({
+            id: 'jojo',
+            name: 'JoJo Pillar man theme over Colossus loop',
+            sourceSection: 'Sound',
+            categoryName: 'In-Game Music',
+            globalType: 'announcer',
+        }),
+        mod({ id: 'pak92', name: 'Pak92', sourceSection: 'Sound', globalType: 'announcer' }),
+    ];
+
+    const discoveredPaths = {
+        jojo: [
+            'sounds/mods/armor/colossus/colossus_cast.vsnd_c',
+            'soundevents/mods/armor.vsndevts_c',
+        ],
+        pak92: ['sounds/mods/armor/trophy_collector/trophy_collector_proc.vsnd_c'],
+    };
+
+    it('classifies on what the VPK writes, not on how the download was filed', () => {
+        const withEvidence = buildSoundInventory(announcerShelf, { discoveredPaths });
+        expect(withEvidence.global.map((entry) => entry.categories)).toEqual([['item'], ['item']]);
+    });
+
+    it('falls back to the download category only when nothing was read', () => {
+        const blind = buildSoundInventory(announcerShelf);
+        // globalType: 'announcer' is all that is left to go on, and it is wrong,
+        // which is exactly why the evidence above matters.
+        expect(blind.global.map((entry) => entry.categories)).toEqual([['announcer'], ['announcer']]);
+    });
+
+    it('reports the discovered entries as the write set, so the row can name them', () => {
+        const entry = buildSoundInventory(announcerShelf, { discoveredPaths }).global[0];
+        expect(entry.paths).toEqual([
+            'soundevents/mods/armor.vsndevts_c',
+            'sounds/mods/armor/colossus/colossus_cast.vsnd_c',
+        ]);
+        expect(entry.fileCount).toBe(2);
+    });
+
+    it('leaves a mod unclassified when its VPK says nothing recognisable', () => {
+        const entry = buildSoundInventory([mod({ id: 'odd', sourceSection: 'Sound' })], {
+            discoveredPaths: { odd: ['sounds/whatever/thing.vsnd_c'] },
+        }).global[0];
+        expect(entry.categories).toEqual(['unclassified']);
     });
 });
 
@@ -118,7 +220,7 @@ describe('buildSoundInventory', () => {
 
         const entry = inventory.global[0];
         expect(entry.provenance).toBe('third-party');
-        expect(entry.categories).toEqual(['other']);
+        expect(entry.categories).toEqual(['unclassified']);
         // Nothing is known about what it writes, and the model says so instead
         // of inventing a path.
         expect(entry.paths).toEqual([]);
@@ -194,7 +296,7 @@ describe('buildSoundInventory', () => {
             mod({ id: 'tagged', sourceSection: 'Sound', lockerHero: 'Vindicta' }),
         ]);
 
-        expect(inventory.byHero.get('Vindicta')![0].categories).toEqual(['other']);
+        expect(inventory.byHero.get('Vindicta')![0].categories).toEqual(['unclassified']);
     });
 
     it('collapses the roster alias so one hero is one shelf', () => {
@@ -247,7 +349,7 @@ describe('list helpers', () => {
     it('lists an entry under every category it covers', () => {
         expect(entriesInCategory(seven, 'ability').map((e) => e.modId)).toEqual(['ability-and-voice']);
         expect(entriesInCategory(seven, 'voice').map((e) => e.modId)).toEqual(['ability-and-voice']);
-        expect(categoriesPresent(seven)).toEqual(['ability', 'voice', 'other']);
+        expect(categoriesPresent(seven)).toEqual(['ability', 'voice', 'unclassified']);
     });
 
     it('counts distinct mods, not entries', () => {

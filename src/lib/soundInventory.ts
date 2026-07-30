@@ -31,8 +31,18 @@ export type SoundCategory =
     | 'npc'
     | 'item'
     | 'melee'
-    | 'shared'
-    | 'other';
+    /**
+     * Nothing could be read from this mod's evidence.
+     *
+     * Replaces the old `shared` and `other` buckets, which were two different
+     * ways of saying the same thing while sounding like content types. `shared`
+     * in particular was an implementation leak: it meant "the path contained the
+     * word shared", which is true of every player melee sound in the game.
+     *
+     * This is a work queue, not a shelf: an entry here is a classification the
+     * app owes the user, and it should be possible to act on it.
+     */
+    | 'unclassified';
 
 /** Where an entry belongs: a hero's shelf, or the Global shelf. */
 export type SoundScope = 'hero' | 'global';
@@ -95,8 +105,9 @@ export const CATEGORY_ORDER: readonly SoundCategory[] = [
     'npc',
     'item',
     'melee',
-    'shared',
-    'other',
+    // Always last: it is the queue of things the app could not read, and it
+    // should never sit above a category that says something.
+    'unclassified',
 ];
 
 const CATEGORY_RANK = new Map(CATEGORY_ORDER.map((category, index) => [category, index]));
@@ -105,15 +116,59 @@ const canonicalPath = (path: string): string =>
     path.replace(/\\/g, '/').replace(/^\/+/, '').toLowerCase();
 
 /**
- * Category of a single recorded clip path or soundevent name. Rule-based on
- * Valve's own naming, which is the only signal a recorded swap carries: an
- * event is `Hero.Ability.Cast` and a clip lives under `sounds/abilities/...`.
- * Falls back to 'other' rather than guessing, because a wrong category files a
- * mod under a heading it has nothing to do with.
+ * Where the game itself puts each kind of sound.
+ *
+ * These run before any word-matching, because the tree is real evidence and a
+ * word in a filename is a hint. Two cases in the installed corpus prove why the
+ * order matters:
+ *
+ *  - `sounds/music/menu/shop/bau_01.vsnd_c` is a music pack. Word-matching sees
+ *    `menu` and `shop` and files it under Interface or Items.
+ *  - `sounds/player/melee/shared/charged_melee_full.vsnd_c` is melee. Word
+ *    matching saw `shared` and invented a whole category for it, which is the
+ *    entire "Shared / Shared melee" defect.
+ *
+ * `sounds/mods/...` is not user mods: `mods` is the game's own word for item
+ * modifiers, so `sounds/mods/tech/refresher/refresher_cast.vsnd_c` is the
+ * Refresher item. That one rule is what moves six mods off the Announcer shelf.
+ */
+const PATH_RULES: ReadonlyArray<readonly [RegExp, SoundCategory]> = [
+    [/(^|\/)sounds\/vo\//, 'voice'],
+    [/(^|\/)soundevents\/vo[/.]/, 'voice'],
+    [/(^|\/)sounds\/player\/melee\//, 'melee'],
+    // Item modifiers, both the clips and the soundevent manifests beside them.
+    [/(^|\/)sounds\/mods\//, 'item'],
+    [/(^|\/)soundevents\/mods[/.]/, 'item'],
+    [/(^|\/)sounds\/items?\//, 'item'],
+    [/(^|\/)sounds\/npc\//, 'npc'],
+    [/(^|\/)soundevents\/npc[/.]/, 'npc'],
+    [/(^|\/)sounds\/music\//, 'music'],
+    [/(^|\/)soundevents\/music[/.]/, 'music'],
+    [/(^|\/)sounds\/ui\//, 'ui'],
+    [/(^|\/)soundevents\/ui[/.]/, 'ui'],
+    [/(^|\/)sounds\/announcer\//, 'announcer'],
+    [/(^|\/)sounds\/abilities\//, 'ability'],
+    [/(^|\/)sounds\/weapons?\//, 'weapon'],
+    [/(^|\/)sounds\/ambient\//, 'ambience'],
+];
+
+/**
+ * Category of a single recorded clip path or soundevent name.
+ *
+ * Two tiers, in this order: where the file lives, then what it is called. A
+ * token that reads as nothing concrete returns `unclassified` rather than a
+ * vague bucket, because "we could not tell" is a fact worth showing and a
+ * wrong category files a mod under a heading it has nothing to do with.
  */
 export function classifySoundToken(token: string): SoundCategory {
     const value = token.replace(/\\/g, '/').toLowerCase();
+    for (const [pattern, category] of PATH_RULES) {
+        if (pattern.test(value)) return category;
+    }
     if (/(^|[/.])vo([/.]|$)|voice|_vo_/.test(value)) return 'voice';
+    // Melee before weapon: a charged melee is not a gun, and before the old
+    // shared/generic rule, which used to swallow the whole player melee tree.
+    if (/melee|punch|parry|swing|riposte/.test(value)) return 'melee';
     if (/weapon|\bgun\b|shoot|reload|bullet|muzzle/.test(value)) return 'weapon';
     if (/footstep|footsteps|movement|dash|jump|land(ing)?\b|slide/.test(value)) return 'movement';
     if (/abilit(y|ies)|\bcast\b|\bult\b|ultimate/.test(value)) return 'ability';
@@ -121,22 +176,23 @@ export function classifySoundToken(token: string): SoundCategory {
     if (/music|stinger|killstreak/.test(value)) return 'music';
     if (/(^|[/.])ui([/.]|$)|panorama|menu|hud/.test(value)) return 'ui';
     if (/ambience|ambient/.test(value)) return 'ambience';
-    if (/npc|creep|neutral/.test(value)) return 'npc';
+    // Deadlock's neutral camps and lane creeps, by the names the files use.
+    if (/npc|creep|neutral|trooper|sinner|breed|vault|guardian|walker|patron|midboss/.test(value)) {
+        return 'npc';
+    }
     if (/item|pickup|shop/.test(value)) return 'item';
-    if (/melee|punch|swing/.test(value)) return 'melee';
-    if (/shared|generic|common/.test(value)) return 'shared';
-    return 'other';
+    return 'unclassified';
 }
 
 /**
- * De-duplicate and order categories, dropping 'other' whenever something
- * concrete is also present. 'other' means "nothing could be read from this
- * token", so once one token has been read, keeping it only files the mod under
- * a heading that tells the reader nothing.
+ * De-duplicate and order categories, dropping `unclassified` whenever something
+ * concrete is also present. `unclassified` means "nothing could be read from
+ * this token", so once one token has been read, keeping it only files the mod
+ * under a heading that tells the reader nothing.
  */
 function sortCategories(categories: Iterable<SoundCategory>): SoundCategory[] {
     const unique = new Set(categories);
-    if (unique.size > 1) unique.delete('other');
+    if (unique.size > 1) unique.delete('unclassified');
     return [...unique].sort((a, b) => (CATEGORY_RANK.get(a) ?? 99) - (CATEGORY_RANK.get(b) ?? 99));
 }
 
@@ -216,9 +272,12 @@ function globalCategory(mod: Mod): SoundCategory {
     if (category.includes('npc') || category.includes('creep')) return 'npc';
     if (category.includes('item')) return 'item';
     if (category.includes('melee')) return 'melee';
-    if (category.includes('shared') || category.includes('generic')) return 'shared';
-    if (category.includes('killsound')) return 'other';
-    return 'other';
+    // A kill sound in this game is a creep/trooper kill: NPC content, not a
+    // nameless bucket. Weak evidence though, so any real path beats it.
+    if (category.includes('killsound')) return 'npc';
+    // `shared` and `generic` used to become a category of their own here. They
+    // describe how the author labelled a download, not what it changes.
+    return 'unclassified';
 }
 
 interface HeroDraft {
@@ -269,7 +328,7 @@ function heroDrafts(mod: Mod): HeroDraft[] {
         }
         if (contribution.voFiles > 0) draft.categories.add('voice');
         // Files under the hero that matched no slot are still that hero's sound.
-        if (contribution.unclassified > 0 && draft.categories.size === 0) draft.categories.add('other');
+        if (contribution.unclassified > 0 && draft.categories.size === 0) draft.categories.add('unclassified');
     }
 
     for (const selection of mod.lockerSounds?.sounds ?? []) {
@@ -302,7 +361,7 @@ function heroDrafts(mod: Mod): HeroDraft[] {
     // the user said which hero this belongs to, and the surface should not
     // second-guess that just because the VPK tree was unreadable.
     const tagged = canonicalHeroName(mod.lockerHero ?? '');
-    if (tagged && drafts.size === 0) draftFor(drafts, tagged).categories.add('other');
+    if (tagged && drafts.size === 0) draftFor(drafts, tagged).categories.add('unclassified');
 
     return [...drafts.values()];
 }
@@ -318,7 +377,27 @@ function heroDrafts(mod: Mod): HeroDraft[] {
  * order (lower priority wins file conflicts), then by name, so the mod most
  * likely to be the one you hear is the one at the top.
  */
-export function buildSoundInventory(mods: readonly Mod[]): SoundInventory {
+export interface SoundEvidence {
+    /**
+     * Sound entries read out of a mod's own VPK directory, keyed by mod id.
+     *
+     * A downloaded or imported sound VPK records no write set, so before this
+     * existed the only evidence for a global entry was its GameBanana category
+     * name: a marketing label. That is how six item-sound mods ended up on the
+     * Announcer shelf. The VPK directory is the mod's own statement of what it
+     * writes, and `SoundEntryRow` already reads it on demand, so supplying it
+     * here just lets the classifier see what the expanded row already shows.
+     *
+     * Optional on purpose: this module stays pure and IPC-free, and every
+     * surface works (less precisely) without it.
+     */
+    discoveredPaths?: Readonly<Record<string, readonly string[]>>;
+}
+
+export function buildSoundInventory(
+    mods: readonly Mod[],
+    evidence: SoundEvidence = {}
+): SoundInventory {
     const byHero = new Map<string, SoundInventoryEntry[]>();
     const global: SoundInventoryEntry[] = [];
     const all: SoundInventoryEntry[] = [];
@@ -330,13 +409,26 @@ export function buildSoundInventory(mods: readonly Mod[]): SoundInventory {
         const drafts = heroDrafts(mod);
 
         if (drafts.length === 0) {
-            const paths = recordedSwapPaths(mod);
+            const recorded = recordedSwapPaths(mod);
+            // Recorded first (a forged swap knows exactly what it wrote), then
+            // whatever was read out of the VPK. Both are exact entries; neither
+            // is a guess from a label.
+            const discovered = evidence.discoveredPaths?.[mod.id] ?? [];
+            const paths = recorded.length
+                ? recorded
+                : [...new Set(discovered.map(canonicalPath))].sort();
             const categories = new Set<SoundCategory>();
             if (mod.soundSwap) {
                 categories.add(classifySoundToken(mod.soundSwap.event));
                 for (const path of paths) categories.add(classifySoundToken(path));
             } else {
-                categories.add(globalCategory(mod));
+                for (const path of paths) categories.add(classifySoundToken(path));
+                // The GameBanana category is the fallback, not the first word:
+                // it describes how a download was filed, not what it changes.
+                if (![...categories].some((category) => category !== 'unclassified')) {
+                    categories.clear();
+                    categories.add(globalCategory(mod));
+                }
             }
             const entry: SoundInventoryEntry = {
                 key: `${mod.id}:global`,
@@ -370,7 +462,7 @@ export function buildSoundInventory(mods: readonly Mod[]): SoundInventory {
                 priority: mod.priority,
                 hero: draft.hero,
                 scope: 'hero',
-                categories: sortCategories(draft.categories.size ? draft.categories : ['other']),
+                categories: sortCategories(draft.categories.size ? draft.categories : ['unclassified']),
                 slots: [...draft.slots].sort((a, b) => a - b),
                 events: [...draft.events].sort(),
                 paths: [...draft.paths].sort(),
