@@ -177,6 +177,26 @@ later, because it would sort *above* `1.26.2` and break update ordering.
 The bump lands as its own commit on the merge branch (step 6), not before the
 merge, so `main` never claims a version it has not absorbed.
 
+## Verdicts
+
+Per `docs/fork-divergence-policy.md`, each upstream commit touching a surface we
+also touch gets one verdict: take (upstream's wholesale), keep (ours, and why),
+or port (upstream's structure, our surface on top).
+
+| Commit | Verdict | Reason |
+|---|---|---|
+| `60e36de` settings nav | **take** | upstream restructured the tree; our 325 lines re-home into it |
+| `8d3655f` six fps presets | **port** | preset values drift per patch and only upstream maintains the manifest, but our card surface is the better one |
+| `869d639` perf discoverability | **take** | follows from the port |
+| `56f4bd8` + `cb09587` typeahead | **take** | we have no equivalent |
+| `27ad7f8` browse local-route filters | **take** | a real bug fix, no opinion of ours involved |
+| `a4d3fd2` sticky headers | **take** | ours has no competing treatment |
+| `e909c36` sidebar scrollbar | **take** | trivial |
+
+No **keep** verdicts in this absorption: upstream's eleven commits do not
+contest anything this fork holds a differentiated opinion on. That is the
+comfortable case, and it will not always hold.
+
 ## Why now rather than after the next lane
 
 Upstream `60e36de` adds nine settings surfaces and `8d3655f` adds a
@@ -185,3 +205,7 @@ floor (Escape contract, real tablist wiring, one result-count convention) and
 Lane 10's copy vocabulary. Absorbing after the remaining lanes means running
 those lanes a second time over the newly merged surfaces. Merging first means
 each sweep covers the union once.
+
+The general form of that argument, plus what to do about upstream branches that
+are already building what we are about to build, is in
+`docs/fork-divergence-policy.md`.
