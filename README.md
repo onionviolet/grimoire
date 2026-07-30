@@ -23,10 +23,10 @@ This fork deliberately follows the player workflow beyond installation. Its aim 
 
 That means new work should normally help players do one or more of the following:
 
-- **Play confidently** — manage mods, profiles, launches, updates, conflicts, and recovery.
-- **Make a setup personal** — use cosmetics, sounds, HUD and performance controls, crosshairs, and launch presets.
-- **Create approachable mods** — make constrained, visual, reversible changes without requiring specialist creator tools.
-- **Understand and share** — preview outcomes, see consequences before applying changes, and exchange profiles or creations.
+- **Play confidently:** manage mods, profiles, launches, updates, conflicts, and recovery.
+- **Make a setup personal:** use cosmetics, sounds, HUD and performance controls, crosshairs, and launch presets.
+- **Create approachable mods:** make constrained, visual, reversible changes without requiring specialist creator tools.
+- **Understand and share:** preview outcomes, see consequences before applying changes, and exchange profiles or creations.
 
 The goal is not to replace a full SDK, Blender, or specialist asset-authoring software. Features belong here when Grimoire can make a common player customization workflow substantially simpler and safer.
 
