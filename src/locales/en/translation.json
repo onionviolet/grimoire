@@ -207,7 +207,8 @@
     },
     "portraits": {
       "searchPlaceholder": "Search portraits...",
-      "coverage": "{{count}} portrait family available: {{variants}}",
+      "coverage_one": "{{count}} portrait family available: {{variants}}",
+      "coverage_other": "{{count}} portrait families available: {{variants}}",
       "empty": {
         "title": "No portraits match",
         "description": "No portrait families match that hero or search."
@@ -221,6 +222,7 @@
     "search": {
       "clear": "Clear asset search",
       "clearFilters": "Clear search and filters",
+      "showAllHeroes": "Show assets from all heroes",
       "assetScope": "Searches asset names and game paths.",
       "portraitScope": "Searches portrait names, heroes, and game paths.",
       "resultCount": "Showing {{visible}} of {{total}} assets"
@@ -238,6 +240,8 @@
     },
     "filters": {
       "allHeroes": "All heroes",
+      "heroAndShared": "{{hero}} & shared",
+      "unreleasedGroup": "Unreleased or internal",
       "searchPlaceholder": "Search assets..."
     },
     "loading": "Building catalog from your game files...",

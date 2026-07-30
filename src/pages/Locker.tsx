@@ -1671,15 +1671,12 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
   const soundVolume = useAppStore((s) => s.soundVolume);
   const mods = useAppStore((s) => s.mods);
   const isSounds = section === 'sounds';
-  // Every tab is selectable, empty or not. We still default the landing tab to
-  // the first populated type (or a prop container when nothing is installed),
-  // so the view opens on something meaningful rather than a blank pane.
-  const firstPopulated = GLOBAL_MOD_TYPE_ORDER.filter(
-    (type) => groups[type].length > 0 || isPropContainerType(type)
-  );
-  const [selectedType, setSelectedType] = useState<GlobalModType>(
-    () => firstPopulated[0] ?? 'soul-container'
-  );
+  // Every tab is selectable, empty or not, but the landing tab is the first one
+  // that actually has content. Null until the user picks, for the same reason
+  // the sound rail below is: the mod list arrives after mount, so a landing tab
+  // resolved once in a state initializer would freeze on whatever was loaded at
+  // the time (which is nothing) and open on an empty pane.
+  const [selectedType, setSelectedType] = useState<GlobalModType | null>(null);
   // Sliding active-tab highlight, mirroring the main sidebar's glide: one
   // indicator element animates between the tab rows rather than each row
   // toggling its own background (which snaps). Refs feed its measured position.
@@ -1707,8 +1704,15 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
     };
   }, [retagMenu, closeRetagMenu]);
   // Any type is a valid selection now (empty tabs render their own empty
-  // state), so the active tab is simply whatever the user picked.
-  const activeType = selectedType;
+  // state), so once the user picks, that is the active tab. Before then it is
+  // the first type with installed content; a prop container only lands by
+  // default when the whole inventory is empty, since its import-only empty
+  // state is the least informative thing the view can open on.
+  const activeType =
+    selectedType ??
+    GLOBAL_MOD_TYPE_ORDER.find((type) => groups[type].length > 0) ??
+    GLOBAL_MOD_TYPE_ORDER.find((type) => isPropContainerType(type)) ??
+    GLOBAL_MOD_TYPE_ORDER[0];
   const activeMods = groups[activeType] ?? [];
 
   // Sounds section. The inventory is built here rather than in the shelf
