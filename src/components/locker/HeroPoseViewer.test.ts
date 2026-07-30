@@ -47,13 +47,22 @@ function makeScene(): { scene: THREE.Group; material: THREE.MeshStandardMaterial
 }
 
 describe('HeroPoseViewer fallback states', () => {
-  it('renders the failure copy without mounting a Canvas', () => {
+  it('renders unsupported-hero copy without mounting a Canvas', () => {
     const html = renderToStaticMarkup(
-      React.createElement(HeroPoseFailureState, { message: 'cannot pose test hero' })
+      React.createElement(HeroPoseFailureState, { kind: 'unsupported', t, onRetry: () => {} })
     );
 
-    expect(html).toContain('cannot pose test hero');
+    expect(html).toContain('locker.pose.cannotPose');
     expect(html).not.toContain('canvas');
+  });
+
+  it('identifies Grimoire export failures and offers a retry', () => {
+    const html = renderToStaticMarkup(
+      React.createElement(HeroPoseFailureState, { kind: 'export', t, onRetry: () => {} })
+    );
+
+    expect(html).toContain('locker.pose.exportFailed');
+    expect(html).toContain('locker.pose.retry');
   });
 
   it('shows single-source generation copy while posing', () => {

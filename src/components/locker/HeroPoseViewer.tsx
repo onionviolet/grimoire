@@ -15,7 +15,7 @@ import { OrbitControls as DreiOrbitControls } from '@react-three/drei';
 import { Leva, folder, useControls } from 'leva';
 import * as THREE from 'three';
 import { HDRCubeTextureLoader } from 'three/examples/jsm/loaders/HDRCubeTextureLoader.js';
-import { Loader2 } from 'lucide-react';
+import { AlertTriangle, Loader2, RotateCw } from 'lucide-react';
 import { getAssetPath } from '../../lib/assetPath';
 import {
   getHeroPoseInfo,
@@ -257,12 +257,40 @@ export type TurntableInteraction = { dragging: boolean; paused: boolean };
 
 type ViewerText = (key: string, options?: Record<string, unknown>) => string;
 
-export function HeroPoseFailureState({ message }: { message: string }) {
+export type HeroPoseFailureKind = 'unsupported' | 'skin' | 'export';
+
+export function HeroPoseFailureState({
+  kind,
+  t,
+  onRetry,
+}: {
+  kind: Exclude<HeroPoseFailureKind, 'skin'>;
+  t: ViewerText;
+  onRetry: () => void;
+}) {
+  const isExportFailure = kind === 'export';
   return (
-    <div className="absolute inset-0 flex items-center justify-center">
-      <p className="max-w-xs text-center text-sm text-text-secondary">{message}</p>
+    <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-4">
+      <AlertTriangle className={isExportFailure ? 'h-5 w-5 text-red-300' : 'h-5 w-5 text-text-secondary'} aria-hidden />
+      <p className="max-w-xs text-center text-sm text-text-secondary">
+        {t(isExportFailure ? 'locker.pose.exportFailed' : 'locker.pose.cannotPose')}
+      </p>
+      {isExportFailure && (
+        <button
+          type="button"
+          onClick={onRetry}
+          className="inline-flex items-center gap-1.5 rounded-md border border-red-300/40 px-2.5 py-1.5 text-xs font-medium text-red-100 transition-colors hover:bg-red-300/10"
+        >
+          <RotateCw className="h-3.5 w-3.5" aria-hidden />
+          {t('locker.pose.retry')}
+        </button>
+      )}
     </div>
   );
+}
+
+function isUnsupportedPoseError(error: unknown): boolean {
+  return error instanceof Error && error.message.includes('No known model codename');
 }
 
 export function HeroPoseLoadingState({
@@ -869,7 +897,8 @@ export default function HeroPoseViewer({
   const [generating, setGenerating] = useState(false);
   const interaction = useRef<TurntableInteraction>({ dragging: false, paused: false });
   const [spinPaused, setSpinPaused] = useState(false);
-  const [failed, setFailed] = useState(false);
+  const [failure, setFailure] = useState<HeroPoseFailureKind | null>(null);
+  const [retryNonce, setRetryNonce] = useState(0);
   const [effect, setEffect] = useState<EffectMount | null>(null);
   const sourceKey = skinSources.map((source) => `${source.priority}:${source.metaKey}`).join('|');
   const [devFlags, setDevFlags] = useState<DevPreviewFlags>(() => ({
@@ -940,7 +969,7 @@ export default function HeroPoseViewer({
     // selection changes, so initial state is already fresh here.
     let cancelled = false;
     let loaded: THREE.Object3D | null = null;
-    setFailed(false);
+    setFailure(null);
     setScene(null);
     setClips([]);
     setRigged(false);
@@ -999,12 +1028,34 @@ export default function HeroPoseViewer({
         if (!info.hasModel) {
           if (cancelled) return;
           setGenerating(true);
-          info = await exportHeroPose(heroName, skinSources, fallbackSkinMetaKey);
+          try {
+            info = await exportHeroPose(heroName, skinSources, fallbackSkinMetaKey);
+          } catch (skinError) {
+            // A successful vanilla retry proves the installed skin stack is the
+            // problem. Keep showing that usable base pose, but make the warning
+            // explicit instead of blaming unsupported heroes or Grimoire.
+            if (skinSources.length > 0 && !isUnsupportedPoseError(skinError)) {
+              try {
+                info = await exportHeroPose(heroName, []);
+                if (!cancelled) setFailure('skin');
+              } catch (baseError) {
+                if (!cancelled) {
+                  setFailure(isUnsupportedPoseError(baseError) ? 'unsupported' : 'export');
+                }
+                return;
+              }
+            } else {
+              if (!cancelled) {
+                setFailure(isUnsupportedPoseError(skinError) ? 'unsupported' : 'export');
+              }
+              return;
+            }
+          }
           if (cancelled) return;
           setGenerating(false);
         }
         if (!info.hasModel) {
-          if (!cancelled) setFailed(true);
+          if (!cancelled) setFailure('export');
           return;
         }
         const url = meshUrlFor(info.key, info.mtimeMs);
@@ -1021,7 +1072,7 @@ export default function HeroPoseViewer({
       } catch {
         if (!cancelled) {
           setGenerating(false);
-          setFailed(true);
+          setFailure('export');
         }
       }
     })();
@@ -1039,6 +1090,7 @@ export default function HeroPoseViewer({
     heroName,
     sourceKey,
     fallbackSkinMetaKey,
+    retryNonce,
     features.riggedPreviewEnabled,
     features.clothPreviewEnabled,
   ]);
@@ -1078,8 +1130,8 @@ export default function HeroPoseViewer({
     };
   }, [heroName, effectPreviewEnabled]);
 
-  if (failed) {
-    return <HeroPoseFailureState message={t('locker.pose.cannotPose')} />;
+  if (failure === 'unsupported' || failure === 'export') {
+    return <HeroPoseFailureState kind={failure} t={t} onRetry={() => setRetryNonce((n) => n + 1)} />;
   }
 
   if (!scene) {
@@ -1095,6 +1147,12 @@ export default function HeroPoseViewer({
 
   return (
     <div className="absolute inset-0">
+      {failure === 'skin' && (
+        <div className="absolute inset-x-3 top-3 z-10 flex items-start gap-2 rounded-md border border-amber-300/35 bg-black/70 px-2.5 py-2 text-xs text-amber-100 shadow-lg">
+          <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" aria-hidden />
+          <p>{t('locker.pose.skinFailed')}</p>
+        </div>
+      )}
       <Canvas
         camera={{ position: [0, 0, 3.2], fov: 40 }}
         dpr={[1, 2]}
