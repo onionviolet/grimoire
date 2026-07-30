@@ -6,6 +6,7 @@ import {
     countEnabledMods,
     countMods,
     entriesInCategory,
+    soundEntriesInVpk,
     isSoundContent,
     overlappingClaims,
 } from './soundInventory';
@@ -302,5 +303,33 @@ describe('overlappingClaims', () => {
         ]).byHero.get('Seven')!;
 
         expect(overlappingClaims(seven)).toEqual([]);
+    });
+});
+
+describe('soundEntriesInVpk', () => {
+    // A real global music pack: the VPK carries the clips and the soundevent
+    // manifest, plus whatever else the author happened to zip up.
+    const listing = [
+        'sounds/music/refresher_pickup.vsnd_c',
+        'soundevents/soundevents_music.vsndevts_c',
+        'materials/hud/killstreak.vtex_c',
+        'readme.txt',
+    ];
+
+    it('keeps the sound entries and drops everything else', () => {
+        expect(soundEntriesInVpk(listing)).toEqual([
+            'soundevents/soundevents_music.vsndevts_c',
+            'sounds/music/refresher_pickup.vsnd_c',
+        ]);
+    });
+
+    it('normalizes separators and case, and de-duplicates', () => {
+        expect(soundEntriesInVpk(['Sounds\\Music\\A.vsnd_c', 'sounds/music/a.vsnd_c'])).toEqual([
+            'sounds/music/a.vsnd_c',
+        ]);
+    });
+
+    it('reports nothing for a VPK with no sound content, rather than guessing', () => {
+        expect(soundEntriesInVpk(['materials/hud/icon.vtex_c'])).toEqual([]);
     });
 });

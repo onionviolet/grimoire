@@ -13,9 +13,10 @@ import {
   foundryInspectAssetSources,
   foundrySoundAnnotationKey,
   getHeroSoundWriteSet,
+  listUnknownModFiles,
 } from '../../lib/api';
 import { collapseClipTakes } from '../../lib/soundLabels';
-import type { SoundInventoryEntry } from '../../lib/soundInventory';
+import { soundEntriesInVpk, type SoundInventoryEntry } from '../../lib/soundInventory';
 import type { ClipPlayer } from '../foundry/useClipPlayer';
 import type { FoundryAssetSourcesInspection, SoundAnnotation } from '../../types/foundry';
 import AudioPreviewPlayer from '../AudioPreviewPlayer';
@@ -75,25 +76,38 @@ export default function SoundEntryRow({
    * A forged swap recorded its own clip paths; a classified ability mod has
    * none recorded, but `getHeroSoundWriteSet` can read them straight out of its
    * VPK for a (hero, slot). Neither is inferred from a label.
+   *
+   * A global sound mod (a downloaded music or announcer pack) is neither: it
+   * has no hero and no ability slot, so both of those records are empty and the
+   * row used to say it could not name anything "without opening its VPK". So
+   * open it. `listUnknownModFiles` parses the installed VPK's directory, which
+   * is the same read the Installed page and the conflict scanner already do,
+   * and the sound entries in that list are the write set.
    */
   const resolvePaths = useCallback(async () => {
     if (paths !== null || resolving) return;
-    if (!entry.hero || entry.slots.length === 0) {
-      setPaths([]);
-      return;
-    }
     setResolving(true);
     try {
-      const perSlot = await Promise.all(
-        entry.slots.map((slot) =>
-          getHeroSoundWriteSet(entry.hero as string, slot, entry.metaKey).catch(() => [] as string[])
-        )
-      );
-      setPaths([...new Set(perSlot.flat())].sort());
+      if (entry.hero && entry.slots.length > 0) {
+        const perSlot = await Promise.all(
+          entry.slots.map((slot) =>
+            getHeroSoundWriteSet(entry.hero as string, slot, entry.metaKey).catch(() => [] as string[])
+          )
+        );
+        const recorded = [...new Set(perSlot.flat())].sort();
+        if (recorded.length > 0) {
+          setPaths(recorded);
+          return;
+        }
+      }
+      // Either not a hero/slot mod at all, or one whose slots resolved to
+      // nothing. The VPK is the authority either way.
+      const listing = await listUnknownModFiles(entry.modId).catch(() => null);
+      setPaths(listing ? soundEntriesInVpk(listing.paths) : []);
     } finally {
       setResolving(false);
     }
-  }, [entry.hero, entry.metaKey, entry.slots, paths, resolving]);
+  }, [entry.hero, entry.metaKey, entry.modId, entry.slots, paths, resolving]);
 
   useEffect(() => {
     if (expanded) void resolvePaths();
@@ -225,7 +239,7 @@ export default function SoundEntryRow({
             <p className="text-[10px] text-text-secondary/70">
               {t(
                 'soundLocker.row.unknownWriteSet',
-                'This mod records no entry paths, so what it overrides cannot be named without opening its VPK. Enabled state and load order still decide who wins.'
+                'No sound entries were found in this mod’s VPK, so what it overrides cannot be named. Enabled state and load order still decide who wins.'
               )}
             </p>
           ) : (

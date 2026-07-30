@@ -3654,7 +3654,7 @@
       "whatItChanges": "What it changes",
       "events": "Events: {{events}}",
       "reading": "Reading this mod’s write set",
-      "unknownWriteSet": "This mod records no entry paths, so what it overrides cannot be named without opening its VPK. Enabled state and load order still decide who wins.",
+      "unknownWriteSet": "No sound entries were found in this mod’s VPK, so what it overrides cannot be named. Enabled state and load order still decide who wins.",
       "incomplete": "Some installed VPKs could not be read: {{mods}}",
       "audition": "Audition from this mod",
       "takes_one": "{{count}} take",

@@ -158,6 +158,34 @@ export function isSoundContent(mod: Mod): boolean {
     return globalType === 'announcer' || globalType === 'killstreak-music';
 }
 
+/**
+ * The sound entries inside a VPK's raw file list.
+ *
+ * The read model above reports what a mod *recorded* that it writes, which for
+ * a plain downloaded or imported sound mod is nothing at all. That is a gap in
+ * our metadata, not a fact about the mod: its VPK directory names every file it
+ * ships. `list-unknown-mod-files` already reads that directory for the Installed
+ * page, so the write set is one existing call away, and a row can say what a
+ * mod changes instead of explaining why it cannot.
+ *
+ * Still not an ownership signal (see the invariant at the top): these are the
+ * entries this mod contains. Who wins them is `foundryInspectAssetSources`.
+ */
+export function soundEntriesInVpk(paths: readonly string[]): string[] {
+    const sounds = paths.filter((path) => {
+        const lower = path.toLowerCase();
+        return (
+            lower.endsWith('.vsnd') ||
+            lower.endsWith('.vsnd_c') ||
+            lower.endsWith('.vsndevts') ||
+            lower.endsWith('.vsndevts_c') ||
+            lower.includes('sounds/') ||
+            lower.includes('soundevents/')
+        );
+    });
+    return [...new Set(sounds.map(canonicalPath))].sort();
+}
+
 function provenanceOf(mod: Mod): SoundProvenance {
     if (mod.lockerSounds) return 'locker';
     if (mod.soundSwap || mod.foundryBuild) return 'forged';
