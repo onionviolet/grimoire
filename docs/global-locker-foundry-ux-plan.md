@@ -1116,10 +1116,12 @@ original defect. The pass advances **S2**, and incidentally **S1**: the two
 `Pak92`/`Pak93` collisions it surfaced are the first time this fork showed two
 mods fighting over one sound path from a browse surface.
 
-One Pass B loose end carries into Pass C rather than blocking it: Foundry's
+~~One Pass B loose end carries into Pass C rather than blocking it: Foundry's
 base-game catalog still has no `Melee` group, so the shared vocabulary is
 honoured in wording but not yet in structure (Stage 0 item 2c). That needs the
-catalog engine taught about melee, not a rename.
+catalog engine taught about melee, not a rename.~~ **Closed 2026-07-30
+(`896c6f9`), and the reasoning above was wrong**: it needed no engine change at
+all. See the S2 note under Pass C.
 
 **Pass C's counting half is complete as of 2026-07-30**, in `0b134f5` and
 `ffbb13b`. The Global drill-in and the Locker tile that leads to it now read
