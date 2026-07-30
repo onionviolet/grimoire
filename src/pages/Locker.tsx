@@ -42,12 +42,10 @@ import { HeroSelect } from '../components/common/HeroSelect';
 import { useEscapeKey } from '../components/common/useEscapeKey';
 import {
   GLOBAL_MOD_TYPE_LABELS,
-  GLOBAL_MOD_TYPE_ORDER,
   GLOBAL_VISUAL_MOD_TYPE_ORDER,
   activeLockerSkin,
   buildHeroList,
   canonicalHeroName,
-  countGlobalMods,
   countLockerSkins,
   getLockerSkinKey,
   getEffectiveGlobalType,
@@ -80,7 +78,10 @@ import {
   globalSoundFoundryCategory,
   globalSoundSectionLabel,
 } from '../lib/globalSoundSections';
-import { countGlobalInventoryMods } from '../lib/globalInventory';
+import {
+  countGlobalInventoryCategories,
+  countGlobalInventoryMods,
+} from '../lib/globalInventory';
 import { useDiscoveredSoundPaths } from '../components/locker/useDiscoveredSoundPaths';
 import {
   appendHeroTypeaheadCharacter,
@@ -540,10 +541,29 @@ export default function Locker() {
     [mods]
   );
   const globalGroups = useMemo(() => groupGlobalMods(mods), [mods]);
-  const globalCount = useMemo(() => countGlobalMods(mods), [mods]);
+  // The tile has to answer the same question the drill-in answers, or the two
+  // disagree in the two steps it takes to click through: the tile counted every
+  // mod with a globalType (sound-shaped buckets included) while the drill-in
+  // counts visual mods plus the sound inventory, so one announcer pack was two
+  // things. Both now read the projections in globalInventory.
+  //
+  // Reading the VPKs here (rather than only in the drill-in) is what keeps the
+  // category count honest: without the discovered paths a sound mod falls back
+  // to its GameBanana category, which is the label that caused #5. It also
+  // warms the same per-mod cache the drill-in reads, so navigating in no longer
+  // reclassifies on arrival.
+  const globalDiscoveredPaths = useDiscoveredSoundPaths(mods);
+  const globalSoundInventory = useMemo(
+    () => buildSoundInventory(mods, { discoveredPaths: globalDiscoveredPaths }).global,
+    [mods, globalDiscoveredPaths]
+  );
+  const globalCount = useMemo(
+    () => countGlobalInventoryMods(globalGroups, globalSoundInventory),
+    [globalGroups, globalSoundInventory]
+  );
   const globalTypeCount = useMemo(
-    () => GLOBAL_MOD_TYPE_ORDER.filter((type) => globalGroups[type].length > 0).length,
-    [globalGroups]
+    () => countGlobalInventoryCategories(globalGroups, globalSoundInventory),
+    [globalGroups, globalSoundInventory]
   );
 
   // Calculate heroMods, passing heroList for name-based category inference
@@ -2352,9 +2372,12 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
             <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-text-secondary">
               {t('locker.page.moveToCategory')}
             </div>
-            {/* Killstreak Music is derived from the GameBanana category, not a
-                manual destination, so it's not offered as a move target. */}
-            {GLOBAL_MOD_TYPE_ORDER.filter((type) => type !== 'killstreak-music').map((type) => {
+            {/* Visual types only. Killstreak Music is derived from the
+                GameBanana category rather than chosen, and Announcer is no
+                longer a rail: retagging into either would move a card out of
+                every list that can show it. Sound content is retagged on the
+                Sounds axis, which is where it is rendered. */}
+            {GLOBAL_VISUAL_MOD_TYPE_ORDER.map((type) => {
               const isCurrent = type === activeType;
               return (
                 <button
