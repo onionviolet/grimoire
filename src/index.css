@@ -155,6 +155,19 @@ body {
   font-family: var(--font-radiance);
 }
 
+/* Repaint the app's fixed ambient background inside sticky chrome. This keeps
+   content scrolling underneath opaque without turning the chrome into a flat
+   strip: fixed attachment anchors the same glow to the same viewport pixels as
+   Layout's full-window layer. */
+.app-background-fixed {
+  background-color: var(--color-bg-primary);
+  background-image: var(--app-bg-glow, none);
+  background-attachment: fixed;
+  background-position: 0 0;
+  background-repeat: no-repeat;
+  background-size: 100vw 100vh;
+}
+
 /* Themed scrollbars */
 * {
   scrollbar-width: thin;
@@ -178,6 +191,22 @@ body {
 
 *::-webkit-scrollbar-thumb:hover {
   background: var(--color-accent);
+}
+
+/* A transparent surface must not inherit the default solid scrollbar track.
+   Keep the normal themed thumb, but let the app background continue beneath
+   the gutter instead of painting a bg-secondary strip. */
+.scrollbar-track-transparent {
+  scrollbar-color: var(--color-border) transparent;
+}
+
+.scrollbar-track-transparent::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-track-transparent::-webkit-scrollbar-thumb {
+  border-color: transparent;
+  background-clip: padding-box;
 }
 
 /* Scrollbar variant for panels that sit over imagery (the Locker hero detail
