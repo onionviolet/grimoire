@@ -457,3 +457,52 @@ and `pnpm i18n:manifest` if any catalog key moved.
   introduce a new system for them to agree with.
 - A universal preference framework. Lane 5 is a typed wrapper over the keys that
   already exist, not a new abstraction to grow into.
+
+---
+
+# Status
+
+Lanes 1 to 7 are done. Each landed as its own commit with `pnpm lint`,
+`pnpm exec vitest run`, `pnpm i18n:check`, and the locale manifest green, and
+each was verified by driving the running app rather than by reading code. The
+test count went from 1109 to 1140.
+
+| Lane | State | Notes |
+| --- | --- | --- |
+| 1. Global sounds as a real tab panel | Done | The reported defect. `SoundLocker` is now `GlobalSoundShelf` inside `LockerGlobalView`'s right pane; the rail lists global sound categories with counts and the shelf dropped its inline filter. Verified: the same background DOM node survives Visuals to Sounds and back, tabs stay at 2, images stay at 82 (was 0 and 4) |
+| 2. One shell rule, written down | Done | In `design-overhaul-brief.md`, with an audit table of all five tablists |
+| 3. Tab and back-navigation invariants | Done | `resolveLockerRoute` plus 8 new tests |
+| 4. Visual consistency sweep | Done | Compared by computed style, not by eye |
+| 5. One preference store | Done | `src/lib/uiPrefs.ts`, 19 tests, Settings reset |
+| 6. One confirmation dialog | Done | `useConfirm`; no `window.confirm` left in `src/` |
+| 7. One search input, one scroll restore | Done | `common/SearchInput`, `useScrollRestore` |
+| 8. Keyboard and assistive-tech floor | Partly | Lane 2 wired the three real tablists and demoted the one that was not; the `SegmentedControl` tablist and all the Escape and live-region work remain |
+| 9. Consequence and reversibility | Open | |
+| 10. Cross-page copy and state vocabulary | Open | |
+
+Found and fixed while working, none of it in the original brief:
+
+- Both sound shelves stored the annotations IPC result (a `{ key, annotation }`
+  list) straight into a `Record`, so no personal label ever resolved. Now one
+  `useSoundAnnotations` hook, keyed correctly.
+- Only `?section=sounds` opened a hero section. `cards` and `effects` were
+  parsed and discarded, so a link naming them silently opened Skins.
+- `/locker/sounds?hero=<name>`, which Foundry's My changes panel links, read as
+  the bare legacy landing and dropped the hero. Fixing that exposed a race
+  where the generic `?hero=` handler replaced the `?section=sounds` the legacy
+  rewrite had just added.
+- An empty sound category in the rail was a dead control: it bounced back to
+  the first populated one instead of opening its own empty state.
+- Conflicts' search field, added in the previous session, was entirely
+  hardcoded English.
+- `scripts/dev-driver.mjs` opened a socket per command, so a device-metrics
+  override died before the next command could observe it and no narrow-layout
+  check was possible. Added `at <w>x<h> <expr>`, which does both on one socket.
+
+Two gotchas worth keeping, both from an unfocused Electron window:
+
+- `:focus` and `:focus-visible` never match, so probing focus styling by
+  `eval` gives false negatives. Assert on generated CSS or on behaviour.
+- rAF is throttled, so assigning `scrollTop` fires no scroll event and a
+  scroll-restore check looks broken when it is not. Dispatch the event
+  explicitly.
