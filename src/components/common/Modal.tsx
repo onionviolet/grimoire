@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useBackdropDismiss } from './useBackdropDismiss';
+import { useEscapeKey } from './useEscapeKey';
 
 // Standard modal shell: portal to body, dimmed backdrop, Escape and
 // backdrop-click dismissal, focus hand-off into the panel and restore on
@@ -62,16 +63,7 @@ export function Modal({
         return () => window.clearTimeout(timer);
     }, [open]);
 
-    useEffect(() => {
-        if (!open || !dismissable) return;
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key !== 'Escape') return;
-            e.preventDefault();
-            onClose();
-        };
-        window.addEventListener('keydown', onKey);
-        return () => window.removeEventListener('keydown', onKey);
-    }, [open, dismissable, onClose]);
+    useEscapeKey(onClose, open && dismissable);
 
     // Trap Tab focus inside the panel while open. The WAI-ARIA dialog pattern
     // (and Radix Dialog) keeps focus within a modal dialog; without this, Tab

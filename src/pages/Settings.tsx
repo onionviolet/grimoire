@@ -19,6 +19,7 @@ import {
 } from '../lib/api';
 import { showToast } from '../stores/toastStore';
 import { useBackdropDismiss } from '../components/common/useBackdropDismiss';
+import { useEscapeKey } from '../components/common/useEscapeKey';
 import { getActiveDeadlockPath, shouldBlurNsfw } from '../lib/appSettings';
 import { changedPrefCount, resetAllPrefs } from '../lib/uiPrefs';
 import { formatDateParts } from '../lib/dateFormat';
@@ -274,14 +275,7 @@ export default function Settings() {
     setCustomPickerOpen(true);
   };
 
-  useEffect(() => {
-    if (!customPickerOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') void commitCustomDraft();
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [customPickerOpen, commitCustomDraft]);
+  useEscapeKey(() => void commitCustomDraft(), customPickerOpen);
 
   // Dismiss on backdrop click, but not when the gesture merely ends there
   // (drag-selecting the hex field and releasing outside used to commit).

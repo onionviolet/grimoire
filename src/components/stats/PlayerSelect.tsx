@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
     AlertCircle,
@@ -14,6 +14,7 @@ import { Badge, Button } from '../common/ui'
 import { usePlayerStore } from '../../stores/stats/playerStore'
 import type { TrackedPlayer } from '../../types/deadlock-stats'
 import { statlockerProfileUrl } from './statlocker'
+import { useDismissable } from '../common/useDismissable'
 
 // Header dropdown for picking, adding, and managing tracked players. Replaces
 // the old fixed sidebar so the tab content gets the full window width.
@@ -34,7 +35,8 @@ export function PlayerSelect() {
     const [searchInput, setSearchInput] = useState('')
     const [searchError, setSearchError] = useState<string | null>(null)
     const [isAdding, setIsAdding] = useState(false)
-    const rootRef = useRef<HTMLDivElement>(null)
+    const closeMenu = useCallback(() => setOpen(false), [])
+    const rootRef = useDismissable<HTMLDivElement>(closeMenu, { enabled: open })
 
     const detectedSteamUsers = usePlayerStore((s) => s.detectedSteamUsers)
     const trackedPlayers = usePlayerStore((s) => s.trackedPlayers)
@@ -43,22 +45,6 @@ export function PlayerSelect() {
     const removeTrackedPlayer = usePlayerStore((s) => s.removeTrackedPlayer)
     const setPrimaryPlayer = usePlayerStore((s) => s.setPrimaryPlayer)
     const selectPlayer = usePlayerStore((s) => s.selectPlayer)
-
-    useEffect(() => {
-        if (!open) return
-        const onMouseDown = (e: MouseEvent) => {
-            if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false)
-        }
-        const onKeyDown = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') setOpen(false)
-        }
-        document.addEventListener('mousedown', onMouseDown)
-        document.addEventListener('keydown', onKeyDown)
-        return () => {
-            document.removeEventListener('mousedown', onMouseDown)
-            document.removeEventListener('keydown', onKeyDown)
-        }
-    }, [open])
 
     const selected: TrackedPlayer | undefined = trackedPlayers.data.find(
         (p) => p.account_id === selectedAccountId

@@ -38,6 +38,7 @@ import { ViewModeToggle, EmptyState, SectionHeader, ConfirmModal } from '../comp
 import { Tag, ToggleIndicator } from '../components/common/ui';
 import { Skeleton } from '../components/common/Skeleton';
 import { HeroSelect } from '../components/common/HeroSelect';
+import { useEscapeKey } from '../components/common/useEscapeKey';
 import {
   GLOBAL_MOD_TYPE_LABELS,
   GLOBAL_MOD_TYPE_ORDER,
@@ -1458,23 +1459,19 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
   // Open retag menu, anchored in viewport coords (fixed-positioned) so it never
   // clips against the scrolling card pane. Null when closed.
   const [retagMenu, setRetagMenu] = useState<{ id: string; x: number; y: number } | null>(null);
-  // Close the menu on any scroll / resize / Escape — a fixed menu would
-  // otherwise float away from its anchor once the pane scrolls.
+  const closeRetagMenu = useCallback(() => setRetagMenu(null), [setRetagMenu]);
+  useEscapeKey(closeRetagMenu, !!retagMenu);
+  // Also close on any scroll / resize: a fixed menu would otherwise float away
+  // from its anchor once the pane scrolls.
   useEffect(() => {
     if (!retagMenu) return;
-    const close = () => setRetagMenu(null);
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setRetagMenu(null);
-    };
-    window.addEventListener('scroll', close, true);
-    window.addEventListener('resize', close);
-    window.addEventListener('keydown', onKey);
+    window.addEventListener('scroll', closeRetagMenu, true);
+    window.addEventListener('resize', closeRetagMenu);
     return () => {
-      window.removeEventListener('scroll', close, true);
-      window.removeEventListener('resize', close);
-      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('scroll', closeRetagMenu, true);
+      window.removeEventListener('resize', closeRetagMenu);
     };
-  }, [retagMenu]);
+  }, [retagMenu, closeRetagMenu]);
   // Any type is a valid selection now (empty tabs render their own empty
   // state), so the active tab is simply whatever the user picked.
   const activeType = selectedType;

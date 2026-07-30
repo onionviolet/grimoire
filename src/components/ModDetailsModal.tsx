@@ -2,6 +2,7 @@ import { memo, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, 
 import { useTranslation, Trans } from 'react-i18next';
 import { createPortal } from 'react-dom';
 import { useBackdropDismiss } from './common/useBackdropDismiss';
+import { useEscapeKey } from './common/useEscapeKey';
 import {
   Volume2,
   Loader2,
@@ -360,21 +361,26 @@ function ModDetailsModal({
     setAvatarFailed(false);
   }, [mod.id]);
 
+  // Escape dismisses the topmost of three layers, innermost first. This modal
+  // stacks its own overlays rather than nesting `common/Modal`s, so the
+  // precedence has to be written out; the shared hook does not arbitrate
+  // between layers (see useEscapeKey).
+  useEscapeKey(() => {
+    if (deleteCandidate) {
+      if (!deleteInProgress) setDeleteCandidate(null);
+      return;
+    }
+    // Lightbox eats ESC before the modal does, so users can dismiss the
+    // zoomed view without losing their place on the detail card.
+    if (lightboxOpen) {
+      setLightboxOpen(false);
+    } else {
+      onClose();
+    }
+  });
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        if (deleteCandidate) {
-          if (!deleteInProgress) setDeleteCandidate(null);
-          return;
-        }
-        // Lightbox eats ESC before the modal does, so users can dismiss the
-        // zoomed view without losing their place on the detail card.
-        if (lightboxOpen) {
-          setLightboxOpen(false);
-        } else {
-          onClose();
-        }
-      }
       // Arrow keys only navigate while the lightbox is open - otherwise
       // they step between mods when the caller provides modal navigation.
       if (lightboxOpen && images.length > 1) {

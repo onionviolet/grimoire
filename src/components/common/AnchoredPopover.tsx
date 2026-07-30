@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, type ReactNode, type RefObject } from 'react';
+import { useCallback, useLayoutEffect, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
+import { useDismissable } from './useDismissable';
 
 const ANCHOR_GAP = 8;
 const VIEWPORT_PADDING = 12;
@@ -46,7 +47,13 @@ export function AnchoredPopover({
   className = '',
   children,
 }: AnchoredPopoverProps) {
-  const panelRef = useRef<HTMLDivElement | null>(null);
+  // Escape, outside-press, and focus-back-to-the-trigger all live in the shared
+  // hook. The anchor counts as inside because the trigger's own onClick owns
+  // toggling, so a press on it must not also read as a dismiss.
+  const panelRef = useDismissable<HTMLDivElement>(onClose, {
+    enabled: open,
+    alsoInside: [anchorRef],
+  });
 
   /**
    * Measure the anchor and write the panel's fixed position straight to the
@@ -75,7 +82,7 @@ export function AnchoredPopover({
       panel.style.top = `${Math.round(rect.bottom + ANCHOR_GAP)}px`;
     }
     panel.style.maxHeight = `${Math.max(0, Math.round(flipUp ? spaceAbove : spaceBelow))}px`;
-  }, [align, anchorRef, width]);
+  }, [align, anchorRef, panelRef, width]);
 
   // Layout effect, not a plain effect: this runs after the portal is in the DOM
   // but before paint, so the panel is never visible at an unpositioned spot.
@@ -90,28 +97,6 @@ export function AnchoredPopover({
       window.removeEventListener('resize', position);
     };
   }, [open, position]);
-
-  useEffect(() => {
-    if (!open) return;
-    // mousedown, not pointerdown: portaled children (HeroSelect's listbox) stop
-    // propagation of the React mousedown to keep their own gesture inside their
-    // logical boundary. Listening for pointerdown here would bypass that and
-    // dismiss this panel out from under a hero being picked.
-    const onMouseDown = (event: MouseEvent) => {
-      const target = event.target as Node;
-      if (panelRef.current?.contains(target) || anchorRef.current?.contains(target)) return;
-      onClose();
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
-    };
-    window.addEventListener('mousedown', onMouseDown);
-    window.addEventListener('keydown', onKeyDown);
-    return () => {
-      window.removeEventListener('mousedown', onMouseDown);
-      window.removeEventListener('keydown', onKeyDown);
-    };
-  }, [open, onClose, anchorRef]);
 
   if (!open) return null;
 

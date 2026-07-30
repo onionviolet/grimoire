@@ -1,5 +1,6 @@
-import { Suspense, useEffect, useRef, useState } from 'react';
+import { Suspense, useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useEscapeKey } from '../common/useEscapeKey';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import * as THREE from 'three';
@@ -98,6 +99,11 @@ export default function SoulContainerImportModal({
   initialGlbPath = '',
 }: SoulContainerImportModalProps) {
   const { t } = useTranslation();
+  // Hand-rolled dialog shell rather than common/Modal, because the three.js
+  // preview owns the panel's layout. It still owes the same dismissal contract:
+  // Escape matches the X, which is likewise unguarded during a submit.
+  const titleId = useId();
+  useEscapeKey(onClose);
   const toggleMod = useAppStore((s) => s.toggleMod);
   const [glbPath, setGlbPath] = useState<string>(initialGlbPath);
   const [name, setName] = useState<string>(initialGlbPath ? deriveNameFromPath(initialGlbPath) : '');
@@ -380,10 +386,15 @@ export default function SoulContainerImportModal({
   };
 
   return createPortal(
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+    <div
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={titleId}
+    >
       <div className="bg-bg-secondary border border-border rounded-xl w-full max-w-3xl max-h-[92vh] flex flex-col">
         <div className="flex items-center justify-between p-5 border-b border-border">
-          <h3 className="text-lg font-semibold text-text-primary flex items-center gap-2">
+          <h3 id={titleId} className="text-lg font-semibold text-text-primary flex items-center gap-2">
             <Ghost className="w-5 h-5" />
             {t('locker.soulImport.title')}
           </h3>

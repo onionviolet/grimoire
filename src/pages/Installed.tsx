@@ -94,6 +94,8 @@ import PriorityEditor from '../components/PriorityEditor';
 import { IMAGE_EXTS, deriveModNameFromPath } from '../lib/customModImport';
 import { Modal } from '../components/common/Modal';
 import { useBackdropDismiss } from '../components/common/useBackdropDismiss';
+import { useDismissable } from '../components/common/useDismissable';
+import { useEscapeKey } from '../components/common/useEscapeKey';
 import { inferHeroFromTitle, getHeroRenderPath, getHeroFacePosition, getHeroChipIconPath, HERO_NAMES, HERO_NAMES_SORTED, canonicalHeroName, GLOBAL_MOD_TYPE_ORDER, GLOBAL_MOD_TYPE_LABELS, getEffectiveGlobalType } from '../lib/lockerUtils';
 import { formatRelativeDate, formatAbsoluteDate } from '../lib/dates';
 import { useStableCallback } from '../lib/useStableCallback';
@@ -894,24 +896,8 @@ export default function Installed() {
   // Style + card-size live behind a single dropdown so they don't eat a row of
   // toolbar width. Same relative/click-outside pattern as the filter popover.
   const [viewMenuOpen, setViewMenuOpen] = useState(false);
-  const viewMenuRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!viewMenuOpen) return;
-    const onMouseDown = (event: MouseEvent) => {
-      if (viewMenuRef.current && !viewMenuRef.current.contains(event.target as Node)) {
-        setViewMenuOpen(false);
-      }
-    };
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setViewMenuOpen(false);
-    };
-    window.addEventListener('mousedown', onMouseDown);
-    window.addEventListener('keydown', onKey);
-    return () => {
-      window.removeEventListener('mousedown', onMouseDown);
-      window.removeEventListener('keydown', onKey);
-    };
-  }, [viewMenuOpen]);
+  const closeViewMenu = useCallback(() => setViewMenuOpen(false), []);
+  const viewMenuRef = useDismissable<HTMLDivElement>(closeViewMenu, { enabled: viewMenuOpen });
   // Fix unknown can be dismissed by right-clicking it; right-clicking the small
   // stub it leaves behind brings it back. Persisted so the choice sticks.
   const [fixUnknownHidden, setFixUnknownHidden] = useState(
@@ -970,7 +956,8 @@ export default function Installed() {
   // list into a read-only view (see viewIsReorderable) because the displayed
   // order no longer maps to load-order priority.
   const [filterOpen, setFilterOpen] = useState(false);
-  const filterRef = useRef<HTMLDivElement>(null);
+  const closeFilter = useCallback(() => setFilterOpen(false), []);
+  const filterRef = useDismissable<HTMLDivElement>(closeFilter, { enabled: filterOpen });
   const filterPanelRef = useRef<HTMLDivElement>(null);
   // Retroactive "Imprint installed mods" (path B). A single state machine drives
   // the shared modal through four phases: an up-front preflight dry-run that
@@ -1030,23 +1017,6 @@ export default function Installed() {
   useEffect(() => {
     writePref('installedSource', sourceSel);
   }, [sourceSel]);
-  useEffect(() => {
-    if (!filterOpen) return;
-    const onMouseDown = (event: MouseEvent) => {
-      if (filterRef.current && !filterRef.current.contains(event.target as Node)) {
-        setFilterOpen(false);
-      }
-    };
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setFilterOpen(false);
-    };
-    window.addEventListener('mousedown', onMouseDown);
-    window.addEventListener('keydown', onKey);
-    return () => {
-      window.removeEventListener('mousedown', onMouseDown);
-      window.removeEventListener('keydown', onKey);
-    };
-  }, [filterOpen]);
   // Cap the sort/filter popover to whatever room is left below the toolbar:
   // uncapped, at short window heights everything below TAGS was cut off with no
   // way to reach it (the inner lists scroll, the popover itself did not).
@@ -2470,17 +2440,7 @@ export default function Installed() {
 
   // ESC leaves bulk-select mode (same as the toolbar toggle / X). Guarded so it
   // doesn't fire mid bulk-operation or steal ESC from the delete-confirm modal.
-  useEffect(() => {
-    if (!selectMode) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !bulkProgress && !modToDelete) {
-        setSelectMode(false);
-        setSelectedIds(new Set());
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [selectMode, bulkProgress, modToDelete]);
+  useEscapeKey(exitSelectMode, selectMode && !bulkProgress && !modToDelete);
 
   const handleDeleteConfirm = async () => {
     if (!modToDelete) return;
@@ -2559,24 +2519,8 @@ export default function Installed() {
   // refreshes — Locker grouping picks the change up on its next mods read.
   // Pass null to clear the manual tag and fall back to title/category inference.
   const [tagMenuOpen, setTagMenuOpen] = useState(false);
-  const tagMenuRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!tagMenuOpen) return;
-    const onMouseDown = (e: MouseEvent) => {
-      if (tagMenuRef.current && !tagMenuRef.current.contains(e.target as Node)) {
-        setTagMenuOpen(false);
-      }
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setTagMenuOpen(false);
-    };
-    window.addEventListener('mousedown', onMouseDown);
-    window.addEventListener('keydown', onKey);
-    return () => {
-      window.removeEventListener('mousedown', onMouseDown);
-      window.removeEventListener('keydown', onKey);
-    };
-  }, [tagMenuOpen]);
+  const closeTagMenu = useCallback(() => setTagMenuOpen(false), []);
+  const tagMenuRef = useDismissable<HTMLDivElement>(closeTagMenu, { enabled: tagMenuOpen });
 
   const handleBulkTag = async (heroName: string | null) => {
     if (selectedMods.length === 0) return;
@@ -7771,42 +7715,31 @@ function ModCard({
   // overflow-auto/transform-gpu subtree that would otherwise clip an absolutely
   // (or even fixed) positioned menu, hiding its left edge behind the sidebar.
   const [menuRect, setMenuRect] = useState<DOMRect | null>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
   const menuPanelRef = useRef<HTMLDivElement>(null);
+  const closeMenu = useCallback(() => {
+    setMenuOpen(false);
+    setTagPickerOpen(false);
+  }, []);
+  // The panel is portaled out of menuRef, so it counts as inside explicitly.
+  const menuRef = useDismissable<HTMLDivElement>(closeMenu, {
+    enabled: menuOpen,
+    alsoInside: [menuPanelRef],
+  });
 
   useEffect(() => {
     if (!menuOpen) return;
-    const onMouseDown = (event: MouseEvent) => {
-      const target = event.target as Node;
-      // The menu is portaled out of menuRef, so check both the trigger and the
-      // portaled panel before treating a click as "outside".
-      if (menuRef.current?.contains(target)) return;
-      if (menuPanelRef.current?.contains(target)) return;
-      setMenuOpen(false);
-      setTagPickerOpen(false);
-    };
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setMenuOpen(false);
-        setTagPickerOpen(false);
-      }
-    };
     // Keep the portaled menu anchored to its card as the list scrolls/resizes.
     // Inner-container scroll doesn't bubble, so listen in the capture phase.
     const reposition = () => {
       if (menuRef.current) setMenuRect(menuRef.current.getBoundingClientRect());
     };
-    window.addEventListener('mousedown', onMouseDown);
-    window.addEventListener('keydown', onKey);
     window.addEventListener('scroll', reposition, true);
     window.addEventListener('resize', reposition);
     return () => {
-      window.removeEventListener('mousedown', onMouseDown);
-      window.removeEventListener('keydown', onKey);
       window.removeEventListener('scroll', reposition, true);
       window.removeEventListener('resize', reposition);
     };
-  }, [menuOpen]);
+  }, [menuOpen, menuRef]);
 
   const applyLockerTag = async (heroName: string | null) => {
     if (!onTagLocker || menuBusy) return;
