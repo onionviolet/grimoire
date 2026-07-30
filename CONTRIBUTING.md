@@ -7,20 +7,24 @@ Thanks for your interest in contributing.
 Requirements:
 
 - [Node.js](https://nodejs.org/) 20+
-- [pnpm](https://pnpm.io/) 9+
+- [pnpm](https://pnpm.io/) 10+ (pnpm 9 mis-links the out-of-root workspace package below)
 - [Git](https://git-scm.com/)
 
-Grimoire shares its social API types with
-[grimoire-social](https://github.com/Slush97/grimoire-social) via the
-`@grimoire/social-types` workspace dependency, which resolves to a **sibling
-checkout**. Clone both into the same parent directory:
+Grimoire shares its wire-format types with its companion service,
+[grimoire-social](https://github.com/Slush97/grimoire-social) (also open source),
+through the `@grimoire/social-types` workspace package. `pnpm-workspace.yaml`
+resolves it from `../grimoire-social/packages/social-types`, so **the two repos
+have to sit side by side**, and grimoire-social needs its own install. Cloning
+grimoire alone fails with `ERR_PNPM_WORKSPACE_PKG_NOT_FOUND`.
 
 ```bash
-git clone https://github.com/Slush97/grimoire-social.git
-cd grimoire-social && pnpm install && cd ..
-
 git clone https://github.com/Slush97/grimoire.git
-cd grimoire
+git clone https://github.com/Slush97/grimoire-social.git
+
+cd grimoire-social
+pnpm install
+
+cd ../grimoire
 pnpm install
 pnpm exec electron-rebuild -f -w better-sqlite3
 pnpm dev
@@ -40,6 +44,16 @@ parent/
 If the sibling is missing, `preinstall` (`pnpm check-siblings`) fails with the
 clone command. Skipping that check leaves you with a `pnpm install` that
 reports success and a `pnpm typecheck` that fails with unresolved-module errors.
+
+`pnpm dev` needs nothing else: the social client falls back to
+`http://localhost:8787` (wrangler dev) when `GRIMOIRE_SOCIAL_BASE_URL` is unset,
+and nothing else in the app depends on the service being up. The `package:*`
+scripts do refuse to build without `GRIMOIRE_SOCIAL_BASE_URL` set to an https
+URL, so pass one if you're producing installers locally:
+
+```bash
+GRIMOIRE_SOCIAL_BASE_URL=https://example.invalid pnpm package:linux
+```
 
 ## Code style
 
