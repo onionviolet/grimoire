@@ -2,6 +2,70 @@
 
 All notable changes to this project are documented here. Format is loosely based on [Keep a Changelog](https://keepachangelog.com/), and the project adheres to semantic versioning.
 
+## [1.26.16] - 2026-07-30
+
+A fork-only follow-up to v1.26.1. It repairs the text corruption that shipped in
+that release, gates against a recurrence, and turns Foundry into a tool that can
+answer questions about a game build rather than just list what it found. It is a
+Windows-only release.
+
+### Added
+- **Foundry records local pak build snapshots and reports what changed between
+  them.** A build-to-build asset diff shows what a game update added, removed,
+  or replaced, and the catalog cache stays warm across snapshots instead of
+  rebuilding from scratch.
+- **Foundry can export vanilla sounds and textures,** with the underlying asset
+  export exposed over IPC.
+- **Foundry explains itself instead of showing nothing.** An empty catalog says
+  why it is empty, assets that sit outside the standard layout are reported
+  rather than silently dropped, hashed portrait assets are labeled, hero
+  codenames appear under the hero name, and selected sound sources can be
+  inspected directly.
+- **The Locker's 3D model panel has dock modes and remembers the chosen one.**
+- **Broken pose previews are shown as broken** instead of being hidden, so a
+  model that fails to pose is distinguishable from one that has no pose.
+- **Attribution for Slush97 and upstream is surfaced across the app,** including
+  in the performance presets.
+- **HUD and gameplay ConVars now live under Game Configuration** in settings,
+  with managed ConVar precedence resolved consistently between preset values and
+  user overrides.
+
+### Fixed
+- **77 cp1252 mojibake sequences shipped in v1.26.1 are repaired,** and CI plus
+  a pre-push hook now fail on any recurrence. A middle dot had been rendering as
+  two characters and an ellipsis as three, over 1500 times in the Foundry sound
+  catalog alone.
+- **Portrait base art is revealed on hover and focus** rather than darkened.
+- **Foundry resolves portrait aliases across hero families,** so a hero whose
+  art is filed under a related codename no longer shows a placeholder.
+- **The Locker reads the VPK instead of apologizing for missing metadata,** and
+  the Global sound inventory is deduped, opens on a category that actually has
+  content, and shows the same denominator on its tile as in the drill-in.
+- **Global sounds are classified by what a mod writes,** not by what the file
+  was named, with the reason for each classification attached.
+- **The pose viewer distinguishes its two failure modes** instead of reporting
+  both the same way.
+- **The hero workshop's icon browse is scoped to its hero.**
+- **User-supplied images are named instead of shown as a hash.**
+- **Performance presets no longer silently restyle health bars,** objective
+  health bars have their third value back, unit-status readability ConVars are
+  held back as opt-ins, and the HUD and advanced controls get their own storage
+  so one no longer overwrites the other.
+- **The hero backdrop veil scales with the surface** instead of being fixed.
+
+### Changed
+- Sound classification is consolidated into one module, and path-ownership
+  claims are derived once and shared by both surfaces that use them.
+- Development slots are isolated, so parallel dev builds no longer share a Vite
+  port, CDP port, or userData directory.
+
+### Release details
+- **Tag and commit:** `v1.26.16` (built 2026-07-30).
+- **Artifacts:** Windows setup and portable executables only, plus `SHA256SUMS`
+  and updater metadata. Linux and macOS artifacts are not published.
+- **Rollback:** [v1.26.1](https://github.com/onionviolet/grimoire/releases/tag/v1.26.1)
+  remains available on GitHub Releases.
+
 ## [1.26.1] - 2026-07-29
 
 This fork release absorbs upstream v1.26.0 and brings the current Locker,
