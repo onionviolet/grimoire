@@ -1,7 +1,7 @@
 {
   "name": "grimoire",
   "private": true,
-  "version": "1.26.1",
+  "version": "1.26.16",
   "description": "Grimoire - A Deadlock mod manager and customization workshop",
   "license": "MIT",
   "author": {
