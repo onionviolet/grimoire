@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { FoundryAssetSourcesInspection } from '../../types/foundry';
+import { useAppStore } from '../../stores/appStore';
 
 export type InspectAssetSources = (paths: string[]) => Promise<FoundryAssetSourcesInspection>;
 
@@ -67,6 +68,20 @@ export class AssetSourceInspectionCoordinator {
 export function useAssetSourceInspection(paths: readonly string[], active: boolean, inspect: InspectAssetSources) {
   const [coordinator] = useState(() => new AssetSourceInspectionCoordinator(inspect));
   const key = useMemo(() => AssetSourceInspectionCoordinator.key(paths), [paths]);
+  // Ownership is a fact about the installed mods, so the cache is only valid
+  // for the mod list it was read against. Without this, disabling or reordering
+  // a mod anywhere in the app left every already-visited selection showing the
+  // winner it had before the change, which reads as the app disagreeing with
+  // itself: the cache made the stale answer instant.
+  const mods = useAppStore((s) => s.mods);
+  const seenMods = useRef(mods);
+  // Declared before the request effect below so it clears the cache first on
+  // the same commit; the request effect then re-asks against the new mod list.
+  useEffect(() => {
+    if (seenMods.current === mods) return;
+    seenMods.current = mods;
+    coordinator.invalidate();
+  }, [coordinator, mods]);
   const [result, setResult] = useState<FoundryAssetSourcesInspection | null>(() => coordinator.get(paths) ?? null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -98,7 +113,10 @@ export function useAssetSourceInspection(paths: readonly string[], active: boole
       });
     });
     return () => { live = false; coordinator.cancel(); };
-  }, [active, coordinator, key, paths]);
+    // `mods` re-asks after the invalidation above. reconcileMods preserves the
+    // array identity when a poll finds nothing changed, so this fires on real
+    // mod-state changes and not on every background scan.
+  }, [active, coordinator, key, paths, mods]);
 
   return { result, loading, error, refresh };
 }
