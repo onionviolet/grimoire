@@ -220,6 +220,23 @@ export interface NonStandardFinding {
     tier: NonStandardTier;
     category: 'texture' | 'sound' | 'portrait' | 'hero' | 'other';
     reason: string;
+    /** Present only when a previous observed pak build is available. */
+    newThisPatch?: boolean;
+    /** Includes a CRC change and a size-only change to an existing entry. */
+    changedThisPatch?: boolean;
+}
+
+export interface FoundryBuildChange {
+    path: string;
+    kind: 'added' | 'removed' | 'changed' | 'resized-only';
+}
+
+/** Local comparison of the current pak against the immediately preceding
+ * observed build. No filesystem paths are ever returned to the renderer. */
+export interface FoundryBuildDiffReport {
+    fingerprint: string;
+    baseline: boolean;
+    changes: FoundryBuildChange[];
 }
 
 /** Cached, fingerprint-bound report returned by the non-standard scan. */
@@ -229,6 +246,10 @@ export interface NonStandardReport {
     findings: NonStandardFinding[];
     /** Tier C is intentionally absent: it is a naming hint, not a headline fact. */
     confirmedCount: number;
+    patchComparison: {
+        available: boolean;
+        changeCount: number;
+    };
 }
 
 /** A decoded stock sound export. `mp3` reuses the audition cache; `raw` saves

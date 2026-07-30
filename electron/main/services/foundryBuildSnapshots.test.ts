@@ -30,4 +30,17 @@ describe('Foundry build snapshots', () => {
         expect(await readBuildSnapshot(store, 'one')).toBeNull();
         expect(await readBuildSnapshot(store, 'four')).toEqual([entry('a', 2)]);
     });
+
+    it('keeps the prior-build comparison available when the current build was already warmed', async () => {
+        const store = root();
+        await recordBuildSnapshot(store, 'before', [entry('a', 1)]);
+        await recordBuildSnapshot(store, 'after', [entry('a', 2), entry('b', 1)]);
+
+        const observedAgain = await recordBuildSnapshot(store, 'after', [entry('a', 2), entry('b', 1)]);
+        expect(observedAgain.baseline).toBe(false);
+        expect(observedAgain.changes.map(({ path, kind }) => ({ path, kind }))).toEqual([
+            { path: 'a', kind: 'changed' },
+            { path: 'b', kind: 'added' },
+        ]);
+    });
 });

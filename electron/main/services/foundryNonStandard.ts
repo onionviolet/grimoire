@@ -8,11 +8,12 @@ import { getCitadelPath } from './deadlock';
 import { extractHeroFromPath, parseVpkEntryIndex } from './vpk';
 import {
     foundryBuildFingerprintKey,
+    foundryBuildDiff,
     getGlobalSounds,
     getHeroRoster,
     getHeroSounds,
 } from './foundryCatalog';
-import type { HeroInfo, NonStandardFinding, NonStandardReport } from '../../../src/types/foundry';
+import type { FoundryBuildDiffReport, HeroInfo, NonStandardFinding, NonStandardReport } from '../../../src/types/foundry';
 
 function cacheRoot(): string { return join(app.getPath('userData'), 'foundry-nonstandard-cache'); }
 function normalize(path: string): string { return path.replace(/\\/g, '/').toLowerCase(); }
@@ -85,10 +86,29 @@ export function classifyNonStandardEntries(
     return findings;
 }
 
+function withPatchFlags(report: Omit<NonStandardReport, 'patchComparison'>, diff: FoundryBuildDiffReport): NonStandardReport {
+    const added = new Set(diff.changes.filter((change) => change.kind === 'added').map((change) => normalize(change.path)));
+    const changed = new Set(diff.changes
+        .filter((change) => change.kind === 'changed' || change.kind === 'resized-only')
+        .map((change) => normalize(change.path)));
+    return {
+        ...report,
+        findings: report.findings.map((finding) => ({
+            ...finding,
+            ...(added.has(normalize(finding.path)) ? { newThisPatch: true } : {}),
+            ...(changed.has(normalize(finding.path)) ? { changedThisPatch: true } : {}),
+        })),
+        patchComparison: { available: !diff.baseline, changeCount: diff.changes.length },
+    };
+}
+
 export async function scanNonStandardFiles(deadlockPath: string): Promise<NonStandardReport> {
     const fingerprint = await foundryBuildFingerprintKey(deadlockPath);
     const file = join(cacheRoot(), `${fingerprint}.json`);
-    try { return JSON.parse(await fs.readFile(file, 'utf8')) as NonStandardReport; } catch { /* scan below */ }
+    const diff = await foundryBuildDiff(deadlockPath);
+    try {
+        return withPatchFlags(JSON.parse(await fs.readFile(file, 'utf8')) as Omit<NonStandardReport, 'patchComparison'>, diff);
+    } catch { /* scan below */ }
 
     const pak = join(getCitadelPath(deadlockPath), 'pak01_dir.vpk');
     const paths = parseVpkEntryIndex(pak);
@@ -101,7 +121,7 @@ export async function scanNonStandardFiles(deadlockPath: string): Promise<NonSta
         ...globalSounds.flatMap((sound) => sound.vsnd),
     ].map(compiledSound));
     const findings = classifyNonStandardEntries(paths.map((entry) => entry.path), roster, liveSounds);
-    const report: NonStandardReport = {
+    const report: Omit<NonStandardReport, 'patchComparison'> = {
         fingerprint,
         generatedAt: new Date().toISOString(),
         findings,
@@ -109,5 +129,5 @@ export async function scanNonStandardFiles(deadlockPath: string): Promise<NonSta
     };
     await fs.mkdir(cacheRoot(), { recursive: true });
     await fs.writeFile(file, JSON.stringify(report), 'utf8');
-    return report;
+    return withPatchFlags(report, diff);
 }

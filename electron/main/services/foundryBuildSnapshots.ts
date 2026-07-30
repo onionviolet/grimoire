@@ -24,6 +24,12 @@ export interface FoundryBuildSnapshotMeta {
     entryCount: number;
 }
 
+export interface FoundryBuildSnapshotResult {
+    baseline: boolean;
+    changes: FoundryBuildChange[];
+    snapshot: FoundryBuildSnapshotMeta;
+}
+
 interface SnapshotIndex { snapshots: FoundryBuildSnapshotMeta[]; }
 
 function snapshotPath(root: string, fingerprint: string): string {
@@ -69,14 +75,30 @@ export async function readBuildSnapshot(root: string, fingerprint: string): Prom
 /** Persist an observed build and compare it to the immediately prior build.
  * The pak is only read by the caller; this service writes exclusively below
  * userData and retains three compact gzip snapshots. */
-export async function recordBuildSnapshot(root: string, fingerprint: string, entries: readonly VpkEntryIndex[]) {
+export async function recordBuildSnapshot(
+    root: string,
+    fingerprint: string,
+    entries: readonly VpkEntryIndex[]
+): Promise<FoundryBuildSnapshotResult> {
     await fs.mkdir(root, { recursive: true });
     const index = await readIndex(root);
-    const existing = index.snapshots.find((snapshot) => snapshot.fingerprint === fingerprint);
-    if (existing) return { baseline: false, changes: [] as FoundryBuildChange[], snapshot: existing };
-
-    const previous = index.snapshots.at(-1);
+    const existingIndex = index.snapshots.findIndex((snapshot) => snapshot.fingerprint === fingerprint);
+    const existing = existingIndex === -1 ? undefined : index.snapshots[existingIndex];
+    const previous = existing
+        ? index.snapshots[existingIndex - 1]
+        : index.snapshots.at(-1);
     const previousEntries = previous ? await readBuildSnapshot(root, previous.fingerprint) : null;
+    // A snapshot is normally first recorded by warmCache. The later UI request
+    // must still be able to compare that already-observed build to its prior
+    // snapshot instead of incorrectly reporting an empty diff.
+    if (existing) {
+        return {
+            baseline: !previousEntries,
+            changes: previousEntries ? diffVpkEntryIndexes(previousEntries, await readBuildSnapshot(root, fingerprint) ?? entries) : [],
+            snapshot: existing,
+        };
+    }
+
     const normalized = sorted(entries);
     const lines = normalized.map((entry) => JSON.stringify(entry)).join('\n');
     await fs.writeFile(snapshotPath(root, fingerprint), await compress(Buffer.from(lines)), { flag: 'wx' });
