@@ -1391,6 +1391,11 @@ export async function foundryHeroes(): Promise<import('../types/foundry').HeroIn
   return window.electronAPI.foundry.heroes();
 }
 
+/** Flag non-live, unreferenced, and naming-signal assets in the installed pak. */
+export async function foundryScanNonStandard(): Promise<import('../types/foundry').NonStandardReport> {
+  return window.electronAPI.foundry.scanNonStandard();
+}
+
 export async function foundryTextures(
   filters?: import('../types/foundry').TextureFilters
 ): Promise<import('../types/foundry').TextureEntry[]> {

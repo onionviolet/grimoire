@@ -663,6 +663,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // Foundry: catalog browse backed by the bundled vpkmerge sidecar.
     foundry: {
         heroes: () => ipcRenderer.invoke('foundry:heroes'),
+        scanNonStandard: () => ipcRenderer.invoke('foundry:scanNonStandard'),
         textures: (filters?: TextureFilters) =>
             ipcRenderer.invoke('foundry:textures', filters ?? {}),
         voicelines: (filters?: VoicelineFilters) =>

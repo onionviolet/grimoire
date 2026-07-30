@@ -38,6 +38,7 @@ import {
     writeFoundryPortraitImage,
 } from '../services/foundryPortraitImages';
 import { ensureSourceThumbnail } from '../services/foundrySourceThumbs';
+import { scanNonStandardFiles } from '../services/foundryNonStandard';
 import { registerPreviewVpk, releasePreviewVpk } from '../services/previewVpkRegistry';
 import { runVpkmergeStdout, vpkmergeBinaryPath } from '../services/modMerger';
 import {
@@ -76,9 +77,60 @@ function requireDeadlockPath(): string {
     return deadlockPath;
 }
 
+function exportDirectory(): string {
+    const remembered = loadSettings().foundryExportPath;
+    return remembered?.trim() || join(app.getPath('downloads'), 'Grimoire Exports');
+}
+
+function safeExportName(name: string, extension: string): string {
+    const stem = [...basename(name)]
+        .filter((char) => char.charCodeAt(0) >= 32)
+        .join('')
+        .replace(/[<>:"/\\|?*]/g, '_')
+        .replace(/\.+$/g, '')
+        .trim();
+    const normalized = stem || 'asset';
+    return normalized.toLowerCase().endsWith(extension) ? normalized : `${normalized}${extension}`;
+}
+
+async function saveFoundryAsset(
+    source: Buffer | string,
+    name: string,
+    extension: string,
+    label: string
+): Promise<FoundryAssetExportResult> {
+    const result = await dialog.showSaveDialog({
+        title: `Export ${label}`,
+        defaultPath: join(exportDirectory(), safeExportName(name, extension)),
+        filters: [{ name: label, extensions: [extension.slice(1)] }],
+    });
+    if (result.canceled || !result.filePath) return { exported: false };
+    const destination = result.filePath.toLowerCase().endsWith(extension)
+        ? result.filePath
+        : `${result.filePath}${extension}`;
+    const temporary = join(dirname(destination), `.${basename(destination)}.${randomUUID()}.tmp`);
+    try {
+        if (typeof source === 'string') await copyFile(source, temporary);
+        else await writeFile(temporary, source);
+        await rename(temporary, destination);
+    } catch (error) {
+        await unlink(temporary).catch(() => {});
+        throw error;
+    }
+    const settings = loadSettings();
+    saveSettings({ ...settings, foundryExportPath: dirname(destination) });
+    return { exported: true, path: destination };
+}
+
 ipcMain.handle('foundry:heroes', async (): Promise<HeroInfo[]> => {
     return getHeroRoster(requireDeadlockPath());
 });
+
+// This only reads the base pak and writes a derived userData cache.  It is not
+// connected to staging, forging, or the game's addon directory.
+ipcMain.handle('foundry:scanNonStandard', async (): Promise<import('../../../src/types/foundry').NonStandardReport> =>
+    scanNonStandardFiles(requireDeadlockPath())
+);
 
 ipcMain.handle(
     'foundry:textures',
@@ -386,48 +438,3 @@ ipcMain.handle('foundry:engineInfo', async (): Promise<EngineInfo> => {
         };
     }
 });
-
-function exportDirectory(): string {
-    const remembered = loadSettings().foundryExportPath;
-    return remembered?.trim() || join(app.getPath('downloads'), 'Grimoire Exports');
-}
-
-function safeExportName(name: string, extension: string): string {
-    const stem = [...basename(name)]
-        .filter((char) => char.charCodeAt(0) >= 32)
-        .join('')
-        .replace(/[<>:"/\\|?*]/g, '_')
-        .replace(/\.+$/g, '')
-        .trim();
-    const normalized = stem || 'asset';
-    return normalized.toLowerCase().endsWith(extension) ? normalized : `${normalized}${extension}`;
-}
-
-async function saveFoundryAsset(
-    source: Buffer | string,
-    name: string,
-    extension: string,
-    label: string
-): Promise<FoundryAssetExportResult> {
-    const result = await dialog.showSaveDialog({
-        title: `Export ${label}`,
-        defaultPath: join(exportDirectory(), safeExportName(name, extension)),
-        filters: [{ name: label, extensions: [extension.slice(1)] }],
-    });
-    if (result.canceled || !result.filePath) return { exported: false };
-    const destination = result.filePath.toLowerCase().endsWith(extension)
-        ? result.filePath
-        : `${result.filePath}${extension}`;
-    const temporary = join(dirname(destination), `.${basename(destination)}.${randomUUID()}.tmp`);
-    try {
-        if (typeof source === 'string') await copyFile(source, temporary);
-        else await writeFile(temporary, source);
-        await rename(temporary, destination);
-    } catch (error) {
-        await unlink(temporary).catch(() => {});
-        throw error;
-    }
-    const settings = loadSettings();
-    saveSettings({ ...settings, foundryExportPath: dirname(destination) });
-    return { exported: true, path: destination };
-}

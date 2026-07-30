@@ -6149,9 +6149,10 @@ function FileTreeBranch({
   );
 }
 
-// Collapsible file TREE for the unknown VPK. Seeds from the detector's sample
-// paths, then lazily loads the full list (a local VPK directory parse, no
-// network) the first time it's expanded.
+// Collapsible file tree for a local VPK. Unknown-mod detection can seed it
+// with sample paths; the local-mod editor uses the same inspector directly.
+// The full list is loaded lazily through a local VPK directory parse (no
+// network) the first time it is expanded.
 function UnknownFileList({
   mod,
   initialPaths,
@@ -8616,6 +8617,13 @@ function EditLocalModModal({ mod, onClose, onSave }: EditLocalModModalProps) {
         <p className="mt-2 truncate text-xs text-text-secondary" title={mod.fileName}>
           {t('installed.edit.fileLabel', { fileName: mod.fileName })}
         </p>
+
+        {/* The engine-facing pakNN filename tells us nothing about the mod.
+            Keep the VPK's actual override paths available beside the
+            persisted display-name editor. */}
+        <div className="mt-4">
+          <UnknownFileList mod={mod} />
+        </div>
 
         <div className="mt-5">
           <label className="block text-sm font-medium text-text-primary mb-1.5">

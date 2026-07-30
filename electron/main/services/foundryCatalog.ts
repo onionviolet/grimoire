@@ -426,6 +426,12 @@ async function buildFingerprint(deadlockPath: string): Promise<BuildFingerprint>
     return report.fingerprint;
 }
 
+/** Public cache key for read-only catalog companions.  Sharing this exact key
+ * means their results expire with the same game update as thumbnails do. */
+export async function foundryBuildFingerprintKey(deadlockPath: string): Promise<string> {
+    return fingerprintKey(await buildFingerprint(deadlockPath));
+}
+
 /**
  * Ensure the per-category thumbnail set exists on disk and return the texture
  * entries enriched with `grimoire-foundry:` thumbnail URLs. Idempotent: if the
