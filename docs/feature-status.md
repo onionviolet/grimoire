@@ -8,6 +8,28 @@ preview measurement, social phase 1.5). This is an
 implementation inventory, not a substitute for the manual in-game validation
 required before a release.
 
+## Shipped 2026-07-30
+
+- **Global sound categorisation reads the mods, not their download titles.**
+  The Locker's Global sound rail classified installed mods from their GameBanana
+  category name, which put six item-sound mods on the Announcer shelf, every
+  player melee sound under a category named `Shared`, and the NPC content under
+  `Other`. Classification now runs on the entries inside each mod's own VPK
+  (`useDiscoveredSoundPaths` over the cached directory parse), with path rules
+  ahead of word-matching, and `shared`/`other` replaced by a single
+  `Needs classification` queue. Empty categories are still rendered and the
+  Visuals rail still carries sound-shaped buckets; both are Stage 1 layout work.
+- **A sound row names what it changes.** Expanding a global sound mod used to
+  say it recorded no entry paths; it now reads them from the VPK, which also
+  surfaces collisions between two mods writing the same sound.
+- **Foundry's hero workshop scopes its icon browse to that hero**, including
+  assets attributed by filename rather than by folder, and hero dropdowns show
+  hero names instead of engine codenames.
+- **An empty Foundry catalog explains itself** through a diagnostics disclosure
+  (which pak, from when, how many entries, which cache) with a rebuild action.
+- **User-supplied images keep the name the user picked** instead of showing
+  their content hash (upstream issue #261).
+
 ## Shipped, but still experimental
 
 - **Chat Wheel YAML workflow.** ChatLane VPKs can be opened, edited as YAML,

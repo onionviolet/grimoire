@@ -28,7 +28,42 @@ tabs, but the screenshots show why that still reads as two disconnected areas:
 the Sounds tab starts on an empty category and hides both the global inventory
 and the reason a category exists.
 
-## Known issue, deliberately not fixed yet: Global sound categorisation
+## ~~Known issue: Global sound categorisation~~ FIXED in Pass B (a87eb6e)
+
+**The classification half is resolved 2026-07-30 by `a87eb6e` ("classify global
+sounds on what mods write, not what they were called").** The section below is
+kept as the diagnosis it was written to be.
+
+Closed: **defects 1, 2, and 3** (the Announcer dumping ground, the `Shared` /
+`Shared melee` leak, and the empty `NPC` category).
+
+Still open, because they are layout rather than classification and belong to
+Stage 1 in Pass C, both re-confirmed live after the fix:
+
+- **Defect 4.** Empty categories still render: the Sounds rail shows
+  `Announcer 0` and `Ambience 0` alongside the populated ones.
+- **Defect 5.** The Visuals rail still reads `... HUD 11 · Announcer / SFX 6 ·
+  Killstreak Music 1`, and the header still says `20 mods` on Visuals against
+  `15 mods` on Sounds for one inventory. Those are `globalType` buckets, a
+  different axis from the sound categories this pass fixed, so nothing in
+  `a87eb6e` could have moved them.
+- **Defect 6.** `Pak92`/`Pak93` are still unusable as list entries. A naming
+  problem, not a classification one; Stage 4.
+
+Verified live in the dev build against the same 15 installed mods:
+
+```
+Announcer 0 · Music 4 · Interface 1 · Ambience 0 · NPC 2 · Items 6 ·
+Melee 2 · Needs classification 0
+```
+
+Parry and charged melee under **Melee**, Sinners and the XP-trooper killsound
+under **NPC**, and the Refresher/Magic Carpet/Colossus/Trophy Collector mods
+under **Items**. `Shared`, `Shared melee`, and `Other` no longer exist as
+categories. Every prediction in the audit below landed.
+
+<details>
+<summary>Original diagnosis (2026-07-29/30), kept for the record</summary>
 
 Re-confirmed live on 2026-07-30, unchanged from the A0 capture. This is the
 largest open user-visible defect in this plan and it is **not** part of Pass A,
@@ -103,6 +138,8 @@ in the UI:
   `armor.vsndevts_c` as the JoJo loop; the winner lookup labels both. A user
   with two enabled mods fighting over one sound previously had no way to see it
   from this surface.
+
+</details>
 
 ## Pass A: evidence and a convergence decision (no product rewrite)
 
@@ -613,16 +650,34 @@ treat "the fix is in the working tree" as not done.
   catalog. It should, however, be immediate for the one row the user has
   selected and retain its answer while a refresh is underway.
 
-## Stage 0: inventory and classification evidence
+## ~~Stage 0: inventory and classification evidence~~ DONE in a87eb6e
+
+**Landed 2026-07-30.** Items 1, 2, 2b, 2c, and 4 are complete and the exit
+criterion is met: the fixture lives in
+[soundInventory.test.ts](src/lib/soundInventory.test.ts) under
+`describe('the installed corpus')`, built from paths read out of the real
+installed mods rather than invented, and it covers charged melee, parry,
+Sinners, XP trooper/creep kill, and an intentionally unknown token. Per-item
+status is annotated inline below.
+
+**Item 3 (the override table) is committed.** `CLASSIFICATION_OVERRIDES` in
+[soundInventory.ts](src/lib/soundInventory.ts) is deliberately empty, with its
+two admission conditions documented at the definition: an exact entry path or
+soundevent name as the key, and a written reason. An override table that starts
+full is a rule set that gave up early.
 
 Do this before changing labels or moving rows. Produce a checked-in fixture
 covering the actual global sound cases in the screenshots and a representative
 sample of each current category.
 
-1. For every installed/global sound mod, record its mod name, GameBanana
+1. ~~For every installed/global sound mod, record its mod name, GameBanana
    category, recorded sound event, exact recorded paths when present, and the
-   inspected VPK entries when metadata is missing.
-2. Audit all current `shared` and `other` entries. The known expected moves are:
+   inspected VPK entries when metadata is missing.~~ **Done (a87eb6e).**
+   `useDiscoveredSoundPaths` reads the VPK directory over the same cached parse
+   the Installed page and conflict scanner already use, so the evidence is read
+   at render time instead of transcribed once.
+2. ~~Audit all current `shared` and `other` entries.~~ **Done (a87eb6e): every
+   expected move below landed.** The known expected moves are:
 
    - player heavy/charged melee, punch, swing, parry, and shared player-melee
      paths -> **Melee**;
@@ -637,7 +692,16 @@ sample of each current category.
    label. A0 shows it is currently absorbing anything music-shaped and any
    unnamed imported pak.
 
-2c. Reconcile the two sound vocabularies. Foundry's base-game catalog groups
+2c. **Done in part (a87eb6e).** The labels are reconciled: the base-game catalog
+   now says `Items` and `NPC` rather than `Shop items` and `NPCs`, and
+   `GlobalSoundBrowse.tsx` records why `gameplay` and `other` have no Locker
+   equivalent (they are the engine's own groupings of 1100 base sounds, and the
+   base-game melee pool lives under `gameplay`). **Still open:** the catalog has
+   no `Melee` group, so a user who learns "Melee" in the Locker does not yet
+   find it in Foundry. That needs the catalog engine taught about melee, not a
+   rename, so it belongs to Pass C or later.
+
+   Reconcile the two sound vocabularies. Foundry's base-game catalog groups
    1115 sounds by path prefix (`Interface · Music · Shop items · Gameplay ·
    NPCs · Ambience · Voice · Other`) while the Locker's installed inventory
    uses its own list. Melee currently exists in neither. Produce one shared
@@ -645,7 +709,12 @@ sample of each current category.
    to show additional path-derived subgroups beneath it. A user who learns
    "Melee" in one surface must find it in the other.
 
-2b. A category is a content domain, not a medium. NPC content includes both
+2b. **Held to (a87eb6e).** NPC voice barks and NPC sound effects both classify
+   as `npc`; `voice` is reserved for hero voice lines
+   (`sounds/vo/<hero>/...`). No medium-based split was introduced. The
+   secondary-chip half of this item belongs to Stage 4 and is still open.
+
+   A category is a content domain, not a medium. NPC content includes both
    NPC voice barks and NPC sound effects; do not split them into NPC vs Voice
    by medium. Reserve **Voice** for hero voice lines. Where a mod genuinely
    spans domains, the primary category is deterministic and the rest appear
@@ -653,34 +722,47 @@ sample of each current category.
    later, it becomes an orthogonal `Voice | SFX | Music` facet, never a
    parallel category tree.
 
-3. Add a small, reviewed override table keyed by stable evidence (exact event
-   or normalized VPK path, not the download title) for exceptions that the
-   general classifier cannot safely identify. Keep a reason beside each entry.
-4. Replace the current `shared` fallback rule with either a concrete category
-   or `unclassified`. Do not infer a category from a mod's marketing name.
+3. **Written, not yet committed.** Add a small, reviewed override table keyed by
+   stable evidence (exact event or normalized VPK path, not the download title)
+   for exceptions that the general classifier cannot safely identify. Keep a
+   reason beside each entry. `CLASSIFICATION_OVERRIDES` exists in the working
+   tree, checked first in `classifySoundToken` and deliberately empty (no case
+   in the installed corpus needs it), with both admission conditions written
+   down. Commit it.
+4. ~~Replace the current `shared` fallback rule with either a concrete category
+   or `unclassified`. Do not infer a category from a mod's marketing name.~~
+   **Done (a87eb6e).** `shared` and `other` are both gone; the fallback is
+   `unclassified`, rendered last as **Needs classification**. The download
+   category is consulted only when no VPK entry was readable.
 
-Concrete code evidence already in hand (verify, then fix in this stage):
+Concrete code evidence already in hand ~~(verify, then fix in this stage)~~
+**(all three verified and fixed in a87eb6e)**:
 
-- `classifySoundToken` in `src/lib/soundInventory.ts` returns `'shared'` for
+- ~~`classifySoundToken` in `src/lib/soundInventory.ts` returns `'shared'` for
   any token containing `shared|generic|common`. This is the rule that files
   player melee under "Shared": the charged-melee pool lives in
   `sounds/player/melee/shared/`, so the path itself triggers the fallback.
   Path-segment rules (`player/melee` -> Melee) must run before the generic
-  token check.
-- `globalCategory` maps a GameBanana category containing `killsound` to
+  token check.~~ Fixed: path rules now run before word matching.
+- ~~`globalCategory` maps a GameBanana category containing `killsound` to
   `'other'`. That single line is why "Minecraft XP Trooper/Creep Killsound"
-  sits in Other; kill sounds attached to NPCs/creeps belong in NPC.
-- Classification is computed at render time from recorded metadata and the
-  GameBanana category. **No database migration is needed**: fixing the rules
-  reclassifies every existing install immediately. The only stale case is a
-  mod installed before sound events/paths were recorded; those depend on
-  Re-inspect, so consider a one-time background re-inspect for sound mods with
-  no recorded paths rather than waiting for the user to find the button.
+  sits in Other; kill sounds attached to NPCs/creeps belong in NPC.~~ Fixed:
+  creep/trooper kill sounds classify as `npc`, covered by a fixture test.
+- ~~Classification is computed at render time from recorded metadata and the
+  GameBanana category. **No database migration is needed**~~: confirmed, no
+  migration was needed; the rule change reclassified every existing install on
+  the next render. The stale case turned out not to need a background
+  re-inspect either, because `useDiscoveredSoundPaths` reads the installed VPK
+  directly for mods with no recorded write set. **Still open:** the download
+  category remains the fallback when a VPK cannot be read at all.
 
-Exit: the four "Other" rows in the screenshot and every `shared` entry have an
+~~Exit: the four "Other" rows in the screenshot and every `shared` entry have an
 auditable placement or are visibly marked for review. Add unit tests to
 `soundInventory.test.ts` for charged melee, parry, Sinners, XP trooper/creep
-kill, and an intentionally unknown token.
+kill, and an intentionally unknown token.~~ **Met (a87eb6e).** The four Other
+rows are now NPC (2) and Items (2), no `shared` entry exists, and all five
+required tests are in `soundInventory.test.ts` alongside two evidence tests
+asserting that classification follows the VPK and not the download category.
 
 ## Stage 1: one useful Global inventory
 
@@ -694,19 +776,25 @@ filter control:
 - Sound-shaped categories (`Announcer / SFX`, `Killstreak Music`) must leave
   the Visuals rail. Whatever the final filter model is, a category belongs to
   exactly one medium.
-- Never open on an empty category. Select the first category with content, and
-  if the whole inventory is empty, say so once at the inventory level rather
-  than showing a category-specific import prompt as if it were the whole story.
+- ~~Never open on an empty category. Select the first category with content~~
+  **done for Visuals in `ff9e8d3`** (the drill-in opens on `Hideout 2 mods`, not
+  `Soul Containers 0`). Still open: the same landing rule for the Sounds rail,
+  and saying so once at the inventory level when the whole inventory is empty
+  rather than showing a category-specific import prompt as if it were the whole
+  story.
 - First control: `All content | Visuals | Sounds`, defaulting to **All
   content**. This is a local filter, not a navigation boundary; switching it
   preserves the selected category and scroll position where possible.
-- Rail/grouping: use meaningful categories within the selected filter. Sound
+- Rail/grouping: use meaningful categories within the selected filter. ~~Sound
   categories become Announcer, Music, Interface, Ambience, NPC, Items, and
-  Melee. Visual categories retain their existing asset vocabulary. Hide empty
-  categories by default; offer a small "show empty categories" preference only
-  if it proves useful for authoring discovery.
-- Put **Needs classification** last, visually distinct, with the reason an
-  item is there and an "Inspect in Foundry" action. It is a work queue, not a
+  Melee.~~ **The vocabulary landed in `a87eb6e`** (`GLOBAL_SOUND_SECTIONS`).
+  Still open: Visual categories keeping their asset vocabulary, hiding empty
+  categories by default, and the optional "show empty categories" preference.
+- Put **Needs classification** last ~~(done in `a87eb6e`: it is the final entry
+  in `GLOBAL_SOUND_SECTIONS` and replaces both `shared` and `other`)~~,
+  **visually distinct**, with the reason an item is there and an "Inspect in
+  Foundry" action. Those three are still open: it is currently ordered last but
+  styled like any other shelf and gives no reason. It is a work queue, not a
   normal browsing category.
 - Keep the contextual authoring action, but make it specific: **Create a
   sound swap in Foundry** from a sound category, and the existing relevant
@@ -953,9 +1041,12 @@ time.
 1. **Pass A -- portrait/convergence evidence.** No architecture rewrite.
    Capture the current routes and screenshots, fix only a proven visibility bug,
    and choose hard split, shared shell, or full merge.
-2. **Pass B -- global sound taxonomy.** Pure classifier and fixture work only.
+2. ~~**Pass B -- global sound taxonomy.** Pure classifier and fixture work only.
    Review every current `shared`/`other` entry, land Melee/NPC corrections and
-   the visible `Needs classification` state, with no rail redesign yet.
+   the visible `Needs classification` state, with no rail redesign yet.~~
+   **Complete 2026-07-30 (`a87eb6e`).** Advances **S2** (one classification
+   module reading recorded evidence, with the base-game catalog's labels pulled
+   into the same vocabulary). No rail redesign was done, as scoped.
 3. **Pass C -- Global inventory prototype.** Apply the selected category model
    to one Global layout and test populated/empty/narrow states. Do not touch
    portrait code in this pass.
@@ -988,8 +1079,24 @@ July 29 portrait styling. Stage 3 already established from session history that
 there is no earlier design to restore, so diffing for it would be looking for
 something known not to exist.
 
-Pass B is next, and the taxonomy evidence it needs is now readable from the UI
-(see the known-issue section at the top).
+**Pass B is complete as of 2026-07-30**, in commit `a87eb6e`. Stage 0 items 1,
+2, 2b, 2c (labels), and 4 landed with their fixture tests; the Global sound rail
+now reads `Announcer 0 · Music 4 · Interface 1 · Ambience 0 · NPC 2 · Items 6 ·
+Melee 2 · Needs classification 0` against the same 15 mods that produced the
+original defect. The pass advances **S2**, and incidentally **S1**: the two
+`Pak92`/`Pak93` collisions it surfaced are the first time this fork showed two
+mods fighting over one sound path from a browse surface.
+
+Two Pass B loose ends carry into Pass C rather than blocking it:
+
+- The `CLASSIFICATION_OVERRIDES` table (Stage 0 item 3) is uncommitted. **S9:
+  commit it first.**
+- Foundry's base-game catalog still has no `Melee` group, so the shared
+  vocabulary is honoured in wording but not yet in structure (Stage 0 item 2c).
+
+Pass C (the Global inventory prototype) is next. Its cheap half is already in
+from Pass A (`ff9e8d3`, non-empty default category), and the taxonomy it needs
+to render now exists.
 
 Each pass should also name which structural cause (S1-S9) it advances, so the
 work stays aimed at the cause rather than the screenshot.
