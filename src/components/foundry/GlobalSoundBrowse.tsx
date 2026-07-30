@@ -113,10 +113,15 @@ interface Section {
  * hero to resolve it from), so the built mod lands in the Locker's global Sounds
  * bucket rather than under a hero.
  */
-export default function GlobalSoundBrowse({ onStage }: { onStage?: (edit: FoundryStagedSoundEdit) => void }) {
+export default function GlobalSoundBrowse({ initialCategory = 'all', onStage }: {
+    /** Explicitly null: global sounds never inherit a hero scope. */
+    hero: null;
+    initialCategory?: RailTerm | 'all';
+    onStage?: (edit: FoundryStagedSoundEdit) => void;
+}) {
     const { t } = useTranslation();
     const [search, setSearch] = useState('');
-    const [category, setCategory] = useState<RailTerm | 'all'>('all');
+    const [category, setCategory] = useState<RailTerm | 'all'>(initialCategory);
     const [annotationsVisible, setAnnotationsVisible] = useState(false);
     const [annotatedOnly, setAnnotatedOnly] = useState(false);
     const [data, setData] = useState<{ sounds: GlobalSound[]; error: string | null } | null>(null);

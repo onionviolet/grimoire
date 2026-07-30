@@ -322,18 +322,18 @@ export default function HeroWorkshop({
           {/* Each ability card lists its gameplay sounds with play + Swap (drop
               your own MP3), forged through the soundswap engine. The ability
               axis lives here (not under Voice); Voice is VO only. */}
-          <SoundBrowse heroes={scopedRoster} heroNames={heroNames} only="gameplay" onStage={stage} />
+          <SoundBrowse heroes={scopedRoster} heroNames={heroNames} hero={hero.codename} only="gameplay" onStage={stage} />
           <AbilitiesComingNote />
         </div>
       ) : section === 'voice' ? (
-        <SoundBrowse heroes={scopedRoster} heroNames={heroNames} only="voice" onStage={stage} />
+        <SoundBrowse heroes={scopedRoster} heroNames={heroNames} hero={hero.codename} only="voice" onStage={stage} />
       ) : section === 'portraits' ? (
         // The family-first portrait surface, pinned to this hero. Staging goes
         // through the same editor and preflight as the catalog-mode tab.
         <PortraitBrowse hero={hero.codename} heroNames={heroNames} onStage={stage} />
       ) : section === 'icons' ? (
         <div className="space-y-8">
-          <TextureBrowse heroes={scopedRoster} heroNames={heroNames} onStage={stage} />
+          <TextureBrowse heroes={scopedRoster} heroNames={heroNames} hero={hero.codename} onStage={stage} />
           <div className="space-y-2">
             <h4 className="text-sm font-semibold text-white/90">
               {t('foundry.workshop.abilityIcons', 'Ability & item icons')}

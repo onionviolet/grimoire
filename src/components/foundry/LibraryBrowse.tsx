@@ -23,11 +23,19 @@ interface LibraryBrowseProps {
   heroNames: Map<string, string>;
   /** Category the grid opens on (the Items sub-tool lands on item icons). */
   initialCategory?: TextureCategory;
-  /** Roster codename of the hero this browse is embedded inside, when it is
-   *  embedded at all. The grid then opens scoped to that hero plus the shared,
-   *  unattributed assets, and keeps that scope across category changes. The
-   *  widen-to-all-heroes affordance stays; the default is what changes. */
-  hero?: string;
+  /**
+   * Roster codename of the hero this browse is embedded inside, or `null` for
+   * the unscoped catalog. Required, never optional (structural cause S3): a
+   * panel that defaults its own hero filter cannot be scoped by its embedder,
+   * and the Abrams workshop showing Bebop, Lash, and Holliday icons was that
+   * exact bug. Making the prop required means the next embedder has to say what
+   * it is inside, and `null` is a statement rather than a forgotten default.
+   *
+   * When given, the grid opens scoped to that hero plus the shared,
+   * unattributed assets, and keeps that scope across category changes. The
+   * widen-to-all-heroes affordance stays; the default is what changes.
+   */
+  hero: string | null;
   /** Display label for `hero`, so the scope option can name a hero rather than
    *  a codename. */
   heroDisplayName?: string;

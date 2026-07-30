@@ -78,6 +78,8 @@ function compiledSoundEntry(path: string): string {
 interface SoundBrowseProps {
     heroes: HeroInfo[];
     heroNames: Map<string, string>;
+    /** Hero supplied by the embedding surface, or null for the catalog. */
+    hero: string | null;
     /** Restrict the browse to one corpus. `gameplay` = ability/weapon/movement/
      *  melee sounds; `voice` = the VO voice-line list. Omitted shows both (the
      *  catalog tool-first rail). The hero-first workshop splits them across its
@@ -119,7 +121,7 @@ const CATEGORY_ICON: Record<HeroSoundCategory, typeof Sparkles> = {
  * demand (cached), and a single shared <audio> element plays at most one clip at
  * a time. The same extractor backs both gameplay clips and voice lines.
  */
-export default function SoundBrowse({ heroes, heroNames, only, onStage }: SoundBrowseProps) {
+export default function SoundBrowse({ heroes, heroNames, hero: scopedHero, only, onStage }: SoundBrowseProps) {
     const { t } = useTranslation();
     const showGameplay = only !== 'voice';
     const showVoice = only !== 'gameplay';
@@ -134,12 +136,12 @@ export default function SoundBrowse({ heroes, heroNames, only, onStage }: SoundB
 
     // `hero` is '' until the user picks; the effective hero derives the first
     // option so the tab opens with content (no synchronous default-set effect).
-    const [picked, setPicked] = useState('');
+    const [picked, setPicked] = useState(scopedHero ?? '');
     const [search, setSearch] = useState('');
     const [annotationsVisible, setAnnotationsVisible] = useState(false);
     const [annotatedOnly, setAnnotatedOnly] = useState(false);
     const [selectedRow, setSelectedRow] = useState<string | null>(null);
-    const hero = picked || heroOptions[0]?.code || '';
+    const hero = scopedHero ?? (picked || heroOptions[0]?.code || '');
     const heroName = heroOptions.find((h) => h.code === hero)?.name ?? hero;
     const swapContext = useMemo<SwapContext>(() => ({ hero, heroName }), [hero, heroName]);
 

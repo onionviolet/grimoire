@@ -175,7 +175,7 @@ export default function Foundry() {
     const category = new URLSearchParams(location.search).get('category');
     return category === 'ui' || category === 'music' || category === 'ambience' || category === 'npc' ||
       category === 'item' || category === 'gameplay' || category === 'voice' || category === 'other'
-      ? category
+      ? category === 'other' ? 'catalogOther' : category
       : 'all';
   }, [location.search]);
   const clearLinkedTool = useCallback(() => {
@@ -374,7 +374,7 @@ export default function Foundry() {
           />
 
           {activeTool === 'sound' ? (
-            <SoundBrowse heroes={heroes} heroNames={heroNames} onStage={stageEdit} />
+            <SoundBrowse heroes={heroes} heroNames={heroNames} hero={null} onStage={stageEdit} />
           ) : activeTool === 'myChanges' ? (
             <MyChanges
               onAddNew={(filter) => {
@@ -383,17 +383,17 @@ export default function Foundry() {
               }}
             />
           ) : activeTool === 'globalSound' && settings?.forkGlobalSounds !== false ? (
-            <GlobalSoundBrowse initialCategory={linkedGlobalSoundCategory} onStage={stageEdit} />
+            <GlobalSoundBrowse hero={null} initialCategory={linkedGlobalSoundCategory} onStage={stageEdit} />
           ) : activeTool === 'texture' ? (
-            <TextureBrowse heroes={heroes} heroNames={heroNames} onStage={stageEdit} />
+            <TextureBrowse heroes={heroes} heroNames={heroNames} hero={null} onStage={stageEdit} />
           ) : activeTool === 'portraits' ? (
-            <PortraitBrowse heroNames={heroNames} onStage={stageEdit} />
+            <PortraitBrowse heroNames={heroNames} hero={null} onStage={stageEdit} />
           ) : activeTool === 'recolor' ? (
             <RecolorTool heroes={heroes} />
           ) : activeTool === 'items' ? (
-            <LibraryBrowse heroNames={heroNames} initialCategory="item-icon" onStage={stageEdit} />
+            <LibraryBrowse heroNames={heroNames} initialCategory="item-icon" hero={null} onStage={stageEdit} />
           ) : (
-            <LibraryBrowse heroNames={heroNames} onStage={stageEdit} />
+            <LibraryBrowse heroNames={heroNames} hero={null} onStage={stageEdit} />
           )}
         </div>
       </div>
