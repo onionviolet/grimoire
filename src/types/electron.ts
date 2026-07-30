@@ -1209,6 +1209,8 @@ export interface ElectronAPI {
         heroes: () => Promise<import('./foundry').HeroInfo[]>;
         /** Scan the installed base pak; never stages or changes game files. */
         scanNonStandard: () => Promise<import('./foundry').NonStandardReport>;
+        /** Compare the current pak with the prior locally observed build. */
+        buildDiff: () => Promise<import('./foundry').FoundryBuildDiffReport>;
         textures: (
             filters?: import('./foundry').TextureFilters
         ) => Promise<import('./foundry').TextureEntry[]>;

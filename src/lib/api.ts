@@ -1396,6 +1396,10 @@ export async function foundryScanNonStandard(): Promise<import('../types/foundry
   return window.electronAPI.foundry.scanNonStandard();
 }
 
+export async function foundryBuildDiff(): Promise<import('../types/foundry').FoundryBuildDiffReport> {
+  return window.electronAPI.foundry.buildDiff();
+}
+
 export async function foundryTextures(
   filters?: import('../types/foundry').TextureFilters
 ): Promise<import('../types/foundry').TextureEntry[]> {

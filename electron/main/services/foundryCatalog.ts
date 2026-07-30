@@ -29,6 +29,7 @@ import { parseVpkEntryIndex } from './vpk';
 import { recordBuildSnapshot } from './foundryBuildSnapshots';
 import type {
     CatalogDiagnostics,
+    FoundryBuildDiffReport,
     GlobalSound,
     GlobalSoundFilters,
     HeroInfo,
@@ -432,6 +433,22 @@ export async function foundryBuildFingerprintKey(deadlockPath: string): Promise<
     return fingerprintKey(await buildFingerprint(deadlockPath));
 }
 
+/** Compare the current pak's directory index to the immediately previous build
+ * observed locally. The renderer receives entry names and change kinds only;
+ * main resolves both the game pak and userData snapshot location. */
+export async function foundryBuildDiff(deadlockPath: string): Promise<FoundryBuildDiffReport> {
+    const fingerprint = await buildFingerprint(deadlockPath);
+    const key = fingerprintKey(fingerprint);
+    const entries = parseVpkEntryIndex(pak01Path(deadlockPath));
+    if (!entries) throw new Error('Could not read the pak01 directory index.');
+    const result = await recordBuildSnapshot(foundryBuildSnapshotsRoot(), key, entries);
+    return {
+        fingerprint: key,
+        baseline: result.baseline,
+        changes: result.changes.map(({ path, kind }) => ({ path, kind })),
+    };
+}
+
 /**
  * Ensure the per-category thumbnail set exists on disk and return the texture
  * entries enriched with `grimoire-foundry:` thumbnail URLs. Idempotent: if the
@@ -732,7 +749,7 @@ async function readManifest(path: string): Promise<ThumbManifestEntry[] | null> 
 }
 
 /** Remove thumbnail dirs for any fingerprint other than the current one. */
-async function pruneStaleFingerprints(currentKey: string): Promise<void> {
+export async function pruneStaleFingerprints(currentKey: string): Promise<void> {
     try {
         const root = thumbsRoot();
         const dirs = await fs.readdir(root);

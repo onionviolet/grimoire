@@ -25,6 +25,7 @@ import {
     warmCache,
     catalogDiagnostics,
     rebuildCatalogCaches,
+    foundryBuildDiff,
 } from '../services/foundryCatalog';
 import { getCitadelPath } from '../services/deadlock';
 import { readVpkEntryBytes } from '../services/vpk';
@@ -130,6 +131,10 @@ ipcMain.handle('foundry:heroes', async (): Promise<HeroInfo[]> => {
 // connected to staging, forging, or the game's addon directory.
 ipcMain.handle('foundry:scanNonStandard', async (): Promise<import('../../../src/types/foundry').NonStandardReport> =>
     scanNonStandardFiles(requireDeadlockPath())
+);
+
+ipcMain.handle('foundry:buildDiff', async (): Promise<import('../../../src/types/foundry').FoundryBuildDiffReport> =>
+    foundryBuildDiff(requireDeadlockPath())
 );
 
 ipcMain.handle(

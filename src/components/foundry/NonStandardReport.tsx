@@ -21,6 +21,9 @@ export default function NonStandardReportView({ report }: { report: NonStandardR
         <p className="text-xs text-text-secondary">
           {t('foundry.nonStandard.confirmed', '{{count}} findings backed by roster or live sound references.', { count: report.confirmedCount })}
         </p>
+        {!report.patchComparison.available && <p className="mt-1 text-xs text-text-secondary">
+          {t('foundry.nonStandard.patchBaseline', 'Patch comparison will be available after Grimoire observes the next game build.')}
+        </p>}
       </div>
       <label className="flex cursor-pointer items-center gap-2 text-xs text-text-secondary">
         <input type="checkbox" checked={showNaming} onChange={(event) => setShowNaming(event.target.checked)} className="accent-accent" />
@@ -39,6 +42,10 @@ export default function NonStandardReportView({ report }: { report: NonStandardR
       <ul className="divide-y divide-border rounded-sm border border-border text-xs">
         {findings.map((finding) => <li key={`${finding.tier}:${finding.path}`} className="px-3 py-2">
           <p className="break-all font-mono text-text-primary">{finding.path}</p>
+          {(finding.newThisPatch || finding.changedThisPatch) && <p className="mt-1 flex flex-wrap gap-1">
+            {finding.newThisPatch && <span className="rounded bg-accent/15 px-1.5 py-0.5 font-semibold text-accent">{t('foundry.nonStandard.newThisPatch', 'New this patch')}</span>}
+            {finding.changedThisPatch && <span className="rounded bg-warning/15 px-1.5 py-0.5 font-semibold text-warning">{t('foundry.nonStandard.changedThisPatch', 'Changed this patch')}</span>}
+          </p>}
           <p className="mt-0.5 text-text-secondary">{finding.reason}</p>
         </li>)}
       </ul>

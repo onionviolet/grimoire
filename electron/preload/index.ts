@@ -664,6 +664,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     foundry: {
         heroes: () => ipcRenderer.invoke('foundry:heroes'),
         scanNonStandard: () => ipcRenderer.invoke('foundry:scanNonStandard'),
+        buildDiff: () => ipcRenderer.invoke('foundry:buildDiff'),
         textures: (filters?: TextureFilters) =>
             ipcRenderer.invoke('foundry:textures', filters ?? {}),
         voicelines: (filters?: VoicelineFilters) =>
