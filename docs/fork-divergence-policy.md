@@ -206,12 +206,37 @@ Before a UI slice is called complete, verify the applicable items below:
   confirmation dialog, and preference store. A new pattern needs a documented
   reason and an owner.
 - **Prove it:** run the focused tests and manually exercise the normal workflow
-  with realistic data. Add a regression test when behavior, not just styling, was
+  when it is convenient. Automated checks are the merge gate; an unavailable
+  manual smoke is evidence we have not collected yet, not a reason to strand a
+  reviewed change. Add a regression test when behavior, not just styling, was
   changed.
 
 The reference for shared UI conventions is `docs/ui-conventions.md`; the active
 cross-surface cleanup is `docs/locker-consistency-pass.md`. If a change violates
 either, fix that before expanding the feature.
+
+## Rule 6a: collect smoke evidence, do not demand it up front
+
+Manual testing is useful because it catches integration and visual failures that
+unit tests cannot see. It is a poor blocking ritual when the person with the
+game is not currently available or does not know what to look for. Do not make
+an unstructured "please smoke test this" a merge or planning gate.
+
+When someone does run the app or game, the tooling/agent should collect what it
+can automatically first: app and sidecar version, commit, active preset or
+feature flags, relevant diagnostics/log excerpt, and the exact artifact or
+development command used. It should then ask only the smallest useful set of
+observable questions, for example:
+
+- Did the intended action complete, and what changed on screen or in game?
+- Did any warning, error, stale state, or unexpected visual result appear?
+- If the workflow changed state, did closing/reopening or undoing it leave the
+  expected result?
+
+The answer becomes a dated smoke record attached to the change or release. A
+missing record means **unverified manually**, not **blocked**. A specific failed
+record creates a focused follow-up with its artifact/diagnostic context; it does
+not reopen unrelated work.
 
 ## Rule 7: keep the delivery workflow boring
 
