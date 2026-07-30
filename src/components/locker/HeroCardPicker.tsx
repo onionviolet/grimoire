@@ -453,7 +453,7 @@ export default function HeroCardPicker({ heroName }: HeroCardPickerProps) {
                         <img
                           src={p.dataUrl}
                           alt={`${heroName} ${variantLabel(p.variant)}`}
-                          title={`${variantLabel(p.variant)} (${t('locker.cards.variantToken', { token: p.variant })}) Ã‚Â· ${p.width}x${p.height} Ã‚Â· ${p.formatName}`}
+                          title={`${variantLabel(p.variant)} (${t('locker.cards.variantToken', { token: p.variant })}) · ${p.width}x${p.height} · ${p.formatName}`}
                           className="max-h-full max-w-full object-contain"
                         />
                       </div>
@@ -526,7 +526,7 @@ export default function HeroCardPicker({ heroName }: HeroCardPickerProps) {
                     type="button"
                     disabled={customBusy}
                     onClick={() => handlePickVariant(slot)}
-                    title={`${variantLabel(slot.variant)} Ã‚Â· ${slot.width} x ${slot.height}`}
+                    title={`${variantLabel(slot.variant)} · ${slot.width} x ${slot.height}`}
                     style={{ aspectRatio: `${slot.width} / ${slot.height}` }}
                     className="group relative flex w-full cursor-pointer items-center justify-center overflow-hidden rounded-md border border-border/50 bg-bg-primary/40 transition-colors hover:border-accent/50 disabled:cursor-not-allowed"
                   >

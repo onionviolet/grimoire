@@ -274,7 +274,7 @@ export default function AssetSourcesPanel({
                     }),
                     ...(source.wins.length ? [t('foundry.sources.isWinner')] : []),
                     ...(source.managed ? [] : [t('foundry.sources.unmanaged')]),
-                  ].join(' Â· ')}
+                  ].join(' · ')}
                 </p>
                 <p className="truncate" title={source.entries.join(', ')}>{source.entries.join(', ')}</p>
                 <div className="mt-1 flex flex-wrap gap-1">

@@ -759,7 +759,7 @@ export function SoundRow({ label, event, clips, duration, state, onToggle, poolI
     const compiledClipName = clipName
         ? `${clipName.replace(/\.vsnd(_c)?$/i, '')}.vsnd_c`
         : null;
-    // Include every member of a poolâ€”not only the currently auditioned clipâ€”and
+    // Include every member of a pool—not only the currently auditioned clip—and
     // its event container where the catalog can name one. This is an inspection
     // request only; it never changes enabled state or precedence.
     const sourcePaths = useMemo(() => {
@@ -771,7 +771,7 @@ export function SoundRow({ label, event, clips, duration, state, onToggle, poolI
     // presses read as walking the pool rather than as a stuck button.
     const poolNote =
         clips > 1
-            ? ` Â· ${t('foundry.sound.poolPosition', {
+            ? ` · ${t('foundry.sound.poolPosition', {
                   defaultValue: 'clip {{n}} of {{total}}',
                   n: (poolIndex % clips) + 1,
                   total: clips,
@@ -826,7 +826,7 @@ export function SoundRow({ label, event, clips, duration, state, onToggle, poolI
                         title={compiledClipName ? `Event: ${event}\nBase-game file: ${compiledClipName}` : `Event: ${event}`}
                     >
                         <span>Event: {event}</span>
-                        {compiledClipName ? ` Â· Base-game file: ${compiledClipName}` : ''}
+                        {compiledClipName ? ` · Base-game file: ${compiledClipName}` : ''}
                         {poolNote}
                     </p>
                 </div>
@@ -1272,7 +1272,7 @@ function SwapPanel({
                     </div>
                     <p className="mt-1">
                         {assignments.length} exact clip write{assignments.length === 1 ? '' : 's'}
-                        {poolMode === 'seeded-library' ? ` Â· seed ${poolSeed} is recorded with the forged mod` : ''}
+                        {poolMode === 'seeded-library' ? ` · seed ${poolSeed} is recorded with the forged mod` : ''}
                     </p>
                 </div>
             )}
