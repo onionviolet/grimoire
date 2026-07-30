@@ -14,6 +14,7 @@ import {
 } from '../../lib/backgroundGradient';
 import { Button, SegmentedControl } from '../common/ui';
 import { useBackdropDismiss } from '../common/useBackdropDismiss';
+import { useSegmentedTabs } from '../common/useSegmentedTabs';
 import Tx from '../translation/Tx';
 
 const CUSTOM_FALLBACK: BackgroundGradient = { from: '#8b5cf6', to: '#06b6d4' };
@@ -72,6 +73,7 @@ export default function BackgroundGradientPicker() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [draft, setDraft] = useState<BackgroundGradient>(CUSTOM_FALLBACK);
   const [corner, setCorner] = useState<'from' | 'to'>('from');
+  const cornerTabs = useSegmentedTabs<'from' | 'to'>();
 
   const isPreset = !!saved && BACKGROUND_GRADIENT_PRESETS.some((p) => sameGradient(p, saved));
   const isCustomActive = !!saved && !isPreset;
@@ -218,31 +220,35 @@ export default function BackgroundGradientPicker() {
                 ]}
                 value={corner}
                 onChange={(value) => setCorner(value as 'from' | 'to')}
+                tabs={cornerTabs}
+                label={t('settings.appearance.background.custom')}
               />
 
-              <HexColorPicker color={draft[corner]} onChange={updateDraft} style={{ width: '100%' }} />
+              <div id={cornerTabs.panelId} role="tabpanel" aria-labelledby={cornerTabs.tabId(corner)}>
+                <HexColorPicker color={draft[corner]} onChange={updateDraft} style={{ width: '100%' }} />
 
-              <div className="flex items-center gap-2">
-                <span
-                  className="block h-9 w-9 shrink-0 rounded-sm border border-white/10"
-                  style={{ backgroundColor: draft[corner] }}
-                  aria-hidden
-                />
-                <span className="font-mono text-xs text-text-secondary">#</span>
-                <HexColorInput
-                  color={draft[corner]}
-                  onChange={updateDraft}
-                  className="flex-1 rounded-sm border border-white/5 bg-bg-tertiary px-2 py-1.5 font-mono text-sm uppercase text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
-                />
-              </div>
+                <div className="flex items-center gap-2">
+                  <span
+                    className="block h-9 w-9 shrink-0 rounded-sm border border-white/10"
+                    style={{ backgroundColor: draft[corner] }}
+                    aria-hidden
+                  />
+                  <span className="font-mono text-xs text-text-secondary">#</span>
+                  <HexColorInput
+                    color={draft[corner]}
+                    onChange={updateDraft}
+                    className="flex-1 rounded-sm border border-white/5 bg-bg-tertiary px-2 py-1.5 font-mono text-sm uppercase text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
+                  />
+                </div>
 
-              <div className="flex justify-end gap-2 pt-2">
-                <Button variant="secondary" size="sm" onClick={cancel}>
-                  <Tx k="common.actions.cancel" fallback="Cancel" />
-                </Button>
-                <Button variant="primary" size="sm" onClick={() => void commit()}>
-                  <Tx k="common.actions.apply" fallback="Apply" />
-                </Button>
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button variant="secondary" size="sm" onClick={cancel}>
+                    <Tx k="common.actions.cancel" fallback="Cancel" />
+                  </Button>
+                  <Button variant="primary" size="sm" onClick={() => void commit()}>
+                    <Tx k="common.actions.apply" fallback="Apply" />
+                  </Button>
+                </div>
               </div>
             </div>
           </div>
