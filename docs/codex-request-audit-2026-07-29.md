@@ -41,8 +41,10 @@ These were the gaps this session closed.
    UI plan ("Resting art can be subdued, but hover and keyboard focus reveal
    the full preview"). Inactive skin thumbnails were `grayscale-[0.6]
    opacity-[0.7]` with no hover or focus restore.
-   **Fixed:** `HeroSkinsPanel` restores full colour on hover *and* keyboard
-   focus, for both the thumbnail and the glass backdrop.
+   **Partly fixed, and on the wrong surface:** `HeroSkinsPanel` restores full
+   colour on hover *and* keyboard focus, for both the thumbnail and the glass
+   backdrop. See the correction below: the request was about portraits, so this
+   entry is **still open**.
 
 3. **"cards in the big locker should have sub card for the sounds too"** (20:27)
    Attempted via the pill strip, which is what caused (1). The intent is now
@@ -69,3 +71,56 @@ Not user-reported, found by driving the running build:
 Lanes 1-3 of `ui-thoughtfulness-and-adjustability-plan.md` (weak-state audit,
 interaction patterns, bounded adjustability) and the follow-on search polish on
 Installed, Browse, Profiles, and Stats.
+
+## Correction (2026-07-29, later): request 2 was about portraits, not skins
+
+This audit misidentified the surface, and the fix landed on the wrong
+component. Recording it here because the mistake was then repeated twice in
+`global-locker-foundry-ux-plan.md` before the transcript was checked.
+
+**Evidence.** The session containing the 20:04 message
+(`~/.codex/sessions/2026/07/29/rollout-2026-07-29T14-52-31-*.jsonl`) opened at
+19:52 with *"Build the portrait shelf for Grimoire: give the Locker hero page's
+Cards section the installed-content half that the Sound Locker just gained, and
+pull portrait randomization into one home"*, against
+`docs/portrait-shelf-plan.md`. So "the upload your own tab" is the **portrait**
+upload tab in `HeroCardPicker`, keyed `locker.cards.uploadYourOwn` at
+`src/components/locker/HeroCardPicker.tsx:500`. Calling it the skins panel was
+wrong.
+
+**Current behaviour is the inverse of the request.** At
+`HeroCardPicker.tsx:536` an unpicked variant slot renders its base art at
+`opacity-30` with no hover or focus restore, and the very next element
+(`:538`) adds `group-hover:bg-black/55`. Hovering a dimmed portrait therefore
+*darkens* it. The ask was to reveal full colour on hover.
+
+### Definition of done (all must hold)
+
+1. `HeroCardPicker.tsx:536` no longer applies a flat `opacity-30` at rest with
+   no recovery path. Resting dimming may stay, but hover and focus must reach
+   full opacity and full colour.
+2. The `group-hover:bg-black/55` scrim no longer darkens the art while it is
+   being revealed. The upload affordance stays discoverable (badge, ring, or
+   caption) without covering the preview.
+3. Keyboard parity: `group-focus-within` (or equivalent) produces the same
+   reveal as hover. Do **not** rely on `focus-visible:`, which this repo has
+   already been burned by (see "Defects found while verifying" above).
+4. `prefers-reduced-motion: reduce` disables any transition on the reveal while
+   still reaching the revealed state.
+5. Contrast: revealed and resting states both keep caption and status text at
+   WCAG AA against the art behind them.
+6. A component test asserts, for one unpicked slot, that the rest state and the
+   hover/focus state differ in opacity class and that no darkening class is
+   applied in the revealed state.
+7. Verified in the running app with `scripts/dev-driver.mjs`, with before/after
+   screenshots of one unpicked slot at rest and revealed. Because `:focus` does
+   not match while the Electron window is unfocused, assert the focus path from
+   generated CSS or behaviour, not a computed style probe.
+8. Gates green: `pnpm lint`, `pnpm exec vitest run`, `pnpm i18n:check`, and
+   `pnpm i18n:manifest` if any key moved.
+9. This audit entry is updated to **Fixed** only once 1-8 hold, naming the
+   component actually changed.
+
+**Scope note.** Extracting the reveal into a shared card primitive is the right
+end-state (see structural cause S6 in `global-locker-foundry-ux-plan.md`), but
+it is not required for this entry to close. Fix the reported surface first.
