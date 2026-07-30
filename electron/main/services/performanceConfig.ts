@@ -29,14 +29,15 @@ import type {
     PerformancePresetSummary,
 } from '../../../src/types/electron';
 import {
-    ADVANCED_GAMEINFO_CONVARS,
     DEFAULT_PRESET_ID,
     getPreset,
-    HUD_CONVARS,
     PRESETS,
     type PerformancePreset,
     type SectionOp,
 } from './performanceConfigData';
+// Fork-owned user controls. Separate module because performanceConfigData.ts is
+// generated and `pnpm perf:presets` overwrites anything hand-written in it.
+import { ADVANCED_GAMEINFO_CONVARS, HUD_CONVARS } from './performanceUserControls';
 
 const MARKER = 'grimoire-perf';
 const ADDED_TOKEN = `// ${MARKER} added`;

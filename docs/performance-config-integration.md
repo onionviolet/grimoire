@@ -169,15 +169,51 @@ layered on; only fresh inference is suspended.
 Convars that change what the player can see or how the camera is framed (enemy /
 trooper / boss outlines and glows, see-thru-walls, `cl_glow_brightness`,
 `r_citadel_*outline*`, `r_aspectratio`, FOV keys, camera pitch limits, hideout
-and debug-draw tooling) are stripped from every preset body at generation time
-and written only when the user turns them on. Choosing a performance preset does
-not change what someone can see.
+and debug-draw tooling, and the unit-status HUD readability keys below) are
+stripped from every preset body at generation time and written only when the
+user turns them on. Choosing a performance preset does not change what someone
+can see.
 
 The enforcement is in the generator, not in a hand-audited list:
 `optIn.patterns` in the pin manifest describes what a visibility or framing key
 looks like, and any matching key that is not classified (`optIn.keys`,
 `exclude.keys`, or `optIn.allowInBody` with a stated reason) is a hard failure.
 A list alone would rot on the first `--refresh`.
+
+#### The unit-status family is classified by key, not by pattern
+
+This fork splits upstream's #326 rather than taking it whole, because the two
+keys are not in the same position here.
+
+`citadel_unit_status_use_new` is on **`exclude.keys`**, not `optIn.keys`. The
+fork already ships a real HUD toggle for it (`HUD_CONVARS` in
+`performanceUserControls.ts`, labelled "New health bars (original flag)"), and
+an opt-in is a weaker control than a toggle: an opt-in offers the preset
+author's value or leaves the convar unwritten, while the toggle offers both
+values plus an origin badge. Routing the key through the opt-in panel as well
+would give one convar two surfaces and remove the "off" half. It also would
+have split the feature across generations, since the fork separately exposes
+`citadel_unit_status_use_v2`, the flag current builds actually read, which
+upstream's change does not touch. Excluding it still achieves the point of
+#326: applying a preset never changes how health bars look.
+
+`citadel_unit_status_hide_names` keeps upstream's `optIn.keys` classification,
+because the fork has no control for it. There, opt-in is strictly better than
+shipping it silently inside a preset body.
+
+Neither matches any entry in `optIn.patterns`. `hide_names` is held back purely
+by its `optIn.keys` membership,
+so **a `--refresh` that introduces a new `citadel_unit_status_*` key will not
+flag it**, and it would ship inside a preset body. Re-audit that prefix by hand
+after any pin bump.
+
+Closing the gap means adding a `unit_status` pattern, which in turn forces a
+classification for the three keys the presets currently set in-body:
+`citadel_unit_status_delta_decay_delay`, `..._delta_decay_rate`, and
+`..._old_update_rate`. Those look like genuine render/update-cost settings
+rather than readability choices, so they would want `allowInBody` entries with
+a stated reason, and that reason should be verified in-game rather than
+guessed. Left open deliberately.
 
 ## Explicitly out of scope
 

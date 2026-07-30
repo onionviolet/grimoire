@@ -28,30 +28,6 @@ export interface SectionOp {
     remove?: boolean;
 }
 
-/** Reversible user controls which deliberately stay outside generated preset
- * bodies. These are maintained application surface, not preset values. */
-export const HUD_CONVARS = [
-    { key: 'citadel_unit_status_use_new', on: 'true', off: 'false', gameDefault: null },
-    { key: 'citadel_unit_status_use_v2', on: 'true', off: 'false', gameDefault: null },
-    { key: 'citadel_unit_status_single_bar_mode', on: 'true', off: 'false', gameDefault: null },
-    { key: 'citadel_unit_status_use_v2_for_nonplayers', on: 'true', off: 'false', gameDefault: null },
-    { key: 'citadel_unit_status_allies_see_thru_walls', on: 'true', off: 'false', gameDefault: null },
-    { key: 'citadel_hud_objective_health_enabled', on: '2', off: '0', gameDefault: null },
-    { key: 'citadel_damage_offscreen_indicator_disabled', on: 'false', off: 'true', gameDefault: null },
-    { key: 'citadel_damage_text_show_effectiveness', on: '1', off: '0', gameDefault: null },
-] as const;
-
-export const ADVANCED_GAMEINFO_CONVARS = [
-    { key: 'citadel_unit_status_allies_see_thru_walls_max_distance', min: 0, max: 200, step: 5, gameDefault: 40 },
-    { key: 'citadel_minimap_unit_click_radius', min: 400, max: 1200, step: 25, gameDefault: 800 },
-    { key: 'citadel_minimap_player_width', min: 4, max: 12, step: 0.5, gameDefault: 8 },
-    { key: 'citadel_minimap_local_player_width', min: 6, max: 16, step: 0.5, gameDefault: 12 },
-    { key: 'citadel_minimap_max_icon_shrink', min: 0.4, max: 1, step: 0.05, gameDefault: 0.8 },
-    { key: 'citadel_minimap_overlap_scan_distance', min: 0, max: 40, step: 1, gameDefault: 20 },
-    { key: 'citadel_minimap_zip_line_thickness', min: 1, max: 8, step: 0.5, gameDefault: 6 },
-    { key: 'minimap_update_rate_hz', min: 5, max: 60, step: 5, gameDefault: 5 },
-] as const;
-
 /** A gameplay/visibility convar the preset's author set, held back from
  *  the preset body and applied only on explicit opt-in. */
 export interface OptInControl {
@@ -196,7 +172,6 @@ const SqookyDefault: PerformancePreset = {
         ['citadel_damage_report_enable', '1'],
         ['citadel_damage_text_batching_window_ability', '1000'],
         ['citadel_hud_objective_health_enabled', '2'],
-        ['citadel_unit_status_use_new', 'true'],
         ['citadel_show_chat_wheel_angle_threshold', '0'],
         ['lb_enable_baked_shadows', 'false'],
         ['lb_enable_dynamic_lights', 'false'],
@@ -513,7 +488,6 @@ const SqookyTesting: PerformancePreset = {
         ['citadel_damage_report_enable', '1'],
         ['citadel_damage_text_batching_window_ability', '1000'],
         ['citadel_hud_objective_health_enabled', '0'],
-        ['citadel_unit_status_use_new', 'true'],
         ['citadel_show_chat_wheel_angle_threshold', '0'],
         ['lb_enable_baked_shadows', 'false'],
         ['lb_enable_dynamic_lights', 'false'],
@@ -724,7 +698,6 @@ const SqookyTesting: PerformancePreset = {
         ['citadel_fibonnaci_sphere_trace_los_max', '80'],
         ['citadel_melee_shake_amplitude', '0'],
         ['citadel_portrait_unit_ag2_enable', 'false'],
-        ['citadel_unit_status_hide_names', 'true'],
         ['cl_clockdrift_max_ticks', '1'],
         ['cl_globallight_freeze', 'true'],
         ['cl_skel_constraints_enable', 'false'],
@@ -799,6 +772,7 @@ const SqookyTesting: PerformancePreset = {
         { key: 'citadel_player_outline_enemies', value: 'false', group: 'visibility' },
         { key: 'citadel_hideout_enable_testing_tools', value: 'true', group: 'devtools' },
         { key: 'citadel_orb_debug_draw_state', value: '1', group: 'devtools' },
+        { key: 'citadel_unit_status_hide_names', value: 'true', group: 'visibility' },
         { key: 'movement_stats_debug_draw', value: 'true', group: 'devtools' },
         { key: 'music_hideout_debug_enabled', value: 'true', group: 'devtools' },
     ],
@@ -873,7 +847,6 @@ const BootMaxFps: PerformancePreset = {
         ['citadel_unit_status_delta_decay_delay', '0'],
         ['citadel_unit_status_delta_decay_rate', '10'],
         ['citadel_unit_status_old_update_rate', '15'],
-        ['citadel_unit_status_use_new', '0'],
         ['lb_enable_baked_shadows', '0'],
         ['lb_enable_dynamic_lights', '0'],
         ['lb_enable_lights', '0'],
@@ -1419,7 +1392,6 @@ const KaizuMinSpec: PerformancePreset = {
         ['hud_free_cursor', '0'],
         ['citadel_camera_soft_collision', '0'],
         ['citadel_camera_wobble_disable', '1'],
-        ['citadel_unit_status_use_new', '0'],
         ['mm_idle_show_warning_at_s', '999'],
         ['r_frame_sync_enable', '0'],
         ['ai_strong_optimizations_no_checkstand', '1'],
@@ -1638,7 +1610,6 @@ const KaizuMinSpec: PerformancePreset = {
         ['panorama_hsbc_through_fast_path', '1'],
         ['panorama_use_backbuffer_directly', '1'],
         ['panorama_script_cache_enabled', '1'],
-        ['citadel_unit_status_hide_names', '1'],
         ['citadel_hud_objective_health_idle_timeout', '0'],
         ['citadel_camera_parrot_smoothing_rate', '0'],
         ['steam_inputhandler_enabled', '0'],
@@ -1669,6 +1640,7 @@ const KaizuMinSpec: PerformancePreset = {
         { key: 'r_citadel_selection_outline2_offset', value: '2', group: 'visibility' },
         { key: 'r_citadel_selection_outline2_alpha', value: '255', group: 'visibility' },
         { key: 'r_citadel_selection_outline2_width', value: '50', group: 'visibility' },
+        { key: 'citadel_unit_status_hide_names', value: '1', group: 'visibility' },
     ],
 };
 
@@ -1732,7 +1704,6 @@ const OptilockFps: PerformancePreset = {
         { path: ['WorldRenderer'], key: 'LPVEdgeBlending', value: '0' },
     ],
     convars: [
-        ['citadel_unit_status_use_new', '1'],
         ['r_citadel_enable_pano_world_blur', 'true'],
         ['r_dashboard_render_quality', '0'],
         ['panorama_disable_box_shadow', '1'],
@@ -2123,7 +2094,6 @@ const OptilockFps: PerformancePreset = {
         ['panorama_async_compute_mipgen', '1'],
         ['panorama_transition_time_factor', '2'],
         ['panorama_clear_frames_on_device_restore', '0'],
-        ['citadel_unit_status_hide_names', '1'],
         ['panorama_draw_text_fast_path', '1'],
         ['panorama_draw_text_fast_path_text_shadow', '1'],
         ['panorama_hsbc_through_fast_path', '1'],
@@ -2194,6 +2164,7 @@ const OptilockFps: PerformancePreset = {
         { key: 'r_aspectratio', value: '2.15', group: 'camera' },
         { key: 'citadel_camera_hero_fov', value: '100', group: 'camera' },
         { key: 'citadel_hideout_enable_testing_tools', value: 'true', group: 'devtools' },
+        { key: 'citadel_unit_status_hide_names', value: '1', group: 'visibility' },
         { key: 'r_citadel_selection_outline2_offset', value: '2', group: 'visibility' },
         { key: 'r_citadel_selection_outline2_width', value: '50', group: 'visibility' },
         { key: 'r_citadel_glow_health_bars', value: 'false', group: 'visibility' },
@@ -2262,7 +2233,6 @@ const OptilockMax: PerformancePreset = {
         { path: ['WorldRenderer'], key: 'LPVEdgeBlending', value: '0' },
     ],
     convars: [
-        ['citadel_unit_status_use_new', '1'],
         ['citadel_damage_report_enable', '1'],
         ['citadel_damage_text_show_effectiveness', '0'],
         ['citadel_hud_objective_health_enabled', '2'],
@@ -2703,7 +2673,6 @@ const OptilockMax: PerformancePreset = {
         ['panorama_hsbc_through_fast_path', '1'],
         ['panorama_use_backbuffer_directly', '1'],
         ['panorama_script_cache_enabled', '1'],
-        ['citadel_unit_status_hide_names', '1'],
         ['citadel_camera_parrot_smoothing_rate', '0'],
         ['steam_inputhandler_enabled', '0'],
         ['panorama_clear_frames_on_device_restore', '0'],
@@ -2741,6 +2710,7 @@ const OptilockMax: PerformancePreset = {
         { key: 'citadel_hideout_enable_testing_tools', value: 'true', group: 'devtools' },
         { key: 'r_citadel_selection_outline2_offset', value: '2', group: 'visibility' },
         { key: 'r_citadel_selection_outline2_width', value: '50', group: 'visibility' },
+        { key: 'citadel_unit_status_hide_names', value: '1', group: 'visibility' },
     ],
 };
 
