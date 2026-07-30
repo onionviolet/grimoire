@@ -29,6 +29,7 @@ import FoundryPoolList from '../foundry/ChangePools';
 import { collectFoundryChanges } from '../foundry/changeList';
 import { foundryChangeEntries } from '../../lib/foundryChanges';
 import { buildPortraitInventory, overlappingClaims, portraitProvenanceOf } from '../../lib/portraitInventory';
+import { variantPreviewClass } from './cardSlotStyles';
 
 interface HeroCardPickerProps {
   heroName: string;
@@ -52,6 +53,7 @@ function variantRank(variant: string): number {
   const i = VARIANT_ORDER.indexOf(variant);
   return i === -1 ? VARIANT_ORDER.length : i;
 }
+
 
 /** A cheap order-independent fingerprint of the current picks, used to tell
  *  whether the slots differ from what was last applied (drives the Apply vs
@@ -513,10 +515,19 @@ export default function HeroCardPicker({ heroName }: HeroCardPickerProps) {
             {t('locker.cards.uploadInstructions')}
           </p>
 
-          {/* One tile per variant the base game ships. An empty slot shows the
-              default art dimmed with an upload hint; a filled slot shows the
-              cropped result with a clear (x) button. Each tile keeps the
-              variant's true aspect so the preview matches the in-game shape. */}
+          {/* One tile per variant the base game ships. An empty slot rests
+              subdued with an upload hint; a filled slot shows the cropped
+              result with a clear (x) button. Each tile keeps the variant's true
+              aspect so the preview matches the in-game shape.
+
+              Empty slots subdue the base art so a filled slot reads first, but
+              hover and keyboard focus restore it to full colour: the whole
+              point of showing base art is to let you see what is actually there
+              before you replace it, and a permanently dimmed preview cannot do
+              that. The upload hint is a corner badge rather than a full-cover
+              scrim for the same reason, since darkening the art during the
+              reveal would defeat the reveal. Same treatment as the inactive
+              skin thumbnails in HeroSkinsPanel. */}
           <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4">
             {slots.map((slot) => {
               const pick = picks[slot.variant];
@@ -533,10 +544,10 @@ export default function HeroCardPicker({ heroName }: HeroCardPickerProps) {
                     <img
                       src={pick ?? slot.baseDataUrl}
                       alt={`${heroName} ${variantLabel(slot.variant)}`}
-                      className={`max-h-full max-w-full object-contain ${pick ? '' : 'opacity-30'}`}
+                      className={variantPreviewClass(Boolean(pick))}
                     />
-                    <span className="absolute inset-0 flex items-center justify-center bg-black/0 text-white/0 transition-colors group-hover:bg-black/55 group-hover:text-white/90">
-                      <Upload className="h-4 w-4" />
+                    <span className="pointer-events-none absolute bottom-1 right-1 flex items-center rounded-full bg-black/70 p-1 text-white/75 opacity-80 ring-1 ring-white/15 transition-[opacity,color] duration-200 group-hover:text-white group-hover:opacity-100 group-focus-within:text-white group-focus-within:opacity-100 motion-reduce:transition-none">
+                      <Upload className="h-3 w-3" />
                     </span>
                   </button>
                   {pick && (
