@@ -1473,13 +1473,22 @@ export async function foundryVoiceclipFile(vsndPath: string): Promise<string | n
 /** Portrait images the user has framed before, newest first. Intake reuse: the
  *  editor offers these back instead of demanding a file drop every time. */
 export async function foundryListPortraitImages(): Promise<
-  Array<{ path: string; dataUrl: string; mtimeMs: number }>
+  Array<{ path: string; label: string | null; dataUrl: string; mtimeMs: number }>
 > {
   return window.electronAPI.foundry.listPortraitImages();
 }
 
-export async function foundryStagePortraitImage(dataUrl: string): Promise<string> {
-  return window.electronAPI.foundry.stagePortraitImage(dataUrl);
+export async function foundryStagePortraitImage(
+  dataUrl: string,
+  originalName?: string
+): Promise<string> {
+  return window.electronAPI.foundry.stagePortraitImage(dataUrl, originalName);
+}
+
+/** Stored filename -> the name the user picked. Display only, and it outlives
+ *  the image, which is what lets a missing staged source be named. */
+export async function foundryPortraitImageNames(): Promise<Record<string, string>> {
+  return window.electronAPI.foundry.portraitImageNames();
 }
 
 /** A bounded 128px preview of the user's own source image behind a visual

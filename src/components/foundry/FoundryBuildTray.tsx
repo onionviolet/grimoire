@@ -10,7 +10,7 @@ import {
   toForgeRequest,
   unsupportedStagedEditKind,
 } from './buildTray';
-import { foundryCheckAudioPaths } from '../../lib/api';
+import { foundryCheckAudioPaths, foundryPortraitImageNames } from '../../lib/api';
 import { Modal } from '../common/Modal';
 import type { FoundryForgeRequest } from '../../types/foundry';
 
@@ -96,7 +96,16 @@ export default function FoundryBuildTray({ edits, outputName, onOutputNameChange
       }
       const missing = missingSourceFiles(sources, present);
       if (missing.length) {
-        setBlocked(`${t('foundry.buildTray.missingSources', { count: missing.length })} ${t('foundry.buildTray.missingSourceList', 'Missing: {{files}}', { files: missing.map((file) => file.split(/[\\/]/).pop() || file).join(', ') })}`);
+        // A staged portrait bake is stored under its content hash, so the raw
+        // basename here was 64 hex characters and named nothing the user could
+        // act on (issue #261). The recorded original filename outlives the image
+        // itself, which is exactly the case in hand: the file is gone.
+        const labels = await foundryPortraitImageNames().catch(() => ({}) as Record<string, string>);
+        const named = missing.map((file) => {
+          const base = file.split(/[\\/]/).pop() || file;
+          return labels[base] ?? base;
+        });
+        setBlocked(`${t('foundry.buildTray.missingSources', { count: missing.length })} ${t('foundry.buildTray.missingSourceList', 'Missing: {{files}}', { files: named.join(', ') })}`);
         return;
       }
     }

@@ -19,7 +19,7 @@
  */
 import { promises as fs } from 'fs';
 import { createHash } from 'crypto';
-import { join } from 'path';
+import { basename, join } from 'path';
 import { app } from 'electron';
 
 /** PNG signature. The editor bakes PNG; anything else is rejected rather than
@@ -59,17 +59,76 @@ export function decodePortraitPngDataUrl(dataUrl: string): Buffer {
 }
 
 /**
+ * Human names for the content-addressed files, kept beside them.
+ *
+ * Content addressing is right for the bytes and useless for a person: a staged
+ * edit whose source went missing reported a 64-character hash, and the recent
+ * strip could not say which image a tile was. The name a user recognises is the
+ * file they picked, so record it when the image is written and keep it here even
+ * after the PNG itself is pruned, because the surface that most needs the name
+ * is the one whose file is gone (upstream issue #261).
+ *
+ * A plain JSON map, not a database: it is a display-only index, and losing it
+ * costs a label rather than an asset.
+ */
+const NAME_INDEX = 'names.json';
+
+function nameIndexPath(): string {
+    return join(portraitEditsRoot(), NAME_INDEX);
+}
+
+/** basename (`<sha>.png`) -> the filename the user actually chose. */
+export async function portraitImageNames(): Promise<Record<string, string>> {
+    try {
+        const raw = await fs.readFile(nameIndexPath(), 'utf8');
+        const parsed: unknown = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+        const out: Record<string, string> = {};
+        for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+            if (typeof value === 'string' && value.trim()) out[key] = value;
+        }
+        return out;
+    } catch {
+        return {};
+    }
+}
+
+async function rememberPortraitImageName(file: string, originalName: string): Promise<void> {
+    const clean = originalName.trim().slice(0, 120);
+    if (!clean) return;
+    try {
+        const names = await portraitImageNames();
+        // First name wins. Re-cropping the same image should not rename an entry
+        // the user already recognises, and identical bytes are the same picture.
+        if (names[file] === clean) return;
+        names[file] = names[file] ?? clean;
+        await fs.writeFile(nameIndexPath(), JSON.stringify(names, null, 2), 'utf8');
+    } catch {
+        /* a label is not worth failing a staging attempt over */
+    }
+}
+
+/**
  * Write a baked portrait PNG into the staging cache and return its absolute
  * path, ready to hand to `prepareVisualStagedEdit` as `imagePath`.
+ *
+ * `originalName` is the file the user picked, recorded for display only. It
+ * never becomes part of the storage key: two crops of the same bytes stay one
+ * file whatever they were called.
  */
-export async function writeFoundryPortraitImage(dataUrl: string): Promise<string> {
+export async function writeFoundryPortraitImage(
+    dataUrl: string,
+    originalName?: string
+): Promise<string> {
     const bytes = decodePortraitPngDataUrl(dataUrl);
     const dir = portraitEditsRoot();
     await fs.mkdir(dir, { recursive: true });
-    const target = join(dir, `${createHash('sha256').update(bytes).digest('hex')}.png`);
+    const file = `${createHash('sha256').update(bytes).digest('hex')}.png`;
+    const target = join(dir, file);
     // Content-addressed: an identical crop staged twice is one file. Rewriting is
     // harmless and repairs a truncated earlier write.
     await fs.writeFile(target, bytes);
+    if (originalName) await rememberPortraitImageName(file, originalName);
     await prunePortraitEdits();
     return target;
 }
@@ -77,6 +136,8 @@ export async function writeFoundryPortraitImage(dataUrl: string): Promise<string
 /** One previously staged portrait image, offered back as an intake source. */
 export interface StagedPortraitImage {
     path: string;
+    /** The filename the user picked, when one was recorded. Display only. */
+    label: string | null;
     /** The PNG re-encoded as a data URL, so the renderer can show and re-crop it
      *  without a privileged scheme for a handful of card-sized files. */
     dataUrl: string;
@@ -111,15 +172,18 @@ export async function listFoundryPortraitImages(limit = 12): Promise<StagedPortr
             .filter((entry): entry is NonNullable<typeof entry> => !!entry)
             .sort((a, b) => b.mtimeMs - a.mtimeMs)
             .slice(0, Math.max(0, limit));
+        const labels = await portraitImageNames();
         const loaded = await Promise.all(
             newest.map(async (entry) => {
                 const bytes = await fs.readFile(entry.path).catch(() => null);
                 if (!bytes) return null;
-                return {
+                const image: StagedPortraitImage = {
                     path: entry.path,
+                    label: labels[basename(entry.path)] ?? null,
                     dataUrl: `data:image/png;base64,${bytes.toString('base64')}`,
                     mtimeMs: entry.mtimeMs,
                 };
+                return image;
             })
         );
         return loaded.filter((entry): entry is StagedPortraitImage => !!entry);
@@ -136,7 +200,10 @@ export async function prunePortraitEdits(keepBytes = KEEP_BYTES): Promise<void> 
         const dir = portraitEditsRoot();
         const names = await fs.readdir(dir);
         const stats = await Promise.all(
-            names.map(async (name) => {
+            // The name index is display metadata, not cache weight, and it has to
+            // outlive the PNGs it names: a pruned source is exactly the case that
+            // needs a label instead of a hash.
+            names.filter((name) => name !== NAME_INDEX).map(async (name) => {
                 const path = join(dir, name);
                 const info = await fs.stat(path).catch(() => null);
                 return info?.isFile() ? { path, size: info.size, mtime: info.mtimeMs } : null;

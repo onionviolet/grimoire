@@ -1227,12 +1227,16 @@ export interface ElectronAPI {
         /** Park a portrait-editor PNG bake (data URL) in a bounded userData cache
          *  and return its absolute path, which is what the visual staging
          *  contract records. Writes nothing into the game directory. */
-        stagePortraitImage: (dataUrl: string) => Promise<string>;
+        stagePortraitImage: (dataUrl: string, originalName?: string) => Promise<string>;
         /** Portrait images the user framed before, newest first, so an edit no
-         *  longer requires a fresh file drop every time. */
+         *  longer requires a fresh file drop every time. `label` is the filename
+         *  the user picked, when one was recorded. */
         listPortraitImages: () => Promise<
-            Array<{ path: string; dataUrl: string; mtimeMs: number }>
+            Array<{ path: string; label: string | null; dataUrl: string; mtimeMs: number }>
         >;
+        /** Stored filename -> the name the user picked, for display where only a
+         *  path is in hand. Outlives the image itself. */
+        portraitImageNames: () => Promise<Record<string, string>>;
         /** A 128px `grimoire-foundry:` preview of a recorded source image, or
          *  null when it is gone, too large, or not decodable. Never returns a
          *  filesystem path. */

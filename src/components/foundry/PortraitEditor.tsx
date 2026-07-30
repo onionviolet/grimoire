@@ -104,7 +104,9 @@ export default function PortraitEditor({ item, catalog, heroName, initialFile, o
   // Intake reuse, borrowed from the Locker picker: images the user framed before
   // and the game's own art for the entry being edited. A file drop is now one
   // way in rather than the only one.
-  const [recent, setRecent] = useState<Array<{ path: string; dataUrl: string }>>([]);
+  const [recent, setRecent] = useState<Array<{ path: string; label: string | null; dataUrl: string }>>([]);
+  // The filename behind the image currently in the frame, when it came from one.
+  const [sourceName, setSourceName] = useState<string | null>(null);
 
   // Reset per opened entry: a previous family's bakes must never leak into a
   // different portrait.
@@ -173,6 +175,9 @@ export default function PortraitEditor({ item, catalog, heroName, initialFile, o
       const dataUrl = await readFileAsDataUrl(file);
       const img = await loadImage(dataUrl);
       setSource(dataUrl);
+      // Carried purely so the staged bake can be named after the file the user
+      // chose. The storage key stays the content hash (issue #261).
+      setSourceName(file.name);
       setSourceSize({ width: img.naturalWidth, height: img.naturalHeight });
       setError(null);
     } catch {
@@ -189,10 +194,11 @@ export default function PortraitEditor({ item, catalog, heroName, initialFile, o
    *  recent strip and the "use the current art" button, because both hand over
    *  a data URL and neither should re-open a file dialog to do it. */
   const loadIntoFrame = useCallback(
-    async (dataUrl: string) => {
+    async (dataUrl: string, name?: string | null) => {
       try {
         const img = await loadImage(dataUrl);
         setSource(dataUrl);
+        setSourceName(name ?? null);
         setSourceSize({ width: img.naturalWidth, height: img.naturalHeight });
         setError(null);
       } catch {
@@ -209,7 +215,7 @@ export default function PortraitEditor({ item, catalog, heroName, initialFile, o
     let cancelled = false;
     void foundryListPortraitImages()
       .then((images) => {
-        if (!cancelled) setRecent(images.map(({ path, dataUrl }) => ({ path, dataUrl })));
+        if (!cancelled) setRecent(images.map(({ path, label, dataUrl }) => ({ path, label, dataUrl })));
       })
       .catch(() => {
         // A missing cache is an empty strip, not an error worth a banner.
@@ -260,7 +266,10 @@ export default function PortraitEditor({ item, catalog, heroName, initialFile, o
         if (!ctx) throw new Error(t('portraitEditor.bakeFailed', "The image couldn't be prepared."));
         ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(img, rect.sx, rect.sy, rect.sw, rect.sh, 0, 0, rect.width, rect.height);
-        const imagePath = await foundryStagePortraitImage(canvas.toDataURL('image/png'));
+        const imagePath = await foundryStagePortraitImage(
+          canvas.toDataURL('image/png'),
+          sourceName ?? undefined
+        );
         if (slot.kind === 'family') setFamilyImage(imagePath);
         else setOverrides((prev) => ({ ...prev, [slot.path]: imagePath }));
       } catch (e) {
@@ -269,7 +278,7 @@ export default function PortraitEditor({ item, catalog, heroName, initialFile, o
         setBusy(false);
       }
     },
-    [activeTarget, slot, t],
+    [activeTarget, slot, sourceName, t],
   );
 
   const stage = useCallback(async () => {
@@ -402,13 +411,15 @@ export default function PortraitEditor({ item, catalog, heroName, initialFile, o
                         key={image.path}
                         type="button"
                         disabled={busy}
-                        onClick={() => void loadIntoFrame(image.dataUrl)}
-                        title={t('portraitEditor.recentHint')}
+                        onClick={() => void loadIntoFrame(image.dataUrl, image.label)}
+                        // A hash is not a name. When the original filename was
+                        // recorded, it is what identifies the tile.
+                        title={image.label ?? t('portraitEditor.recentHint')}
                         className="h-12 w-12 overflow-hidden rounded-sm border border-border transition-colors hover:border-accent/60 disabled:opacity-50 cursor-pointer"
                       >
                         <img
                           src={image.dataUrl}
-                          alt=""
+                          alt={image.label ?? ''}
                           className="h-full w-full object-cover"
                           draggable={false}
                         />

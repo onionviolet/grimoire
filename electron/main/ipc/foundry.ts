@@ -29,6 +29,7 @@ import { exportVpkViaDialog } from '../services/foundryExport';
 import { buildFoundryForgeVpk, forgeAndExportFoundryVpk } from '../services/foundryForge';
 import {
     listFoundryPortraitImages,
+    portraitImageNames,
     writeFoundryPortraitImage,
 } from '../services/foundryPortraitImages';
 import { ensureSourceThumbnail } from '../services/foundrySourceThumbs';
@@ -222,8 +223,20 @@ ipcMain.handle(
 // `prepareVisualStagedEdit` can see them. This writes into a bounded userData
 // cache only: no mod is installed, enabled, or reordered here, and nothing is
 // written into the game directory.
-ipcMain.handle('foundry:stagePortraitImage', async (_e, dataUrl: string): Promise<string> => {
-    return writeFoundryPortraitImage(dataUrl);
+// `originalName` is display metadata only: the storage key stays the content
+// hash, so the same crop is still one file whatever it was called.
+ipcMain.handle(
+    'foundry:stagePortraitImage',
+    async (_e, dataUrl: string, originalName?: string): Promise<string> => {
+        return writeFoundryPortraitImage(dataUrl, originalName);
+    }
+);
+
+// The recorded display names for staged images, keyed by stored filename. Kept
+// separate from the listing because the surface that most needs a name is the
+// one whose file is gone (a missing staged source in the build tray).
+ipcMain.handle('foundry:portraitImageNames', async (): Promise<Record<string, string>> => {
+    return portraitImageNames();
 });
 
 // A preview of the user's own source image behind a visual change, for the

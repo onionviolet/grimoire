@@ -9,7 +9,9 @@ vi.mock('electron', () => ({ app: { getPath: () => harness.userData } }));
 
 const {
     decodePortraitPngDataUrl,
+    listFoundryPortraitImages,
     portraitEditsRoot,
+    portraitImageNames,
     prunePortraitEdits,
     writeFoundryPortraitImage,
 } = await import('./foundryPortraitImages');
@@ -61,5 +63,41 @@ describe('writeFoundryPortraitImage', () => {
         // A budget that fits only the newest file: the older bake is dropped.
         await prunePortraitEdits((await fs.stat(newer)).size);
         expect(await fs.readdir(portraitEditsRoot())).toEqual([basename(newer)]);
+    });
+});
+
+
+describe('original filenames beside the content hash (#261)', () => {
+    it('records the picked name without changing the storage key', async () => {
+        const first = await writeFoundryPortraitImage(pngDataUrl('same'), 'my-portrait.png');
+        const second = await writeFoundryPortraitImage(pngDataUrl('same'), 'renamed-copy.png');
+
+        // Same bytes stay one file: the name is display metadata, not identity.
+        expect(second).toBe(first);
+        const names = await portraitImageNames();
+        expect(names[basename(first)]).toBe('my-portrait.png');
+    });
+
+    it('offers the name back with the image', async () => {
+        const path = await writeFoundryPortraitImage(pngDataUrl('listed'), 'grey-talon-card.jpg');
+        const listed = await listFoundryPortraitImages();
+        const entry = listed.find((image) => image.path === path);
+        expect(entry?.label).toBe('grey-talon-card.jpg');
+    });
+
+    it('leaves the label null when nothing was recorded', async () => {
+        const path = await writeFoundryPortraitImage(pngDataUrl('unnamed'));
+        const listed = await listFoundryPortraitImages();
+        expect(listed.find((image) => image.path === path)?.label).toBeNull();
+    });
+
+    it('keeps the names when the images themselves are pruned', async () => {
+        const path = await writeFoundryPortraitImage(pngDataUrl('doomed'), 'the-one-that-vanished.png');
+        // Budget of zero evicts everything the pruner is allowed to touch.
+        await prunePortraitEdits(0);
+
+        await expect(fs.stat(path)).rejects.toThrow();
+        // The surface that most needs the name is the one whose file is gone.
+        expect((await portraitImageNames())[basename(path)]).toBe('the-one-that-vanished.png');
     });
 });
