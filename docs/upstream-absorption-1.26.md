@@ -20,7 +20,7 @@ Status: planned, not started. Measured 2026-07-29 at `073e742`.
 
 | Commit | What it is | Cost to us |
 |---|---|---|
-| `8d3655f` | six pinned, selectable fps presets | **decision, see below** |
+| `8d3655f` | six pinned, selectable fps presets | **port, see below** |
 | `60e36de` | categorized settings navigation | mechanical, but large |
 | `869d639` | Performance Config discoverability + sync across panes | follows the decision |
 | `56f4bd8` + `cb09587` | locker hero typeahead + its follow-up fix | small |
@@ -47,26 +47,71 @@ by a different route, and has HUD/advanced ConVar rows, staged edits, an
 origin badge per value, and the preset-lean note from `073e742` that upstream
 does not have.
 
-**This cannot be resolved hunk by hunk.** Pick a base and port the other
-side's distinct features onto it:
+**Decision: upstream's applier and data model are the base. Our work is
+re-applied on top, additively.** The reason is the one the design doc already
+gave: per-patch drift is only safe when someone upstream maintains the
+manifest, and owning a second applier gives that up. It is also the cheaper
+port, because the two sides grew in different files.
 
-- **Take upstream's applier as the base** if the generator and the six-preset
-  manifest are worth more than our staging/override UI. Then re-port our HUD
-  rows, value-state badges, staged edits, and preset notes on top. Larger
-  port, but it puts us back on a shared upstream so the next absorption is
-  cheap.
-- **Keep ours as the base** if the staged-edit and override layer is the point.
-  Then cherry-pick upstream's preset data (`performance-presets.json` and the
-  generator) into our `PRESETS` shape. Smaller port now, permanent divergence
-  on the file most likely to change upstream again.
+Where the value sits, by line count (shared base, then each side):
 
-Recommendation: take upstream's applier as the base. The whole reason the doc
-chose "curate one upstream" was that per-patch drift is only safe when someone
-upstream maintains the manifest. Owning a second applier gives that up.
+| File | base | ours | upstream |
+|---|--:|--:|--:|
+| `performanceConfig.ts` | 622 | 1065 | 860 |
+| `performanceConfigData.ts` | 294 | 337 | **2720** |
+| `PerformanceConfigCard.tsx` | 253 | **713** | 357 |
 
-Whichever way it goes, `docs/performance-config-integration.md` must be
-rewritten to describe what actually shipped, and the "Do nothing for QOL Lock"
-decision re-affirmed or reversed explicitly rather than left to drift.
+### Take from upstream, unchanged
+
+- The data model in `performanceConfigData.ts`: `PRESETS`, `BASELINE`,
+  `getPreset`, `PresetTier`, `PresetUpstream`, `DEFAULT_PRESET_ID`. This
+  replaces our single-preset `PRESET_ID` / `PRESET_NAME` / `PRESET_VERSION` /
+  `PRESET_SOURCE_URL` / `CONVARS` / `SECTION_OPS` constants.
+- `scripts/gen-performance-presets.mjs` and `scripts/performance-presets.json`.
+  The generated file is not hand-edited from here on.
+- `listPerformancePresets` and the `list-performance-presets` IPC channel.
+- `ApplyOptions`, so `applyPerformanceConfig` takes a preset id.
+- `PresetPicker.tsx`, `GameplayOptIns.tsx`, and the `OptInControl` /
+  `OptInGroup` types behind them.
+- `electron/main/services/__fixtures__/stock-gameinfo.gi`.
+
+### Re-apply on top, ours
+
+All of these are names upstream does not define, so they collide with nothing:
+
+- `setPerformanceHudConvars`, `setPerformanceAdvancedConvars`,
+  `clearPerformanceConvars`, plus the `set-performance-hud-convars`,
+  `set-performance-advanced-convars`, and `clear-performance-convars` channels.
+- `HUD_CONVARS` and `ADVANCED_GAMEINFO_CONVARS`, which upstream has no
+  equivalent of.
+- The card's staged-edit flow, per-value origin badges, HUD toggle rows,
+  advanced sliders, and the preset-lean note from `073e742`.
+
+Both sides keep `applyPerformanceConfig`, `resetPerformanceConfigOverrides`,
+`removePerformanceConfig`, `restorePerformanceConfigBackup`, and
+`getPerformanceConfigStatus` under the same names, so the override/harvest and
+wiped-detection layers survive either way.
+
+### The one genuine adaptation
+
+Our HUD and advanced paths assume a single preset: `presetValue` comes from one
+flat `PRESET_CONVAR_VALUES` map built off the single `CONVARS` list. Under six
+presets, `presetValue` has to be resolved against the *active* preset, and the
+card's preset-lean note has to re-render when the picker changes presets. Same
+for the sidecar: it already records an applied preset id, so the HUD/advanced
+override comparison must read the active preset's value rather than a global.
+
+Expect this to be the only place real thought is required, and expect
+`performanceConfig.test.ts` (add/add, both sides wrote one) to need both sides'
+cases merged rather than one side's kept.
+
+### Doc follow-up
+
+`docs/performance-config-integration.md` must be rewritten to describe what
+actually shipped, since it currently describes the multi-preset applier as
+unbuilt Phase 2 design. The "Do nothing for QOL Lock" decision at line 21 is
+re-affirmed, not reversed: QOL Lock (650634) is still a plain VPK that the
+normal mod pipeline handles.
 
 ## The mechanical work
 
@@ -94,13 +139,15 @@ None of this needs judgment, only patience.
 
 ## Sequence
 
+The performance-config base is now decided, so the two halves can run as
+separate passes on the same branch, mechanical first.
+
 1. Branch: `git checkout -b merge/upstream-1.26`. Do not merge on `main`.
-2. Decide the performance-config base (above). Nothing else can be resolved
-   until this is settled, because five of the fifteen conflicts are downstream
-   of it.
-3. `git merge upstream/main`. Resolve in this order: generated files
-   (regenerate), prose, additive IPC surface, `Settings.tsx` re-homing,
-   `translation.json`, then performance config last.
+2. `git merge upstream/main`. Resolve the ten mechanical files in this order:
+   generated files (regenerate), prose, additive IPC surface, `Settings.tsx`
+   re-homing, `translation.json`. Leave the five performance-config files
+   conflicted.
+3. Second pass: performance config, per the decision above.
 4. Gates, all of them: `pnpm lint`, `pnpm exec tsc -p tsconfig.app.json
    --noEmit`, `pnpm exec vitest run`, `pnpm i18n:check`, and
    `node scripts/gen-locale-manifest.mjs --check`.
@@ -108,20 +155,27 @@ None of this needs judgment, only patience.
    gates cover rendering: Settings (every new section tab), Performance Config,
    Locker typeahead, Browse local-catalog filters, sticky headers.
    `GRIMOIRE_DEV_CDP_PORT=9222 pnpm dev` then `scripts/dev-driver.mjs`.
-6. Version bump, as its own commit: `1.26.1725`.
+6. Version bump, as its own commit: `1.26.1`.
 7. Merge the branch to `main`, push, regenerate the locale manifest if step 4
    changed it.
 
 ## Version
 
-Upstream is `1.26.0`. We go to **`1.26.1725`**.
+Upstream is `1.26.0`. We go to **`1.26.1`**.
 
 `1.26.0000000000000000001` was the first choice but it is not valid semver:
 leading zeros are illegal in a numeric identifier, so `semver.valid()` returns
 null and npm and electron-builder both reject it. `1.26.0+onionviolet.1` and
 `1.26.0-grimoire.1` are valid but neither sorts above `1.26.0`, which breaks
-electron-updater's comparison. `1.26.1725` is valid, sorts above `1.26.0`, and
-continues the counter this fork already used at `1.25.1723` and `1.25.1724`.
+electron-updater's comparison. `1.26.1` is valid and sorts above `1.26.0`.
+
+Note that this drops the four-digit counter used at `1.25.1723` and
+`1.25.1724`. That is fine going forward, but it means the next patch after this
+one is `1.26.2`, not a counter continuation: do not reintroduce `1.26.1725`
+later, because it would sort *above* `1.26.2` and break update ordering.
+
+The bump lands as its own commit on the merge branch (step 6), not before the
+merge, so `main` never claims a version it has not absorbed.
 
 ## Why now rather than after the next lane
 
