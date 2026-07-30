@@ -1,4 +1,5 @@
 import type { SoundCategory } from './soundInventory';
+import type { GlobalSoundCategory } from '../types/foundry';
 
 /**
  * The Global sounds vocabulary: which sound categories the Global drill-in's
@@ -43,4 +44,23 @@ export function globalSoundSectionLabel(
   category: SoundCategory
 ): string {
   return t(`soundLocker.category.${category}`, GLOBAL_SECTION_FALLBACK[category] ?? category);
+}
+
+/** The catalog filter that lets the Foundry link open the matching sound family. */
+export function globalSoundFoundryCategory(category: SoundCategory): GlobalSoundCategory {
+  const categories: Record<SoundCategory, GlobalSoundCategory> = {
+    announcer: 'voice',
+    music: 'music',
+    ui: 'ui',
+    ambience: 'ambience',
+    npc: 'npc',
+    item: 'item',
+    melee: 'gameplay',
+    unclassified: 'other',
+    ability: 'gameplay',
+    voice: 'voice',
+    weapon: 'gameplay',
+    movement: 'gameplay',
+  };
+  return categories[category];
 }

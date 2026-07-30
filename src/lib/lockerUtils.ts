@@ -474,6 +474,19 @@ export const GLOBAL_MOD_TYPE_ORDER: readonly GlobalModType[] = [
 ];
 
 /**
+ * Global categories that are visual content. Sound-shaped categories used to
+ * appear here as well as in the Sounds inventory, so one installed sound pack
+ * could inflate the Global total and look like two separate things.
+ */
+export const GLOBAL_VISUAL_MOD_TYPE_ORDER: readonly GlobalModType[] = [
+  'soul-container',
+  'spirit-urn',
+  'hideout',
+  'icons',
+  'hud',
+];
+
+/**
  * Global types that are a single imported static prop shown with a live 3D
  * preview and treated as single-select (one in-game slot, so enabling one
  * disables the others of the same type). Soul containers and spirit urns both

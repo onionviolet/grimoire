@@ -6,7 +6,7 @@ import SoundEntryRow from './SoundEntryRow';
 import { useSoundAnnotations } from './useSoundAnnotations';
 import { useClipPlayer } from '../foundry/useClipPlayer';
 import { useAppStore } from '../../stores/appStore';
-import { globalSoundSectionLabel } from '../../lib/globalSoundSections';
+import { globalSoundFoundryCategory, globalSoundSectionLabel } from '../../lib/globalSoundSections';
 import type { SoundCategory, SoundInventoryEntry } from '../../lib/soundInventory';
 
 /**
@@ -29,19 +29,18 @@ import type { SoundCategory, SoundInventoryEntry } from '../../lib/soundInventor
 interface GlobalSoundShelfProps {
   /** The rail's selected category. The shell owns the selection. */
   category: SoundCategory;
-  /** Every global entry, already built by the shell (it needs the counts too). */
-  entries: readonly SoundInventoryEntry[];
   /** Entries in the selected category, in display order. */
   shown: readonly SoundInventoryEntry[];
 }
 
-export default function GlobalSoundShelf({ category, entries, shown }: GlobalSoundShelfProps) {
+export default function GlobalSoundShelf({ category, shown }: GlobalSoundShelfProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const mods = useAppStore((s) => s.mods);
   const toggleMod = useAppStore((s) => s.toggleMod);
   const annotations = useSoundAnnotations();
   const player = useClipPlayer();
+  const categoryLabel = globalSoundSectionLabel(t, category);
 
   const audioUrls = useMemo(() => {
     const map: Record<string, string | undefined> = {};
@@ -69,22 +68,21 @@ export default function GlobalSoundShelf({ category, entries, shown }: GlobalSou
       <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-white/15 bg-bg-sunken/30 px-6 py-12 text-center">
         <AudioLines className="h-8 w-8 text-white/40" />
         <p className="max-w-sm text-sm text-white/70">
-          {entries.length === 0
-            ? t(
-                'soundLocker.global.empty.description',
-                'Announcer packs, killstreak music, and interface sounds show up here once you install one.'
-              )
-            : t('soundLocker.global.categoryEmpty', 'No installed {{type}} sound mods yet.', {
-                type: globalSoundSectionLabel(t, category),
-              })}
+          {t(
+            'soundLocker.global.empty.description',
+            'No installed {{type}} sound mods yet. Browse {{type}} sounds in Foundry to forge one.',
+            { type: categoryLabel }
+          )}
         </p>
         <button
           type="button"
-          onClick={() => navigate('/foundry?tool=globalSound')}
+          onClick={() =>
+            navigate(`/foundry?tool=globalSound&category=${globalSoundFoundryCategory(category)}`)
+          }
           className="inline-flex items-center gap-1.5 rounded-lg border border-accent/40 bg-accent/10 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:border-accent/60 hover:bg-accent/20 cursor-pointer"
         >
           <Hammer className="h-3.5 w-3.5" />
-          {t('soundLocker.global.makeNew', 'Make one in Foundry')}
+          {t('soundLocker.global.makeNew', 'Forge {{type}} sound', { type: categoryLabel })}
         </button>
       </div>
     );

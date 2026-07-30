@@ -43,6 +43,7 @@ import { useEscapeKey } from '../components/common/useEscapeKey';
 import {
   GLOBAL_MOD_TYPE_LABELS,
   GLOBAL_MOD_TYPE_ORDER,
+  GLOBAL_VISUAL_MOD_TYPE_ORDER,
   activeLockerSkin,
   buildHeroList,
   canonicalHeroName,
@@ -74,7 +75,12 @@ import {
   entriesInCategory,
   type SoundCategory,
 } from '../lib/soundInventory';
-import { GLOBAL_SOUND_SECTIONS, globalSoundSectionLabel } from '../lib/globalSoundSections';
+import {
+  GLOBAL_SOUND_SECTIONS,
+  globalSoundFoundryCategory,
+  globalSoundSectionLabel,
+} from '../lib/globalSoundSections';
+import { countGlobalInventoryMods } from '../lib/globalInventory';
 import { useDiscoveredSoundPaths } from '../components/locker/useDiscoveredSoundPaths';
 import {
   appendHeroTypeaheadCharacter,
@@ -1711,9 +1717,9 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
   // state is the least informative thing the view can open on.
   const activeType =
     selectedType ??
-    GLOBAL_MOD_TYPE_ORDER.find((type) => groups[type].length > 0) ??
-    GLOBAL_MOD_TYPE_ORDER.find((type) => isPropContainerType(type)) ??
-    GLOBAL_MOD_TYPE_ORDER[0];
+    GLOBAL_VISUAL_MOD_TYPE_ORDER.find((type) => groups[type].length > 0) ??
+    GLOBAL_VISUAL_MOD_TYPE_ORDER.find((type) => isPropContainerType(type)) ??
+    GLOBAL_VISUAL_MOD_TYPE_ORDER[0];
   const activeMods = groups[activeType] ?? [];
 
   // Sounds section. The inventory is built here rather than in the shelf
@@ -1778,7 +1784,10 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
   // Soul containers and spirit urns share the single-select + live-3D-tile
   // treatment (frosted glass, content-stable key, active badge, import button).
   const isPropContainer = isPropContainerType(activeType);
-  const total = GLOBAL_MOD_TYPE_ORDER.reduce((sum, type) => sum + groups[type].length, 0);
+  const total = useMemo(
+    () => countGlobalInventoryMods(groups, globalSoundEntries),
+    [groups, globalSoundEntries]
+  );
   // The scrollable card pane: the shared soul-container canvas clamps each
   // card's render rect to this element so models never bleed past the pane.
   const paneRef = useRef<HTMLDivElement>(null);
@@ -1863,7 +1872,7 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
           </h2>
           <span className="text-xs tabular-nums text-white/60">
             {t('locker.page.modCount', {
-              count: isSounds ? countMods(globalSoundEntries) : total,
+              count: total,
             })}
           </span>
         </div>
@@ -1929,7 +1938,7 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
                 count,
                 onSelect: () => setSelectedSoundCategory(id),
               }))
-            : GLOBAL_MOD_TYPE_ORDER.map((type) => ({
+            : GLOBAL_VISUAL_MOD_TYPE_ORDER.map((type) => ({
                 key: type as string,
                 label: GLOBAL_MOD_TYPE_LABELS[type],
                 count: groups[type].length,
@@ -1985,16 +1994,21 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
                 </span>
                 <button
                   type="button"
-                  onClick={() => navigate('/foundry?tool=globalSound')}
+                  onClick={() =>
+                    navigate(
+                      `/foundry?tool=globalSound&category=${globalSoundFoundryCategory(activeSoundCategory)}`
+                    )
+                  }
                   className="ml-auto inline-flex items-center gap-1.5 self-center rounded-lg border border-accent/40 bg-accent/10 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:border-accent/60 hover:bg-accent/20 cursor-pointer"
                 >
                   <Hammer className="h-3.5 w-3.5" />
-                  {t('soundLocker.global.makeNew', 'Make one in Foundry')}
+                  {t('soundLocker.global.makeNew', 'Forge {{type}} sound', {
+                    type: globalSoundSectionLabel(t, activeSoundCategory),
+                  })}
                 </button>
               </div>
               <GlobalSoundShelf
                 category={activeSoundCategory}
-                entries={globalSoundEntries}
                 shown={shownSoundEntries}
               />
             </>

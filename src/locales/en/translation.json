@@ -3689,11 +3689,10 @@
       "third-party": "Third-party"
     },
     "global": {
-      "makeNew": "Make one in Foundry",
+      "makeNew": "Forge {{type}} sound",
       "empty": {
-        "description": "Announcer packs, killstreak music, and interface sounds show up here once you install one."
-      },
-      "categoryEmpty": "No installed {{type}} sound mods yet."
+        "description": "No installed {{type}} sound mods yet. Browse {{type}} sounds in Foundry to forge one."
+      }
     },
     "hero": {
       "sections": "Sound sections",

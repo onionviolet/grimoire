@@ -94,10 +94,16 @@ interface Section {
  * hero to resolve it from), so the built mod lands in the Locker's global Sounds
  * bucket rather than under a hero.
  */
-export default function GlobalSoundBrowse({ onStage }: { onStage?: (edit: FoundryStagedSoundEdit) => void }) {
+export default function GlobalSoundBrowse({
+    initialCategory = 'all',
+    onStage,
+}: {
+    initialCategory?: GlobalSoundCategory | 'all';
+    onStage?: (edit: FoundryStagedSoundEdit) => void;
+}) {
     const { t } = useTranslation();
     const [search, setSearch] = useState('');
-    const [category, setCategory] = useState<GlobalSoundCategory | 'all'>('all');
+    const [category, setCategory] = useState<GlobalSoundCategory | 'all'>(initialCategory);
     const [annotationsVisible, setAnnotationsVisible] = useState(false);
     const [annotatedOnly, setAnnotatedOnly] = useState(false);
     const [selectedRow, setSelectedRow] = useState<string | null>(null);

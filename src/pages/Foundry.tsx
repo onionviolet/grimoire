@@ -12,13 +12,14 @@ import {
   Palette,
   ArrowLeft,
   ListChecks,
+  Flag,
 } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { EmptyState, PageHeader } from '../components/common/PageComponents';
 import { canonicalHeroName } from '../lib/lockerUtils';
 import Tx from '../components/translation/Tx';
 import { useAppStore } from '../stores/appStore';
-import { foundryForge, foundryForgeInstall, foundryHeroes, foundryWarmCache } from '../lib/api';
+import { foundryForge, foundryForgeInstall, foundryHeroes, foundryScanNonStandard, foundryWarmCache } from '../lib/api';
 import { showToast } from '../stores/toastStore';
 import type { HeroInfo } from '../types/foundry';
 import LibraryBrowse from '../components/foundry/LibraryBrowse';
@@ -31,6 +32,7 @@ import FoundryHeroGrid from '../components/foundry/FoundryHeroGrid';
 import HeroWorkshop from '../components/foundry/HeroWorkshop';
 import FoundryBuildTray from '../components/foundry/FoundryBuildTray';
 import MyChanges from '../components/foundry/MyChanges';
+import NonStandardReportView from '../components/foundry/NonStandardReport';
 import type { FoundryChangeFilter } from '../components/foundry/changeList';
 import type { FoundryStagedEdit } from '../components/foundry/buildTray';
 
@@ -86,6 +88,8 @@ export default function Foundry() {
   const [selectedHero, setSelectedHero] = useState<HeroInfo | null>(null);
   const [active, setActive] = useState<SubtoolId>('library');
   const [heroes, setHeroes] = useState<HeroInfo[]>([]);
+  const [nonStandardReport, setNonStandardReport] = useState<import('../types/foundry').NonStandardReport | null>(null);
+  const [scanningNonStandard, setScanningNonStandard] = useState(false);
   // The tray is intentionally ephemeral until all forge flows can hand a single
   // typed build request to main. Merely browsing Foundry never mutates a mod.
   const [stagedEdits, setStagedEdits] = useState<FoundryStagedEdit[]>([]);
@@ -114,6 +118,16 @@ export default function Foundry() {
     await useAppStore.getState().loadMods({ silent: true });
     setStagedEdits([]);
     showToast(t('foundry.buildTray.installed', 'Installed "{{name}}". Find it in My changes.', { name: request.name }), { tone: 'success', duration: 6000 });
+  }, [t]);
+  const scanNonStandard = useCallback(async () => {
+    setScanningNonStandard(true);
+    try {
+      setNonStandardReport(await foundryScanNonStandard());
+    } catch (error) {
+      showToast(t('foundry.nonStandard.failed', 'Couldn’t scan non-standard files: {{error}}', { error: error instanceof Error ? error.message : String(error) }), { tone: 'error', duration: 7000 });
+    } finally {
+      setScanningNonStandard(false);
+    }
   }, [t]);
 
   // Roster (codename -> name) loads once; warm the catalog cache opportunistically
@@ -156,6 +170,13 @@ export default function Foundry() {
   const linkedTool = useMemo(() => {
     const wanted = new URLSearchParams(location.search).get('tool');
     return SUBTOOLS.find((entry) => entry.id === wanted)?.id ?? null;
+  }, [location.search]);
+  const linkedGlobalSoundCategory = useMemo(() => {
+    const category = new URLSearchParams(location.search).get('category');
+    return category === 'ui' || category === 'music' || category === 'ambience' || category === 'npc' ||
+      category === 'item' || category === 'gameplay' || category === 'voice' || category === 'other'
+      ? category
+      : 'all';
   }, [location.search]);
   const clearLinkedTool = useCallback(() => {
     if (linkedTool) navigate('/foundry', { replace: true });
@@ -241,6 +262,17 @@ export default function Foundry() {
             // for it and it was reachable only by knowing to open the catalog
             // first. Surface it here as its own jump-in.
             <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void scanNonStandard()}
+                disabled={scanningNonStandard}
+                className="flex items-center gap-2 rounded-sm border border-border bg-bg-tertiary px-3 py-1.5 text-sm text-text-secondary transition-colors hover:text-text-primary disabled:cursor-wait disabled:opacity-60 cursor-pointer"
+              >
+                <Flag size={15} />
+                {scanningNonStandard
+                  ? t('foundry.nonStandard.scanning', 'Scanning files…')
+                  : <Tx k="foundry.nonStandard.action" fallback="Flag non-standard files" />}
+              </button>
               {settings?.forkGlobalSounds !== false && (
                 <button
                   type="button"
@@ -266,6 +298,7 @@ export default function Foundry() {
           }
         />
         <FoundryHeroGrid heroes={heroes} onPick={setSelectedHero} />
+        {nonStandardReport && <NonStandardReportView report={nonStandardReport} />}
       </div>
     );
   }
@@ -350,7 +383,7 @@ export default function Foundry() {
               }}
             />
           ) : activeTool === 'globalSound' && settings?.forkGlobalSounds !== false ? (
-            <GlobalSoundBrowse onStage={stageEdit} />
+            <GlobalSoundBrowse initialCategory={linkedGlobalSoundCategory} onStage={stageEdit} />
           ) : activeTool === 'texture' ? (
             <TextureBrowse heroes={heroes} heroNames={heroNames} onStage={stageEdit} />
           ) : activeTool === 'portraits' ? (
