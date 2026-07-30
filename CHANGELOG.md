@@ -4,40 +4,75 @@ All notable changes to this project are documented here. Format is loosely based
 
 ## [1.26.1] - 2026-07-29
 
-This fork release absorbs upstream v1.26.0 and adds Grimoire's latest Locker,
-settings, and accessibility work. It is a Windows release; Linux and macOS
-artifacts are not currently published.
+This fork release absorbs upstream v1.26.0 and brings the current Locker,
+performance, settings, and cross-app usability pass together. It is a
+Windows-only release.
 
 ### Added
-- **Curated performance presets.** Choose among six maintained upstream FPS
-  presets, with per-preset opt-ins and a clearer view of the HUD and advanced
-  console values Grimoire manages.
-- **A keyboard-first Locker hero picker.** Type a hero name to jump to it,
-  with matching results and Escape behavior that stay within the picker.
-- **A real Global sounds shelf in Locker.** Announcer packs, killstreak music,
-  and interface sounds now share the same consistent locker structure as
-  hero-specific sound mods.
-- **Remembered UI preferences.** View choices and scroll positions persist
-  across the library, Locker, Foundry, and related browsing surfaces.
-- **A configurable appearance finish.** Background gradients and a
-  transparent-sidebar option are available in Settings.
+- **Six curated, selectable performance presets.** Choose a balanced,
+  preview, aggressive, minimum-spec, competitive, or maximum configuration
+  derived from pinned Sqooky and OptiLock upstream revisions. Presets patch
+  only their managed game settings, preserve Grimoire's mod search paths, and
+  can be removed back to the recorded stock values.
+- **Performance controls that explain their state.** The card exposes
+  per-preset opt-ins plus HUD and advanced console controls, shows whether a
+  value comes from the selected preset or a user override, and keeps staged
+  changes reviewable before they are applied.
+- **Global sounds now live inside Locker.** Announcer packs, music, interface,
+  ambience, NPC/item, shared-melee, and other non-hero sounds have a real
+  Global sounds panel instead of a separate page. It keeps the Locker's art,
+  navigation, category rail, return paths, audition controls, provenance,
+  annotations, enabled state, and Foundry handoff intact.
+- **Keyboard-first hero selection in Locker.** Type a hero name to jump to a
+  matching hero; Escape dismisses the picker without escaping the surrounding
+  surface.
+- **Remembered browsing state.** View preferences and scroll positions persist
+  in Browse, Installed, Locker, Foundry, and related browsing views.
+- **Appearance controls.** Settings adds background gradients and an optional
+  transparent sidebar, alongside the reorganized appearance controls.
 
 ### Changed
-- **Settings is organized into focused sections.** Navigation is now
-  categorized, making updates, appearance, privacy, maintenance, and game
-  options easier to locate.
-- **Search and confirmation UI are shared across the app.** Search fields,
-  scroll restoration, filtered-result summaries, and confirmation dialogs now
-  behave consistently across their respective surfaces.
-- **Accessibility and keyboard behavior were normalized.** Tab controls are
-  correctly wired to their panels, filtered lists announce their narrowed
-  results, and transient surfaces follow one dismissal contract.
+- **Settings is now organized around focused sections.** Game, Appearance,
+  Preferences, Updates, Privacy, Maintenance, Support, and Experimental
+  settings are easier to find without changing the underlying options.
+- **Shared interaction patterns replace page-by-page variations.** Search
+  fields, clear/reset behavior, filtered-result summaries, scroll restoration,
+  and confirmation dialogs now work consistently across the surfaces that use
+  them. Native browser confirmations have been replaced with Grimoire's own
+  contextual confirmation dialog.
+- **Locker and Foundry navigation is more predictable.** Drill-in sections
+  retain their surrounding shell and their addressable state through links and
+  Back navigation, including legacy Sound Locker URLs and Foundry handoffs.
+- **Accessibility and keyboard behavior have been normalized.** Tab controls
+  are wired to real panels, filtered lists announce their narrowed result
+  count, and modals, popovers, selectors, and import surfaces share one
+  dismissal contract.
 
 ### Fixed
 - **Browse category filters now apply to the local catalog.**
 - **Performance configuration recognizes the broader set of managed ConVar
-  keys** and reports the preset value accurately in HUD rows.
-- **Gradient picker tabs now expose the correct tab semantics.**
+  keys,** reports the selected preset accurately in HUD rows, and no longer
+  retains unused marker parsing.
+- **The Global sounds tab no longer switches to a disconnected page** where the
+  Visuals tab and Locker context disappear.
+- **Gradient-picker tabs expose the correct accessible tab semantics.**
+- **Hero picker Escape handling stays contained** instead of unexpectedly
+  closing its parent surface.
+
+### Release details
+- **Tag and commit:** `v1.26.1`, `18878bb2b4ff7dbb489504299f8273f119d42e9b`
+  (built 2026-07-30).
+- **Artifacts:** Windows setup and portable executables only; the release also
+  includes `SHA256SUMS` and updater metadata. Linux and macOS artifacts are not
+  published for this version.
+- **SHA-256:** `Grimoire-Setup-1.26.1.exe` —
+  `fd1e4dbfc4940a8ef9a45499bfb7c339a91c4500a4586061e3f6de0fcc65b1a6`;
+  `Grimoire-Portable-1.26.1.exe` —
+  `68f6ebae55735f16a5b5c9220e8d2289da7a7640294842ec6e92bc931d0a1aec`.
+- **Known limitation:** the packaged Windows smoke test remains post-release
+  verification, not a blocking gate.
+- **Rollback:** [v1.25.1724](https://github.com/onionviolet/grimoire/releases/tag/v1.25.1724)
+  remains available on GitHub Releases.
 
 ## [1.25.1724] - 2026-07-29
 
