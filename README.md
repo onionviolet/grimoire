@@ -1,7 +1,7 @@
 <div align="center">
  <img width="684" height="214" alt="image" src="https://github.com/user-attachments/assets/fc1917ed-b8a0-4671-ad2c-9389e8b830d9" />
   <h1>Grimoire</h1>
-  <p>A personal Deadlock mod manager and customization workshop.</p>
+  <p>A mod manager for Deadlock, with a personal customization workshop.</p>
 
   [![Website](https://img.shields.io/badge/grimoiremods.com-f97316)](https://grimoiremods.com)
   [![Release](https://img.shields.io/github/v/release/onionviolet/grimoire?label=release)](../../releases/latest)
@@ -15,20 +15,16 @@
 
 > **Personal independent fork.** This is maintained primarily for its author's own Deadlock setup and experimentation, but anyone is welcome to use, inspect, adapt, or contribute to it under the MIT license. It remains built on the work of the original Grimoire project; please support its creator through [GitHub](https://github.com/Slush97/grimoire), [grimoiremods.com](https://grimoiremods.com), or its [Discord community](https://discord.gg/KgYGHEMq2P).
 
-## Project direction
+## About this fork
 
-Grimoire remains a mod manager first: it should make discovering, installing, organizing, updating, and launching Deadlock mods straightforward and safe.
+This fork keeps the upstream mod-manager experience as its foundation, while
+exploring a local, player-focused customization workshop. The aim is to make
+common setup and cosmetic workflows easier to understand, change, recover, and
+share without trying to replace specialist creation tools.
 
-This fork deliberately follows the player workflow beyond installation. Its aim is to be a local customization workshop: a place to personalize a setup, understand mod interactions, make approachable no-code edits, combine them safely, and share the result when useful.
-
-That means new work should normally help players do one or more of the following:
-
-- **Play confidently:** manage mods, profiles, launches, updates, conflicts, and recovery.
-- **Make a setup personal:** use cosmetics, sounds, HUD and performance controls, crosshairs, and launch presets.
-- **Create approachable mods:** make constrained, visual, reversible changes without requiring specialist creator tools.
-- **Understand and share:** preview outcomes, see consequences before applying changes, and exchange profiles or creations.
-
-The goal is not to replace a full SDK, Blender, or specialist asset-authoring software. Features belong here when Grimoire can make a common player customization workflow substantially simpler and safer.
+The upstream project remains the best reference for the core Grimoire
+experience. Fork-specific work is called out below so players can distinguish
+the established baseline from features still being refined here.
 
 ## Install
 
@@ -58,8 +54,7 @@ Requires Deadlock installed via Steam.
 **Mods**
 
 - Browse and install from GameBanana: download queue, automatic ZIP/7Z/RAR extraction, one-click `gb1click://` installs, and collection import by URL
-- Save GameBanana mods without downloading them, then organize, preview, update, import/export, and swap saved mod profiles
-- Enable, disable, reorder, bulk-select, sort, and delete, backed by an offline catalog with full-text search
+- Enable, disable, reorder, bulk-select, and delete, backed by an offline catalog with full-text search
 - Conflict detection for mods that overwrite the same game files
 - Merge several mods into one VPK (and pull individual sources back out)
 - Repair model-mod load order when compatibility requires one mod to win over another
@@ -67,20 +62,17 @@ Requires Deadlock installed via Steam.
 **Play**
 
 - Launch Modded or Launch Vanilla straight from the sidebar. Vanilla temporarily stashes your mods and auto-restores them once the game starts
-- Choose the installed game engine/build that Grimoire should manage
 
 **Locker**
 
 - Organize cosmetic skins per hero with 2D and live 3D pose previews
 - Recolor a hero's ability VFX (solid, gradient, or rainbow)
 - Per-ability sound picker, plus a Global axis for soul containers and other non-hero cosmetics
-- Build visual, hero-sound, and hero-card shuffle pools for launch, including an optional vanilla-model outcome. Card picks preserve the source pack's matching normal, low-HP, gloat, and minimap variants; locally imported and Foundry-forged assets are eligible too
 
 **Autoexec & Profiles**
 
 - Autoexec manager for console commands that run at game launch
 - Save and swap sets of enabled mods, and share them as short `mp1:` codes or `.modprofile.json` files (Grimoire-only format)
-- Advanced `gameinfo.gi` HUD controls and a ChatLane chat-wheel editor
 
 **Experimental** (opt in under Settings)
 
@@ -90,11 +82,20 @@ Requires Deadlock installed via Steam.
 
 Offline-first and no telemetry: a fresh install phones home for nothing.
 
-## Current development status
+## Fork additions and current progress
 
-This fork is under active development and includes newer features that have not yet received broad real-world testing. In particular, saved-mod workflows, engine switching, Foundry/Locker sound features, launch shuffling, chat-wheel editing, and advanced HUD controls may still have rough edges or compatibility issues with particular game builds and mods.
+This fork is actively developing the following player workflows:
 
-Please keep backups of important mod profiles and game configuration files, test changes with a small mod set first, and report reproducible problems through [Issues](../../issues). The detailed release history is in [CHANGELOG.md](CHANGELOG.md).
+- Saved GameBanana mods: save, organize, preview, update, import, export, and swap saved-mod profiles without downloading every mod first
+- Game engine selection for installations with more than one usable engine or build
+- Advanced `gameinfo.gi` HUD controls and a ChatLane chat-wheel editor
+- Locker and Foundry workflows for launch-time visual, hero-sound, and hero-card shuffle pools, including locally imported assets
+
+These additions have not yet had the same breadth of real-world testing as the
+core mod manager. Keep backups of important profiles and game configuration,
+try new workflows with a small mod set first, and report reproducible problems
+through [Issues](../../issues). See [CHANGELOG.md](CHANGELOG.md) for the
+detailed release history.
 
 ## Screenshots
 
