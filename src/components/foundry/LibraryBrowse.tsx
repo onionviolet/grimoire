@@ -12,8 +12,9 @@ import PortraitEditor from './PortraitEditor';
 import TextureGrid from './TextureGrid';
 import TextureLightbox from './TextureLightbox';
 import SearchInput from '../common/SearchInput';
+import { HeroSelect } from '../common/HeroSelect';
 import { filterTextureGridItems, HERO_SCOPE_PREFIX } from './assetSearch';
-import { displayNameForHeroCodename } from '../../lib/heroPortraitIdentity';
+import { buildHeroFilterOptions } from './heroFilterOptions';
 import { prepareVisualStagedEdit, visualAssetInspectionPaths, type VisualStagedEdit } from './visualEdits';
 
 interface LibraryBrowseProps {
@@ -133,22 +134,26 @@ export default function LibraryBrowse({
 
   // Hero dropdown is scoped to the codenames actually present in this category.
   // Labels resolve through the roster first, then the codename alias table, so
-  // `archer` reads as Grey Talon. Whatever is left is genuinely unresolved
-  // (unreleased or internal content) and says so rather than posing as a hero.
-  const presentHeroes = useMemo(() => {
-    const codes = new Set<string>();
-    for (const it of items) if (it.hero) codes.add(it.hero);
-    const resolved: { code: string; name: string }[] = [];
-    const unresolved: { code: string; name: string }[] = [];
-    for (const code of codes) {
-      const name = heroNames.get(code) ?? displayNameForHeroCodename(code);
-      if (name) resolved.push({ code, name });
-      else unresolved.push({ code, name: code });
-    }
-    const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name);
-    return { resolved: resolved.sort(byName), unresolved: unresolved.sort(byName) };
-  }, [items, heroNames]);
-  const hasHeroOptions = presentHeroes.resolved.length + presentHeroes.unresolved.length > 0;
+  // `archer` reads as Grey Talon with `archer` kept underneath. Whatever is left
+  // is genuinely unresolved and says so rather than posing as a hero.
+  const heroOptions = useMemo(
+    () =>
+      buildHeroFilterOptions({
+        codenames: items.flatMap((it) => (it.hero ? [it.hero] : [])),
+        heroNames,
+        scopedHero: hero,
+        scopedHeroName: heroDisplayName,
+        labels: {
+          all: t('foundry.filters.allHeroes', 'All heroes'),
+          scoped: (name) => t('foundry.filters.heroAndShared', '{{hero}} & shared', { hero: name }),
+          unresolved: t('foundry.filters.unreleasedGroup', 'Unreleased or internal'),
+        },
+      }),
+    [items, heroNames, hero, heroDisplayName, t],
+  );
+  // The two constant entries ("All heroes", plus the embedding hero's scope)
+  // are not a reason to show a filter that can only ever say "all".
+  const hasHeroOptions = heroOptions.some((option) => option.value !== 'all');
   const visibleItems = useMemo(
     () => filterTextureGridItems(items, search, heroFilter),
     [items, search, heroFilter],
@@ -178,39 +183,33 @@ export default function LibraryBrowse({
           </select>
         </div>
 
-        {(hasHeroOptions || hero) && (
-          <div className="flex items-center gap-1.5 rounded-sm border border-border bg-bg-tertiary px-2 py-1.5">
-            <Users size={14} className="text-text-secondary" />
-            <select
+        {hasHeroOptions && (
+          <div className="flex items-center gap-1.5">
+            <Users size={14} className="flex-shrink-0 text-text-secondary" aria-hidden="true" />
+            {/* Not a native select: each row carries a hero name over its engine
+                codename, which `<option>` cannot lay out. */}
+            <HeroSelect
               value={heroFilter}
-              onChange={(e) => setHeroFilter(e.target.value)}
-              className="bg-transparent text-sm text-text-primary focus:outline-none"
-            >
-              {hero && (
-                <option value={`${HERO_SCOPE_PREFIX}${hero}`} className="bg-bg-secondary">
-                  {t('foundry.filters.heroAndShared', '{{hero}} & shared', {
-                    hero: heroDisplayName ?? displayNameForHeroCodename(hero) ?? hero,
-                  })}
-                </option>
-              )}
-              <option value="all" className="bg-bg-secondary">
-                {t('foundry.filters.allHeroes', 'All heroes')}
-              </option>
-              {presentHeroes.resolved.map((h) => (
-                <option key={h.code} value={h.code} className="bg-bg-secondary">
-                  {h.name}
-                </option>
-              ))}
-              {presentHeroes.unresolved.length > 0 && (
-                <optgroup label={t('foundry.filters.unreleasedGroup', 'Unreleased or internal')}>
-                  {presentHeroes.unresolved.map((h) => (
-                    <option key={h.code} value={h.code} className="bg-bg-secondary">
-                      {h.name}
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-            </select>
+              options={heroOptions}
+              onChange={setHeroFilter}
+              ariaLabel={t('foundry.filters.heroLabel', 'Filter assets by hero')}
+              placeholder={t('foundry.filters.allHeroes', 'All heroes')}
+              size="sm"
+              className="w-56"
+              search={{
+                ariaLabel: t('foundry.filters.heroSearchLabel', 'Search heroes'),
+                placeholder: t('foundry.filters.heroSearchPlaceholder', 'Hero or codename...'),
+                getEmptyMessage: (query) =>
+                  t('foundry.filters.heroSearchEmpty', 'No hero matches "{{query}}".', { query }),
+                clearLabel: t('foundry.filters.heroSearchClear', 'Clear hero search'),
+                scope: t('foundry.filters.heroSearchScope', 'Searches hero names and engine codenames.'),
+                getResultCount: (visible, total) =>
+                  t('foundry.filters.heroSearchCount', 'Showing {{visible}} of {{total}} heroes', {
+                    visible,
+                    total,
+                  }),
+              }}
+            />
           </div>
         )}
 

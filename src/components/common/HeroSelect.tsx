@@ -7,6 +7,13 @@ import ResultSummary from './ResultSummary';
 export interface HeroSelectOption {
   value: string;
   label: string;
+  /**
+   * Secondary identity for the same option, rendered under the label in a
+   * smaller muted type: the engine codename behind a hero name, or why an
+   * option has no hero name at all. It is real identity, not decoration, so
+   * search matches it too (typing `archer` has to find Grey Talon).
+   */
+  hint?: string;
   heroName?: string;
   muted?: boolean;
 }
@@ -86,7 +93,7 @@ export function HeroSelect({
     if (!search || !normalizedSearchQuery) return options;
 
     return options.filter((option) =>
-      option.label.toLocaleLowerCase().includes(normalizedSearchQuery)
+      `${option.label} ${option.hint ?? ''}`.toLocaleLowerCase().includes(normalizedSearchQuery)
     );
   }, [normalizedSearchQuery, options, search]);
   const selectedIndex = useMemo(
@@ -362,6 +369,13 @@ export function HeroSelect({
           <span className={`min-w-0 flex-1 text-left truncate ${selected?.muted ? 'text-text-secondary' : ''}`}>
             {selected?.label ?? placeholder}
           </span>
+          {/* The trigger is one line tall, so the hint sits beside the label
+              here rather than under it. Shrinks away first when space runs out. */}
+          {selected?.hint && (
+            <span className="min-w-0 shrink truncate text-[10px] text-text-tertiary">
+              {selected.hint}
+            </span>
+          )}
         </span>
         <ChevronDown className="h-4 w-4 flex-shrink-0 text-text-secondary" aria-hidden="true" />
       </button>
@@ -443,7 +457,7 @@ export function HeroSelect({
                     selectOption(option.value);
                   }}
                   onKeyDown={(event) => handleOptionKeyDown(event, option.value, index)}
-                  className={`w-full h-8 px-2.5 flex items-center gap-2 text-left text-xs cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/80 ${
+                  className={`w-full min-h-8 py-1 px-2.5 flex items-center gap-2 text-left text-xs cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/80 ${
                     active
                       ? 'bg-accent text-bg-primary'
                       : option.muted
@@ -453,7 +467,17 @@ export function HeroSelect({
                 >
                   <span className="flex min-w-0 flex-1 items-center gap-2">
                     <HeroIcon heroName={option.heroName} />
-                    <span className="min-w-0 flex-1 truncate">{option.label}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate">{option.label}</span>
+                      {/* The name people know on top, the name the game files
+                          use underneath. Inherits the selected row's colour so
+                          it stays legible on the accent fill. */}
+                      {option.hint && (
+                        <span className={`block truncate text-[10px] leading-tight ${active ? 'opacity-80' : 'text-text-tertiary'}`}>
+                          {option.hint}
+                        </span>
+                      )}
+                    </span>
                   </span>
                 </button>
               );
