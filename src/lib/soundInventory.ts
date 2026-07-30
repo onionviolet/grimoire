@@ -153,15 +153,35 @@ const PATH_RULES: ReadonlyArray<readonly [RegExp, SoundCategory]> = [
 ];
 
 /**
+ * Reviewed exceptions, keyed on evidence the rules genuinely cannot read.
+ *
+ * Deliberately empty right now: every case in the installed corpus is handled
+ * by a rule, and an override table that starts full is a rule set that gave up
+ * early. It exists so the next unreadable case has an honest home instead of
+ * becoming a special case bolted into `classifySoundToken`, where it would look
+ * like a general rule and quietly mis-file everything that resembles it.
+ *
+ * Two conditions for adding an entry: the key must be an exact normalized entry
+ * path or soundevent name (never a download title, which the author controls),
+ * and the reason must be written down. If two entries want the same reason, that
+ * is a rule, not an override.
+ */
+const CLASSIFICATION_OVERRIDES: ReadonlyMap<string, { category: SoundCategory; reason: string }> =
+    new Map<string, { category: SoundCategory; reason: string }>();
+
+/**
  * Category of a single recorded clip path or soundevent name.
  *
- * Two tiers, in this order: where the file lives, then what it is called. A
- * token that reads as nothing concrete returns `unclassified` rather than a
- * vague bucket, because "we could not tell" is a fact worth showing and a
- * wrong category files a mod under a heading it has nothing to do with.
+ * Three tiers, in this order: a reviewed override, where the file lives, then
+ * what it is called. A token that reads as nothing concrete returns
+ * `unclassified` rather than a vague bucket, because "we could not tell" is a
+ * fact worth showing and a wrong category files a mod under a heading it has
+ * nothing to do with.
  */
 export function classifySoundToken(token: string): SoundCategory {
     const value = token.replace(/\\/g, '/').toLowerCase();
+    const override = CLASSIFICATION_OVERRIDES.get(value);
+    if (override) return override.category;
     for (const [pattern, category] of PATH_RULES) {
         if (pattern.test(value)) return category;
     }
