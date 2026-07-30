@@ -440,6 +440,69 @@ A0's double-counting evidence (S1, S4) strengthens the merge case: the two
 surfaces are already failing to agree on one inventory, so keeping them apart
 is not buying separation, only inconsistency.
 
+### A2d-decision. Shared hero shell. Decided 2026-07-30.
+
+**The decision: option 2, the shared hero shell. Not a full merge, and not the
+hard split.** Locker and Foundry keep their routes, their stores, and their
+roles; they converge on one hero shell, one hero identity, and one family view
+model.
+
+**What settled it is that the shell already exists and is already shared.**
+[HeroDetailFrame](src/components/common/HeroDetailFrame.tsx) is a fork-only
+component taking a `surface` prop, and both hero surfaces already render through
+it: [LockerHero.tsx](src/pages/LockerHero.tsx) with `surface="locker"` and
+[HeroWorkshop.tsx](src/components/foundry/HeroWorkshop.tsx) with
+`surface="foundry"`. Both get the same full-bleed backdrop, frosted rail, and
+section nav. So the prototype the plan wanted built was already in the tree, and
+scoring three options against a hypothetical was scoring the wrong thing: option
+1 is what we would be *undoing*, and option 3's cost is real while its benefit is
+already collected by the shell.
+
+The two surfaces are also already sharing components across the boundary in the
+direction the merge would formalise: `HeroCardPicker` (Locker) imports
+`portraitFamily`, `AssetSourcesPanel`, `ChangePools`, and `changeList` from
+Foundry. The boundary that matters is therefore not the file tree, it is state
+authority, and that boundary is worth keeping:
+
+- **Locker owns installed state**: enabled, priority, winner, delete.
+- **Foundry owns authoring state**: staged, cropped, built.
+
+A full merge would put both in one component and, on this codebase's evidence
+(S1, S4: two derivations of one inventory already disagree), produce a third
+place where they disagree. Nothing in A0 argues for merging the *stores*; it
+argues for merging the *derivations*, which is S1's asset-claims index and does
+not require merging any UI.
+
+**What this decision commits Pass E to, and what it forbids.**
+
+Committed:
+
+1. One portrait-family view model consumed by both surfaces (names, aliases,
+   variants, base preview, source state). `portraitFamily.ts` is already
+   fork-only and shared across the boundary, so it is the seam.
+2. One hero identity resolver (S5), now started: `heroPortraitIdentity.ts` gained
+   the reverse lookup and codename scope this pass, and the remaining tables
+   (`heroSoundCodenames`, `heroPortraits`, `heroPoseModels`) fold into it.
+3. Deep links both ways, so the shell is a journey and not two dead ends:
+   Locker's family card offers **Create replacement in Foundry** with the hero
+   and family, and Foundry's My changes already links back to the Locker.
+4. The Stage 2 selected-row `Sources & winner` summary, reused rather than
+   reimplemented per surface.
+
+Forbidden:
+
+- Deleting either route, or moving the Foundry catalog into the Locker.
+- A component that both toggles a mod and stages an edit.
+- Any new derivation of "who claims this path". One index, consumed twice.
+
+**Exit criteria, honestly reported.** The decision record and the architecture
+choice are done. The screenshot matrix for stock/installed/empty portrait states
+is **not** captured: what was verified live is that the empty case no longer
+reproduces on any hero checked (Abrams, Wraith, Venator, Mina, Drifter, Paige all
+resolve families), which removes the defect that motivated the matrix but does
+not replace the artifact. Capture it at the start of Pass E, when there is a
+gallery to photograph.
+
 ### A3. Keep Foundry's data-mining role explicit
 
 Foundry should continue to expose the installed game's catalog, including
@@ -911,14 +974,22 @@ time.
    variant strips), one surface per session, each ending with the Stage 4
    audit checklist.
 
-Pass A is now mostly done: the A0 live findings are recorded, the packaged-build
-interface path (A0b) is established, the portrait-history question is answered,
-the encoding fix and its CI guard shipped, the 20:04 portrait reveal landed, and
-A2b-done lists the fixes that landed on 2026-07-30 (hero-scoped icon embed with
-derived attribution, resolved hero-codename labels, non-empty default category).
-What remains in Pass A is the git diff work (A1b), the two remaining A2b fixes
-(**catalog diagnostics**, which A2c now depends on, and original filenames for
-uploads), and the prototype scoring (A2d).
+**Pass A is complete as of 2026-07-30.** The A0 live findings are recorded, the
+packaged-build interface path (A0b) is established, the portrait-history question
+is answered, the encoding fix and its CI guard shipped, the 20:04 portrait reveal
+landed, the upstream boundary map is checked in at
+[upstream-boundary-map.md](./upstream-boundary-map.md) (A1b), every A2b fix is in
+(hero-scoped icon embed with derived attribution, resolved hero-codename labels,
+non-empty default category, catalog diagnostics, original filenames for uploads),
+A2c is closed, and A2d has a decision: **the shared hero shell**.
+
+One A1b item was dropped deliberately: the fork-internal archaeology of the
+July 29 portrait styling. Stage 3 already established from session history that
+there is no earlier design to restore, so diffing for it would be looking for
+something known not to exist.
+
+Pass B is next, and the taxonomy evidence it needs is now readable from the UI
+(see the known-issue section at the top).
 
 Each pass should also name which structural cause (S1-S9) it advances, so the
 work stays aimed at the cause rather than the screenshot.
