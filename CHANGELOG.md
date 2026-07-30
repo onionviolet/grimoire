@@ -8,12 +8,27 @@ This fork release absorbs upstream v1.26.0 and brings the current Locker,
 performance, settings, and cross-app usability pass together. It is a
 Windows-only release.
 
+### Attribution
+- **Upstream v1.26.0:** [release](https://github.com/Slush97/grimoire/releases/tag/v1.26.0),
+  [six-preset system](https://github.com/Slush97/grimoire/commit/8d3655f6cbbaf0c86d78c4f5b2742223a41a95f0),
+  [settings navigation](https://github.com/Slush97/grimoire/commit/60e36deeef3a1f1f72f99d8c92b0a9db64a7ed12),
+  [hero typeahead](https://github.com/Slush97/grimoire/commit/56f4bd8a6ffd09099224156590c4cd8254f67272),
+  and [local-catalog filtering](https://github.com/Slush97/grimoire/commit/27ad7f8902b6073434128141c7329aaa78c13d77).
+- **Fork additions and integration:** [Sound Locker foundation](https://github.com/onionviolet/grimoire/commit/0fbef5b448801ed2b6c13df214d3c9dbfd4cfa7e),
+  [Global sounds as a Locker panel](https://github.com/onionviolet/grimoire/commit/2b9bdeb7cfa9d8025f1525efe6d380afa7a4aa9b),
+  [remembered UI state](https://github.com/onionviolet/grimoire/commit/d66f4d7d715717e1bcfeb65b7777fea7029d5572),
+  [shared confirmation flow](https://github.com/onionviolet/grimoire/commit/b61ed27418b4a10e3abfce5e182530472dc3f454),
+  [dismissal/accessibility pass](https://github.com/onionviolet/grimoire/commit/53a077343274f6937b05b8f498ae120b8e0b18d5),
+  and [appearance controls](https://github.com/onionviolet/grimoire/commit/7910fd08f27986349a5568cabc8c425ba390f27f).
+
 ### Added
 - **Six curated, selectable performance presets.** Choose a balanced,
   preview, aggressive, minimum-spec, competitive, or maximum configuration
   derived from pinned Sqooky and OptiLock upstream revisions. Presets patch
   only their managed game settings, preserve Grimoire's mod search paths, and
-  can be removed back to the recorded stock values.
+  can be removed back to the recorded stock values. The fork layers its
+  [staged controls and per-value origin view](https://github.com/onionviolet/grimoire/commit/073e742088e10c5cf3d52742e5005055d2e6bb9d)
+  on that upstream base.
 - **Performance controls that explain their state.** The card exposes
   per-preset opt-ins plus HUD and advanced console controls, shows whether a
   value comes from the selected preset or a user override, and keeps staged
@@ -24,8 +39,8 @@ Windows-only release.
   navigation, category rail, return paths, audition controls, provenance,
   annotations, enabled state, and Foundry handoff intact.
 - **Keyboard-first hero selection in Locker.** Type a hero name to jump to a
-  matching hero; Escape dismisses the picker without escaping the surrounding
-  surface.
+  matching hero; the upstream picker is paired with the fork's
+  [contained Escape behavior](https://github.com/onionviolet/grimoire/commit/98b709525232cc3d48ba12ff7671fba9556f414b).
 - **Remembered browsing state.** View preferences and scroll positions persist
   in Browse, Installed, Locker, Foundry, and related browsing views.
 - **Appearance controls.** Settings adds background gradients and an optional
@@ -52,10 +67,12 @@ Windows-only release.
 - **Browse category filters now apply to the local catalog.**
 - **Performance configuration recognizes the broader set of managed ConVar
   keys,** reports the selected preset accurately in HUD rows, and no longer
-  retains unused marker parsing.
+  retains unused marker parsing; see the fork's
+  [managed-key fix](https://github.com/onionviolet/grimoire/commit/dc24447c9ebea8cca410be959dae07dd14877919).
 - **The Global sounds tab no longer switches to a disconnected page** where the
   Visuals tab and Locker context disappear.
-- **Gradient-picker tabs expose the correct accessible tab semantics.**
+- **Gradient-picker tabs expose the correct accessible tab semantics** via the
+  fork's [tab wiring fix](https://github.com/onionviolet/grimoire/commit/35885a844441d037e90cb3f3db429a66f3aea572).
 - **Hero picker Escape handling stays contained** instead of unexpectedly
   closing its parent surface.
 
