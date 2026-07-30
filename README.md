@@ -83,14 +83,9 @@ Requires Deadlock installed via Steam.
 Offline-first and no telemetry: a fresh install phones home for nothing.
 
 ## Fork additions and current progress
-
-This fork is actively developing the following player workflows:
-
-- Saved GameBanana mods: save, organize, preview, update, import, export, and swap saved-mod profiles without downloading every mod first
-- Game engine selection for installations with more than one usable engine or build
 - Advanced `gameinfo.gi` HUD controls and a ChatLane chat-wheel editor
 - Locker and Foundry workflows for launch-time visual, hero-sound, and hero-card shuffle pools, including locally imported assets
-
+- Cool features if I find any :D
 These additions have not yet had the same breadth of real-world testing as the
 core mod manager. Keep backups of important profiles and game configuration,
 try new workflows with a small mod set first, and report reproducible problems
