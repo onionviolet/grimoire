@@ -13,7 +13,7 @@ export interface PortraitHeroIdentity {
   panoramaCodenames: readonly string[];
 }
 
-interface PortraitHeroDefinition extends PortraitHeroIdentity {
+export interface PortraitHeroDefinition extends PortraitHeroIdentity {
   /** Roster codenames accepted in addition to the display label. */
   rosterCodenames?: readonly string[];
   displayAliases?: readonly string[];
@@ -21,7 +21,11 @@ interface PortraitHeroDefinition extends PortraitHeroIdentity {
 
 // `class_name` values from the hero roster. The aliases are old panorama
 // folders still used by community packs, not sound codenames.
-const HEROES: readonly PortraitHeroDefinition[] = [
+/**
+ * The single portrait-namespace mapping. Keep this exported so lookup-path
+ * tests can exercise every alias rather than preserving one hand-picked hero.
+ */
+export const portraitHeroDefinitions: readonly PortraitHeroDefinition[] = [
   { displayName: 'Abrams', rosterCodenames: ['abrams'], panoramaCodenames: ['atlas', 'bull'] },
   { displayName: 'Apollo', panoramaCodenames: ['fencer'] },
   { displayName: 'Bebop', panoramaCodenames: ['bebop'] },
@@ -67,7 +71,7 @@ function key(value: string): string {
 }
 
 const byKnownName = new Map<string, PortraitHeroDefinition>();
-for (const hero of HEROES) {
+for (const hero of portraitHeroDefinitions) {
   for (const name of [hero.displayName, ...(hero.displayAliases ?? []), ...(hero.rosterCodenames ?? [])]) {
     byKnownName.set(key(name), hero);
   }
@@ -77,7 +81,7 @@ for (const hero of HEROES) {
 // catalogs are keyed on engine codenames (`archer`, `punkgoat`), so any surface
 // that shows one to a user needs this or it prints a codename as a hero name.
 const byAnyCodename = new Map<string, PortraitHeroDefinition>();
-for (const hero of HEROES) {
+for (const hero of portraitHeroDefinitions) {
   for (const code of [...(hero.rosterCodenames ?? []), ...hero.panoramaCodenames]) {
     byAnyCodename.set(key(code), hero);
   }
