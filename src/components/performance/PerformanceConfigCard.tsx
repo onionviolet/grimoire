@@ -41,10 +41,13 @@ const SQOOKY_ARTIST: BrowseArtistRef = {
 // it is not always 'true': some of these are inverted (the offscreen indicator
 // ConVar is a *disable* flag) or tri-state. `off` is carried too now that
 // edits are staged: the pending row has to name the exact value that will be
-// written. Both mirror HUD_CONVARS in performanceConfigData.ts, which the main
-// process validates against.
+// written. This list must stay a full mirror of HUD_CONVARS in
+// performanceConfigData.ts, which the main process validates against: a key
+// the main process supports but this list omits gets a computed state that
+// nothing ever draws, so the preset can move it with no row to say so.
 const HUD_CONTROLS = [
   { key: 'citadel_unit_status_use_v2', on: 'true', off: 'false' },
+  { key: 'citadel_unit_status_use_new', on: 'true', off: 'false' },
   { key: 'citadel_unit_status_use_v2_for_nonplayers', on: 'true', off: 'false' },
   { key: 'citadel_unit_status_single_bar_mode', on: 'true', off: 'false' },
   { key: 'citadel_unit_status_allies_see_thru_walls', on: 'true', off: 'false' },
@@ -81,6 +84,22 @@ const VALUE_STATE_SLUG: Record<PerformanceConvarOrigin, string> = {
   'user-override': 'userOverride',
   unsupported: 'unsupported',
 };
+
+/** The FPS preset writes a value for several of these keys, so the toggle is
+ *  not the only writer. The origin badge says where the *current* value came
+ *  from; this says which way the preset leans, which is what tells the user
+ *  whether resetting the row lands back on the preset's opinion or on the
+ *  game's own. Returns null for keys the preset has no opinion on. */
+function presetNote(
+  control: { on: string; off: string },
+  presetValue: string | null | undefined,
+  t: TFunction
+): string | null {
+  if (presetValue === null || presetValue === undefined) return null;
+  if (presetValue === control.on) return t('performance.hud.presetNote.on');
+  if (presetValue === control.off) return t('performance.hud.presetNote.off');
+  return t('performance.hud.presetNote.value', { value: presetValue });
+}
 
 function controlLabel(key: string, t: TFunction): string {
   return HUD_CONTROLS.some((control) => control.key === key)
@@ -559,6 +578,7 @@ export default function PerformanceConfigCard() {
                   : fileValue;
                 const checked = effective === control.on;
                 const unsupported = state?.origin === 'unsupported' && !edit;
+                const note = presetNote(control, state?.presetValue, t);
                 return (
                   <div key={control.key} className="flex items-start gap-2">
                     <Toggle
@@ -573,9 +593,16 @@ export default function PerformanceConfigCard() {
                       disabled={busy || !status || unsupported}
                       label={t(`performance.hud.controls.${control.key}.label`)}
                       description={
-                        unsupported
-                          ? t('performance.valueStateHint.unsupported')
-                          : t(`performance.hud.controls.${control.key}.description`)
+                        unsupported ? (
+                          t('performance.valueStateHint.unsupported')
+                        ) : (
+                          <>
+                            {t(`performance.hud.controls.${control.key}.description`)}
+                            {note && (
+                              <span className="mt-1 block text-text-secondary/70">{note}</span>
+                            )}
+                          </>
+                        )
                       }
                     />
                     {state && (
