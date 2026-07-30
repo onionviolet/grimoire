@@ -28,6 +28,12 @@ import type {
 
 interface AssetSourcesPanelProps {
   paths: string[];
+  /** A selected-row inspection may already be in flight or cached. Receiving it
+   * here keeps opening the disclosure from starting a second VPK scan. */
+  inspection?: FoundryAssetSourcesInspection | null;
+  inspectionLoading?: boolean;
+  inspectionError?: string | null;
+  onRefreshInspection?: () => void;
   /** Optional surface labels for exact paths, for example portrait variants. */
   pathLabels?: Readonly<Record<string, string>>;
   /** Offered when the caller can mint a replacement for these exact paths (the
@@ -72,6 +78,10 @@ const TOKEN_SEPARATOR = '\n';
  */
 export default function AssetSourcesPanel({
   paths,
+  inspection,
+  inspectionLoading,
+  inspectionError,
+  onRefreshInspection,
   pathLabels,
   onCreateReplacement,
   poolTargets,
@@ -90,6 +100,10 @@ export default function AssetSourcesPanel({
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const inspect = useCallback(async () => {
+    if (onRefreshInspection) {
+      onRefreshInspection();
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -100,11 +114,15 @@ export default function AssetSourcesPanel({
     } finally {
       setLoading(false);
     }
-  }, [paths]);
+  }, [paths, onRefreshInspection]);
+
+  const displayedResult = inspection === undefined ? result : inspection;
+  const displayedLoading = inspectionLoading ?? loading;
+  const displayedError = inspectionError ?? error;
 
   // An unreadable VPK makes the ownership picture incomplete, but not every
   // action depends on the missing part. See `sourceGating.ts` for the split.
-  const gating = useMemo(() => computeSourceGating(result), [result]);
+  const gating = useMemo(() => computeSourceGating(displayedResult), [displayedResult]);
   const replacementBlockReason = gating.replacementBlocked
     ? t('sourceBlocking.replacementBlocked')
     : null;
@@ -157,12 +175,12 @@ export default function AssetSourcesPanel({
   }, [toggleMod, inspect, t]);
 
   const winnerNames = useMemo(() => {
-    if (!result) return [];
-    return Object.entries(result.winners).map(([path, modId]) => ({
+    if (!displayedResult) return [];
+    return Object.entries(displayedResult.winners).map(([path, modId]) => ({
       path,
-      name: modId ? result.sources.find((source) => source.modId === modId)?.modName ?? modId : null,
+      name: modId ? displayedResult.sources.find((source) => source.modId === modId)?.modName ?? modId : null,
     }));
-  }, [result]);
+  }, [displayedResult]);
 
   return (
     <div className="mt-1 border-t border-border/60 pt-1.5">
@@ -170,21 +188,21 @@ export default function AssetSourcesPanel({
         <button
           type="button"
           onClick={() => void inspect()}
-          disabled={loading}
+          disabled={displayedLoading}
           className="flex flex-1 items-center justify-center gap-1 rounded-sm px-1.5 py-1 text-[11px] text-text-secondary hover:bg-bg-tertiary hover:text-text-primary disabled:opacity-60"
           title={t('foundry.sources.inspectHint')}
         >
-          {loading ? <Loader2 size={12} className="animate-spin" /> : result ? <RefreshCw size={12} /> : <Search size={12} />}
-          {result ? t('foundry.sources.reinspect') : t('foundry.sources.inspect')}
+          {displayedLoading ? <Loader2 size={12} className="animate-spin" /> : displayedResult ? <RefreshCw size={12} /> : <Search size={12} />}
+          {displayedResult ? t('foundry.sources.reinspect') : t('foundry.sources.inspect')}
         </button>
       </div>
-      {loading && (
+      {displayedLoading && (
         <p className="mt-1 flex items-center gap-1 text-[10px] text-text-secondary" aria-live="polite">
           {t('foundry.sources.inspecting', 'Inspecting installed sources; actions will be available when this finishes.')}
         </p>
       )}
-      {error && <p className="mt-1 text-[10px] text-danger">{error}</p>}
-      {result && (
+      {displayedError && <p className="mt-1 text-[10px] text-danger">{displayedError}</p>}
+      {displayedResult && (
         <div className="mt-1 space-y-1 text-[10px] text-text-secondary">
           {winnerNames.map(({ path, name }) =>
             name ? (
@@ -255,10 +273,10 @@ export default function AssetSourcesPanel({
               )}
             </div>
           )}
-          {result.sources.length === 0 ? (
+          {displayedResult.sources.length === 0 ? (
             <p>{t('foundry.sources.none')}</p>
           ) : (
-            result.sources.map((source) => (
+            displayedResult.sources.map((source) => (
               <div key={source.modId} className="rounded-sm bg-bg-tertiary px-1.5 py-1">
                 <div className="flex gap-1">
                   <span className={source.enabled ? 'text-accent' : 'text-text-secondary'}>

@@ -27,6 +27,7 @@ import { EmptyState } from '../common/PageComponents';
 import Tx from '../translation/Tx';
 import { SoundImportEditor, type SoundImportEdits } from './SoundImportEditor';
 import AssetSourcesPanel from './AssetSourcesPanel';
+import { useAssetSourceInspection } from './assetSourceInspection';
 import { useClipPlayer, type ClipPlayer, type RowState } from './useClipPlayer';
 import { resolveForgeAudioPath } from './resolveForgeAudio';
 import { planSoundPool, type PoolAudio, type SoundPoolMode } from './soundPoolPlan';
@@ -39,6 +40,7 @@ import {
     foundryVoiceclipFile,
     getHeroAbilitySlots,
     foundrySoundAnnotations,
+    foundryInspectAssetSources,
     foundrySoundAnnotationKey,
     saveFoundrySoundAnnotation,
 } from '../../lib/api';
@@ -134,6 +136,7 @@ export default function SoundBrowse({ heroes, heroNames, only, onStage }: SoundB
     const [search, setSearch] = useState('');
     const [annotationsVisible, setAnnotationsVisible] = useState(false);
     const [annotatedOnly, setAnnotatedOnly] = useState(false);
+    const [selectedRow, setSelectedRow] = useState<string | null>(null);
     const hero = picked || heroOptions[0]?.code || '';
     const heroName = heroOptions.find((h) => h.code === hero)?.name ?? hero;
     const swapContext = useMemo<SwapContext>(() => ({ hero, heroName }), [hero, heroName]);
@@ -232,7 +235,7 @@ export default function SoundBrowse({ heroes, heroNames, only, onStage }: SoundB
                     <Users size={14} className="text-text-secondary" />
                     <select
                         value={hero}
-                        onChange={(e) => setPicked(e.target.value)}
+                        onChange={(e) => { setPicked(e.target.value); setSelectedRow(null); }}
                         className="bg-transparent text-sm text-text-primary focus:outline-none"
                     >
                         {heroOptions.map((h) => (
@@ -250,15 +253,15 @@ export default function SoundBrowse({ heroes, heroNames, only, onStage }: SoundB
                     />
                     <input
                         value={search}
-                        onChange={(e) => setSearch(e.target.value)}
+                        onChange={(e) => { setSearch(e.target.value); setSelectedRow(null); }}
                         placeholder={t('foundry.sound.searchPlaceholder', 'Search sounds...')}
                         className="w-full rounded-sm border border-border bg-bg-tertiary py-2 pl-9 pr-3 text-sm text-text-primary placeholder:text-text-secondary/60 focus:border-accent/50 focus:outline-none"
                     />
                 </div>
-                <button type="button" aria-pressed={annotationsVisible} onClick={() => { setAnnotationsVisible((value) => !value); setAnnotatedOnly(false); }} className={`flex items-center gap-1.5 rounded-sm border px-3 py-2 text-sm ${annotationsVisible ? 'border-accent bg-accent/15 text-accent' : 'border-border text-text-secondary'}`}>
+                <button type="button" aria-pressed={annotationsVisible} onClick={() => { setAnnotationsVisible((value) => !value); setAnnotatedOnly(false); setSelectedRow(null); }} className={`flex items-center gap-1.5 rounded-sm border px-3 py-2 text-sm ${annotationsVisible ? 'border-accent bg-accent/15 text-accent' : 'border-border text-text-secondary'}`}>
                     <Pencil size={14} /> {t('foundry.sound.annotate')}
                 </button>
-                {annotationsVisible && <button type="button" aria-pressed={annotatedOnly} onClick={() => setAnnotatedOnly((value) => !value)} className={`rounded-sm border px-3 py-2 text-sm ${annotatedOnly ? 'border-accent bg-accent/15 text-accent' : 'border-border text-text-secondary'}`}>
+                {annotationsVisible && <button type="button" aria-pressed={annotatedOnly} onClick={() => { setAnnotatedOnly((value) => !value); setSelectedRow(null); }} className={`rounded-sm border px-3 py-2 text-sm ${annotatedOnly ? 'border-accent bg-accent/15 text-accent' : 'border-border text-text-secondary'}`}>
                     {t('foundry.sound.annotatedOnly')}
                 </button>}
             </div>
@@ -316,6 +319,8 @@ export default function SoundBrowse({ heroes, heroNames, only, onStage }: SoundB
                                         onSaveAnnotation={saveAnnotation}
                                         annotationsVisible={annotationsVisible}
                                         onStage={onStage}
+                                        selectedRow={selectedRow}
+                                        onSelectRow={setSelectedRow}
                                     />
                                 ))}
                             </>
@@ -335,6 +340,8 @@ export default function SoundBrowse({ heroes, heroNames, only, onStage }: SoundB
                     onSaveAnnotation={saveAnnotation}
                     annotationsVisible={annotationsVisible}
                     onStage={onStage}
+                    selectedRow={selectedRow}
+                    onSelectRow={setSelectedRow}
                 />
             )}
         </>
@@ -438,6 +445,8 @@ function CategorySection({
     onSaveAnnotation,
     annotationsVisible,
     onStage,
+    selectedRow,
+    onSelectRow,
 }: {
     section: CategorySectionData;
     player: ClipPlayer;
@@ -447,6 +456,8 @@ function CategorySection({
     onSaveAnnotation: (key: string, name: string, note: string, tags: string[]) => Promise<void>;
     annotationsVisible: boolean;
     onStage?: (edit: FoundryStagedSoundEdit) => void;
+    selectedRow: string | null;
+    onSelectRow: (key: string) => void;
 }) {
     const { t } = useTranslation();
     const Icon = CATEGORY_ICON[section.category];
@@ -504,6 +515,8 @@ function CategorySection({
                                 onSaveAnnotation={onSaveAnnotation}
                                 annotationsVisible={annotationsVisible}
                                 onStage={onStage}
+                                selected={selectedRow === `gameplay:${row.event}`}
+                                onSelect={() => onSelectRow(`gameplay:${row.event}`)}
                             />
                         ))}
                     </div>
@@ -539,6 +552,8 @@ function VoiceLinesSection({
     onSaveAnnotation,
     annotationsVisible,
     onStage,
+    selectedRow,
+    onSelectRow,
 }: {
     hero: string;
     search: string;
@@ -552,6 +567,8 @@ function VoiceLinesSection({
     onSaveAnnotation: (key: string, name: string, note: string, tags: string[]) => Promise<void>;
     annotationsVisible: boolean;
     onStage?: (edit: FoundryStagedSoundEdit) => void;
+    selectedRow: string | null;
+    onSelectRow: (key: string) => void;
 }) {
     const { t } = useTranslation();
     const [open, setOpen] = useState(standalone);
@@ -656,6 +673,8 @@ function VoiceLinesSection({
                                     onSaveAnnotation={onSaveAnnotation}
                                     annotationsVisible={annotationsVisible}
                                     onStage={onStage}
+                                    selected={selectedRow === `voice:${line.event}`}
+                                    onSelect={() => onSelectRow(`voice:${line.event}`)}
                                 />
                             ))}
                             {visible.length > VO_ROW_CAP && (
@@ -710,9 +729,11 @@ interface SoundRowProps {
     /** Keeps personal note controls out of the normal browse flow. */
     annotationsVisible?: boolean;
     onStage?: (edit: FoundryStagedSoundEdit) => void;
+    selected?: boolean;
+    onSelect?: () => void;
 }
 
-export function SoundRow({ label, event, clips, duration, state, onToggle, poolIndex = 0, swap, targetClip, clipPaths, sourceClipPaths, eventSourcePath, description, clipName, annotationKey, annotation, onSaveAnnotation, annotationsVisible = false, onStage }: SoundRowProps) {
+export function SoundRow({ label, event, clips, duration, state, onToggle, poolIndex = 0, swap, targetClip, clipPaths, sourceClipPaths, eventSourcePath, description, clipName, annotationKey, annotation, onSaveAnnotation, annotationsVisible = false, onStage, selected = false, onSelect }: SoundRowProps) {
     const { t } = useTranslation();
     const [swapOpen, setSwapOpen] = useState(false);
     // Lifted out of SwapPanel so the sources panel can add or remove a shuffle
@@ -767,6 +788,12 @@ export function SoundRow({ label, event, clips, duration, state, onToggle, poolI
         if (eventSourcePath ?? swap?.soundeventsEntry) paths.push(eventSourcePath ?? swap!.soundeventsEntry!);
         return [...new Set(paths)];
     }, [rowClipPaths, eventSourcePath, swap]);
+    const sourceInspection = useAssetSourceInspection(sourcePaths, selected && sourcePaths.length > 0, foundryInspectAssetSources);
+    const winners = useMemo(() => {
+        if (!sourceInspection.result) return [];
+        return [...new Set(Object.values(sourceInspection.result.winners).filter((id): id is string => !!id))]
+            .map((id) => sourceInspection.result!.sources.find((source) => source.modId === id) ?? { modId: id, modName: id, enabled: false });
+    }, [sourceInspection.result]);
     // Randomizer pool: name which clip the next press auditions, so repeated
     // presses read as walking the pool rather than as a stuck button.
     const poolNote =
@@ -778,7 +805,7 @@ export function SoundRow({ label, event, clips, duration, state, onToggle, poolI
               })}`
             : '';
     return (
-        <div style={{ contentVisibility: 'auto', containIntrinsicSize: '0 44px' }}>
+        <div onClick={onSelect} style={{ contentVisibility: 'auto', containIntrinsicSize: '0 44px' }}>
             <div className="flex items-center gap-3 rounded-sm border border-border bg-bg-secondary px-3 py-2">
                 <button
                     type="button"
@@ -877,6 +904,20 @@ export function SoundRow({ label, event, clips, duration, state, onToggle, poolI
                     </button>
                 )}
             </div>
+            {selected && sourcePaths.length > 0 && (
+                <div className="mt-1 rounded-sm border border-border/60 bg-bg-tertiary/40 px-3 py-1.5 text-[11px] text-text-secondary" aria-live="polite">
+                    {sourceInspection.loading ? (
+                        <span className="flex items-center gap-1"><Loader2 size={11} className="animate-spin" />{t('foundry.sources.checking', 'Checking installed replacements…')}</span>
+                    ) : sourceInspection.error ? (
+                        <span className="text-danger">{sourceInspection.error}</span>
+                    ) : sourceInspection.result ? (
+                        <>
+                            {sourceInspection.result.unreadableMods.length > 0 && <p className="text-amber-300">{t('foundry.sources.incompleteSummary', 'Installed-source inspection is incomplete.')}</p>}
+                            <p>{winners.length ? t('foundry.sources.winner', { name: winners.map((source) => `${source.modName} (${source.enabled ? t('foundry.sources.enabled') : t('foundry.sources.disabled')})`).join(', ') }) : t('foundry.sources.stock', 'Stock')}</p>
+                        </>
+                    ) : null}
+                </div>
+            )}
             {swap && swapOpen && (
                 <SwapPanel
                     hero={swap.hero}
@@ -897,6 +938,10 @@ export function SoundRow({ label, event, clips, duration, state, onToggle, poolI
             {sourcesOpen && (
                 <AssetSourcesPanel
                     paths={sourcePaths}
+                    inspection={sourceInspection.result}
+                    inspectionLoading={sourceInspection.loading}
+                    inspectionError={sourceInspection.error}
+                    onRefreshInspection={sourceInspection.refresh}
                     // Creating a replacement is exactly the swap flow: it mints a
                     // new managed mod. Nothing here edits the inspected VPK.
                     onCreateReplacement={swap ? () => { setSwapOpen(true); setSourcesOpen(false); } : undefined}

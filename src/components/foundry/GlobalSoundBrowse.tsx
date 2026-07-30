@@ -100,6 +100,7 @@ export default function GlobalSoundBrowse({ onStage }: { onStage?: (edit: Foundr
     const [category, setCategory] = useState<GlobalSoundCategory | 'all'>('all');
     const [annotationsVisible, setAnnotationsVisible] = useState(false);
     const [annotatedOnly, setAnnotatedOnly] = useState(false);
+    const [selectedRow, setSelectedRow] = useState<string | null>(null);
     const [data, setData] = useState<{ sounds: GlobalSound[]; error: string | null } | null>(null);
     const [annotations, setAnnotations] = useState<Record<string, SoundAnnotation>>({});
     const importRef = useRef<HTMLInputElement | null>(null);
@@ -187,7 +188,7 @@ export default function GlobalSoundBrowse({ onStage }: { onStage?: (edit: Foundr
                     />
                     <input
                         value={search}
-                        onChange={(e) => setSearch(e.target.value)}
+                        onChange={(e) => { setSearch(e.target.value); setSelectedRow(null); }}
                         placeholder={t(
                             'foundry.globalSound.searchPlaceholder',
                             'Search UI, music, ambience, NPC and item sounds...'
@@ -196,9 +197,9 @@ export default function GlobalSoundBrowse({ onStage }: { onStage?: (edit: Foundr
                     />
                 </div>
                 <div className="flex items-center gap-1.5">
-                    <button type="button" aria-pressed={annotationsVisible} onClick={() => { setAnnotationsVisible((value) => !value); setAnnotatedOnly(false); }} className={`flex items-center gap-1.5 rounded-sm border px-2 py-1.5 text-xs ${annotationsVisible ? 'border-accent bg-accent/15 text-accent' : 'border-border text-text-secondary'}`}><Pencil size={13} />Annotate</button>
+                    <button type="button" aria-pressed={annotationsVisible} onClick={() => { setAnnotationsVisible((value) => !value); setAnnotatedOnly(false); setSelectedRow(null); }} className={`flex items-center gap-1.5 rounded-sm border px-2 py-1.5 text-xs ${annotationsVisible ? 'border-accent bg-accent/15 text-accent' : 'border-border text-text-secondary'}`}><Pencil size={13} />Annotate</button>
                     {annotationsVisible && <>
-                        <button type="button" aria-pressed={annotatedOnly} onClick={() => setAnnotatedOnly((value) => !value)} className={`rounded-sm border px-2 py-1.5 text-xs ${annotatedOnly ? 'border-accent bg-accent/15 text-accent' : 'border-border text-text-secondary'}`}>Annotated only</button>
+                        <button type="button" aria-pressed={annotatedOnly} onClick={() => { setAnnotatedOnly((value) => !value); setSelectedRow(null); }} className={`rounded-sm border px-2 py-1.5 text-xs ${annotatedOnly ? 'border-accent bg-accent/15 text-accent' : 'border-border text-text-secondary'}`}>Annotated only</button>
                         <button type="button" onClick={exportAnnotations} className="flex items-center gap-1.5 rounded-sm border border-border px-2 py-1.5 text-xs text-text-secondary hover:text-text-primary" title="Export your sound names and notes"><Download size={13} />Export notes</button>
                         <button type="button" onClick={() => importRef.current?.click()} className="flex items-center gap-1.5 rounded-sm border border-border px-2 py-1.5 text-xs text-text-secondary hover:text-text-primary" title="Import sound names and notes"><Upload size={13} />Import notes</button>
                         <input ref={importRef} type="file" accept="application/json,.json" className="hidden" onChange={(event) => { void importAnnotations(event.target.files?.[0]); event.target.value = ''; }} />
@@ -210,14 +211,14 @@ export default function GlobalSoundBrowse({ onStage }: { onStage?: (edit: Foundr
                 <div className="flex flex-wrap gap-1.5">
                     <FilterChip
                         active={category === 'all'}
-                        onClick={() => setCategory('all')}
+                        onClick={() => { setCategory('all'); setSelectedRow(null); }}
                         label={t('foundry.globalSound.category.all', 'All')}
                     />
                     {present.map((c) => (
                         <FilterChip
                             key={c}
                             active={category === c}
-                            onClick={() => setCategory(c)}
+                            onClick={() => { setCategory(c); setSelectedRow(null); }}
                             icon={CATEGORY_ICON[c]}
                             label={t(`foundry.globalSound.category.${c}`, CATEGORY_FALLBACK[c])}
                         />
@@ -265,7 +266,7 @@ export default function GlobalSoundBrowse({ onStage }: { onStage?: (edit: Foundr
                         {t('foundry.globalSound.count', '{{count}} sounds', { count: totalShown })}
                     </p>
                     {sections.map((section) => (
-                        <CategorySection key={section.category} section={section} player={player} annotations={annotations} onSaveAnnotation={saveAnnotation} annotationsVisible={annotationsVisible} onStage={onStage} />
+                        <CategorySection key={section.category} section={section} player={player} annotations={annotations} onSaveAnnotation={saveAnnotation} annotationsVisible={annotationsVisible} onStage={onStage} selectedRow={selectedRow} onSelectRow={setSelectedRow} />
                     ))}
                 </div>
             )}
@@ -300,7 +301,7 @@ function FilterChip({
     );
 }
 
-function CategorySection({ section, player, annotations, onSaveAnnotation, annotationsVisible, onStage }: { section: Section; player: ClipPlayer; annotations: Record<string, SoundAnnotation>; onSaveAnnotation: (key: string, name: string, note: string, tags: string[]) => Promise<void>; annotationsVisible: boolean; onStage?: (edit: FoundryStagedSoundEdit) => void }) {
+function CategorySection({ section, player, annotations, onSaveAnnotation, annotationsVisible, onStage, selectedRow, onSelectRow }: { section: Section; player: ClipPlayer; annotations: Record<string, SoundAnnotation>; onSaveAnnotation: (key: string, name: string, note: string, tags: string[]) => Promise<void>; annotationsVisible: boolean; onStage?: (edit: FoundryStagedSoundEdit) => void; selectedRow: string | null; onSelectRow: (key: string) => void }) {
     const { t } = useTranslation();
     const Icon = CATEGORY_ICON[section.category];
     const title = t(
@@ -347,6 +348,8 @@ function CategorySection({ section, player, annotations, onSaveAnnotation, annot
                                 onSaveAnnotation={onSaveAnnotation}
                                 annotationsVisible={annotationsVisible}
                                 onStage={onStage}
+                                selected={selectedRow === `${row.soundevents}:${row.event}`}
+                                onSelect={() => onSelectRow(`${row.soundevents}:${row.event}`)}
                             />
                         ))}
                     </div>
