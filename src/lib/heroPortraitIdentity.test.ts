@@ -3,11 +3,20 @@ import {
   displayNameForHeroCodename,
   heroCodenameScope,
   matchesPortraitHero,
+  portraitHeroDefinitions,
   portraitCodenamesForHero,
   resolvePortraitHero,
 } from './heroPortraitIdentity';
 
 describe('portrait hero identity', () => {
+  it('resolves every panorama alias in the shared mapping', () => {
+    for (const hero of portraitHeroDefinitions) {
+      for (const codename of hero.panoramaCodenames) {
+        expect(matchesPortraitHero(hero.displayName, codename)).toBe(true);
+      }
+    }
+  });
+
   it('keeps Abrams roster, current panorama, and legacy panorama names together', () => {
     expect(resolvePortraitHero('Abrams')).toEqual({ displayName: 'Abrams', panoramaCodenames: ['atlas', 'bull'] });
     expect(resolvePortraitHero('abrams')).toEqual({ displayName: 'Abrams', panoramaCodenames: ['atlas', 'bull'] });

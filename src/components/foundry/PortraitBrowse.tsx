@@ -5,7 +5,7 @@ import { EmptyState } from '../common/PageComponents';
 import CatalogDiagnostics from './CatalogDiagnostics';
 import Tx from '../translation/Tx';
 import { foundryThumbnails } from '../../lib/api';
-import { matchesPortraitHero, resolvePortraitHero } from '../../lib/heroPortraitIdentity';
+import { resolvePortraitHero } from '../../lib/heroPortraitIdentity';
 import { showToast } from '../../stores/toastStore';
 import type { TextureGridItem } from '../../types/foundry';
 import PortraitEditor from './PortraitEditor';
@@ -16,6 +16,7 @@ import {
 } from './portraitFamily';
 import type { VisualStagedEdit } from './visualEdits';
 import SearchInput from '../common/SearchInput';
+import { portraitFamiliesForHero } from './portraitFamilyLookup';
 
 interface PortraitBrowseProps {
   /** codename -> display name, resolved once by the Foundry shell. */
@@ -84,7 +85,7 @@ export default function PortraitBrowse({ heroNames, hero, onStage }: PortraitBro
   // panorama codename. They only meet through the shared portrait resolver.
   const scope = hero ? (heroNames.get(hero) ?? hero) : (heroFilter === 'all' ? null : heroFilter);
   const scopedFamilies = useMemo(
-    () => families.filter((family) => !scope || matchesPortraitHero(scope, family.hero)),
+    () => (scope ? portraitFamiliesForHero(families, scope) : families),
     [families, scope],
   );
   const visible = useMemo(() => {
