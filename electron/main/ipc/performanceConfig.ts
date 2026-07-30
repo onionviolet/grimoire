@@ -5,41 +5,65 @@ import { getGameinfoPath } from '../services/deadlock';
 import { listEditorCandidates, openInEditor } from '../services/externalEditor';
 import {
     applyPerformanceConfig,
-    setPerformanceHudConvars,
-    setPerformanceAdvancedConvars,
-    clearPerformanceConvars,
     getPerformanceConfigStatus,
+    listPerformancePresets,
     removePerformanceConfig,
     resetPerformanceConfigOverrides,
     restorePerformanceConfigBackup,
+    setPerformanceAdvancedConvars,
+    setPerformanceHudConvars,
+    clearPerformanceConvars,
 } from '../services/performanceConfig';
-import type { EditorCandidate, PerformanceConfigStatus } from '../../../src/types/electron';
+import type {
+    EditorCandidate,
+    PerformanceConfigStatus,
+    PerformancePresetSummary,
+} from '../../../src/types/electron';
+
+// The preset and opt-in selection the renderer passes in are only a request:
+// the service validates the preset id and drops opt-in keys the chosen preset
+// does not define, so a stale renderer can never write an unknown convar.
+//
+// Both halves fall back to the saved settings, and they fall back together: a
+// caller that names a preset without naming opt-ins gets that preset's saved
+// opt-ins, not none of them. Defaulting the list to empty here would silently
+// strip settings the user had turned on.
+function selection(presetId?: string, optIns?: string[]) {
+    const settings = loadSettings();
+    const id = presetId ?? settings.performanceConfigPresetId;
+    return {
+        presetId: id,
+        optIns: optIns ?? (id ? settings.performanceConfigOptIns?.[id] : undefined) ?? [],
+    };
+}
 
 // get-performance-config-status
 ipcMain.handle('get-performance-config-status', (): PerformanceConfigStatus => {
     return getPerformanceConfigStatus(getActiveDeadlockPath());
 });
 
+// list-performance-presets
+ipcMain.handle('list-performance-presets', (): PerformancePresetSummary[] => {
+    return listPerformancePresets();
+});
+
 // apply-performance-config
-ipcMain.handle('apply-performance-config', (): PerformanceConfigStatus => {
-    return applyPerformanceConfig(getActiveDeadlockPath());
-});
+ipcMain.handle(
+    'apply-performance-config',
+    (_event, presetId?: string, optIns?: string[]): PerformanceConfigStatus => {
+        return applyPerformanceConfig(getActiveDeadlockPath(), selection(presetId, optIns));
+    }
+);
 
-ipcMain.handle('set-performance-hud-convars', (_event, values: Record<string, boolean>): PerformanceConfigStatus => {
-    return setPerformanceHudConvars(getActiveDeadlockPath(), values);
-});
-
-ipcMain.handle('set-performance-advanced-convars', (_event, values: Record<string, number>): PerformanceConfigStatus => {
-    return setPerformanceAdvancedConvars(getActiveDeadlockPath(), values);
-});
-
-// clear-performance-convars (per-control "reset to game default": removes
-// Grimoire's line for each key instead of writing a value of our choosing).
-// The key list is filtered against the managed tables in the service, so a
-// renderer bug cannot reach an unrelated line in gameinfo.gi.
-ipcMain.handle('clear-performance-convars', (_event, keys: string[]): PerformanceConfigStatus => {
-    return clearPerformanceConvars(getActiveDeadlockPath(), Array.isArray(keys) ? keys : []);
-});
+ipcMain.handle('set-performance-hud-convars', (_event, values: Record<string, boolean>): PerformanceConfigStatus =>
+    setPerformanceHudConvars(getActiveDeadlockPath(), values)
+);
+ipcMain.handle('set-performance-advanced-convars', (_event, values: Record<string, number>): PerformanceConfigStatus =>
+    setPerformanceAdvancedConvars(getActiveDeadlockPath(), values)
+);
+ipcMain.handle('clear-performance-convars', (_event, keys: string[]): PerformanceConfigStatus =>
+    clearPerformanceConvars(getActiveDeadlockPath(), Array.isArray(keys) ? keys : [])
+);
 
 // remove-performance-config
 ipcMain.handle('remove-performance-config', (): PerformanceConfigStatus => {
@@ -48,9 +72,12 @@ ipcMain.handle('remove-performance-config', (): PerformanceConfigStatus => {
 
 // reset-performance-config-overrides (reapply the pure preset, dropping the
 // user's saved hand-edit overrides)
-ipcMain.handle('reset-performance-config-overrides', (): PerformanceConfigStatus => {
-    return resetPerformanceConfigOverrides(getActiveDeadlockPath());
-});
+ipcMain.handle(
+    'reset-performance-config-overrides',
+    (_event, presetId?: string, optIns?: string[]): PerformanceConfigStatus => {
+        return resetPerformanceConfigOverrides(getActiveDeadlockPath(), selection(presetId, optIns));
+    }
+);
 
 // restore-performance-config-backup (recover an emptied/corrupt gameinfo.gi
 // from the Grimoire backup, so Apply can run again)

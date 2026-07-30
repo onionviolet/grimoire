@@ -148,12 +148,53 @@ export interface PerformanceConvarState {
     outOfRange?: boolean;
 }
 
-/** State of the OptimizationLock performance preset in gameinfo.gi.
+/** A gameplay/visibility convar a preset's author set, which Grimoire holds
+ *  back from the preset body and writes only when the user opts in. */
+export interface PerformanceOptIn {
+    key: string;
+    /** The value this preset's author chose, used when the user opts in. */
+    value: string;
+    group: 'visibility' | 'camera' | 'devtools';
+}
+
+/** One selectable performance preset, as the renderer sees it. Generated from
+ *  a pinned upstream commit; see scripts/performance-presets.json. */
+export interface PerformancePresetSummary {
+    id: string;
+    name: string;
+    /** Upstream version, e.g. '2.7' or '4.2'. */
+    version: string;
+    tier: 'balanced' | 'preview' | 'aggressive' | 'potato' | 'competitive' | 'maximum';
+    author: string;
+    /** Upstream itself labels this config experimental. */
+    unstable: boolean;
+    isDefault: boolean;
+    /** How many settings the preset changes, for a rough intensity signal. */
+    settingCount: number;
+    upstream: {
+        url: string;
+        repo: string;
+        ref: string;
+        /** Whether `ref` is a real git tag or a version stated in prose. */
+        refKind: 'tag' | 'prose';
+        commit: string;
+        license: string;
+        credit: string;
+    };
+    /** Gameplay convars this preset sets, offered as opt-ins rather than applied. */
+    optIn: PerformanceOptIn[];
+}
+
+/** State of the applied performance preset in gameinfo.gi.
  *  'wiped' means it was applied before but a game update reset the file. */
 export interface PerformanceConfigStatus {
     state: 'not-applied' | 'applied' | 'wiped' | 'error';
+    /** Which preset the file's marker names; null when nothing is applied. */
+    appliedPresetId?: string | null;
     appliedVersion: string | null;
     bundledVersion: string;
+    /** Opt-in convar keys the last apply wrote. */
+    appliedOptIns?: string[];
     /** Applied, but the file no longer matches what Grimoire wrote (hand edits). */
     handEdited?: boolean;
     /** Saved user deviations from the preset (hand edits harvested on reapply,
@@ -424,6 +465,12 @@ export interface SearchLocalModsOptions {
     query?: string;
     section?: string;
     categoryId?: number;
+    /** Root category name for `categoryId`, resolved from the live category
+     *  tree. The cached catalog stores only a mod's root category *name* (the
+     *  list API omits `_aRootCategory._idRow`, so every cached `category_id` is
+     *  null), so this is what actually scopes a local category filter. Without
+     *  it the id comparison matches no rows at all. */
+    categoryName?: string;
     // Enhanced hero search
     heroName?: string;
     skinsCategoryId?: number;
@@ -934,14 +981,21 @@ export interface ElectronAPI {
     getGameinfoStatus: () => Promise<GameinfoStatus>;
     fixGameinfo: () => Promise<GameinfoStatus>;
     getPerformanceConfigStatus: () => Promise<PerformanceConfigStatus>;
-    applyPerformanceConfig: () => Promise<PerformanceConfigStatus>;
+    listPerformancePresets: () => Promise<PerformancePresetSummary[]>;
+    applyPerformanceConfig: (
+        presetId?: string,
+        optIns?: string[]
+    ) => Promise<PerformanceConfigStatus>;
     setPerformanceHudConvars: (values: Record<string, boolean>) => Promise<PerformanceConfigStatus>;
     setPerformanceAdvancedConvars: (values: Record<string, number>) => Promise<PerformanceConfigStatus>;
     /** Drop Grimoire's override for these ConVars so the game default applies
      *  again. This removes the line rather than writing an app-chosen value. */
     clearPerformanceConvars: (keys: string[]) => Promise<PerformanceConfigStatus>;
     removePerformanceConfig: () => Promise<PerformanceConfigStatus>;
-    resetPerformanceConfigOverrides: () => Promise<PerformanceConfigStatus>;
+    resetPerformanceConfigOverrides: (
+        presetId?: string,
+        optIns?: string[]
+    ) => Promise<PerformanceConfigStatus>;
     restorePerformanceConfigBackup: () => Promise<PerformanceConfigStatus>;
     openPerformanceConfigFile: () => Promise<void>;
     listEditorCandidates: () => Promise<EditorCandidate[]>;

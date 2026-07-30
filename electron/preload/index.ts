@@ -408,12 +408,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getGameinfoStatus: () => ipcRenderer.invoke('get-gameinfo-status'),
     fixGameinfo: () => ipcRenderer.invoke('fix-gameinfo'),
     getPerformanceConfigStatus: () => ipcRenderer.invoke('get-performance-config-status'),
-    applyPerformanceConfig: () => ipcRenderer.invoke('apply-performance-config'),
+    listPerformancePresets: () => ipcRenderer.invoke('list-performance-presets'),
+    applyPerformanceConfig: (presetId?: string, optIns?: string[]) =>
+        ipcRenderer.invoke('apply-performance-config', presetId, optIns),
     setPerformanceHudConvars: (values: Record<string, boolean>) => ipcRenderer.invoke('set-performance-hud-convars', values),
     setPerformanceAdvancedConvars: (values: Record<string, number>) => ipcRenderer.invoke('set-performance-advanced-convars', values),
     clearPerformanceConvars: (keys: string[]) => ipcRenderer.invoke('clear-performance-convars', keys),
     removePerformanceConfig: () => ipcRenderer.invoke('remove-performance-config'),
-    resetPerformanceConfigOverrides: () => ipcRenderer.invoke('reset-performance-config-overrides'),
+    resetPerformanceConfigOverrides: (presetId?: string, optIns?: string[]) =>
+        ipcRenderer.invoke('reset-performance-config-overrides', presetId, optIns),
     restorePerformanceConfigBackup: () => ipcRenderer.invoke('restore-performance-config-backup'),
     openPerformanceConfigFile: () => ipcRenderer.invoke('open-performance-config-file'),
     listEditorCandidates: () => ipcRenderer.invoke('list-editor-candidates'),

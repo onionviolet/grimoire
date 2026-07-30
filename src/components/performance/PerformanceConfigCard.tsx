@@ -6,11 +6,14 @@ import { Gauge, ExternalLink, RefreshCw, RotateCcw, Settings2, SquarePen } from 
 import { Card, Badge, Button, Toggle } from '../common/ui';
 import EditorPickerModal from './EditorPickerModal';
 import OutOfRangeDialog from './OutOfRangeDialog';
+import PresetPicker from './PresetPicker';
+import GameplayOptIns from './GameplayOptIns';
 import { useAppStore, type BrowseArtistRef } from '../../stores/appStore';
 import {
   applyPerformanceConfig,
   clearPerformanceConvars,
   getPerformanceConfigStatus,
+  listPerformancePresets,
   openPerformanceConfigFile,
   removePerformanceConfig,
   resetPerformanceConfigOverrides,
@@ -22,6 +25,7 @@ import type {
   PerformanceConfigStatus,
   PerformanceConvarOrigin,
   PerformanceConvarState,
+  PerformancePresetSummary,
 } from '../../types/electron';
 
 const OPTIMIZATIONLOCK_URL = 'https://github.com/Sqooky/OptimizationLock';
@@ -218,6 +222,7 @@ export default function PerformanceConfigCard() {
   // nothing (no Grimoire line to remove). Reported verbatim rather than
   // pretending something changed.
   const [actionNote, setActionNote] = useState<string | null>(null);
+  const [presets, setPresets] = useState<PerformancePresetSummary[]>([]);
   const { settings, saveSettings, setBrowseUi } = useAppStore();
   const navigate = useNavigate();
 
@@ -242,6 +247,10 @@ export default function PerformanceConfigCard() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    void listPerformancePresets().then(setPresets).catch(() => setPresets([]));
+  }, []);
 
   // Re-check when the window regains focus so hand edits made in an external
   // editor show up as the "edited" badge without a restart.
@@ -396,6 +405,18 @@ export default function PerformanceConfigCard() {
   };
 
   const applied = status?.state === 'applied';
+  const selectedId = settings?.performanceConfigPresetId ?? presets.find((preset) => preset.isDefault)?.id ?? '';
+  const selectedPreset = presets.find((preset) => preset.id === selectedId);
+  const selectedOptIns = settings?.performanceConfigOptIns?.[selectedId] ?? [];
+  const onSelectPreset = async (presetId: string) => {
+    if (settings) await saveSettings({ ...settings, performanceConfigPresetId: presetId });
+  };
+  const onChangeOptIns = async (optIns: string[]) => {
+    if (settings) await saveSettings({
+      ...settings,
+      performanceConfigOptIns: { ...settings.performanceConfigOptIns, [selectedId]: optIns },
+    });
+  };
   const wiped = status?.state === 'wiped';
   const hudControlsAvailable = status?.state === 'applied' || status?.state === 'not-applied';
   // gameinfo.gi is empty/corrupt but we hold a backup: offer one-click recovery
@@ -439,6 +460,10 @@ export default function PerformanceConfigCard() {
         )
       }
     >
+      <div className="space-y-4 mb-4">
+        {presets.length > 0 && <PresetPicker presets={presets} selectedId={selectedId} onSelect={onSelectPreset} disabled={busy} />}
+        {selectedPreset && <GameplayOptIns preset={selectedPreset} selected={selectedOptIns} onChange={onChangeOptIns} disabled={busy} />}
+      </div>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="min-w-0 space-y-1">
           <p className="text-sm text-text-secondary">{status ? performanceStatusMessage(status, t) : t('performance.checkingGameinfo')}</p>
@@ -488,7 +513,7 @@ export default function PerformanceConfigCard() {
             </Button>
           )}
           <Button
-            onClick={() => run(applyPerformanceConfig)}
+            onClick={() => run(() => applyPerformanceConfig(selectedId, selectedOptIns))}
             isLoading={busy}
             icon={wiped ? RefreshCw : undefined}
             variant={canRestore ? 'secondary' : 'primary'}
