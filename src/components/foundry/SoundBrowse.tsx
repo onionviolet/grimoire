@@ -20,6 +20,7 @@ import {
     Check,
     Layers,
     Shuffle,
+    Download,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useConfirm } from '../common/confirmContext';
@@ -43,6 +44,7 @@ import {
     foundryInspectAssetSources,
     foundrySoundAnnotationKey,
     saveFoundrySoundAnnotation,
+    foundryExportSound,
 } from '../../lib/api';
 import { describeSound, primaryClipName } from '../../lib/soundDescribe';
 import { isAnnotated, matchSoundWithAnnotation } from '../../lib/soundAnnotationSearch';
@@ -765,6 +767,7 @@ export function SoundRow({ label, event, clips, duration, state, onToggle, poolI
     const [annotationTags, setAnnotationTags] = useState((annotation?.tags ?? []).join(', '));
     const [annotationBusy, setAnnotationBusy] = useState(false);
     const [sourcesOpen, setSourcesOpen] = useState(false);
+    const [exporting, setExporting] = useState<'mp3' | 'raw' | null>(null);
     useEffect(() => {
         setAnnotationName(annotation?.name ?? '');
         setAnnotationNote(annotation?.note ?? '');
@@ -804,6 +807,23 @@ export function SoundRow({ label, event, clips, duration, state, onToggle, poolI
                   total: clips,
               })}`
             : '';
+    const exportClip = async (format: 'mp3' | 'raw') => {
+        const path = rowClipPaths[poolIndex % Math.max(rowClipPaths.length, 1)] ?? targetClip;
+        if (!path) return;
+        setExporting(format);
+        try {
+            const result = await foundryExportSound({
+                vsndPath: path,
+                fileName: clipName || label || event,
+                format,
+            });
+            if (result.exported) showToast(t('foundry.export.saved', 'Exported {{path}}', { path: result.path }), { tone: 'success' });
+        } catch (error) {
+            showToast(error instanceof Error ? error.message : String(error), { tone: 'error', duration: 8000 });
+        } finally {
+            setExporting(null);
+        }
+    };
     return (
         <div onClick={onSelect} style={{ contentVisibility: 'auto', containIntrinsicSize: '0 44px' }}>
             <div className="flex items-center gap-3 rounded-sm border border-border bg-bg-secondary px-3 py-2">
@@ -888,6 +908,25 @@ export function SoundRow({ label, event, clips, duration, state, onToggle, poolI
                         {t('foundry.sound.existingSources')}
                     </button>
                 )}
+                <button
+                    type="button"
+                    disabled={exporting !== null || !targetClip}
+                    onClick={() => void exportClip('mp3')}
+                    title={t('foundry.export.sound', 'Export decoded MP3')}
+                    className="flex h-8 shrink-0 items-center gap-1.5 rounded-sm border border-border bg-bg-tertiary px-2 text-xs text-text-secondary transition-colors hover:text-text-primary disabled:cursor-wait disabled:opacity-60"
+                >
+                    {exporting === 'mp3' ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                    <span className="hidden xl:inline">{t('foundry.export.button', 'Export')}</span>
+                </button>
+                <button
+                    type="button"
+                    disabled={exporting !== null || !targetClip}
+                    onClick={() => void exportClip('raw')}
+                    title={t('foundry.export.rawSound', 'Export raw .vsnd_c')}
+                    className="flex h-8 shrink-0 items-center justify-center rounded-sm border border-border bg-bg-tertiary px-2 text-[10px] text-text-secondary transition-colors hover:text-text-primary disabled:cursor-wait disabled:opacity-60"
+                >
+                    {exporting === 'raw' ? <Loader2 size={13} className="animate-spin" /> : 'RAW'}
+                </button>
                 {swap && (
                     <button
                         type="button"

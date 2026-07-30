@@ -1124,6 +1124,8 @@ export interface AppSettings {
   deadlockPath: string | null;
   devMode: boolean;
   devDeadlockPath: string | null;
+  /** Last directory used for a Foundry stock-asset export. */
+  foundryExportPath?: string;
   /** Diagnostic switch: when true, the main process writes a detailed
    *  [modTrace] line for every folder scan and enable/disable/reorder so a
    *  desync (a mod that's enabled in the UI but missing on disk, or vice

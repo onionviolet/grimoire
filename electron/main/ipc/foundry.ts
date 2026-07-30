@@ -4,9 +4,11 @@
  * unset, so the renderer's catch surfaces the "set your game path" empty state
  * rather than a raw spawn failure.
  */
-import { ipcMain } from 'electron';
-import { stat } from 'fs/promises';
-import { getActiveDeadlockPath, loadSettings } from '../services/settings';
+import { app, dialog, ipcMain } from 'electron';
+import { basename, dirname, join } from 'path';
+import { copyFile, rename, stat, unlink, writeFile } from 'fs/promises';
+import { randomUUID } from 'crypto';
+import { getActiveDeadlockPath, loadSettings, saveSettings } from '../services/settings';
 import {
     getGlobalSounds,
     getHeroRoster,
@@ -17,12 +19,15 @@ import {
     ensureFullImage,
     ensureVoiceclip,
     ensureVoiceclipFile,
+    thumbsRoot,
     ensureModClip,
     pruneModClips,
     warmCache,
     catalogDiagnostics,
     rebuildCatalogCaches,
 } from '../services/foundryCatalog';
+import { getCitadelPath } from '../services/deadlock';
+import { readVpkEntryBytes } from '../services/vpk';
 import { scanMods } from '../services/mods';
 import { buildHeroEffectVpkForExport } from '../services/heroColors';
 import { exportVpkViaDialog } from '../services/foundryExport';
@@ -58,6 +63,9 @@ import type {
     VoicelineFilters,
     VpkExportResult,
     FoundryForgeRequest,
+    FoundryAssetExportResult,
+    FoundrySoundExportRequest,
+    FoundryTextureExportRequest,
 } from '../../../src/types/foundry';
 
 function requireDeadlockPath(): string {
@@ -76,6 +84,50 @@ ipcMain.handle(
     'foundry:textures',
     async (_e, filters: TextureFilters = {}): Promise<TextureEntry[]> => {
         return getTextures(requireDeadlockPath(), filters);
+    }
+);
+
+// Export a catalog sound using the same cache as Audition. Raw export is kept
+// explicit: the default decoded MP3 is useful to people, while `.vsnd_c` is for
+// inspection tools that need the original container bytes.
+ipcMain.handle(
+    'foundry:exportSound',
+    async (_e, request: FoundrySoundExportRequest): Promise<FoundryAssetExportResult> => {
+        if (!request || typeof request.vsndPath !== 'string' || typeof request.fileName !== 'string') {
+            throw new Error('A sound export needs a catalog clip and filename');
+        }
+        const entry = request.vsndPath.replace(/\\/g, '/').replace(/\.vsnd$/i, '.vsnd_c');
+        if (!entry.startsWith('sounds/') || !entry.endsWith('.vsnd_c')) {
+            throw new Error(`Invalid sound entry: ${request.vsndPath}`);
+        }
+        const deadlockPath = requireDeadlockPath();
+        if (request.format === 'raw') {
+            const bytes = readVpkEntryBytes(join(getCitadelPath(deadlockPath), 'pak01_dir.vpk'), entry);
+            if (!bytes) throw new Error(`Could not read ${entry} from the base-game pak.`);
+            return saveFoundryAsset(bytes, request.fileName, '.vsnd_c', 'Raw Valve sound');
+        }
+        if (request.format !== 'mp3') throw new Error('Unknown sound export format');
+        const decoded = await ensureVoiceclipFile(deadlockPath, entry);
+        if (!decoded) throw new Error(`Could not decode ${entry}. The source clip may use an unsupported codec.`);
+        return saveFoundryAsset(decoded, request.fileName, '.mp3', 'MP3 audio');
+    }
+);
+
+// The lightbox decoder already caches a full-size PNG. Export copies that exact
+// decoded image atomically, so no asset is staged, installed, or written into
+// the game directory.
+ipcMain.handle(
+    'foundry:exportTexture',
+    async (_e, request: FoundryTextureExportRequest): Promise<FoundryAssetExportResult> => {
+        if (!request || typeof request.entryPath !== 'string' || typeof request.fileName !== 'string') {
+            throw new Error('A texture export needs a catalog entry and filename');
+        }
+        const url = await ensureFullImage(requireDeadlockPath(), request.category, request.entryPath);
+        if (!url) throw new Error(`Could not decode ${request.entryPath} as PNG.`);
+        const parts = new URL(url).pathname.split('/').filter(Boolean).map(decodeURIComponent);
+        if (parts.length !== 3) throw new Error(`Could not locate decoded PNG for ${request.entryPath}.`);
+        const source = join(thumbsRoot(), ...parts);
+        return saveFoundryAsset(source, request.fileName, '.png', 'PNG image');
     }
 );
 
@@ -334,3 +386,48 @@ ipcMain.handle('foundry:engineInfo', async (): Promise<EngineInfo> => {
         };
     }
 });
+
+function exportDirectory(): string {
+    const remembered = loadSettings().foundryExportPath;
+    return remembered?.trim() || join(app.getPath('downloads'), 'Grimoire Exports');
+}
+
+function safeExportName(name: string, extension: string): string {
+    const stem = [...basename(name)]
+        .filter((char) => char.charCodeAt(0) >= 32)
+        .join('')
+        .replace(/[<>:"/\\|?*]/g, '_')
+        .replace(/\.+$/g, '')
+        .trim();
+    const normalized = stem || 'asset';
+    return normalized.toLowerCase().endsWith(extension) ? normalized : `${normalized}${extension}`;
+}
+
+async function saveFoundryAsset(
+    source: Buffer | string,
+    name: string,
+    extension: string,
+    label: string
+): Promise<FoundryAssetExportResult> {
+    const result = await dialog.showSaveDialog({
+        title: `Export ${label}`,
+        defaultPath: join(exportDirectory(), safeExportName(name, extension)),
+        filters: [{ name: label, extensions: [extension.slice(1)] }],
+    });
+    if (result.canceled || !result.filePath) return { exported: false };
+    const destination = result.filePath.toLowerCase().endsWith(extension)
+        ? result.filePath
+        : `${result.filePath}${extension}`;
+    const temporary = join(dirname(destination), `.${basename(destination)}.${randomUUID()}.tmp`);
+    try {
+        if (typeof source === 'string') await copyFile(source, temporary);
+        else await writeFile(temporary, source);
+        await rename(temporary, destination);
+    } catch (error) {
+        await unlink(temporary).catch(() => {});
+        throw error;
+    }
+    const settings = loadSettings();
+    saveSettings({ ...settings, foundryExportPath: dirname(destination) });
+    return { exported: true, path: destination };
+}

@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { ImageOff, Loader2, X } from 'lucide-react';
+import { Download, ImageOff, Loader2, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Modal } from '../common/Modal';
-import { foundryFullImage } from '../../lib/api';
+import { foundryExportTexture, foundryFullImage } from '../../lib/api';
+import { showToast } from '../../stores/toastStore';
 import type { TextureGridItem } from '../../types/foundry';
 import AssetSourcesPanel from './AssetSourcesPanel';
 
@@ -29,6 +30,7 @@ export default function TextureLightbox({ item, heroName, onClose, sourcePaths }
   // `fullUrl` derive from whether it matches the open asset. This keeps the
   // effect free of synchronous resets (it only sets state in the async callback).
   const [full, setFull] = useState<{ path: string; url: string | null } | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     if (!item) return;
@@ -52,6 +54,22 @@ export default function TextureLightbox({ item, heroName, onClose, sourcePaths }
   const display = fullUrl ?? item?.thumbUrl ?? null;
   const dims =
     item?.sourceWidth && item?.sourceHeight ? `${item.sourceWidth} x ${item.sourceHeight}` : null;
+  const exportImage = async () => {
+    if (!item) return;
+    setExporting(true);
+    try {
+      const result = await foundryExportTexture({
+        category: item.category,
+        entryPath: item.path,
+        fileName: item.label || item.path.split('/').pop() || 'texture',
+      });
+      if (result.exported) showToast(t('foundry.export.saved', 'Exported {{path}}', { path: result.path }), { tone: 'success' });
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : String(error), { tone: 'error', duration: 8000 });
+    } finally {
+      setExporting(false);
+    }
+  };
 
   return (
     <Modal
@@ -73,14 +91,26 @@ export default function TextureLightbox({ item, heroName, onClose, sourcePaths }
                 {item.path}
               </p>
             </div>
-            <button
-              type="button"
-              onClick={onClose}
-              className="shrink-0 rounded-sm p-1 text-text-secondary transition-colors hover:bg-bg-tertiary hover:text-text-primary"
-              aria-label={t('common.actions.close', 'Close')}
-            >
-              <X size={18} />
-            </button>
+            <div className="flex shrink-0 items-center gap-1">
+              <button
+                type="button"
+                onClick={() => void exportImage()}
+                disabled={exporting}
+                className="flex items-center gap-1 rounded-sm border border-border px-2 py-1 text-xs text-text-secondary transition-colors hover:text-text-primary disabled:opacity-60"
+                title={t('foundry.export.texture', 'Export decoded PNG')}
+              >
+                {exporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                {t('foundry.export.button', 'Export')}
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-sm p-1 text-text-secondary transition-colors hover:bg-bg-tertiary hover:text-text-primary"
+                aria-label={t('common.actions.close', 'Close')}
+              >
+                <X size={18} />
+              </button>
+            </div>
           </div>
 
           <div className="relative flex min-h-[280px] items-center justify-center bg-bg-tertiary p-6">
