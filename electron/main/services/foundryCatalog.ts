@@ -769,6 +769,17 @@ export async function warmCache(deadlockPath: string): Promise<void> {
         // this opportunistic baseline will be retried next warm.
         const entries = parseVpkEntryIndex(pak01Path(deadlockPath));
         if (entries) await recordBuildSnapshot(foundryBuildSnapshotsRoot(), fingerprintKey(fingerprint), entries);
+
+        // Snapshotting supplements the catalog warm; it must not replace it.
+        // The latter primes vpkmerge's on-disk indexes so the first catalog
+        // browse stays fast after startup.
+        await runCatalogJson<CacheReport>([
+            'cache',
+            '--vpk',
+            pak01Path(deadlockPath),
+            '--dir',
+            catalogCacheDir(),
+        ]);
     } catch {
         /* best-effort warm; the catalog rebuilds lazily if this missed */
     }
