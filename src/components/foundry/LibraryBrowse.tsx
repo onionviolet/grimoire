@@ -150,7 +150,7 @@ export default function LibraryBrowse({
       buildHeroFilterOptions({
         codenames: items.flatMap((it) => (it.hero ? [it.hero] : [])),
         heroNames,
-        scopedHero: hero,
+        scopedHero: hero ?? undefined,
         scopedHeroName: heroDisplayName,
         labels: {
           all: t('foundry.filters.allHeroes', 'All heroes'),

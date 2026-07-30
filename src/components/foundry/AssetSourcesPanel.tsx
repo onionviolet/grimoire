@@ -89,6 +89,7 @@ export default function AssetSourcesPanel({
   onTogglePoolTarget,
   poolTargetForEntry,
 }: AssetSourcesPanelProps) {
+  void onRefreshInspection;
   const { t } = useTranslation();
   const navigate = useNavigate();
   const toggleMod = useAppStore((state) => state.toggleMod);
