@@ -1467,6 +1467,20 @@ export async function foundryVoiceclipFile(vsndPath: string): Promise<string | n
   return window.electronAPI.foundry.voiceclipFile(vsndPath);
 }
 
+/** Save a stock clip as the cached decoded MP3 or its raw `.vsnd_c` container. */
+export async function foundryExportSound(
+  req: import('../types/foundry').FoundrySoundExportRequest
+): Promise<import('../types/foundry').FoundryAssetExportResult> {
+  return window.electronAPI.foundry.exportSound(req);
+}
+
+/** Decode a stock catalog texture and save it as PNG. */
+export async function foundryExportTexture(
+  req: import('../types/foundry').FoundryTextureExportRequest
+): Promise<import('../types/foundry').FoundryAssetExportResult> {
+  return window.electronAPI.foundry.exportTexture(req);
+}
+
 /** Park a portrait-editor PNG bake on disk and get the absolute path back. The
  *  visual staging contract records a path, not bytes, so an editor-authored
  *  image has to land in this bounded userData cache before it can be staged. */
@@ -1617,4 +1631,3 @@ export async function foundryReleaseTrayPreview(previewId: string): Promise<void
 export async function getChatWheelStatus(): Promise<{ available: boolean; path?: string; error?: string }> {
   return window.electronAPI.chatWheelStatus();
 }
-

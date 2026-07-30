@@ -209,6 +209,51 @@ export interface VpkExportResult {
     path?: string;
 }
 
+/** Confidence levels used by Foundry's non-standard-file report.  The values
+ * deliberately describe the evidence, not an interpretation of the asset. */
+export type NonStandardTier = 'subject-not-live' | 'unreferenced-sound' | 'naming-signal';
+
+/** A read-only finding from the user's own pak.  `reason` is required so the
+ * UI never presents a bare tier letter as a fact. */
+export interface NonStandardFinding {
+    path: string;
+    tier: NonStandardTier;
+    category: 'texture' | 'sound' | 'portrait' | 'hero' | 'other';
+    reason: string;
+}
+
+/** Cached, fingerprint-bound report returned by the non-standard scan. */
+export interface NonStandardReport {
+    fingerprint: string;
+    generatedAt: string;
+    findings: NonStandardFinding[];
+    /** Tier C is intentionally absent: it is a naming hint, not a headline fact. */
+    confirmedCount: number;
+}
+
+/** A decoded stock sound export. `mp3` reuses the audition cache; `raw` saves
+ * the compiled source container for tooling that needs the original bytes. */
+export interface FoundrySoundExportRequest {
+    vsndPath: string;
+    fileName: string;
+    format: 'mp3' | 'raw';
+}
+
+/** A decoded stock texture export. The renderer only names catalog entries;
+ * main resolves the source pak and writes the PNG after the save dialog. */
+export interface FoundryTextureExportRequest {
+    category: TextureCategory;
+    entryPath: string;
+    fileName: string;
+}
+
+/** Result shared by stock sound and texture exports. A cancelled dialog is not
+ * an error and leaves the game directory and mod state untouched. */
+export interface FoundryAssetExportResult {
+    exported: boolean;
+    path?: string;
+}
+
 /**
  * Request to swap a hero gameplay sound event's audio with a user-supplied MP3
  * and install the result as a managed local mod. `heroCodename` is the roster

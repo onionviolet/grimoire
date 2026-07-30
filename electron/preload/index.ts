@@ -683,6 +683,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
             ipcRenderer.invoke('foundry:fullImage', category, entryPath),
         voiceclip: (vsndPath: string) => ipcRenderer.invoke('foundry:voiceclip', vsndPath),
         voiceclipFile: (vsndPath: string) => ipcRenderer.invoke('foundry:voiceclipFile', vsndPath),
+        exportSound: (req: import('../../src/types/foundry').FoundrySoundExportRequest) =>
+            ipcRenderer.invoke('foundry:exportSound', req),
+        exportTexture: (req: import('../../src/types/foundry').FoundryTextureExportRequest) =>
+            ipcRenderer.invoke('foundry:exportTexture', req),
         stagePortraitImage: (dataUrl: string, originalName?: string): Promise<string> =>
             ipcRenderer.invoke('foundry:stagePortraitImage', dataUrl, originalName),
         listPortraitImages: () => ipcRenderer.invoke('foundry:listPortraitImages'),

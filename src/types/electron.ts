@@ -209,7 +209,22 @@ export interface PerformanceConfigStatus {
      *  Grimoire backup exists, so the UI can offer a one-click restore. Only
      *  set on the broken-file states (error / wiped). */
     canRestoreBackup?: boolean;
+    /** User-facing ConVars that autoexec.cfg also sets. autoexec runs after
+     *  gameinfo.gi, so these lines win over anything Grimoire writes here and
+     *  the controls have to say so rather than quietly lose. */
+    autoexecConflicts?: Record<string, AutoexecConvarConflict>;
     message: string;
+}
+
+/** One ConVar set in autoexec.cfg that a gameinfo.gi control also owns. */
+export interface AutoexecConvarConflict {
+    /** The value autoexec sets, as written. */
+    value: string;
+    /** 1-based line number in autoexec.cfg. */
+    line: number;
+    /** Whether the line lives in a section Grimoire's Autoexec page manages,
+     *  which decides whether the UI can offer to go and change it. */
+    managed: boolean;
 }
 
 export interface OpenDialogOptions {
@@ -1224,6 +1239,12 @@ export interface ElectronAPI {
         ) => Promise<string | null>;
         voiceclip: (vsndPath: string) => Promise<string | null>;
         voiceclipFile: (vsndPath: string) => Promise<string | null>;
+        exportSound: (
+            req: import('./foundry').FoundrySoundExportRequest
+        ) => Promise<import('./foundry').FoundryAssetExportResult>;
+        exportTexture: (
+            req: import('./foundry').FoundryTextureExportRequest
+        ) => Promise<import('./foundry').FoundryAssetExportResult>;
         /** Park a portrait-editor PNG bake (data URL) in a bounded userData cache
          *  and return its absolute path, which is what the visual staging
          *  contract records. Writes nothing into the game directory. */
