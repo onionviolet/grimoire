@@ -42,8 +42,6 @@ const MARKER = 'grimoire-perf';
 const ADDED_TOKEN = `// ${MARKER} added`;
 const HUD_ADDED_TOKEN = `// ${MARKER} hud-added`;
 const WAS_RE = new RegExp(`^(.*?) // ${MARKER} was ("[^"]*"|\\S+)\\s*$`);
-const HUD_WAS_RE = new RegExp(`^(.*?) // ${MARKER} hud-was ("[^"]*"|\\S+)(.*)$`);
-const REMOVED_RE = new RegExp(`^([ \\t]*)// ${MARKER} removed: (.*)$`);
 // The BEGIN marker is the authoritative record of what is in the file: which
 // preset, which upstream version, and which upstream commit that version was
 // generated from. The commit is what makes "is the body in this file the body I
