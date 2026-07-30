@@ -1638,7 +1638,10 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
                 type="button"
                 role="tab"
                 id={`${sectionTabsId}-tab-${tab}`}
-                aria-controls={`${sectionTabsId}-panel-${tab}`}
+                // One reused panel, so every tab names the same id. Pointing each
+                // tab at a per-section id left the unselected one dangling: only
+                // the selected section is ever in the document.
+                aria-controls={`${sectionTabsId}-panel`}
                 aria-selected={selected}
                 tabIndex={selected ? 0 : -1}
                 onClick={() => onSelectSection(tab)}
@@ -1717,7 +1720,7 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
       <div
         ref={paneRef}
         role="tabpanel"
-        id={`${sectionTabsId}-panel-${section}`}
+        id={`${sectionTabsId}-panel`}
         aria-labelledby={`${sectionTabsId}-tab-${section}`}
         tabIndex={0}
         className="relative z-10 flex-1 overflow-y-auto scrollbar-glass focus:outline-none"

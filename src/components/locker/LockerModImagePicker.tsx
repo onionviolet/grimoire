@@ -5,6 +5,7 @@ import type { Mod } from '../../types/mod';
 import type { GameBananaImage } from '../../types/gamebanana';
 import { Modal } from '../common/Modal';
 import { Button, ModalHeader, SegmentedControl } from '../common/ui';
+import { useSegmentedTabs } from '../common/useSegmentedTabs';
 import { showToast } from '../../stores/toastStore';
 import {
   getModDetails,
@@ -62,6 +63,7 @@ export function LockerModImagePicker({
 }) {
   const { t } = useTranslation();
   const titleId = useId();
+  const surfaceTabs = useSegmentedTabs<PickerVariant>();
 
   const [tab, setTab] = useState<PickerVariant>(initialVariant);
 
@@ -412,6 +414,7 @@ export function LockerModImagePicker({
           options={tabOptions}
           value={tab}
           onChange={switchTab}
+          tabs={surfaceTabs}
           label={t('locker.modImage.title')}
         />
         <p className="mt-2 text-xs text-text-secondary">
@@ -423,7 +426,9 @@ export function LockerModImagePicker({
         </p>
       </div>
 
-      <div className="flex min-h-0 flex-1 gap-4 p-4">
+      {/* Both panes below are keyed to the selected surface, so this is the
+          panel the segments above control. */}
+      <div {...surfaceTabs.panelProps(tab)} className="flex min-h-0 flex-1 gap-4 p-4">
         {/* Left pane: live crop adjuster, locked to the active tab's shape. Shown
             empty up front so the framing surface is previewed before a pick.
             Sized to the window by the cropper; scrolls itself only as a fallback

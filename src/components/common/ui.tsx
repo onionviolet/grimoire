@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Check, X, type LucideIcon } from 'lucide-react';
 import Tx from '../translation/Tx';
+import type { SegmentedTabs } from './useSegmentedTabs';
 
 interface CardProps {
     children?: ReactNode;
@@ -482,6 +483,14 @@ export function ModalHeader({
 // rows (image-picker surfaces, appearance source kinds). role=tablist with
 // roving arrow-key focus and aria-selected, so the two former divergent tab
 // styles (underline vs pill) collapse to one.
+//
+// A role="tab" promises a panel (see the shell rule in
+// docs/design-overhaul-brief.md), and this control cannot keep that promise on
+// its own: the body the segments switch is rendered by the caller. So the ids
+// come from useSegmentedTabs, which both sides share, and `tabs` is required
+// rather than optional. A control set with no panel to reveal is not a tablist
+// and should use plain buttons with aria-pressed instead (Browse's view options
+// are the worked example).
 // ============================================================================
 
 interface SegmentOption<T extends string> {
@@ -493,6 +502,8 @@ interface SegmentedControlProps<T extends string> {
     options: readonly SegmentOption<T>[];
     value: T;
     onChange: (value: T) => void;
+    /** From useSegmentedTabs, shared with the body element the segments switch. */
+    tabs: SegmentedTabs<T>;
     label?: string;
     className?: string;
     /** Equal-width segments that stretch to fill the container, instead of the
@@ -508,6 +519,7 @@ export function SegmentedControl<T extends string>({
     options,
     value,
     onChange,
+    tabs,
     label,
     className = '',
     fill = false,
@@ -531,8 +543,10 @@ export function SegmentedControl<T extends string>({
                         key={opt.value}
                         ref={(el) => { refs.current[i] = el; }}
                         type="button"
+                        id={tabs.tabId(opt.value)}
                         role="tab"
                         aria-selected={active}
+                        aria-controls={tabs.panelId}
                         tabIndex={active ? 0 : -1}
                         disabled={disabled}
                         onClick={() => !disabled && onChange(opt.value)}

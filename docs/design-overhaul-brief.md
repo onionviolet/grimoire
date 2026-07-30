@@ -150,7 +150,21 @@ panel is rendered by the caller.
 | `Locker.tsx` `HeroCard`, Skins/Sounds | Real tablist | Wired |
 | `Browse.tsx` section, Mods/Sounds/Wip | Real tablist | Wired |
 | `Browse.tsx` `BrowseViewOptionControl` | Not a tablist: picks a layout, a card design, or an NSFW mode, and reveals nothing | Now `role="group"` with `aria-pressed`; arrow keys kept |
-| `common/ui.tsx` `SegmentedControl` | Real tablist: both callers (`LockerModImagePicker` surface tabs, `AppearanceArtSection` source-kind tabs) switch a body below it | **Open.** Has roving `tabIndex` and arrow keys, no `aria-controls`. Wiring it needs the component to mint panel ids and the callers to attach them |
+| `common/ui.tsx` `SegmentedControl` | Real tablist: both callers (`LockerModImagePicker` surface tabs, `AppearanceArtSection` source-kind tabs) switch a body below it | Wired. Ids come from `useSegmentedTabs`, which the control and the caller's body share, and the `tabs` prop is required so a future caller cannot reintroduce the half-state |
+
+**One panel, not one per tab.** Every one of these surfaces renders a single
+body whose contents change, not one of several siblings. So every tab's
+`aria-controls` names the *same* id and the panel's `aria-labelledby` follows
+the selected tab. Giving each tab its own panel id looks more thorough and is
+wrong: only the selected section is ever in the document, so the other tabs
+point at nothing. Locker Global and Browse were built that way and read as
+wired until the reference was actually resolved.
+
+The mechanical check, which should hold on every route:
+
+```bash
+node scripts/dev-driver.mjs eval "[...document.querySelectorAll('[role=tab]')].every(t=>!!document.getElementById(t.getAttribute('aria-controls')||''))"
+```
 
 `PageHeader` is used by `Conflicts`, `Discover`, `Foundry`, `Servers`, and
 `Settings`, all top-level routes. No drill-in renders one.

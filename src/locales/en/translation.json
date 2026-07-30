@@ -1092,6 +1092,7 @@
           "activeTab": "Active tab",
           "volume": "Volume bar"
         },
+        "kindLabel": "Background source",
         "kind": {
           "default": "Default",
           "hero": "Hero",

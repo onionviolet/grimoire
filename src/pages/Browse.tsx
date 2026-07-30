@@ -3541,7 +3541,7 @@ export default function Browse() {
                       type="button"
                       role="tab"
                       id={`browse-section-tab-${entry.modelName}`}
-                      aria-controls={`browse-section-panel-${entry.modelName}`}
+                      aria-controls="browse-section-panel"
                       aria-selected={active}
                       tabIndex={active ? 0 : -1}
                       onKeyDown={(e) => {
@@ -3795,7 +3795,7 @@ export default function Browse() {
           section, labelled by the tab that selected it. */}
       <div
         role="tabpanel"
-        id={`browse-section-panel-${section}`}
+        id="browse-section-panel"
         aria-labelledby={`browse-section-tab-${section}`}
         className="relative z-0 flex-1 p-4"
       >

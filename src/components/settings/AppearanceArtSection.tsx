@@ -22,6 +22,7 @@ import {
 import type { AppearanceBg, AppearanceBgKind, AppearanceSurface, AppSettings } from '../../types/mod';
 import type { CropRect } from '../../types/electron';
 import { Button, ModalHeader, SegmentedControl, Toggle } from '../common/ui';
+import { useSegmentedTabs } from '../common/useSegmentedTabs';
 import Tx from '../translation/Tx';
 import LockerImageCropper from '../locker/LockerImageCropper';
 import { Modal } from '../common/Modal';
@@ -271,6 +272,7 @@ export default function AppearanceArtSection() {
   // user can preview a different source before committing). Nothing is persisted
   // until the user hits Apply (custom commits through the cropper's own button).
   const [draftKind, setDraftKind] = useState<AppearanceBgKind>('default');
+  const kindTabs = useSegmentedTabs<AppearanceBgKind>();
   const [draftHero, setDraftHero] = useState<string>(DEFAULT_SIDEBAR_HERO);
   const editLoadId = useRef(0);
 
@@ -579,8 +581,14 @@ export default function AppearanceArtSection() {
                 }))}
                 value={draftKind}
                 onChange={selectKind}
+                tabs={kindTabs}
+                label={t('settings.appearance.art.kindLabel')}
               />
 
+              {/* Everything below is chosen by the source kind, so it is the
+                  panel those segments control. The scroller above cannot be:
+                  it holds the tablist itself. */}
+              <div {...kindTabs.panelProps(draftKind)}>
               {/* Preview header only when there's no cropper acting as the preview. */}
               {showFooter && (
                 <div className="mb-4">
@@ -682,6 +690,7 @@ export default function AppearanceArtSection() {
               )}
 
               {error && <p className="mt-3 text-xs text-state-danger">{error}</p>}
+              </div>
             </div>
 
             {/* Footer (pinned). Framed images commit through the cropper's own
