@@ -13,18 +13,23 @@
   [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 </div>
 
-> **Personal independent fork.** This is maintained primarily for its author's own Deadlock setup and experimentation, but anyone is welcome to use, inspect, adapt, or contribute to it under the MIT license. It remains built on the work of the original Grimoire project; please support its creator through [GitHub](https://github.com/Slush97/grimoire), [grimoiremods.com](https://grimoiremods.com), or its [Discord community](https://discord.gg/KgYGHEMq2P).
+> **Personal independent fork.** This is mostly for my own Deadlock setup and experiments, but you're welcome to use it, poke around, or contribute under the MIT license. It builds on the original Grimoire project, so please show its creator some love on [GitHub](https://github.com/Slush97/grimoire), [grimoiremods.com](https://grimoiremods.com), or [Discord](https://discord.gg/KgYGHEMq2P).
 
-## About this fork
+## What we're doing differently
 
-This fork keeps the upstream mod-manager experience as its foundation, while
-exploring a local, player-focused customization workshop. The aim is to make
-common setup and cosmetic workflows easier to understand, change, recover, and
-share without trying to replace specialist creation tools.
+We're keeping the upstream mod-manager experience as the base, then trying out
+things that make a Deadlock setup more fun to tweak and easier to live with.
 
-The upstream project remains the best reference for the core Grimoire
-experience. Fork-specific work is called out below so players can distinguish
-the established baseline from features still being refined here.
+Right now, that includes:
+
+- Advanced `gameinfo.gi` HUD controls and a ChatLane chat-wheel editor
+- Locker and Foundry workflows for launch-time visual, hero-sound, and hero-card shuffle pools, including locally imported assets
+- Other cool stuff when we find it :D
+
+Some of this is still a little experimental, so keep backups of important
+profiles and game configuration, try new workflows with a small mod set first,
+and send reproducible problems to [Issues](../../issues). The detailed release
+history lives in [CHANGELOG.md](CHANGELOG.md).
 
 ## Install
 
@@ -81,16 +86,6 @@ Requires Deadlock installed via Steam.
 - Crosshair designer with live preview
 
 Offline-first and no telemetry: a fresh install phones home for nothing.
-
-## Fork additions and current progress
-- Advanced `gameinfo.gi` HUD controls and a ChatLane chat-wheel editor
-- Locker and Foundry workflows for launch-time visual, hero-sound, and hero-card shuffle pools, including locally imported assets
-- Cool features if I find any :D
-These additions have not yet had the same breadth of real-world testing as the
-core mod manager. Keep backups of important profiles and game configuration,
-try new workflows with a small mod set first, and report reproducible problems
-through [Issues](../../issues). See [CHANGELOG.md](CHANGELOG.md) for the
-detailed release history.
 
 ## Screenshots
 
