@@ -133,6 +133,62 @@ export function getAutoexecPath(gamePath: string): string {
     return path.join(gamePath, 'game', 'citadel', 'cfg', 'autoexec.cfg');
 }
 
+/**
+ * Where autoexec.cfg sets any of `keys`, scanned over the raw file rather than
+ * the parsed sections: a line's position is the point, and parseAutoexec
+ * deliberately reshuffles content between sections.
+ *
+ * autoexec runs after gameinfo.gi, so a line found here beats whatever a
+ * gameinfo.gi control writes for the same ConVar. Two Grimoire surfaces can
+ * therefore fight over one ConVar with the loser saying nothing, which is what
+ * this exists to let the UI surface. `managed` marks a line inside the section
+ * the Autoexec page owns, so the UI knows whether it can send the user
+ * somewhere that can actually change it.
+ *
+ * The last assignment wins in a cfg, so a key set more than once reports its
+ * last line.
+ */
+export function findAutoexecConvars(
+    gamePath: string,
+    keys: Iterable<string>
+): Record<string, { value: string; line: number; managed: boolean }> {
+    const wanted = new Set(keys);
+    const found: Record<string, { value: string; line: number; managed: boolean }> = {};
+    const autoexecPath = getAutoexecPath(gamePath);
+    if (!wanted.size || !fs.existsSync(autoexecPath)) return found;
+
+    let content: string;
+    try {
+        content = fs.readFileSync(autoexecPath, 'utf-8');
+    } catch {
+        return found; // unreadable autoexec is not worth failing a status read
+    }
+
+    let managed = false;
+    content.split('\n').forEach((raw, index) => {
+        const trimmed = raw.trim();
+        if (trimmed === COMMANDS_START || trimmed === CROSSHAIR_START) {
+            managed = true;
+            return;
+        }
+        if (trimmed === COMMANDS_END || trimmed === CROSSHAIR_END) {
+            managed = false;
+            return;
+        }
+        const command = getExecutableAutoexecLine(raw);
+        // `key value`, with the value optionally quoted. A bare `key` is a query
+        // in the console, not an assignment, so it is not a conflict.
+        const match = /^"?([A-Za-z_][\w.]*)"?\s+("[^"]*"|\S+)/.exec(command);
+        if (!match || !wanted.has(match[1])) return;
+        found[match[1]] = {
+            value: match[2].replace(/^"|"$/g, ''),
+            line: index + 1,
+            managed,
+        };
+    });
+    return found;
+}
+
 export function readAutoexec(gamePath: string): AutoexecData {
     const autoexecPath = getAutoexecPath(gamePath);
     if (!fs.existsSync(autoexecPath)) {

@@ -646,6 +646,50 @@ describe('HUD and advanced values are the user\'s own state', () => {
         expect(sidecar().overridesByPreset['sqooky-default']['ConVars/r_ssao']).toEqual({ value: '1' });
     });
 
+    // #18 moved these under Game Configuration, where there is no preset in
+    // sight. Requiring one was a dead end: the controls rendered, accepted an
+    // edit, and failed on apply with "apply a performance preset first".
+    it('writes without a performance preset applied', () => {
+        expect(getPerformanceConfigStatus(gameRoot).state).toBe('not-applied');
+        expect(setPerformanceHudConvars(gameRoot, { [HUD_KEY]: true }).state).toBe('not-applied');
+        expect(value(HUD_KEY)).toBe('true');
+        expect(setPerformanceAdvancedConvars(gameRoot, { citadel_minimap_player_width: 10 }).state).toBe(
+            'not-applied'
+        );
+        expect(value('citadel_minimap_player_width')).toBe('10');
+
+        // Re-writing the same key replaces the value rather than stacking lines.
+        setPerformanceHudConvars(gameRoot, { [HUD_KEY]: false });
+        expect(value(HUD_KEY)).toBe('false');
+        expect([...topLevelConvarCounts(read())].filter(([, n]) => n > 1)).toEqual([]);
+    });
+
+    // A sidecar holding only control values is not evidence that a preset was
+    // wiped, and it must not make the app claim a game update removed one.
+    it('does not report a preset as wiped when none was ever applied', () => {
+        setPerformanceHudConvars(gameRoot, { [HUD_KEY]: true });
+        const state = getPerformanceConfigStatus(gameRoot);
+        expect(state.state).toBe('not-applied');
+        expect(state.handEdited).toBeFalsy();
+    });
+
+    it('resets a standalone value back to the game default', () => {
+        setPerformanceHudConvars(gameRoot, { [HUD_KEY]: true });
+        expect(clearPerformanceConvars(gameRoot, [HUD_KEY]).state).toBe('not-applied');
+        expect(value(HUD_KEY)).toBeNull();
+    });
+
+    // Applying a preset over standalone values keeps them, and removing the
+    // preset afterwards must not take them with it: they were never the
+    // preset's to remove.
+    it('keeps standalone values across a preset apply and remove', () => {
+        setPerformanceHudConvars(gameRoot, { [HUD_KEY]: true });
+        applyPerformanceConfig(gameRoot, { presetId: 'sqooky-default' });
+        expect(value(HUD_KEY)).toBe('true');
+        removePerformanceConfig(gameRoot);
+        expect(value(HUD_KEY)).toBe('true');
+    });
+
     it('still removes cleanly, restoring the file byte for byte', () => {
         applyPerformanceConfig(gameRoot, { presetId: 'sqooky-default' });
         setPerformanceHudConvars(gameRoot, { [HUD_KEY]: true });

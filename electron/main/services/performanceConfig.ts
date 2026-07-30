@@ -22,6 +22,7 @@ import { createHash } from 'crypto';
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { getGameinfoPath } from './deadlock';
+import { findAutoexecConvars } from './autoexec';
 import type {
     PerformanceConfigStatus,
     PerformanceConvarOrigin,
@@ -756,7 +757,126 @@ function setPerformanceConvars(deadlockPath: string | null, values: Record<strin
             convarOverrides: values,
         });
     }
-    return status('error', 'Apply a performance preset before editing its HUD or advanced settings.');
+    // These are game settings, not preset settings, so they no longer require a
+    // performance preset to exist. Without one there is no preset body to layer
+    // onto and they are written on their own (see writeUserConvars).
+    return writeUserConvars(deadlockPath, values);
+}
+
+// Write only the fork-owned control values, for a gameinfo.gi that carries no
+// performance preset. The preset path cannot serve this: it exists to lay down
+// a whole upstream body and reverse it by markers, and applying one as a side
+// effect of flipping a HUD toggle would be a wild overreach.
+//
+// Lines get their own `hud-added` marker rather than the preset's `added` one,
+// so removing a performance preset never takes the user's HUD settings with it.
+// Stock lines are edited in place with the usual `was` marker, which is what
+// makes a reset able to put the original value back.
+function writeUserConvars(
+    deadlockPath: string,
+    values: Record<string, string>
+): PerformanceConfigStatus {
+    const gameinfoPath = getGameinfoPath(deadlockPath);
+    if (!existsSync(gameinfoPath)) {
+        return status('error', 'gameinfo.gi not found. Configure your Deadlock path first.');
+    }
+    try {
+        const original = readFileSync(gameinfoPath, 'utf-8');
+        const crlf = original.includes('\r\n');
+        let content = crlf ? original.split('\r\n').join('\n') : original;
+
+        const range = findSectionByPath(content, ['ConVars']);
+        if (!range) {
+            const restorable = canRestoreBackup(gameinfoPath, original);
+            const how = restorable
+                ? 'Restore the Grimoire backup below, or verify game files in Steam, then try again.'
+                : 'Verify game files in Steam and try again.';
+            return status('error', `gameinfo.gi has no ConVars section. ${how}`, 0, restorable);
+        }
+
+        const sidecar = readAppliedState(gameinfoPath);
+        const userConvars = userConvarsOf(sidecar);
+        for (const [key, value] of Object.entries(values)) userConvars[key] = { value };
+
+        const body = content.slice(range.bodyStart, range.bodyEnd);
+        const existingKeys = new Set(body.split('\n').map(entryKey).filter(Boolean));
+        const toInject: Array<readonly [string, string]> = [];
+        for (const [key, value] of Object.entries(values)) {
+            if (existingKeys.has(key)) {
+                // Already tagged by an earlier write: rewrite the value and keep
+                // the recorded original, rather than recording our own value as
+                // if it were the stock one.
+                const retagged = retagUserConvar(content, key, value);
+                content = retagged ?? applyOp(content, { path: ['ConVars'], key, value })!;
+            } else {
+                toInject.push([key, value]);
+            }
+        }
+        if (toInject.length) {
+            const indent = detectIndent(body);
+            const width = Math.max(...toInject.map(([k]) => k.length)) + 1;
+            const block = toInject
+                .map(([k, v]) => `${indent}${k.padEnd(width)}${quote(v)} ${HUD_ADDED_TOKEN}`)
+                .join('\n');
+            const lineEnd = content.indexOf('\n', range.bodyStart);
+            const tail =
+                lineEnd >= 0 && !content.slice(range.bodyStart, lineEnd).trim()
+                    ? lineEnd
+                    : range.bodyStart;
+            content = content.slice(0, tail) + '\n' + block + content.slice(tail);
+        }
+
+        if (braceCount(content) !== braceCount(original)) {
+            return status('error', 'Patch produced an unbalanced gameinfo.gi; no changes were written.');
+        }
+        writeFileSync(gameinfoPath, crlf ? content.split('\n').join('\r\n') : content, 'utf-8');
+        writeUserConvarState(gameinfoPath, sidecar, userConvars);
+        return getPerformanceConfigStatus(deadlockPath);
+    } catch (err) {
+        return status('error', `Failed to write gameinfo.gi settings: ${err}`);
+    }
+}
+
+/** Rewrite the value on a line this feature already tagged, preserving the
+ *  recorded stock value. Returns null when no tagged line for `key` exists. */
+function retagUserConvar(content: string, key: string, value: string): string | null {
+    const lines = content.split('\n');
+    let hit = false;
+    for (let i = 0; i < lines.length; i++) {
+        if (entryKey(lines[i]) !== key) continue;
+        const was = WAS_RE.exec(lines[i]);
+        if (was) {
+            const entry = matchEntryLine(was[1], key);
+            if (!entry) continue;
+            lines[i] = `${entry.prefix}${quote(value)}${entry.suffix} // ${MARKER} was ${was[2]}`;
+            hit = true;
+        } else if (lines[i].includes(HUD_ADDED_TOKEN)) {
+            const entry = matchEntryLine(lines[i], key);
+            if (!entry) continue;
+            lines[i] = `${entry.prefix}${quote(value)}${entry.suffix.replace(/\s*\/\/.*$/, '')} ${HUD_ADDED_TOKEN}`;
+            hit = true;
+        }
+    }
+    return hit ? lines.join('\n') : null;
+}
+
+/** Persist control values against a gameinfo.gi with no preset applied. The
+ *  sidecar's preset fields are left as they were: this writes nothing a preset
+ *  owns, so it must not claim a preset is applied, and it must not erase the
+ *  record of one that was wiped by a game update. */
+function writeUserConvarState(
+    gameinfoPath: string,
+    sidecar: AppliedState | null,
+    userConvars: UserConvars
+): void {
+    writeAppliedState(gameinfoPath, {
+        presetId: sidecar?.presetId ?? '',
+        version: sidecar?.version ?? '',
+        contentHash: sidecar?.contentHash ?? '',
+        optIns: sidecar?.optIns ?? [],
+        overridesByPreset: allOverrides(sidecar),
+        userConvars,
+    });
 }
 
 /** Reset only Grimoire-owned user-facing convars. This never deletes an
@@ -767,8 +887,6 @@ export function clearPerformanceConvars(deadlockPath: string | null, keys: strin
     if (!existsSync(gameinfoPath)) return status('error', 'gameinfo.gi not found.');
     const targets = new Set(keys.filter((key) => USER_FACING_KEYS.has(key)));
     if (!targets.size) return status('error', 'No Grimoire-managed setting was named.');
-    const current = getPerformanceConfigStatus(deadlockPath);
-    if (current.state !== 'applied') return status('error', 'Apply a performance preset before resetting its settings.');
     try {
         const original = readFileSync(gameinfoPath, 'utf-8');
         const crlf = original.includes('\r\n');
@@ -795,18 +913,20 @@ export function clearPerformanceConvars(deadlockPath: string | null, keys: strin
         // the line alone is not enough when the preset itself writes the key:
         // the next apply would put it straight back.
         const sidecar = readAppliedState(gameinfoPath);
-        if (sidecar) {
-            const userConvars = userConvarsOf(sidecar);
-            for (const key of targets) userConvars[key] = { omit: true };
-            writeAppliedState(gameinfoPath, {
-                presetId: sidecar.presetId,
-                version: sidecar.version,
-                contentHash: sha256(readFileSync(gameinfoPath, 'utf-8')),
-                optIns: sidecar.optIns ?? [],
-                overridesByPreset: allOverrides(sidecar),
-                userConvars,
-            });
-        }
+        const userConvars = userConvarsOf(sidecar);
+        for (const key of targets) userConvars[key] = { omit: true };
+        writeAppliedState(gameinfoPath, {
+            presetId: sidecar?.presetId ?? '',
+            version: sidecar?.version ?? '',
+            // Only re-stamp a hash that was describing a preset apply. Without
+            // one the reset would otherwise report itself as a hand edit.
+            contentHash: sidecar?.contentHash
+                ? sha256(readFileSync(gameinfoPath, 'utf-8'))
+                : '',
+            optIns: sidecar?.optIns ?? [],
+            overridesByPreset: allOverrides(sidecar),
+            userConvars,
+        });
         return { ...getPerformanceConfigStatus(deadlockPath), message: `Reset ${new Set(cleared).size} setting(s) to the game default.` };
     } catch (err) {
         return status('error', `Failed to reset performance ConVars: ${err}`);
@@ -972,6 +1092,10 @@ export function getPerformanceConfigStatus(deadlockPath: string | null): Perform
         const content = readFileSync(gameinfoPath, 'utf-8');
         const begin = BEGIN_RE.exec(content);
         const activePreset = begin ? getPreset(begin[1]) : null;
+        // autoexec.cfg runs after gameinfo.gi, so a line there beats every
+        // control on this surface. Reported on the status so the controls can
+        // show it as a state instead of burying it in a description.
+        const autoexecConflicts = findAutoexecConvars(deadlockPath, USER_FACING_KEYS);
         const convarStates = computeConvarStates(content, activePreset);
         const convarValues = Object.fromEntries(
             Object.entries(convarStates).flatMap(([key, entry]) => entry.value === null ? [] : [[key, entry.value]])
@@ -1010,6 +1134,7 @@ export function getPerformanceConfigStatus(deadlockPath: string | null): Perform
                 overrideCount,
                 convarValues,
                 convarStates,
+                autoexecConflicts,
                 message: handEdited
                     ? `${base}${overrideNote} The file has manual edits: Reapply folds them into your overrides.`
                     : `${base}${overrideNote}`,
@@ -1020,8 +1145,10 @@ export function getPerformanceConfigStatus(deadlockPath: string | null): Perform
         // the file by hand. If the file is too broken to patch (no ConVars)
         // and we hold a backup, point at the restore path rather than a
         // Reapply that will only error.
+        // A sidecar with no preset id holds only the user's control values, so
+        // it is not evidence that a preset went missing.
         const wipedSidecar = readAppliedState(gameinfoPath);
-        if (wipedSidecar) {
+        if (wipedSidecar?.presetId) {
             const wipedId = wipedSidecar.presetId ?? DEFAULT_PRESET_ID;
             const savedOverrides = Object.keys(allOverrides(wipedSidecar)[wipedId] ?? {}).length;
             const restorable = canRestoreBackup(gameinfoPath, content);
@@ -1046,7 +1173,12 @@ export function getPerformanceConfigStatus(deadlockPath: string | null): Perform
                 wipedPreset
             );
         }
-        return { ...status('not-applied', 'Performance config is not applied.'), convarValues, convarStates };
+        return {
+            ...status('not-applied', 'Performance config is not applied.'),
+            convarValues,
+            convarStates,
+            autoexecConflicts,
+        };
     } catch (err) {
         return status('error', `Failed to read gameinfo.gi: ${err}`);
     }
@@ -1194,8 +1326,11 @@ function writeAppliedState(
         const trimmed: AppliedState = {
             presetId: state.presetId,
             version: state.version,
-            contentHash: state.contentHash,
         };
+        // Empty means "no preset is recorded here" (a sidecar written only to
+        // hold control values). Writing the empty strings out would make a
+        // never-applied install read as one whose preset a game update wiped.
+        if (state.contentHash) trimmed.contentHash = state.contentHash;
         if (state.optIns.length) trimmed.optIns = state.optIns;
         if (Object.keys(state.userConvars).length) trimmed.userConvars = state.userConvars;
         // Drop presets whose override map went empty so the sidecar does not

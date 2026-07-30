@@ -65,7 +65,7 @@ export default function OutOfRangeDialog({
                         {t('performance.outOfRangeDialog.cancel')}
                     </Button>
                     <Button onClick={onResetToDefault} variant="secondary" size="sm" icon={RotateCcw}>
-                        {t('performance.reset')}
+                        {t('common.actions.reset')}
                     </Button>
                     <Button onClick={onConfirm} variant="warning" size="sm">
                         {t('performance.outOfRangeDialog.confirm', { next })}

@@ -157,6 +157,17 @@
       "description": "Browse the game's own asset catalog, built offline from your installed files."
     },
     "browseCatalog": "Browse full catalog",
+    "nonStandard": {
+      "action": "Flag non-standard files",
+      "scanning": "Scanning files…",
+      "title": "Non-standard files",
+      "confirmed": "{{count}} findings backed by roster or live sound references.",
+      "showNaming": "Show naming signals",
+      "subject": "Subject is not live",
+      "sound": "No live sound reference",
+      "naming": "Naming signal only",
+      "failed": "Couldn't scan non-standard files: {{error}}"
+    },
     "backToHeroes": "Heroes",
     "heroes": {
       "subtitle": "Pick a hero to edit their look, abilities, voice, and icons.",
@@ -1335,6 +1346,91 @@
     },
     "privacy": {
       "noHiddenCreators": "No creators are hidden right now."
+    },
+    "gameConvars": {
+      "title": "HUD and gameplay settings",
+      "description": "Settings Grimoire writes into gameinfo.gi. They apply whether or not a performance preset is in use, and each row says where its current value came from.",
+      "resetHint": "Removes Grimoire's line for this setting instead of writing a value.",
+      "usingGameDefault": "Using the game default until changed.",
+      "controls": {
+        "citadel_unit_status_use_v2": {
+          "label": "New health bars (v2)",
+          "description": "Draw heroes, NPCs, and other units with the v2 unit-status bars. Current builds read this flag."
+        },
+        "citadel_unit_status_use_new": {
+          "label": "New health bars (original flag)",
+          "description": "The first-generation health-bar flag, which some builds still read."
+        },
+        "citadel_unit_status_use_v2_for_nonplayers": {
+          "label": "Health bars for NPCs",
+          "description": "Extend the v2 bars to troopers, guardians, and other non-player units rather than heroes only."
+        },
+        "citadel_unit_status_single_bar_mode": {
+          "label": "Numeric / single-bar health",
+          "description": "Show health as one continuous bar with a number instead of the segmented default. Builds that dropped this presentation ignore the flag."
+        },
+        "citadel_unit_status_allies_see_thru_walls": {
+          "label": "Ally health through walls",
+          "description": "Show allied unit health through walls, out to the ally wall distance set in the advanced sliders below."
+        },
+        "citadel_damage_offscreen_indicator_disabled": {
+          "label": "Offscreen damage indicators",
+          "description": "Show damage indicators for units outside your view. The underlying ConVar is a disable flag, so switching this on writes false."
+        },
+        "citadel_damage_text_show_effectiveness": {
+          "label": "Damage effectiveness text",
+          "description": "Add the engine's own effectiveness percentage to each damage number: how much of the base damage that hit landed for, after per-hit multipliers such as bullet falloff at range. It is not an armor or resistance readout, so a point-blank hit still reads 100% against an armored target."
+        }
+      },
+      "advanced": {
+        "citadel_hud_objective_health_enabled": "Objective health bars",
+        "citadel_unit_status_allies_see_thru_walls_max_distance": "Ally health visibility distance",
+        "citadel_minimap_unit_click_radius": "Minimap click radius",
+        "citadel_minimap_player_width": "Minimap player icon size",
+        "citadel_minimap_local_player_width": "Minimap local-player icon size",
+        "citadel_minimap_max_icon_shrink": "Minimap icon shrink",
+        "citadel_minimap_overlap_scan_distance": "Minimap overlap scan distance",
+        "citadel_minimap_zip_line_thickness": "Minimap zipline thickness",
+        "minimap_update_rate_hz": "Minimap update rate"
+      },
+      "levels": {
+        "unset": "Game default (no line written)",
+        "citadel_hud_objective_health_enabled": {
+          "0": "Off",
+          "1": "Partial",
+          "2": "Full"
+        }
+      },
+      "levelDescription": {
+        "citadel_hud_objective_health_enabled": "How much health detail the objective bars show for walkers, shrines, and the Patron."
+      },
+      "valueState": {
+        "gameDefault": "Game default",
+        "managedPreset": "Managed preset",
+        "userOverride": "Your override",
+        "unsupported": "Unsupported value",
+        "outOfRange": "Out of range"
+      },
+      "valueStateHint": {
+        "gameDefault": "gameinfo.gi has no line for this, so the game's own value applies.",
+        "managedPreset": "Set by the applied performance preset at its bundled value.",
+        "userOverride": "You changed this away from the preset or the game default.",
+        "unsupported": "gameinfo.gi holds a value Grimoire cannot interpret. Reset or edit the file to continue.",
+        "outOfRange": "gameinfo.gi holds {{value}}, outside the range Grimoire can show ({{min}} to {{max}})."
+      },
+      "requiresOff": "Does nothing while \"{{control}}\" is off.",
+      "autoexecConflict": "autoexec.cfg sets this to {{value}} on line {{line}}. autoexec runs after gameinfo.gi, so that value wins over this control.",
+      "autoexecOpen": "Change it on the Autoexec page",
+      "pending": {
+        "title": "Not applied yet",
+        "summary_one": "{{count}} pending change",
+        "summary_other": "{{count}} pending changes",
+        "row": "{{control}}: {{from}} to {{to}}",
+        "rowFromDefault": "{{control}}: game default to {{to}}",
+        "rowToDefault": "{{control}}: {{from}} to game default",
+        "apply": "Apply changes",
+        "discard": "Discard"
+      }
     }
   },
   "crosshair": {
@@ -2229,6 +2325,9 @@
       "posing": "Posing {{hero}}...",
       "posingWithMods": "Posing {{hero}} with {{count}} active mods...",
       "cannotPose": "This hero can't be posed in 3D yet.",
+      "skinFailed": "This skin could not be previewed in 3D. It may be broken or made for an older game version; showing the base pose instead.",
+      "exportFailed": "Grimoire could not prepare this 3D preview. Please retry and report this if it keeps happening.",
+      "retry": "Retry preview",
       "pauseSpin": "Pause spin",
       "resumeSpin": "Resume spin"
     },
@@ -3231,92 +3330,12 @@
     }
   },
   "performance": {
-    "hud": {
-      "sectionTitle": "HUD and advanced gameinfo.gi settings",
-      "controls": {
-        "citadel_unit_status_use_v2": {
-          "label": "New health bars (v2)",
-          "description": "Draw heroes, NPCs, and other units with the v2 unit-status bars. Current builds read this flag."
-        },
-        "citadel_unit_status_use_new": {
-          "label": "New health bars (original flag)",
-          "description": "The first-generation flag, which some builds still read. The Autoexec page writes this same ConVar to autoexec.cfg, and autoexec runs after gameinfo.gi, so a line there wins over this toggle."
-        },
-        "citadel_unit_status_use_v2_for_nonplayers": {
-          "label": "Health bars for NPCs",
-          "description": "Extend the v2 bars to troopers, guardians, and other non-player units rather than heroes only. It applies on top of the v2 bars, so it does nothing while those are off."
-        },
-        "citadel_unit_status_single_bar_mode": {
-          "label": "Numeric / single-bar health",
-          "description": "Show health as one continuous bar with a number instead of the segmented default. Builds that dropped this presentation ignore the flag."
-        },
-        "citadel_unit_status_allies_see_thru_walls": {
-          "label": "Ally health through walls",
-          "description": "Show allied unit health through walls, out to the ally wall distance set in the advanced sliders below."
-        },
-        "citadel_damage_offscreen_indicator_disabled": {
-          "label": "Offscreen damage indicators",
-          "description": "Show damage indicators for units outside your view. The underlying ConVar is a disable flag, so switching this on writes false."
-        },
-        "citadel_damage_text_show_effectiveness": {
-          "label": "Damage effectiveness text",
-          "description": "Add the engine's own effectiveness percentage to each damage number: how much of the base damage that hit landed for, after per-hit multipliers such as bullet falloff at range. It is not an armor or resistance readout, so a point-blank hit still reads 100% against an armored target."
-        }
-      },
-      "presetNote": {
-        "on": "The performance preset turns this on.",
-        "off": "The performance preset turns this off.",
-        "value": "The performance preset writes {{value}}."
-      }
-    },
-    "reset": "Reset to game default",
-    "resetHint": "Removes Grimoire's line for this setting instead of writing a value.",
-    "valueState": {
-      "gameDefault": "Game default",
-      "managedPreset": "Managed preset",
-      "userOverride": "Your override",
-      "unsupported": "Unsupported value",
-      "outOfRange": "Out of range"
-    },
-    "valueStateHint": {
-      "gameDefault": "gameinfo.gi has no line for this, so the game's own value applies.",
-      "managedPreset": "Set by the OptimizationLock preset at its bundled value.",
-      "userOverride": "You changed this away from the preset or the game default.",
-      "unsupported": "gameinfo.gi holds a value Grimoire cannot interpret. Reset or edit the file to continue.",
-      "outOfRange": "gameinfo.gi holds {{value}}, outside the range Grimoire can show ({{min}} to {{max}})."
-    },
-    "pending": {
-      "title": "Not applied yet",
-      "summary_one": "{{count}} pending change",
-      "summary_other": "{{count}} pending changes",
-      "row": "{{control}}: {{from}} to {{to}}",
-      "rowFromDefault": "{{control}}: game default to {{to}}",
-      "rowToDefault": "{{control}}: {{from}} to game default",
-      "apply": "Apply changes",
-      "discard": "Discard",
-      "appliedNote": "Everything else on this card matches gameinfo.gi."
-    },
     "outOfRangeDialog": {
       "title": "Replace an out-of-range value?",
       "body": "{{control}} is currently {{current}} in gameinfo.gi, outside the range Grimoire supports ({{min}} to {{max}}). Grimoire will not silently clamp it.",
       "choice": "Applying replaces it with {{next}}. Resetting removes the line so the game default applies.",
       "confirm": "Replace with {{next}}",
       "cancel": "Leave it alone"
-    },
-    "advanced": {
-      "sectionTitle": "Advanced numeric settings",
-      "usingGameDefault": "Using the game default until changed.",
-      "controls": {
-        "citadel_hud_objective_health_enabled": "Objective health bars (0 off, 2 fullest)",
-        "citadel_unit_status_allies_see_thru_walls_max_distance": "Ally health visibility distance",
-        "citadel_minimap_unit_click_radius": "Minimap click radius",
-        "citadel_minimap_player_width": "Minimap player icon size",
-        "citadel_minimap_local_player_width": "Minimap local-player icon size",
-        "citadel_minimap_max_icon_shrink": "Minimap icon shrink",
-        "citadel_minimap_overlap_scan_distance": "Minimap overlap scan distance",
-        "citadel_minimap_zip_line_thickness": "Minimap zipline thickness",
-        "minimap_update_rate_hz": "Minimap update rate"
-      }
     },
     "statusReadError": "Could not read gameinfo.gi status. Check your Deadlock path in Settings.",
     "cardDescription": "Community fps presets for Deadlock, applied onto gameinfo.gi without touching your mods.",

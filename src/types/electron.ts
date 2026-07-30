@@ -1207,6 +1207,8 @@ export interface ElectronAPI {
     // thumbnails). Experimental, gated behind settings.experimentalFoundry.
     foundry: {
         heroes: () => Promise<import('./foundry').HeroInfo[]>;
+        /** Scan the installed base pak; never stages or changes game files. */
+        scanNonStandard: () => Promise<import('./foundry').NonStandardReport>;
         textures: (
             filters?: import('./foundry').TextureFilters
         ) => Promise<import('./foundry').TextureEntry[]>;

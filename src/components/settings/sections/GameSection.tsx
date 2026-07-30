@@ -17,6 +17,7 @@ import { Input } from '../../common/forms';
 import { ConfirmModal } from '../../common/PageComponents';
 import Tx from '../../translation/Tx';
 import PerformanceConfigCard from '../../performance/PerformanceConfigCard';
+import GameConvarsSection from './GameConvarsSection';
 
 // Game paths and the gameinfo.gi wiring that makes mods load at all.
 export default function GameSection() {
@@ -322,6 +323,13 @@ export default function GameSection() {
             <>
               <div className="h-px bg-white/5" />
               <AutoexecSection gamePath={activeDeadlockPath} />
+              <div className="h-px bg-white/5" />
+              {/* HUD and gameplay ConVars written into gameinfo.gi. They used
+                  to sit inside the Performance Config card, which filed a
+                  readability preference under frame rate and gated it behind
+                  the preset feature flag. They are game setup, so they live
+                  here and are not gated. Issue #18. */}
+              <GameConvarsSection />
             </>
           )}
         </div>
