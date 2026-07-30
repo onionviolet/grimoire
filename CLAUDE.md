@@ -87,6 +87,19 @@ unsafe in a parallel session. `GRIMOIRE_DEV_CDP_PORT` remains an explicit CDP
 override. Confirm the target before trusting it with
 `node scripts/dev-driver.mjs eval "window.__GRIMOIRE_DEV_SLOT"`.
 
+**A slot copies the real profile on its first boot** (`devSlotSeed.ts`), so it
+opens with actual mods, settings, and caches rather than looking like a fresh
+install. Without this a slot is close to useless for feature work: every mod
+renders as `PakNN` because `mod-metadata.json` is missing, and the nav loses
+every entry gated on a setting. Chromium's own profile state is deliberately
+left behind, both because it must stay distinct and because it is ~90% of the
+bytes. The copy happens on creation only; after that the slot owns its state.
+Set `GRIMOIRE_DEV_SEED=0` for a genuinely blank slot, which is what onboarding,
+first-run and migration work want. Delete the slot directory to re-seed.
+
+The slots isolate userData, **not the game install**. Two slots toggling mods
+are writing to the same addons directory.
+
 ```bash
 node scripts/dev-driver.mjs route foundry
 ```
