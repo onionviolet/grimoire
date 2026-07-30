@@ -34,10 +34,13 @@ const DISCORD_CLIENT_ID = '1504228345922191380';
 /** Art asset key uploaded under the app's Rich Presence -> Art Assets. */
 const LARGE_IMAGE_KEY = 'grimoire_logo';
 
-/** Buttons rendered on the presence card (max 2). https URLs required. */
+/** Buttons rendered on the presence card (max 2). https URLs required.
+ *  Both destinations are the upstream project's, not the fork's, and this card
+ *  is public on the user's Discord profile, so the labels name whose they are
+ *  rather than leaving a viewer to assume they lead to this build. Issue #20. */
 const BUTTONS: NonNullable<SetActivity['buttons']> = [
-    { label: 'Get Grimoire', url: 'https://grimoiremods.com' },
-    { label: 'Join the Discord', url: 'https://discord.gg/KgYGHEMq2P' },
+    { label: 'Grimoire by Slush97', url: 'https://grimoiremods.com' },
+    { label: 'Grimoire Discord', url: 'https://discord.gg/KgYGHEMq2P' },
 ];
 
 /** Context the renderer reports for the current surface. */

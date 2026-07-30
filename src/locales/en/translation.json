@@ -1189,10 +1189,8 @@
       "reportBuildFailed": "Failed to build report: {{error}}",
       "bugReportTitle": "Grimoire bug report",
       "bugPlaceholder": "Describe what went wrong...",
-      "description": "Found a bug or have a feature request? File an issue on GitHub or drop into our Discord.",
       "githubIssues": "GitHub Issues",
       "joinDiscord": "Join Discord",
-      "kofi": "Buy me a coffee",
       "shareBugReport": "Share a bug report",
       "bugReportDescription": "Describe what went wrong, generate a sanitized report, then paste it into Discord or a GitHub issue. The report bundles app and OS info plus the tail of your log; home paths, Steam IDs, bearer tokens, and emails are stripped before it leaves the app.",
       "regenerateReport": "Regenerate report",
@@ -1204,7 +1202,20 @@
       "copyReport": "Copy report",
       "openDiscord": "Open Discord",
       "openGithubIssue": "Open GitHub issue",
-      "kofiTitle": "Support Grimoire on Ko-fi"
+      "kofiTitle": "Support Slush97, Grimoire's original creator, on Ko-fi",
+      "aboutTitle": "About Grimoire",
+      "forkStatement": "Grimoire was created by Slush97. This is onionviolet's independent fork: a separate build with its own features and releases, not affiliated with or endorsed by the original project. Both are MIT licensed.",
+      "runningFork": "You are running the onionviolet fork, v{{version}}.",
+      "runningForkNoVersion": "You are running the onionviolet fork.",
+      "engineCredit": "Mod engine: vpkmerge, by Slush97.",
+      "originalProject": "Original project by Slush97",
+      "originalSite": "grimoiremods.com",
+      "forkRepo": "This fork on GitHub",
+      "license": "MIT license",
+      "channels": "Found a bug or have a feature request? File it on this fork's GitHub. The Discord below is the original Grimoire community, run by Slush97, not a fork channel.",
+      "githubIssuesTitle": "Open issues for the onionviolet fork on GitHub",
+      "joinDiscordTitle": "Join the original Grimoire Discord, run by Slush97",
+      "kofiSlush97": "Buy Slush97 a coffee"
     },
     "maintenance": {
       "archivesRemoved_one": "Removed {{count}} archive.",
@@ -2756,7 +2767,8 @@
       "create": "Create",
       "getStarted": "Get Started",
       "skipForNow": "Skip for now"
-    }
+    },
+    "forkNotice": "An independent fork of Grimoire, the Deadlock mod manager by Slush97."
   },
   "sidebar": {
     "expandSidebar": "Expand sidebar",

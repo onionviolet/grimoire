@@ -230,6 +230,7 @@ export default function UpdateModal({ onClose }: Props) {
                         href="https://discord.gg/KgYGHEMq2P"
                         target="_blank"
                         rel="noreferrer noopener"
+                        title={t('settings.support.joinDiscordTitle')}
                         className="inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium border border-brand-discord/40 bg-brand-discord/10 text-text-primary hover:bg-brand-discord/20 hover:border-brand-discord/60 transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-discord/60 whitespace-nowrap"
                     >
                         <svg aria-hidden="true" viewBox="0 0 24 24" className="w-4 h-4 fill-current">

@@ -1,13 +1,21 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Bug, Check, Copy, FileText, Github, LifeBuoy } from 'lucide-react';
+import { Bug, Check, Copy, FileText, Github, Heart, LifeBuoy } from 'lucide-react';
 import { useAppStore } from '../../../stores/appStore';
 import { buildDiagnosticReport } from '../../../lib/api';
 import { Button, Card } from '../../common/ui';
 import { Textarea } from '../../common/forms';
 import Tx from '../../translation/Tx';
 
+// Every outward link this section can offer, split by who it actually belongs
+// to. The Discord and the Ko-fi jar came with the project and still point at
+// the original author's community and tip jar, so nothing here may imply the
+// fork is the beneficiary. See issue #20.
+const UPSTREAM_REPO = 'https://github.com/Slush97/grimoire';
+const UPSTREAM_SITE = 'https://grimoiremods.com';
 const DISCORD_INVITE = 'https://discord.gg/KgYGHEMq2P';
+const FORK_REPO = 'https://github.com/onionviolet/grimoire';
+const FORK_LICENSE = 'https://github.com/onionviolet/grimoire/blob/main/LICENSE';
 
 function DiscordIcon({ className }: { className: string }) {
   return (
@@ -29,6 +37,13 @@ export default function SupportSection() {
   const [bugReportError, setBugReportError] = useState<string | null>(null);
   const [bugCopyState, setBugCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
   const [includeFullLog, setIncludeFullLog] = useState(false);
+  const [appVersion, setAppVersion] = useState('');
+
+  // So a user can tell from the app itself which project and which build they
+  // are running, without going to GitHub to work it out.
+  useEffect(() => {
+    window.electronAPI.updater.getVersion().then(setAppVersion);
+  }, []);
 
   const handleGenerateBugReport = async () => {
     setIsBuildingReport(true);
@@ -75,24 +90,81 @@ export default function SupportSection() {
       '```',
     ].join('\n');
     const q = `?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;
-    return `https://github.com/onionviolet/grimoire/issues/new${q}`;
+    return `${FORK_REPO}/issues/new${q}`;
   }, [bugDescription, t]);
 
   return (
     <Card title={<Tx k="settings.sections.support" fallback="Support" />} icon={LifeBuoy}>
       <div className="space-y-6">
+        <div className="space-y-3">
+          <h4 className="font-medium text-sm flex items-center gap-2">
+            <Heart className="w-4 h-4 text-text-secondary" aria-hidden="true" />
+            <Tx k="settings.support.aboutTitle" fallback="About Grimoire" />
+          </h4>
+          <p className="text-sm text-text-secondary">
+            <Tx
+              k="settings.support.forkStatement"
+              fallback="Grimoire was created by Slush97. This is onionviolet's independent fork: a separate build with its own features and releases, not affiliated with or endorsed by the original project. Both are MIT licensed."
+            />
+          </p>
+          <p className="text-xs text-text-secondary/80">
+            {appVersion
+              ? t('settings.support.runningFork', { version: appVersion })
+              : t('settings.support.runningForkNoVersion')}
+            {' '}
+            {t('settings.support.engineCredit')}
+          </p>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+            <a
+              href={UPSTREAM_REPO}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="text-accent hover:underline"
+            >
+              <Tx k="settings.support.originalProject" fallback="Original project by Slush97" />
+            </a>
+            <a
+              href={UPSTREAM_SITE}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="text-accent hover:underline"
+            >
+              <Tx k="settings.support.originalSite" fallback="grimoiremods.com" />
+            </a>
+            <a
+              href={FORK_REPO}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="text-accent hover:underline"
+            >
+              <Tx k="settings.support.forkRepo" fallback="This fork on GitHub" />
+            </a>
+            <a
+              href={FORK_LICENSE}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="text-accent hover:underline"
+            >
+              <Tx k="settings.support.license" fallback="MIT license" />
+            </a>
+          </div>
+        </div>
+
+        <div className="h-px bg-white/5" />
+
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <p className="text-sm text-text-secondary">
             <Tx
-              k="settings.support.description"
-              fallback="Found a bug or have a feature request? File an issue on GitHub or drop into our Discord."
+              k="settings.support.channels"
+              fallback="Found a bug or have a feature request? File it on this fork's GitHub. The Discord below is the original Grimoire community, run by Slush97, not a fork channel."
             />
           </p>
           <div className="flex flex-col sm:flex-row gap-2">
             <a
-              href="https://github.com/onionviolet/grimoire/issues"
+              href={`${FORK_REPO}/issues`}
               target="_blank"
               rel="noreferrer noopener"
+              title={t('settings.support.githubIssuesTitle')}
               className="inline-flex items-center justify-center gap-2 rounded-sm px-4 py-2 text-sm font-medium border border-border bg-bg-tertiary/40 text-text-primary hover:bg-bg-tertiary/70 hover:border-text-secondary/60 transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-text-secondary/60 whitespace-nowrap"
             >
               <Github className="w-4 h-4" aria-hidden="true" />
@@ -102,6 +174,7 @@ export default function SupportSection() {
               href={DISCORD_INVITE}
               target="_blank"
               rel="noreferrer noopener"
+              title={t('settings.support.joinDiscordTitle')}
               className="inline-flex items-center justify-center gap-2 rounded-sm px-4 py-2 text-sm font-medium border border-brand-discord/40 bg-brand-discord/10 text-text-primary hover:bg-brand-discord/20 hover:border-brand-discord/60 transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-discord/60 whitespace-nowrap"
             >
               <DiscordIcon className="w-4 h-4 fill-current" />
@@ -208,6 +281,7 @@ export default function SupportSection() {
                   href={DISCORD_INVITE}
                   target="_blank"
                   rel="noreferrer noopener"
+                  title={t('settings.support.joinDiscordTitle')}
                   className="inline-flex items-center justify-center gap-2 rounded-sm px-3 py-1.5 text-sm font-medium border border-brand-discord/40 bg-brand-discord/10 text-text-primary hover:bg-brand-discord/20 hover:border-brand-discord/60 transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-discord/60"
                 >
                   <DiscordIcon className="w-4 h-4 fill-current" />

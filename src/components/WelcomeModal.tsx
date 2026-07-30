@@ -159,6 +159,11 @@ export default function WelcomeModal({ onComplete }: WelcomeModalProps) {
                     <p className="text-sm text-text-secondary">
                         {t('welcome.subtitle')}
                     </p>
+                    {/* First run is where a user decides what they installed, so
+                        say which project this is before anything else. */}
+                    <p className="text-xs text-text-secondary/70 mt-2">
+                        {t('welcome.forkNotice')}
+                    </p>
                 </div>
 
                 {/* Content */}
