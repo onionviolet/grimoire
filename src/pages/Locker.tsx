@@ -65,6 +65,7 @@ import {
 import { shuffleSkinKey, shuffleSoundKey, type VariantChoice } from '../lib/lockerRandomizer';
 import { resolveLockerRoute, type LockerMode } from '../lib/lockerMode';
 import { readPref, writePref } from '../lib/uiPrefs';
+import { useScrollRestore } from '../lib/useScrollRestore';
 import {
   buildSoundInventory,
   countMods,
@@ -96,7 +97,6 @@ function useOverlayExit<T>(value: T | null): { item: T | null; closing: boolean 
   };
 }
 
-let lockerPageScrollTop = 0;
 let lockerCategoriesCache: GameBananaCategoryNode[] | null = null;
 const lockerLoadedImageUrls = new Set<string>();
 const lockerLoadingImageUrls = new Set<string>();
@@ -289,9 +289,6 @@ export default function Locker() {
       setLockerOverview(null);
     }
   }, []);
-  const lockerScrollRef = useRef<HTMLDivElement | null>(null);
-  const latestLockerScrollTopRef = useRef(lockerPageScrollTop);
-
   useEffect(() => {
     loadSettings();
   }, [loadSettings]);
@@ -644,6 +641,16 @@ export default function Locker() {
     });
   }, [baseHeroList, favoriteHeroes, heroMods, heroSounds, heroHasActive]);
 
+  // The hero grid's scroll position, restored after a drill-in round trip.
+  // Deps are the things that can change the grid's height, so an offset that
+  // did not fit a moment ago is retried once the list is real.
+  const lockerScrollRef = useScrollRestore<HTMLDivElement>('locker:grid', [
+    modsLoading,
+    categoriesLoading,
+    heroList.length,
+    viewMode,
+  ]);
+
   // When "hide empty" is on, drop heroes with no assigned skins/sounds. Favorites
   // are kept so an intentional pin never disappears. Uses the same content test
   // as the sort above so what's hidden matches what sorts to the bottom.
@@ -717,42 +724,6 @@ export default function Locker() {
       prewarmLockerImage(getHeroNamePath(hero.name));
     }
   }, [heroList]);
-
-  useLayoutEffect(() => {
-    let frame: number | null = null;
-    let attempts = 0;
-    const restoreScroll = () => {
-      const container = lockerScrollRef.current;
-      if (!container || lockerPageScrollTop <= 0) return;
-      const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
-      if (maxScrollTop <= 0 && attempts < 8) {
-        attempts += 1;
-        frame = window.requestAnimationFrame(restoreScroll);
-        return;
-      }
-      const target = Math.min(lockerPageScrollTop, maxScrollTop);
-      container.scrollTop = target;
-      latestLockerScrollTopRef.current = lockerPageScrollTop;
-    };
-    restoreScroll();
-    frame = window.requestAnimationFrame(restoreScroll);
-    return () => {
-      if (frame !== null) window.cancelAnimationFrame(frame);
-    };
-  }, [modsLoading, categoriesLoading, heroList.length, viewMode]);
-
-  useEffect(() => {
-    const container = lockerScrollRef.current;
-    if (!container) return;
-    const onScroll = () => {
-      latestLockerScrollTopRef.current = container.scrollTop;
-      lockerPageScrollTop = container.scrollTop;
-    };
-    container.addEventListener('scroll', onScroll, { passive: true });
-    return () => {
-      container.removeEventListener('scroll', onScroll);
-    };
-  }, [modsLoading, categoriesLoading]);
 
   // Both skins and sounds toggle independently. Users layering multiple VPKs
   // on the same hero (textures + weapons + voice) is a valid workflow; the

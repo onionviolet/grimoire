@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useScrollRestore } from '../lib/useScrollRestore';
 import {
   Hammer,
   Library,
@@ -162,6 +163,7 @@ export default function Foundry() {
 
   const workshopHero = selectedHero ?? linkedHero;
   const activeTool: SubtoolId = linkedTool ?? active;
+  const toolScrollRef = useScrollRestore<HTMLDivElement>(`foundry:${activeTool}`, [activeTool]);
   const activeMode: Mode = linkedHero ? 'heroes' : linkedTool ? 'catalog' : mode;
   const leaveWorkshop = useCallback(() => {
     setSelectedHero(null);
@@ -323,7 +325,10 @@ export default function Foundry() {
         })}
       </aside>
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      {/* The tool pane owns its scroll, keyed per tool, so switching away
+          from a long catalog and back returns to where you were reading.
+          Layout's shared container is keyed by route and remounts. */}
+      <div ref={toolScrollRef} className="flex min-w-0 flex-1 flex-col overflow-y-auto">
         <div className="space-y-4 p-6">
           <PageHeader
             title={<Tx k="foundry.header.title" fallback="Foundry" />}

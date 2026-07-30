@@ -31,6 +31,8 @@ import { MenuRoot, MenuTrigger, MenuContent, MenuItem, MenuLabel } from '../comp
 import Tx from '../components/translation/Tx';
 import { searchConflict } from '../lib/conflictSearch';
 import { readPref, writePref } from '../lib/uiPrefs';
+import SearchInput from '../components/common/SearchInput';
+import { useScrollRestore } from '../lib/useScrollRestore';
 
 /** Wraps a conflict card's mod thumbnail in a right-click menu. The thumbnails
  *  are how you tell the two sides apart (the shared file path is identical), so
@@ -180,6 +182,11 @@ export default function Conflicts() {
   const [error, setError] = useState<string | null>(null);
   const [disableTarget, setDisableTarget] = useState<ModWithThumbnail | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>(() => readPref('conflictsViewMode'));
+  const conflictsScrollRef = useScrollRestore<HTMLDivElement>('conflicts:list', [
+    loading,
+    conflicts.length,
+    viewMode,
+  ]);
   // Query state is intentionally local to this visit and never participates in
   // loadConflicts, keeping search as inspection rather than another scan.
   const [search, setSearch] = useState('');
@@ -635,6 +642,11 @@ export default function Conflicts() {
   }
 
   return (
+    // Own scroll container so the list position survives leaving the page and
+    // coming back. The shared one in Layout is keyed by route, so it remounts
+    // and forgets: opening a conflicting mod in Installed and returning used
+    // to dump the user at the top of a long list.
+    <div ref={conflictsScrollRef} className="h-full overflow-y-auto">
     <PageLayout maxWidth="5xl">
       <PageHeader
         title={
@@ -689,41 +701,22 @@ export default function Conflicts() {
 
       {conflicts.length > 0 && (
         <div className="mb-5 rounded-xl border border-border bg-bg-secondary p-3">
-          <label htmlFor="conflict-search" className="mb-1.5 block text-xs font-medium text-text-secondary">
-            Search active conflicts
-          </label>
-          <div className="flex items-center gap-2">
-            <Search className="h-4 w-4 flex-shrink-0 text-text-tertiary" aria-hidden />
-            <input
-              id="conflict-search"
-              type="search"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Escape' && search) {
-                  event.preventDefault();
-                  clearSearch();
-                }
-              }}
-              placeholder="Mod name, filename, or game path"
-              className="min-w-0 flex-1 bg-transparent text-sm text-text-primary outline-none placeholder:text-text-tertiary"
-              aria-describedby="conflict-search-summary"
-            />
-            {search && (
-              <button
-                type="button"
-                onClick={clearSearch}
-                className="rounded px-2 py-1 text-xs text-text-secondary transition-colors hover:bg-bg-tertiary hover:text-text-primary"
-              >
-                Clear search
-              </button>
-            )}
-          </div>
-          <p id="conflict-search-summary" className="mt-2 text-xs text-text-secondary" aria-live="polite">
-            {debouncedSearch.trim()
-              ? `Showing ${filteredConflictResults.length} of ${conflicts.length} active conflicts`
-              : `${conflicts.length} active conflict${conflicts.length === 1 ? '' : 's'}. Search names, filenames, variant labels, shared paths, or conflict type.`}
-          </p>
+          <SearchInput
+            value={search}
+            onChange={setSearch}
+            label={t('conflicts.search.label')}
+            placeholder={t('conflicts.search.placeholder')}
+            clearLabel={t('conflicts.search.clear')}
+            scope={t('conflicts.search.scope', { count: conflicts.length })}
+            summary={
+              debouncedSearch.trim()
+                ? t('conflicts.search.showing', {
+                    count: filteredConflictResults.length,
+                    total: conflicts.length,
+                  })
+                : undefined
+            }
+          />
         </div>
       )}
 
@@ -749,9 +742,13 @@ export default function Conflicts() {
       {debouncedSearch.trim() && filteredConflictResults.length === 0 ? (
         <EmptyState
           icon={Search}
-          title="No active conflicts match this search"
-          description="Try a different name or path fragment, or clear the search to see every active conflict."
-          action={<Button variant="secondary" onClick={clearSearch}>Clear search</Button>}
+          title={t('conflicts.search.noMatch.title')}
+          description={t('conflicts.search.noMatch.description')}
+          action={
+            <Button variant="secondary" onClick={clearSearch}>
+              {t('conflicts.search.clear')}
+            </Button>
+          }
         />
       ) : viewMode === 'list' ? (
         <div className="space-y-3">
@@ -1342,5 +1339,6 @@ export default function Conflicts() {
         }
       />
     </PageLayout>
+    </div>
   );
 }

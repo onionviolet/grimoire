@@ -10,7 +10,7 @@ import type { TextureCategory, TextureGridItem } from '../../types/foundry';
 import PortraitEditor from './PortraitEditor';
 import TextureGrid from './TextureGrid';
 import TextureLightbox from './TextureLightbox';
-import FoundrySearchInput from './FoundrySearchInput';
+import SearchInput from '../common/SearchInput';
 import { filterTextureGridItems } from './assetSearch';
 import { prepareVisualStagedEdit, visualAssetInspectionPaths, type VisualStagedEdit } from './visualEdits';
 
@@ -163,7 +163,7 @@ export default function LibraryBrowse({ heroNames, initialCategory = 'ability-ic
           </div>
         )}
 
-        <FoundrySearchInput
+        <SearchInput
           value={search}
           onChange={setSearch}
           placeholder={t('foundry.filters.searchPlaceholder', 'Search assets...')}

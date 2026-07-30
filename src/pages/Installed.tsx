@@ -75,6 +75,8 @@ import { useAppStore, type BrowseArtistRef } from '../stores/appStore';
 import { getActiveDeadlockPath } from '../lib/appSettings';
 import { isImprintPending } from '../lib/imprintPending';
 import { readPref, writePref, CARD_SIZE_MIN as CARD_SIZE_MULTIPLIER_FLOOR, CARD_SIZE_MAX as CARD_SIZE_MULTIPLIER_CEILING } from '../lib/uiPrefs';
+import SearchInput from '../components/common/SearchInput';
+import { useScrollRestore } from '../lib/useScrollRestore';
 import { getConflicts, openModsFolder, readImageDataUrl, showOpenDialog, getModDetails, getModFileList, downloadMod, createSnapshot, detectUnknownModFilters, detectUnknownModCacheBulk, cancelUnknownModDetection, onUnknownModDetectionProgress, applyUnknownModMatch, applyUnknownCustomMod, associateUnknownMod, listUnknownModFiles, browseMods, mergeMods, unmergeMod, extractMergeSource, addMergeSources, reorderMods as apiReorderMods, setModIgnoreUpdates, getLockerOverview, revealModInFolder, dmmMigrateScan, dmmMigrateExecute, imprintAllInstalled, onImprintAllInstalledProgress, imprintPreflight, readImprintDetails, getModelCompatibilityReport, applyModelCompatibilityFix, launchModded } from '../lib/api';
 import type { UnmergeModResult, ImprintAllInstalledResult, ImprintInstalledProgress, ImprintPreflightResult, ImprintDetails } from '../lib/api';
 import type { ModConflict } from '../lib/api';
@@ -735,7 +737,6 @@ function buildCompactPriorityOrder(entries: ModEntry[]): Mod[] {
  * fetch. A value of null means the mod page returned no usable file list.
  */
 const updateCheckCache = new Map<number, Set<number> | null>();
-let installedPageScrollTop = 0;
 
 const CARD_SIZE_MIN = 220;
 const CARD_SIZE_BASE = 118;
@@ -1392,10 +1393,6 @@ export default function Installed() {
   // successor). The installs are kept untouched; a toast offers a manual pick
   // via the details modal, which already handles the delete + re-enable flow.
   const [updatePickQueue, setUpdatePickQueue] = useState<{ id: string; name: string }[]>([]);
-  const installedScrollRef = useRef<HTMLDivElement | null>(null);
-  const latestInstalledScrollTopRef = useRef(
-    installedPageScrollTop || useAppStore.getState().installedScrollTop
-  );
 
   // Two-phase grid mount. The route transition's commit used to create all
   // card subtrees at once: content-visibility skips their layout/paint, but
@@ -1411,34 +1408,17 @@ export default function Installed() {
     return () => window.cancelAnimationFrame(frame);
   }, []);
 
-  useLayoutEffect(() => {
-    const restoreScroll = () => {
-      const container = installedScrollRef.current;
-      const target = installedPageScrollTop || useAppStore.getState().installedScrollTop;
-      if (!container || target <= 0) return;
-      container.scrollTop = target;
-      latestInstalledScrollTopRef.current = target;
-    };
-    restoreScroll();
-    const frame = window.requestAnimationFrame(restoreScroll);
-    return () => window.cancelAnimationFrame(frame);
-    // gridWarm: the saved offset may exceed phase 1's scrollHeight, so restore
-    // again once the full list is mounted.
-  }, [modsLoading, mods.length, gridWarm]);
-
-  useEffect(() => {
-    const container = installedScrollRef.current;
-    if (!container) return;
-    const onScroll = () => {
-      latestInstalledScrollTopRef.current = container.scrollTop;
-      installedPageScrollTop = container.scrollTop;
-    };
-    container.addEventListener('scroll', onScroll, { passive: true });
-    return () => {
-      container.removeEventListener('scroll', onScroll);
-      setInstalledScrollTop(latestInstalledScrollTopRef.current);
-    };
-  }, [setInstalledScrollTop]);
+  // gridWarm is a dep because the saved offset may exceed phase 1's
+  // scrollHeight: the restore has to run again once the full list is mounted.
+  const installedScrollRef = useScrollRestore<HTMLDivElement>(
+    'installed:grid',
+    [modsLoading, mods.length, gridWarm],
+    {
+      // The store outlives this module, so it seeds the very first restore.
+      initialTop: () => useAppStore.getState().installedScrollTop,
+      onLeave: setInstalledScrollTop,
+    }
+  );
 
   const openModDetails = async (m: typeof mods[number]) => {
     if (!m.gameBananaId) return;
@@ -4034,34 +4014,22 @@ export default function Installed() {
             window widths, and shrinks to min-w instead of pushing the controls
             onto a right-aligned orphan row when cramped. */}
         <div className="flex items-center gap-2 lg:gap-3">
-          <div className="relative min-w-[11rem] flex-1">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-text-secondary pointer-events-none" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Escape' && search) {
-                  e.preventDefault();
-                  setSearch('');
-                }
-              }}
-              aria-label={t('installed.filters.searchPlaceholder')}
-              placeholder={t('installed.filters.searchPlaceholder')}
-              className={`bg-bg-secondary border border-border rounded-lg pl-8 ${search ? 'pr-8' : 'pr-3'} py-2 text-sm text-text-primary placeholder:text-text-primary/55 focus:outline-none focus:ring-2 focus:ring-accent w-full`}
-            />
-            {search && (
-              <button
-                type="button"
-                onClick={() => setSearch('')}
-                aria-label={t('installed.filters.clearSearch')}
-                title={t('installed.filters.clearSearch')}
-                className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1 text-text-secondary hover:text-text-primary rounded-md hover:bg-bg-tertiary cursor-pointer"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
+          <SearchInput
+            className="min-w-[11rem]"
+            value={search}
+            onChange={setSearch}
+            placeholder={t('installed.filters.searchPlaceholder')}
+            clearLabel={t('installed.filters.clearSearch')}
+            scope={t('installed.filters.searchScope')}
+            summary={
+              search.trim()
+                ? t('installed.filters.searchShowing', {
+                    count: visibleMods.length,
+                    total: mods.length,
+                  })
+                : undefined
+            }
+          />
           <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
             {/* Contextual status + reorder actions ride the same row as the
                 view controls (wrapping together when cramped) instead of

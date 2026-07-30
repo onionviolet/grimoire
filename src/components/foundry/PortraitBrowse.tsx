@@ -14,7 +14,7 @@ import {
   type PortraitFamilyGroup,
 } from './portraitFamily';
 import type { VisualStagedEdit } from './visualEdits';
-import FoundrySearchInput from './FoundrySearchInput';
+import SearchInput from '../common/SearchInput';
 
 interface PortraitBrowseProps {
   /** codename -> display name, resolved once by the Foundry shell. */
@@ -146,7 +146,7 @@ export default function PortraitBrowse({ heroNames, hero, onStage }: PortraitBro
             </select>
           </div>
         )}
-        <FoundrySearchInput
+        <SearchInput
           value={search}
           onChange={setSearch}
           placeholder={t('foundry.portraits.searchPlaceholder', 'Search portraits...')}

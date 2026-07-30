@@ -969,6 +969,18 @@
     "view": {
       "grid": "Grid view",
       "list": "List view"
+    },
+    "search": {
+      "label": "Search active conflicts",
+      "placeholder": "Mod name, filename, or game path",
+      "clear": "Clear search",
+      "scope_one": "{{count}} active conflict. Searches names, filenames, variant labels, shared paths, and conflict type.",
+      "scope_other": "{{count}} active conflicts. Searches names, filenames, variant labels, shared paths, and conflict type.",
+      "showing": "Showing {{count}} of {{total}} active conflicts",
+      "noMatch": {
+        "title": "No active conflicts match this search",
+        "description": "Try a different name or path fragment, or clear the search to see every active conflict."
+      }
     }
   },
   "hiddenCreators": {
@@ -1431,7 +1443,9 @@
       "enabled": "Enabled",
       "hero": "Hero",
       "tags": "Tags",
-      "lists": "Lists"
+      "lists": "Lists",
+      "searchScope": "Searches mod names, filenames, and source filenames.",
+      "searchShowing": "Showing {{count}} of {{total}} mods"
     },
     "lists": {
       "menuTrigger": "Add to list",
