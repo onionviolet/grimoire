@@ -89,6 +89,19 @@ export function normalizeConvarValue(value: string): string {
 type OverrideEntry = { value?: string; omit?: boolean };
 type Overrides = Record<string, OverrideEntry>;
 
+/** The user's standing choices for the fork-owned HUD and advanced controls
+ *  (`performanceUserControls.ts`), keyed by bare convar name.
+ *
+ *  Deliberately NOT per preset, and deliberately not re-derived from the file.
+ *  These are personal preferences ("I want the v2 health bars"), not a tuning
+ *  decision that belongs to whichever preset happens to be applied, so they
+ *  outlive a preset switch. Before this store they existed only as text inside
+ *  the marked block and were re-read on every apply, which lost them outright
+ *  whenever the applied body could no longer be trusted to describe user
+ *  intent: a preset switch dropped them, and drift (the preset definition
+ *  moving under an applied file, `harvestOverrides`) wiped them. */
+type UserConvars = Record<string, OverrideEntry>;
+
 /** Options for one apply. `presetId` picks which bundled preset to write;
  *  `optIns` are the gameplay/visibility convar keys the user turned on for
  *  that preset (anything not listed stays out of the file). */
@@ -330,7 +343,7 @@ function harvestOverrides(
             const isCommented = /^[ \t]*\/\//.test(body);
             const active = isCommented ? body.replace(/^[ \t]*\/\/[ \t]*/, '') : body;
             const key = entryKey(active);
-            if (!key) continue;
+            if (!key || USER_FACING_KEYS.has(key)) continue; // harvestUserConvars owns these
             const entry = matchEntryLine(active, key);
             const managed = idx.get(key);
             if (managed === null) continue; // ambiguous bare key
@@ -351,6 +364,7 @@ function harvestOverrides(
         const was = wasRe.exec(line);
         if (was && !drift) {
             const key = entryKey(was[1]);
+            if (key && USER_FACING_KEYS.has(key)) continue; // harvestUserConvars owns these
             const entry = key ? matchEntryLine(was[1], key) : null;
             const managed = key ? idx.get(key) : null;
             if (managed && entry && unquote(entry.value) !== managed.value) {
@@ -373,10 +387,75 @@ function harvestOverrides(
                 .filter(Boolean)
         );
         for (const [key] of convars) {
+            if (USER_FACING_KEYS.has(key)) continue; // harvestUserConvars owns these
             if (!activeKeys.has(key)) overrides[`ConVars/${key}`] = { omit: true };
         }
     }
     return overrides;
+}
+
+// Read the fork-owned control values out of an applied file (LF-normalized) and
+// fold them into the stored ones. The store, not the file, is the source of
+// truth; this pass exists so a hand edit to one of these convars still wins, the
+// contract every other managed key already has.
+//
+// Two values are deliberately not banked as user intent:
+//
+//   - a value the applied preset could have written for that key, unless the
+//     user already has a stored choice. Banking the preset author's own opinion
+//     would pin it past a preset switch or an upstream bump. "Could have" covers
+//     opt-in controls the user has not enabled, for the reason presetKeyIndex
+//     spells out: a few keys are both a preset opt-in and a fork-owned control,
+//     and an opted-in convar in a file whose sidecar is missing or stale would
+//     otherwise read as a value the user typed and survive opting back out.
+//   - absence, once the preset definition has moved (`drift`). A body written by
+//     an older Grimoire may never have carried the key at all, so "no line" says
+//     nothing about what the user wants. This is the case that used to wipe the
+//     controls outright.
+//
+// Absence otherwise means the line was reset from its row or deleted by hand. It
+// has to be recorded as a refusal rather than simply forgotten when the preset
+// itself writes the key, or the next apply puts the line straight back.
+function harvestUserConvars(
+    content: string,
+    preset: PerformancePreset,
+    convars: ReadonlyArray<readonly [string, string]>,
+    drift: boolean,
+    previous: UserConvars
+): UserConvars {
+    const next: UserConvars = { ...previous };
+    const range = findSectionByPath(content, ['ConVars']);
+    if (!range) return next;
+
+    const owned = new Map<string, Set<string>>();
+    for (const [key, value] of [...convars, ...preset.optIn.map((c) => [c.key, c.value] as const)]) {
+        const values = owned.get(key) ?? new Set<string>();
+        values.add(normalizeConvarValue(value));
+        owned.set(key, values);
+    }
+    // Only the effectively written keys need a refusal recorded: a key the
+    // preset would not write anyway is simply forgotten when its line goes.
+    const written = new Set(convars.map(([key]) => key));
+
+    const seen = new Set<string>();
+    for (const line of content.slice(range.bodyStart, range.bodyEnd).split('\n')) {
+        const key = entryKey(line);
+        if (!key || !USER_FACING_KEYS.has(key)) continue;
+        const entry = matchEntryLine(line, key);
+        if (!entry) continue;
+        seen.add(key);
+        const value = unquote(entry.value);
+        if (owned.get(key)?.has(normalizeConvarValue(value)) && previous[key] === undefined) continue;
+        next[key] = { value };
+    }
+
+    if (drift) return next;
+    for (const key of USER_FACING_KEYS) {
+        if (seen.has(key) || previous[key] === undefined) continue;
+        if (written.has(key)) next[key] = { omit: true };
+        else delete next[key];
+    }
+    return next;
 }
 
 // ---------------------------------------------------------------------------
@@ -445,6 +524,7 @@ export function applyPerformanceConfig(
 
         const sidecar = readAppliedState(gameinfoPath);
         const saved = allOverrides(sidecar);
+        let userConvars = userConvarsOf(sidecar);
         // What is in the file right now, which is not necessarily what we are
         // about to write: the user may be switching presets.
         const applied = BEGIN_RE.exec(content);
@@ -463,21 +543,44 @@ export function applyPerformanceConfig(
         // harvestOverrides).
         if (applied && appliedPreset && !opts?.resetOverrides) {
             const appliedOptIns = sidecar?.optIns ?? [];
+            const appliedConvars = effectiveConvars(appliedPreset, appliedOptIns);
+            const appliedMarker = readMarker(applied);
             saved[appliedPreset.id] = harvestOverrides(
                 content,
                 appliedPreset,
-                effectiveConvars(appliedPreset, appliedOptIns),
-                readMarker(applied)
+                appliedConvars,
+                appliedMarker
+            );
+            userConvars = harvestUserConvars(
+                content,
+                appliedPreset,
+                appliedConvars,
+                !isCurrentDefinition(appliedPreset, appliedMarker),
+                userConvars
             );
         }
-        let overrides: Overrides = {};
+        let presetOverrides: Overrides = {};
         if (!opts?.resetOverrides) {
-            overrides = saved[preset.id] ?? {};
+            presetOverrides = saved[preset.id] ?? {};
         } else {
             delete saved[preset.id];
+            // Reset discards what the user layered on the preset. The fork-owned
+            // controls are their own settings rather than a deviation from the
+            // preset, so they are not part of that and are left alone; each row
+            // has its own reset.
         }
+        // A value staged by a HUD or advanced control is an explicit user choice
+        // for a key that is not a preset deviation, so it updates the standing
+        // store rather than this preset's override map.
         for (const [key, value] of Object.entries(opts?.convarOverrides ?? {})) {
-            overrides[`ConVars/${key}`] = { value };
+            if (USER_FACING_KEYS.has(key)) userConvars[key] = { value };
+            else presetOverrides[`ConVars/${key}`] = { value };
+        }
+        // What actually gets written: the preset's own deviations, with the
+        // standing control choices layered last so they win.
+        const overrides: Overrides = { ...presetOverrides };
+        for (const [key, entry] of Object.entries(userConvars)) {
+            overrides[`ConVars/${key}`] = entry;
         }
 
         // Reapplying or switching starts from a clean base, so the file always
@@ -590,16 +693,17 @@ export function applyPerformanceConfig(
 
         const finalText = crlf ? content.split('\n').join('\r\n') : content;
         writeFileSync(gameinfoPath, finalText, 'utf-8');
-        saved[preset.id] = overrides;
+        saved[preset.id] = presetOverrides;
         writeAppliedState(gameinfoPath, {
             presetId: preset.id,
             version: preset.version,
             contentHash: sha256(finalText),
             optIns,
             overridesByPreset: saved,
+            userConvars,
         });
 
-        const kept = Object.keys(overrides).length;
+        const kept = Object.keys(presetOverrides).length;
         const keptNote = kept ? ` Kept ${kept} of your override${kept === 1 ? '' : 's'}.` : '';
         const switchNote = switching ? ` Replaced ${appliedPreset.name}.` : '';
         const note = skipped.length
@@ -686,6 +790,23 @@ export function clearPerformanceConvars(deadlockPath: string | null, keys: strin
         }
         content = content.slice(0, range.bodyStart) + lines.join('\n') + content.slice(range.bodyEnd);
         writeFileSync(gameinfoPath, crlf ? content.replace(/\n/g, '\r\n') : content, 'utf-8');
+        // Record the refusal in the standing store, for every key that was
+        // asked for rather than only the ones with a line to delete. Deleting
+        // the line alone is not enough when the preset itself writes the key:
+        // the next apply would put it straight back.
+        const sidecar = readAppliedState(gameinfoPath);
+        if (sidecar) {
+            const userConvars = userConvarsOf(sidecar);
+            for (const key of targets) userConvars[key] = { omit: true };
+            writeAppliedState(gameinfoPath, {
+                presetId: sidecar.presetId,
+                version: sidecar.version,
+                contentHash: sha256(readFileSync(gameinfoPath, 'utf-8')),
+                optIns: sidecar.optIns ?? [],
+                overridesByPreset: allOverrides(sidecar),
+                userConvars,
+            });
+        }
         return { ...getPerformanceConfigStatus(deadlockPath), message: `Reset ${new Set(cleared).size} setting(s) to the game default.` };
     } catch (err) {
         return status('error', `Failed to reset performance ConVars: ${err}`);
@@ -995,6 +1116,11 @@ interface AppliedState {
     /** Pre-multi-preset sidecars stored a single flat map. Read-only: migrated
      *  by `allOverrides` and never written again. */
     overrides?: Overrides;
+    /** Standing choices for the fork-owned HUD and advanced controls. Sidecars
+     *  written before this existed carry them inside `overridesByPreset`
+     *  instead; `userConvarsOf` hoists those out so an existing install keeps
+     *  its settings rather than resetting to defaults. */
+    userConvars?: UserConvars;
 }
 
 /** Overrides keyed by preset id, migrating the flat single-preset shape that
@@ -1007,7 +1133,40 @@ function allOverrides(state: AppliedState | null): Record<string, Overrides> {
         const legacyId = state.presetId ?? DEFAULT_PRESET_ID;
         byPreset[legacyId] = { ...state.overrides, ...(byPreset[legacyId] ?? {}) };
     }
+    // The fork-owned controls used to have nowhere else to live. They have
+    // first-class storage now (`userConvarsOf` reads them from here once), so
+    // drop them from the preset maps rather than counting the same key as a
+    // preset override and applying it from two places.
+    for (const id of Object.keys(byPreset)) {
+        const map = { ...byPreset[id] };
+        for (const key of USER_FACING_KEYS) delete map[`ConVars/${key}`];
+        byPreset[id] = map;
+    }
     return byPreset;
+}
+
+/** The user's standing control choices, migrating installs that stored them as
+ *  per-preset overrides. The applied preset's map is read last so it wins: it is
+ *  the one describing the file actually on disk. An explicit `userConvars`
+ *  always wins over both. */
+function userConvarsOf(state: AppliedState | null): UserConvars {
+    if (!state) return {};
+    const legacy: Record<string, Overrides> = { ...(state.overridesByPreset ?? {}) };
+    if (state.overrides && Object.keys(state.overrides).length) {
+        const legacyId = state.presetId ?? DEFAULT_PRESET_ID;
+        legacy[legacyId] = { ...state.overrides, ...(legacy[legacyId] ?? {}) };
+    }
+    const order = Object.keys(legacy).filter((id) => id !== state.presetId);
+    if (state.presetId && legacy[state.presetId]) order.push(state.presetId);
+
+    const out: UserConvars = {};
+    for (const id of order) {
+        for (const key of USER_FACING_KEYS) {
+            const entry = legacy[id][`ConVars/${key}`];
+            if (entry) out[key] = entry;
+        }
+    }
+    return { ...out, ...(state.userConvars ?? {}) };
 }
 
 function readAppliedState(gameinfoPath: string): AppliedState | null {
@@ -1028,6 +1187,7 @@ function writeAppliedState(
         contentHash: string;
         optIns: string[];
         overridesByPreset: Record<string, Overrides>;
+        userConvars: UserConvars;
     }
 ): void {
     try {
@@ -1037,6 +1197,7 @@ function writeAppliedState(
             contentHash: state.contentHash,
         };
         if (state.optIns.length) trimmed.optIns = state.optIns;
+        if (Object.keys(state.userConvars).length) trimmed.userConvars = state.userConvars;
         // Drop presets whose override map went empty so the sidecar does not
         // grow a dead entry per preset the user tried.
         const kept = Object.entries(state.overridesByPreset).filter(

@@ -522,3 +522,139 @@ describe('HUD and advanced controls', () => {
     });
 });
 
+// #17. These are fork-owned personal preferences, not a deviation from whichever
+// preset happens to be applied, and they used to exist only as text inside the
+// marked block: re-parsed on every apply, so anything that made the applied body
+// untrustworthy took them with it. Two paths lost them outright.
+//
+// The fixture for the first is drift: a Grimoire update that moves a preset
+// definition under an applied file. harvestOverrides deliberately stops reading
+// user intent out of a body it can no longer attribute, and these values were
+// riding in that same channel.
+describe('HUD and advanced values are the user\'s own state', () => {
+    const HUD_KEY = 'citadel_unit_status_use_v2';
+    const value = (key: string) => getPerformanceConfigStatus(gameRoot).convarValues?.[key] ?? null;
+
+    /** A Grimoire update that regenerated this preset: same id, same version
+     *  string, different pinned commit. */
+    const moveDefinition = () => write(read().replace(/@[0-9a-f]{12}\)/, '@0123456789ab)'));
+
+    it('survives a preset definition moving under the applied file', () => {
+        applyPerformanceConfig(gameRoot, { presetId: 'sqooky-default' });
+        setPerformanceHudConvars(gameRoot, { [HUD_KEY]: true });
+        setPerformanceAdvancedConvars(gameRoot, { citadel_minimap_player_width: 10 });
+
+        moveDefinition();
+        applyPerformanceConfig(gameRoot, { presetId: 'sqooky-default' });
+
+        expect(value(HUD_KEY)).toBe('true');
+        expect(value('citadel_minimap_player_width')).toBe('10');
+    });
+
+    it('survives a preset switch, unlike a preset override', () => {
+        applyPerformanceConfig(gameRoot, { presetId: 'sqooky-default' });
+        setPerformanceHudConvars(gameRoot, { [HUD_KEY]: true });
+
+        applyPerformanceConfig(gameRoot, { presetId: 'optilock-fps' });
+        expect(value(HUD_KEY)).toBe('true');
+        applyPerformanceConfig(gameRoot, { presetId: 'sqooky-default' });
+        expect(value(HUD_KEY)).toBe('true');
+    });
+
+    it('survives a reapply and a game-update wipe', () => {
+        applyPerformanceConfig(gameRoot, { presetId: 'sqooky-default' });
+        setPerformanceHudConvars(gameRoot, { [HUD_KEY]: true });
+        applyPerformanceConfig(gameRoot, { presetId: 'sqooky-default' });
+        expect(value(HUD_KEY)).toBe('true');
+
+        write(STOCK);
+        expect(getPerformanceConfigStatus(gameRoot).state).toBe('wiped');
+        applyPerformanceConfig(gameRoot, { presetId: 'sqooky-default' });
+        expect(value(HUD_KEY)).toBe('true');
+    });
+
+    // The other loss path, and the one with no drift in it: the key already had
+    // a line in the user's ConVars section, so it was edited in place with a
+    // `was` marker instead of injected. Only preset keys were read back out of
+    // those, so the value reverted on the very next reapply.
+    it('survives when the key already had a line in the file', () => {
+        write(STOCK.replace(/(\n(\s*)ConVars\s*\n\s*\{)/, `$1\n$2\t${HUD_KEY} "false"`));
+        applyPerformanceConfig(gameRoot, { presetId: 'sqooky-default' });
+        setPerformanceHudConvars(gameRoot, { [HUD_KEY]: true });
+        expect(value(HUD_KEY)).toBe('true');
+
+        applyPerformanceConfig(gameRoot, { presetId: 'sqooky-default' });
+        expect(value(HUD_KEY)).toBe('true');
+    });
+
+    // Unchanged contract: a hand edit to a managed convar is harvested on the
+    // next apply and wins. It just lands in the control store now.
+    it('still lets a hand edit win', () => {
+        applyPerformanceConfig(gameRoot, { presetId: 'sqooky-default' });
+        setPerformanceHudConvars(gameRoot, { [HUD_KEY]: true });
+        write(read().replace(new RegExp(`(${HUD_KEY}\\s+)"true"`), '$1"false"'));
+
+        applyPerformanceConfig(gameRoot, { presetId: 'sqooky-default' });
+        expect(value(HUD_KEY)).toBe('false');
+        expect(sidecar().userConvars[HUD_KEY]).toEqual({ value: 'false' });
+    });
+
+    it('does not resurrect a value the row reset cleared', () => {
+        applyPerformanceConfig(gameRoot, { presetId: 'sqooky-default' });
+        setPerformanceHudConvars(gameRoot, { [HUD_KEY]: true });
+        clearPerformanceConvars(gameRoot, [HUD_KEY]);
+        expect(value(HUD_KEY)).toBeNull();
+
+        applyPerformanceConfig(gameRoot, { presetId: 'sqooky-default' });
+        expect(value(HUD_KEY)).toBeNull();
+    });
+
+    // A row reset rewrites gameinfo.gi, so it has to re-stamp the content hash.
+    // Otherwise the very next status read calls the user's own reset a hand edit.
+    it('does not report its own row reset as a hand edit', () => {
+        applyPerformanceConfig(gameRoot, { presetId: 'sqooky-default' });
+        setPerformanceAdvancedConvars(gameRoot, { citadel_minimap_player_width: 10 });
+        clearPerformanceConvars(gameRoot, ['citadel_minimap_player_width']);
+        expect(getPerformanceConfigStatus(gameRoot).handEdited).toBe(false);
+    });
+
+    // Existing installs kept these in the per-preset override map, the only home
+    // they had. They must move across, not reset to defaults.
+    it('migrates values stored as per-preset overrides', () => {
+        applyPerformanceConfig(gameRoot, { presetId: 'sqooky-default' });
+        writeFileSync(
+            sidecarPath,
+            JSON.stringify({
+                presetId: 'sqooky-default',
+                version: '2.4.6',
+                overridesByPreset: {
+                    'sqooky-default': {
+                        [`ConVars/${HUD_KEY}`]: { value: 'true' },
+                        'ConVars/r_ssao': { value: '1' },
+                    },
+                },
+            }),
+            'utf-8'
+        );
+        write(STOCK);
+
+        applyPerformanceConfig(gameRoot, { presetId: 'sqooky-default' });
+        expect(value(HUD_KEY)).toBe('true');
+        expect(sidecar().userConvars[HUD_KEY]).toEqual({ value: 'true' });
+        // And it stops being counted and applied as a preset override.
+        expect(sidecar().overridesByPreset['sqooky-default'][`ConVars/${HUD_KEY}`]).toBeUndefined();
+        expect(sidecar().overridesByPreset['sqooky-default']['ConVars/r_ssao']).toEqual({ value: '1' });
+    });
+
+    it('still removes cleanly, restoring the file byte for byte', () => {
+        applyPerformanceConfig(gameRoot, { presetId: 'sqooky-default' });
+        setPerformanceHudConvars(gameRoot, { [HUD_KEY]: true });
+        setPerformanceAdvancedConvars(gameRoot, { citadel_minimap_player_width: 10 });
+        moveDefinition();
+        applyPerformanceConfig(gameRoot, { presetId: 'sqooky-default' });
+
+        expect(removePerformanceConfig(gameRoot).state).toBe('not-applied');
+        expect(read()).toBe(STOCK);
+    });
+});
+
