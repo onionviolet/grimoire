@@ -55,7 +55,6 @@ const HUD_CONTROLS = [
   { key: 'citadel_unit_status_use_v2_for_nonplayers', on: 'true', off: 'false' },
   { key: 'citadel_unit_status_single_bar_mode', on: 'true', off: 'false' },
   { key: 'citadel_unit_status_allies_see_thru_walls', on: 'true', off: 'false' },
-  { key: 'citadel_hud_objective_health_enabled', on: '2', off: '0' },
   { key: 'citadel_damage_offscreen_indicator_disabled', on: 'false', off: 'true' },
   { key: 'citadel_damage_text_show_effectiveness', on: '1', off: '0' },
 ] as const;
@@ -67,6 +66,7 @@ const HUD_CONTROLS = [
 // value-state badge exists to remove. Keep min/max/step in sync with the main
 // table; the main process refuses anything outside them anyway.
 const ADVANCED_CONTROLS = [
+  { key: 'citadel_hud_objective_health_enabled', min: 0, max: 2, step: 1 },
   { key: 'citadel_unit_status_allies_see_thru_walls_max_distance', min: 0, max: 200, step: 5 },
   { key: 'citadel_minimap_unit_click_radius', min: 400, max: 1200, step: 25 },
   { key: 'citadel_minimap_player_width', min: 4, max: 12, step: 0.5 },

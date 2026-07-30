@@ -3223,10 +3223,6 @@
           "label": "Ally health through walls",
           "description": "Show allied unit health through walls, out to the ally wall distance set in the advanced sliders below."
         },
-        "citadel_hud_objective_health_enabled": {
-          "label": "Objective health bars",
-          "description": "Show health on map objectives. This ConVar has levels rather than on/off: Grimoire writes 2 (the fullest) or 0, and a 1 set by hand is left alone and badged unsupported."
-        },
         "citadel_damage_offscreen_indicator_disabled": {
           "label": "Offscreen damage indicators",
           "description": "Show damage indicators for units outside your view. The underlying ConVar is a disable flag, so switching this on writes false."
@@ -3280,6 +3276,7 @@
       "sectionTitle": "Advanced numeric settings",
       "usingGameDefault": "Using the game default until changed.",
       "controls": {
+        "citadel_hud_objective_health_enabled": "Objective health bars (0 off, 2 fullest)",
         "citadel_unit_status_allies_see_thru_walls_max_distance": "Ally health visibility distance",
         "citadel_minimap_unit_click_radius": "Minimap click radius",
         "citadel_minimap_player_width": "Minimap player icon size",
