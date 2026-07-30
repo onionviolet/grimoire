@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useConfirm } from '../common/confirmContext';
 import { AlertTriangle, Check, History, Images, Layers, Loader2, Undo2, Upload } from 'lucide-react';
 import { Modal } from '../common/Modal';
 import { Button, ModalHeader } from '../common/ui';
@@ -89,6 +90,7 @@ function readFileAsDataUrl(file: File): Promise<string> {
  */
 export default function PortraitEditor({ item, catalog, heroName, initialFile, onClose, onStage }: PortraitEditorProps) {
   const { t } = useTranslation();
+  const confirm = useConfirm();
   const fileRef = useRef<HTMLInputElement>(null);
 
   const [slot, setSlot] = useState<Slot>(FAMILY);
@@ -286,7 +288,15 @@ export default function PortraitEditor({ item, catalog, heroName, initialFile, o
           }),
         inspect: foundryInspectAssetSources,
         confirm: (modNames) =>
-          window.confirm(t('portraitEditor.stageConflict', { mods: modNames.join(', ') })),
+          confirm({
+            title: t('portraitEditor.stageConflictTitle', 'Stage a separate layered portrait?'),
+            message: t(
+              'portraitEditor.stageConflictBody',
+              'These installed mods already replace this portrait and are enabled. Staging adds a separate managed replacement layered over them; nothing is removed.'
+            ),
+            items: modNames,
+            confirmLabel: t('portraitEditor.stageConflictConfirm', 'Stage anyway'),
+          }),
         unreadableMessage: t('portraitEditor.stageUnreadable'),
         coverageMessage: t('portraitEditor.coverageBlocked'),
         heroName,
@@ -299,7 +309,7 @@ export default function PortraitEditor({ item, catalog, heroName, initialFile, o
     } finally {
       setBusy(false);
     }
-  }, [item, variants, catalog, familyImage, overrides, heroName, onStage, onClose, t]);
+  }, [item, variants, catalog, familyImage, overrides, heroName, onStage, onClose, t, confirm]);
 
   const upscales =
     !!sourceSize && !!activeTarget && (sourceSize.width < activeTarget.width || sourceSize.height < activeTarget.height);

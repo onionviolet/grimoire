@@ -17,6 +17,7 @@ import Autoexec from './pages/Autoexec';
 import Stats from './pages/Stats';
 import ChatWheel from './pages/ChatWheel';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
+import { ConfirmProvider } from './components/common/confirm';
 import { useSocialStore } from './stores/socialStore';
 import { useAppStore } from './stores/appStore';
 import { getAssetPath } from './lib/assetPath';
@@ -71,6 +72,11 @@ export default function App() {
   return (
     <HashRouter>
       <ErrorBoundary>
+        {/* One confirmation dialog for the whole app, so an imperative call
+            site can await a real modal instead of reaching for window.confirm.
+            Inside the boundary so a render failure in the dialog degrades the
+            same way as any other. */}
+        <ConfirmProvider>
         <Routes>
           <Route path="/" element={<Layout />}>
             <Route index element={<Installed />} />
@@ -92,6 +98,7 @@ export default function App() {
             <Route path="settings" element={<Settings />} />
           </Route>
         </Routes>
+        </ConfirmProvider>
       </ErrorBoundary>
     </HashRouter>
   );

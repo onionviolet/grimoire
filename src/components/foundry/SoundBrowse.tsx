@@ -22,6 +22,7 @@ import {
     Shuffle,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { useConfirm } from '../common/confirmContext';
 import { EmptyState } from '../common/PageComponents';
 import Tx from '../translation/Tx';
 import { SoundImportEditor, type SoundImportEdits } from './SoundImportEditor';
@@ -961,6 +962,7 @@ function SwapPanel({
     onStage?: (edit: FoundryStagedSoundEdit) => void;
 }) {
     const { t } = useTranslation();
+    const confirm = useConfirm();
     const inputRef = useRef<HTMLInputElement | null>(null);
     const [audioPath, setAudioPath] = useState<string | null>(null);
     const [audioName, setAudioName] = useState('');
@@ -1105,11 +1107,15 @@ function SwapPanel({
                     ));
                 }
                 const enabledOwners = preflight.conflicts.filter((conflict) => conflict.enabled);
-                if (enabledOwners.length && !window.confirm(t(
-                    'foundry.sound.swap.stageConflictConfirm',
-                    'Existing enabled sources: {{mods}}. Continue to stage a separate managed replacement?',
-                    { mods: enabledOwners.map((conflict) => conflict.modName).join(', ') }
-                ))) {
+                if (enabledOwners.length && !(await confirm({
+                    title: t('foundry.sound.swap.stageConflictTitle', 'Stage a separate managed replacement?'),
+                    message: t(
+                        'foundry.sound.swap.stageConflictBody',
+                        'These installed mods already provide this sound and are enabled. Staging adds a separate managed replacement; nothing is removed.'
+                    ),
+                    items: enabledOwners.map((conflict) => conflict.modName),
+                    confirmLabel: t('foundry.sound.swap.stageConflictConfirmAction', 'Stage anyway'),
+                }))) {
                     return;
                 }
                 onStage(serializeSoundStagedEdit({
@@ -1151,7 +1157,7 @@ function SwapPanel({
         }
     }, [
         audioPath, busy, name, defaultName, heroName, hero, soundeventsEntry,
-        event, clipPaths, loop, edits, t, onClose, onStage, usingOriginal, targetClip, assignments, poolMode, poolSeed, resolution, conflicts,
+        event, clipPaths, loop, edits, t, onClose, onStage, usingOriginal, targetClip, assignments, poolMode, poolSeed, resolution, conflicts, confirm,
     ]);
 
     return (

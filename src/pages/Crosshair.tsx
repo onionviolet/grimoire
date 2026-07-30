@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useConfirm } from '../components/common/confirmContext';
 import { Copy, Check, RotateCcw, Save, Trash2, Play, Pin, XCircle, Download } from 'lucide-react';
 import { useCrosshairStore } from '../stores/crosshairStore';
 import CrosshairPreview from '../components/crosshair/CrosshairPreview';
@@ -26,6 +27,7 @@ function detectResolutionHeight(): number {
 
 export default function Crosshair() {
     const { t } = useTranslation();
+    const confirm = useConfirm();
     const [copied, setCopied] = useState(false);
     const [imported, setImported] = useState(false);
     const [resolution, setResolution] = useState(detectResolutionHeight);
@@ -189,7 +191,14 @@ export default function Crosshair() {
     };
 
     const handleDeletePreset = async (presetId: string) => {
-        if (!confirm(t('crosshair.confirm.deletePreset'))) return;
+        const preset = presets.find((entry) => entry.id === presetId);
+        const ok = await confirm({
+            title: t('crosshair.confirm.deletePreset'),
+            items: preset ? [preset.name] : undefined,
+            confirmLabel: t('common.actions.delete'),
+            variant: 'danger',
+        });
+        if (!ok) return;
         const wasActive = presetId === activePresetId;
         if (wasActive && gamePath) {
             try {
@@ -206,9 +215,12 @@ export default function Crosshair() {
             alert(t('crosshair.alert.configureGamePath'));
             return;
         }
-        if (!confirm(t('crosshair.confirm.clearActive'))) {
-            return;
-        }
+        const ok = await confirm({
+            title: t('crosshair.confirm.clearActive'),
+            confirmLabel: t('common.actions.clear'),
+            variant: 'danger',
+        });
+        if (!ok) return;
         try {
             await clearAutoexec(gamePath);
         } catch (error) {

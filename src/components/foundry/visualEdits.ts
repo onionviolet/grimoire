@@ -42,7 +42,8 @@ export interface VisualStageContext {
   imagePath: string;
   name: string;
   inspect: (paths: string[]) => Promise<FoundryAssetSourcesInspection>;
-  confirm: (modNames: string[]) => boolean;
+  /** Async because the acknowledgement is a real modal, not window.confirm. */
+  confirm: (modNames: string[]) => boolean | Promise<boolean>;
   unreadableMessage: string;
   /** Resolved hero display name for `item.hero` (the catalog stores codenames).
    *  Callers own the roster map, so they resolve it; omitted means unscoped. */
@@ -61,7 +62,7 @@ export async function prepareVisualStagedEdit(context: VisualStageContext): Prom
   const sources = await context.inspect(visualAssetInspectionPaths(context.item, context.catalog));
   if (sources.unreadableMods.length > 0) throw new Error(context.unreadableMessage);
   const enabled = sources.sources.filter((source) => source.enabled);
-  if (enabled.length > 0 && !context.confirm(enabled.map((source) => source.modName))) return null;
+  if (enabled.length > 0 && !(await context.confirm(enabled.map((source) => source.modName)))) return null;
   return serializeVisualReplacement({
     entryPath: context.item.path,
     imagePath: context.imagePath,

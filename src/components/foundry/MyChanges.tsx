@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { useConfirm } from '../common/confirmContext';
 import {
   AlertTriangle,
   ChevronDown,
@@ -83,6 +84,7 @@ interface MyChangesProps {
  */
 export default function MyChanges({ onAddNew, heroName }: MyChangesProps) {
   const { t } = useTranslation();
+  const confirm = useConfirm();
   const navigate = useNavigate();
   const mods = useAppStore((state) => state.mods);
   const toggleMod = useAppStore((state) => state.toggleMod);
@@ -375,12 +377,18 @@ export default function MyChanges({ onAddNew, heroName }: MyChangesProps) {
                     <button
                       type="button"
                       onClick={() => {
-                        // A build's parts are one VPK, so deleting any row
-                        // deletes the whole thing. Say so before it happens.
-                        const prompt = entry.partOfBuild
-                          ? t('foundry.myChanges.deleteBuildConfirm', 'Delete "{{name}}"? Every change in this build goes with it.', { name: entry.mod.name })
-                          : t('foundry.myChanges.deleteConfirm', { name: entry.mod.name });
-                        if (window.confirm(prompt)) void deleteMod(entry.mod.id);
+                        void (async () => {
+                          // A build's parts are one VPK, so deleting any row
+                          // deletes the whole thing. Say so before it happens.
+                          const ok = await confirm({
+                            title: entry.partOfBuild
+                              ? t('foundry.myChanges.deleteBuildConfirm', 'Delete "{{name}}"? Every change in this build goes with it.', { name: entry.mod.name })
+                              : t('foundry.myChanges.deleteConfirm', { name: entry.mod.name }),
+                            confirmLabel: t('common.actions.delete'),
+                            variant: 'danger',
+                          });
+                          if (ok) await deleteMod(entry.mod.id);
+                        })();
                       }}
                       title={t('foundry.myChanges.delete')}
                       className="rounded-sm border border-border p-1.5 text-red-300 hover:text-red-200"
@@ -450,6 +458,7 @@ function ChangeDetails({
   onOpenInInstalled: (modId: string) => void;
 }) {
   const { t } = useTranslation();
+  const confirm = useConfirm();
   const [expanded, setExpanded] = useState(false);
   const [inspection, setInspection] = useState<FoundryAssetSourcesInspection | null>(null);
   const [inspectError, setInspectError] = useState<string | null>(null);
@@ -518,9 +527,15 @@ function ChangeDetails({
         return;
       }
       const others = preflight.sources.filter((source) => source.modId !== entry.mod.id && source.enabled);
-      if (others.length && !window.confirm(
-        t('foundry.myChanges.reforgeConflict', { mods: others.map((source) => source.modName).join(', ') }),
-      )) return;
+      if (others.length && !(await confirm({
+        title: t('foundry.myChanges.reforgeConflictTitle', 'Rebuild as a separate mod?'),
+        message: t(
+          'foundry.myChanges.reforgeConflictBody',
+          'These installed mods are enabled and change the same thing. The rebuild is a new managed mod layered over them; the existing one is left alone.'
+        ),
+        items: others.map((source) => source.modName),
+        confirmLabel: t('foundry.myChanges.reforgeConflictConfirm', 'Rebuild'),
+      }))) return;
       await foundryForgeInstall({ ...recorded, name: t('foundry.myChanges.reforgedName', { name: entry.mod.name }) });
       await useAppStore.getState().loadMods({ silent: true });
       setInspection(null);
@@ -530,7 +545,7 @@ function ChangeDetails({
     } finally {
       setRebuilding(false);
     }
-  }, [recorded, rebuilding, entries, entry.mod.id, entry.mod.name, t]);
+  }, [recorded, rebuilding, entries, entry.mod.id, entry.mod.name, t, confirm]);
 
   return (
     <div className="mt-1.5 text-[11px] text-text-secondary">

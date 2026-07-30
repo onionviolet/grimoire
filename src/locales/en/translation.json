@@ -29,7 +29,8 @@
       "undo": "Undo",
       "collapseDetails": "Collapse details",
       "expandDetails": "Expand details",
-      "tryAgain": "Try again"
+      "tryAgain": "Try again",
+      "discard": "Discard"
     },
     "errorBoundary": {
       "title": "Something went wrong",
@@ -60,7 +61,11 @@
     "none": "None",
     "versus": "VS",
     "versusLower": "vs",
-    "close": "Close"
+    "close": "Close",
+    "confirm": {
+      "affects_one": "Affects 1 mod",
+      "affects_other": "Affects {{count}} mods"
+    }
   },
   "sync": {
     "syncing": "Syncing {{section}}: {{percent}}%",
@@ -314,8 +319,10 @@
       },
       "count": "{{count}} textures",
       "countCapped": "Showing the first {{count}}. Refine your search to see more.",
-      "stageConflict": "Existing enabled sources: {{mods}}. Continue to create a separate managed replacement?",
-      "stageUnreadable": "Cannot replace this asset while installed VPK sources are unreadable. Resolve those VPKs and inspect again."
+      "stageUnreadable": "Cannot replace this asset while installed VPK sources are unreadable. Resolve those VPKs and inspect again.",
+      "stageConflictTitle": "Stage a separate layered replacement?",
+      "stageConflictBody": "These installed mods already replace this asset and are enabled. Staging adds a separate managed replacement layered over them; nothing is removed.",
+      "stageConflictConfirm": "Stage anyway"
     },
     "recolor": {
       "pickHero": "Select a hero",
@@ -381,7 +388,9 @@
         "useOriginal": "Or start from the original clip, and retune it",
         "originalUnavailable": "Could not read the original clip.",
         "stageUnreadable": "Cannot stage this sound while {{mods}} cannot be inspected. Resolve those VPKs and try again.",
-        "stageConflictConfirm": "Existing enabled sources: {{mods}}. Continue to stage a separate managed replacement?"
+        "stageConflictTitle": "Stage a separate managed replacement?",
+        "stageConflictBody": "These installed mods already provide this sound and are enabled. Staging adds a separate managed replacement; nothing is removed.",
+        "stageConflictConfirmAction": "Stage anyway"
       },
       "import": {
         "decoding": "Reading audio...",
@@ -488,7 +497,6 @@
       "reforgeMissing_one": "Cannot re-forge: {{count}} recorded audio file moved or was deleted ({{files}}). Re-author this change from the Sound browser instead.",
       "reforgeMissing_other": "Cannot re-forge: {{count}} recorded audio files moved or were deleted ({{files}}). Re-author this change from the Sound browser instead.",
       "reforgeUnreadable": "Cannot re-forge while {{mods}} cannot be inspected.",
-      "reforgeConflict": "{{mods}} also write these paths. Re-forge a separate managed replacement anyway?",
       "reforgedName": "{{name}} (re-forged)",
       "reforgeDone": "Re-forged \"{{name}}\". The original was left untouched.",
       "annotationNote": "Annotations describe the base-game sound, not this mod. They are shared with the Sound browser.",
@@ -533,7 +541,10 @@
       "shuffleWith": "Shuffles against: {{mods}}",
       "shuffleAlone": "Nothing else writes these paths yet, so this pool has only one outcome",
       "shuffleUnavailable": "This change has no recorded paths, so it cannot be pooled",
-      "openInSoundLocker": "Open in Sound Locker"
+      "openInSoundLocker": "Open in Sound Locker",
+      "reforgeConflictTitle": "Rebuild as a separate mod?",
+      "reforgeConflictBody": "These installed mods are enabled and change the same thing. The rebuild is a new managed mod layered over them; the existing one is left alone.",
+      "reforgeConflictConfirm": "Rebuild"
     }
   },
   "autoexec": {
@@ -3455,7 +3466,6 @@
     "recrop": "Re-crop",
     "clearOverride": "Use the family image again",
     "coverageBlocked": "Some variants would be left with the stock art. The conflict check covered the whole family, so set an image for every variant (or one image for all of them) before staging.",
-    "stageConflict": "These enabled mods already write this portrait: {{mods}}. Staging adds a separate replacement layered over them, and changes nothing about which mods are enabled. Continue?",
     "stageUnreadable": "An installed VPK could not be read, so which mod owns this portrait cannot be established. Fix or remove that file, then try again.",
     "editName": "{{label}} portrait",
     "nothingInstalled": "Staging adds this to the build tray. Nothing is installed.",
@@ -3478,7 +3488,10 @@
     "useCurrentArtHint": "Load the game's own art for this variant into the frame",
     "currentArtUnavailable": "The current art for this entry could not be decoded.",
     "recentTitle": "Recently used",
-    "recentHint": "Load this image into the frame"
+    "recentHint": "Load this image into the frame",
+    "stageConflictTitle": "Stage a separate layered portrait?",
+    "stageConflictBody": "These installed mods already replace this portrait and are enabled. Staging adds a separate managed replacement layered over them; nothing is removed.",
+    "stageConflictConfirm": "Stage anyway"
   },
   "soundLocker": {
     "labels": {

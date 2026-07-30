@@ -4,6 +4,7 @@ import { AlertTriangle, FileUp, Save, Sparkles } from 'lucide-react';
 import { getMods, readChatWheel, saveChatWheel, getChatWheelStarter, getChatWheelStatus, validateChatWheel } from '../lib/api';
 import { useAppStore } from '../stores/appStore';
 import { Button } from '../components/common/ui';
+import { useConfirm } from '../components/common/confirmContext';
 import Tx from '../components/translation/Tx';
 import type { Mod } from '../types/mod';
 import { parseChatWheelYaml, updateChatWheelYaml, type ChatWheelModel } from '../lib/chatWheelModel';
@@ -12,6 +13,7 @@ import RadialWheelPreview from '../components/chatwheel/RadialWheelPreview';
 
 export default function ChatWheel() {
   const { t } = useTranslation();
+  const confirm = useConfirm();
   const [yaml, setYaml] = useState('');
   const [name, setName] = useState('My Chat Wheel');
   const [wheels, setWheels] = useState<Mod[]>([]);
@@ -94,7 +96,16 @@ export default function ChatWheel() {
   }, [yaml, starterLoading, converterAvailable]);
 
   const createNewWheel = async () => {
-    if (dirty && !window.confirm(t('chatWheel.confirmDiscard', 'Discard unsaved changes and create a new chat wheel?'))) return;
+    if (
+      dirty &&
+      !(await confirm({
+        title: t('chatWheel.confirmDiscard', 'Discard unsaved changes and create a new chat wheel?'),
+        confirmLabel: t('common.actions.discard', 'Discard'),
+        variant: 'danger',
+      }))
+    ) {
+      return;
+    }
     setError(null);
     setBusy('load');
     setStarterLoading(true);

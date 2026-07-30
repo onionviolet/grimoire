@@ -276,7 +276,8 @@ export interface PortraitStageContext<T extends TextureEntry = TextureEntry> {
   /** Display name for the staged edit of one variant. */
   name: (entry: PortraitFamilyPlanEntry<T>) => string;
   inspect: (paths: string[]) => Promise<FoundryAssetSourcesInspection>;
-  confirm: (modNames: string[]) => boolean;
+  /** Async because the acknowledgement is a real modal, not window.confirm. */
+  confirm: (modNames: string[]) => boolean | Promise<boolean>;
   unreadableMessage: string;
   /** Shown when the selection would not cover the whole inspected family. */
   coverageMessage: string;
@@ -317,9 +318,12 @@ export async function stagePortraitFamily<T extends TextureEntry>(
     return pending;
   };
 
-  let acknowledged: boolean | null = null;
-  const confirm = (modNames: string[]): boolean => {
-    if (acknowledged === null) acknowledged = context.confirm(modNames);
+  // Memoize the promise, not the answer: the family stages several entries
+  // and they must share one acknowledgement, but the answer now arrives later
+  // than the second entry asks for it.
+  let acknowledged: Promise<boolean> | null = null;
+  const confirm = (modNames: string[]): Promise<boolean> => {
+    acknowledged ??= Promise.resolve(context.confirm(modNames));
     return acknowledged;
   };
 

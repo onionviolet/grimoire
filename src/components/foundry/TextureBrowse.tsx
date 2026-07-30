@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ImageIcon, Search, Loader2, AlertTriangle, Users, Box, Sparkles, Upload } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { useConfirm } from '../common/confirmContext';
 import { EmptyState } from '../common/PageComponents';
 import Tx from '../translation/Tx';
 import { foundryInspectAssetSources, foundryTextures } from '../../lib/api';
@@ -40,6 +41,7 @@ const LIMIT = 400;
  */
 export default function TextureBrowse({ heroes, heroNames, onStage }: TextureBrowseProps) {
   const { t } = useTranslation();
+  const confirm = useConfirm();
   const [category, setCategory] = useState<TextureCategory>('hero-model');
   const [heroFilter, setHeroFilter] = useState('');
   const [search, setSearch] = useState('');
@@ -64,7 +66,16 @@ export default function TextureBrowse({ heroes, heroNames, onStage }: TextureBro
         imagePath,
         name: t('foundry.texture.defaultReplacementName', '{{label}} replacement', { label: entry.label || 'Texture' }),
         inspect: foundryInspectAssetSources,
-        confirm: (modNames) => window.confirm(t('foundry.texture.stageConflict', { mods: modNames.join(', ') })),
+        confirm: (modNames) =>
+          confirm({
+            title: t('foundry.texture.stageConflictTitle', 'Stage a separate layered replacement?'),
+            message: t(
+              'foundry.texture.stageConflictBody',
+              'These installed mods already replace this asset and are enabled. Staging adds a separate managed replacement layered over them; nothing is removed.'
+            ),
+            items: modNames,
+            confirmLabel: t('foundry.texture.stageConflictConfirm', 'Stage anyway'),
+          }),
         unreadableMessage: t('foundry.texture.stageUnreadable'),
         heroName: entry.hero ? heroNames.get(entry.hero) : undefined,
       });
@@ -76,7 +87,7 @@ export default function TextureBrowse({ heroes, heroNames, onStage }: TextureBro
     } finally {
       setStagingPath(null);
     }
-  }, [items, heroNames, onStage, t]);
+  }, [items, heroNames, onStage, t, confirm]);
 
   // Hero dropdown: every roster hero, by display name. Texture entries key on the
   // codename, which is what we send as the filter.

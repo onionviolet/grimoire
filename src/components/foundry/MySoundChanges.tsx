@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useConfirm } from '../common/confirmContext';
 import { AlertTriangle, Check, ChevronDown, ExternalLink, Loader2, Pencil, RefreshCw, SlidersHorizontal, Upload } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 import { showToast } from '../../stores/toastStore';
@@ -58,6 +59,7 @@ export function SoundChangeDetails({
   onOpenInInstalled: (modId: string) => void;
 }) {
   const { t } = useTranslation();
+  const confirm = useConfirm();
   const [expanded, setExpanded] = useState(false);
   const [inspection, setInspection] = useState<FoundryAssetSourcesInspection | null>(null);
   const [inspectError, setInspectError] = useState<string | null>(null);
@@ -146,9 +148,15 @@ export function SoundChangeDetails({
       // The rebuild is a new managed mod, exactly like the original forge. The
       // existing one is left alone: removing it is the user's call in Installed.
       const others = preflight.sources.filter((source) => source.modId !== mod.id && source.enabled);
-      if (others.length && !window.confirm(
-        t('foundry.myChanges.reforgeConflict', { mods: others.map((source) => source.modName).join(', ') })
-      )) return;
+      if (others.length && !(await confirm({
+        title: t('foundry.myChanges.reforgeConflictTitle', 'Rebuild as a separate mod?'),
+        message: t(
+          'foundry.myChanges.reforgeConflictBody',
+          'These installed mods are enabled and change the same thing. The rebuild is a new managed mod layered over them; the existing one is left alone.'
+        ),
+        items: others.map((source) => source.modName),
+        confirmLabel: t('foundry.myChanges.reforgeConflictConfirm', 'Rebuild'),
+      }))) return;
       await foundrySwapSound({
         heroCodename: mod.soundSwap!.heroCodename,
         heroName: recorded.heroName,
@@ -176,7 +184,7 @@ export function SoundChangeDetails({
     } finally {
       setReforging(false);
     }
-  }, [recorded, reforging, writeSet, mod, t]);
+  }, [recorded, reforging, writeSet, mod, t, confirm]);
 
   return (
     <div className="mt-1.5 text-[11px] text-text-secondary">
