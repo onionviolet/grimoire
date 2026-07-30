@@ -139,11 +139,12 @@ export default function HeroDetailFrame<Id extends string>({
           from "very heavy" through "medium" to "nothing" without ever
           dropping off a cliff. The container is intentionally much wider
           than the panels it backs (rail + selection is ~640/710px; container
-          is ~1000/1100px) so the gradient has runway to feather all the way
-          to clear. */}
+          scales with the viewport) so the gradient has runway to feather all
+          the way to clear without swallowing more of the portrait as the
+          desktop window narrows. */}
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-y-0 left-0 z-[5] hidden lg:block lg:w-[1040px] xl:w-[1160px]"
+        className="pointer-events-none absolute inset-y-0 left-0 z-[5] hidden w-[clamp(680px,56vw,1160px)] lg:block"
       >
         <div
           className="absolute inset-0"
