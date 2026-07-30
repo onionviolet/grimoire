@@ -10,15 +10,15 @@ import {
   Volume2,
 } from 'lucide-react';
 import {
-  foundryInspectAssetSources,
   foundrySoundAnnotationKey,
   getHeroSoundWriteSet,
   listUnknownModFiles,
 } from '../../lib/api';
+import { useAssetClaims } from '../../lib/useAssetClaims';
 import { collapseClipTakes } from '../../lib/soundLabels';
 import { soundEntriesInVpk, type SoundInventoryEntry } from '../../lib/soundInventory';
 import type { ClipPlayer } from '../foundry/useClipPlayer';
-import type { FoundryAssetSourcesInspection, SoundAnnotation } from '../../types/foundry';
+import type { SoundAnnotation } from '../../types/foundry';
 import AudioPreviewPlayer from '../AudioPreviewPlayer';
 import { useAppStore } from '../../stores/appStore';
 
@@ -68,8 +68,6 @@ export default function SoundEntryRow({
   // nothing we can name", which the panel says out loud rather than hiding.
   const [paths, setPaths] = useState<string[] | null>(entry.paths.length ? entry.paths : null);
   const [resolving, setResolving] = useState(false);
-  const [inspection, setInspection] = useState<FoundryAssetSourcesInspection | null>(null);
-  const [inspectError, setInspectError] = useState<string | null>(null);
 
   /**
    * The exact entries this mod writes, from whichever record actually has them.
@@ -113,22 +111,14 @@ export default function SoundEntryRow({
     if (expanded) void resolvePaths();
   }, [expanded, resolvePaths]);
 
-  // Who actually wins each path right now. Same call `MySoundChanges` makes, so
-  // the two surfaces cannot disagree about ownership.
-  useEffect(() => {
-    if (!expanded || !paths?.length || inspection || inspectError) return;
-    let cancelled = false;
-    foundryInspectAssetSources(paths)
-      .then((result) => {
-        if (!cancelled) setInspection(result);
-      })
-      .catch((cause) => {
-        if (!cancelled) setInspectError(cause instanceof Error ? cause.message : String(cause));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [expanded, paths, inspection, inspectError]);
+  // Who actually wins each path right now. The shared asset-claims index, which
+  // is the same index Foundry's sources panel and the staging preflights read,
+  // so the two surfaces cannot disagree about ownership and neither re-derives
+  // it (S1). It also refreshes itself when a mod is toggled anywhere, which the
+  // old one-shot fetch here could not: it cached its first answer forever.
+  const claims = useAssetClaims(paths, expanded);
+  const inspection = claims.index?.raw ?? null;
+  const inspectError = claims.error;
 
   // Numbered takes of one sound are one row with a count: three rows saying
   // `ball_01/02/03` cost three lines and say one thing.
@@ -143,13 +133,13 @@ export default function SoundEntryRow({
     }
   };
 
+  // Projected off the index rather than looked up again here (S4). "Someone
+  // else wins this" is the only case the row renders, so a win by this very mod
+  // still returns null.
   const winnerFor = (path: string): { modId: string; modName: string } | null => {
-    const winnerId = inspection?.winners[path];
-    if (!winnerId || winnerId === entry.modId) return null;
-    return {
-      modId: winnerId,
-      modName: inspection?.sources.find((source) => source.modId === winnerId)?.modName ?? winnerId,
-    };
+    const winner = claims.index?.winnerFor(path);
+    if (!winner || winner.modId === entry.modId) return null;
+    return { modId: winner.modId, modName: winner.modName };
   };
 
   return (

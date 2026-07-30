@@ -4,7 +4,8 @@ import { useTranslation } from 'react-i18next';
 import { useConfirm } from '../common/confirmContext';
 import { EmptyState } from '../common/PageComponents';
 import Tx from '../translation/Tx';
-import { foundryInspectAssetSources, foundryTextures } from '../../lib/api';
+import { foundryTextures } from '../../lib/api';
+import { inspectAssetClaims } from '../../lib/assetClaims';
 import { showToast } from '../../stores/toastStore';
 import type { HeroInfo, TextureCategory, TextureEntry, TextureGridItem } from '../../types/foundry';
 import TextureLightbox from './TextureLightbox';
@@ -66,7 +67,7 @@ export default function TextureBrowse({ heroes, heroNames, onStage }: TextureBro
         catalog: items,
         imagePath,
         name: t('foundry.texture.defaultReplacementName', '{{label}} replacement', { label: entry.label || 'Texture' }),
-        inspect: foundryInspectAssetSources,
+        inspect: inspectAssetClaims,
         confirm: (modNames) =>
           confirm({
             title: t('foundry.texture.stageConflictTitle', 'Stage a separate layered replacement?'),

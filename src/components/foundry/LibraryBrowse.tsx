@@ -5,7 +5,8 @@ import { useConfirm } from '../common/confirmContext';
 import { EmptyState } from '../common/PageComponents';
 import CatalogDiagnostics from './CatalogDiagnostics';
 import Tx from '../translation/Tx';
-import { foundryInspectAssetSources, foundryThumbnails } from '../../lib/api';
+import { foundryThumbnails } from '../../lib/api';
+import { inspectAssetClaims } from '../../lib/assetClaims';
 import { showToast } from '../../stores/toastStore';
 import type { TextureCategory, TextureGridItem } from '../../types/foundry';
 import PortraitEditor from './PortraitEditor';
@@ -87,7 +88,7 @@ export default function LibraryBrowse({
         catalog: items,
         imagePath,
         name: t('foundry.texture.defaultReplacementName', '{{label}} replacement', { label: item.label || 'Texture' }),
-        inspect: foundryInspectAssetSources,
+        inspect: inspectAssetClaims,
         confirm: (modNames) =>
           confirm({
             title: t('foundry.texture.stageConflictTitle', 'Stage a separate layered replacement?'),

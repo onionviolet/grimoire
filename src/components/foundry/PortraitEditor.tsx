@@ -7,11 +7,11 @@ import { Button, ModalHeader } from '../common/ui';
 import LockerImageCropper from '../locker/LockerImageCropper';
 import {
   foundryFullImage,
-  foundryInspectAssetSources,
   foundryListPortraitImages,
   foundryPortraitImageNames,
   foundryStagePortraitImage,
 } from '../../lib/api';
+import { inspectAssetClaims } from '../../lib/assetClaims';
 import type { TextureGridItem } from '../../types/foundry';
 import type { VisualStagedEdit } from './visualEdits';
 import {
@@ -302,7 +302,7 @@ export default function PortraitEditor({ item, catalog, heroName, initialFile, o
           t('portraitEditor.editName', '{{label}} portrait', {
             label: entry.variant.item.label || item.label || 'Portrait',
           }),
-        inspect: foundryInspectAssetSources,
+        inspect: inspectAssetClaims,
         confirm: (modNames) =>
           confirm({
             title: t('portraitEditor.stageConflictTitle', 'Stage a separate layered portrait?'),

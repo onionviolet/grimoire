@@ -1,5 +1,6 @@
 import type { AbilitySlot, Mod } from '../types/mod';
 import { canonicalHeroName, getEffectiveGlobalType } from './lockerUtils';
+import { overlappingRecordedClaims, type RecordedClaimOverlap } from './recordedClaims';
 
 /**
  * The sound inventory: what sound content you already have, folded out of the
@@ -535,35 +536,16 @@ export function countEnabledMods(list: readonly SoundInventoryEntry[]): number {
 }
 
 /** One path claimed by more than one enabled entry, with its claimants. */
-export interface SoundClaimOverlap {
-    path: string;
-    /** Entry keys claiming the path, in the list's own order. */
-    entryKeys: string[];
-}
+export type SoundClaimOverlap = RecordedClaimOverlap;
 
 /**
  * Paths that more than one ENABLED entry records writing.
  *
- * This is the cheap, local half of the "only one mod should own an event" rule:
- * it uses only what the entries already recorded, so it can never report an
- * overlap between two mods whose write sets are unknown. The authoritative
- * answer, including unrecorded VPKs, still comes from
- * `foundryInspectAssetSources` when a row is expanded. Reporting less here than
- * the inspector would is the intended failure direction: a missed warning sends
- * the user to the inspector, an invented one sends them chasing nothing.
+ * The rule itself lives in `recordedClaims.ts` and is shared with the portrait
+ * card picker, which asked the identical question of a different entry shape.
+ * The authoritative answer, including VPKs that recorded nothing, still comes
+ * from the inspected asset-claims index when a row is expanded.
  */
 export function overlappingClaims(list: readonly SoundInventoryEntry[]): SoundClaimOverlap[] {
-    const byPath = new Map<string, string[]>();
-    for (const entry of list) {
-        if (!entry.enabled) continue;
-        for (const path of new Set(entry.paths)) {
-            const claimants = byPath.get(path);
-            if (claimants) claimants.push(entry.key);
-            else byPath.set(path, [entry.key]);
-        }
-    }
-    return [...byPath.entries()]
-        .filter(([, entryKeys]) => entryKeys.length > 1)
-        .map(([path, entryKeys]) => ({ path, entryKeys }))
-        .sort((a, b) => a.path.localeCompare(b.path));
+    return overlappingRecordedClaims(list);
 }

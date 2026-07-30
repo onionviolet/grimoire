@@ -8,6 +8,7 @@ import i18n, { applyLanguagePreference } from '../i18n';
 import * as api from '../lib/api';
 import { showToast } from './toastStore';
 import { buildHeroList } from '../lib/lockerUtils';
+import { invalidateAssetClaims } from '../lib/assetClaims';
 import { modRestoreKey, planSoloByKeys, planRestore } from '../lib/soloRestore';
 import {
   SHUFFLE_INCLUDED_KEY,
@@ -1007,6 +1008,21 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ lockerHeroName: name });
   },
 }));
+
+// Any change to the mods list invalidates the shared asset-claims index (S1).
+//
+// Subscribed here, once, on the array identity rather than called from each
+// mutation: toggle, reorder, delete, profile apply, solo, shuffle, forge, and
+// install all end in a `set({ mods })`, and so does the Disable button inside
+// Foundry's own sources panel. A mutation added later is covered without anyone
+// remembering to add a call, which is the failure mode that produced two
+// diverging derivations in the first place.
+//
+// Zustand runs subscribers synchronously inside `set`, so an `await toggleMod()`
+// has already invalidated by the time the caller's next line asks for claims.
+useAppStore.subscribe((state, previous) => {
+  if (state.mods !== previous.mods) invalidateAssetClaims();
+});
 
 // Dev-only handle for scripts/dev-driver.mjs, so a store action can be exercised
 // without the UI gesture that normally triggers it (running the launch shuffle

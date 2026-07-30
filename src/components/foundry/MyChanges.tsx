@@ -25,10 +25,10 @@ import { showToast } from '../../stores/toastStore';
 import {
   foundryCheckAudioPaths,
   foundryForgeInstall,
-  foundryInspectAssetSources,
   foundrySoundAnnotations,
   saveFoundrySoundAnnotation,
 } from '../../lib/api';
+import { inspectAssetClaims } from '../../lib/assetClaims';
 import type { FoundryAssetSourcesInspection, SoundAnnotation } from '../../types/foundry';
 import { SoundChangeDetails } from './MySoundChanges';
 import FoundryPoolList from './ChangePools';
@@ -491,7 +491,7 @@ function ChangeDetails({
     setInspecting(true);
     setInspectError(null);
     try {
-      setInspection(await foundryInspectAssetSources(entries));
+      setInspection(await inspectAssetClaims(entries));
     } catch (cause) {
       setInspection(null);
       setInspectError(cause instanceof Error ? cause.message : String(cause));
@@ -536,7 +536,7 @@ function ChangeDetails({
         );
         return;
       }
-      const preflight = await foundryInspectAssetSources(entries);
+      const preflight = await inspectAssetClaims(entries);
       if (preflight.unreadableMods.length) {
         showToast(
           t('foundry.myChanges.reforgeUnreadable', { mods: preflight.unreadableMods.map((mod) => mod.modName).join(', ') }),

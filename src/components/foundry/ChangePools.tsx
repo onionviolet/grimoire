@@ -13,7 +13,7 @@ import {
   Volume2,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { foundryInspectAssetSources } from '../../lib/api';
+import { inspectAssetClaims } from '../../lib/assetClaims';
 import type { FoundryAssetSourcesInspection } from '../../types/foundry';
 import {
   buildFoundryPoolView,
@@ -179,7 +179,7 @@ function PoolCard({
     setInspectError(null);
     setInspection(null);
     try {
-      const result = await foundryInspectAssetSources(paths);
+      const result = await inspectAssetClaims(paths);
       if (requestId.current === id) setInspection(result);
     } catch (cause) {
       if (requestId.current === id) setInspectError(cause instanceof Error ? cause.message : String(cause));
