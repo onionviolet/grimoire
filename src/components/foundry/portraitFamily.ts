@@ -273,6 +273,8 @@ export interface PortraitStageContext<T extends TextureEntry = TextureEntry> {
   catalog: readonly T[];
   familyImagePath: string | null;
   overrides?: Readonly<Record<string, string>>;
+  /** Display label for a staged source image. */
+  imageLabel?: (entry: PortraitFamilyPlanEntry<T>) => string | undefined;
   /** Display name for the staged edit of one variant. */
   name: (entry: PortraitFamilyPlanEntry<T>) => string;
   inspect: (paths: string[]) => Promise<FoundryAssetSourcesInspection>;
@@ -333,6 +335,7 @@ export async function stagePortraitFamily<T extends TextureEntry>(
       item: entry.variant.item,
       catalog: context.catalog,
       imagePath: entry.imagePath,
+      imageLabel: context.imageLabel?.(entry),
       name: context.name(entry),
       inspect,
       confirm,

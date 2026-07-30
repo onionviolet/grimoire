@@ -6,11 +6,13 @@ import {
   missingSourceFiles,
   normalizeOutputName,
   reviewStagedEdits,
+  isStagedVisualEdit,
   stagedEditSourceFiles,
   toForgeRequest,
   unsupportedStagedEditKind,
 } from './buildTray';
 import { foundryCheckAudioPaths, foundryPortraitImageNames } from '../../lib/api';
+import { portraitImageLabel } from './portraitImageLabel';
 import { Modal } from '../common/Modal';
 import type { FoundryForgeRequest } from '../../types/foundry';
 
@@ -103,7 +105,7 @@ export default function FoundryBuildTray({ edits, outputName, onOutputNameChange
         const labels = await foundryPortraitImageNames().catch(() => ({}) as Record<string, string>);
         const named = missing.map((file) => {
           const base = file.split(/[\\/]/).pop() || file;
-          return labels[base] ?? base;
+          return portraitImageLabel(file, labels[base] ?? null);
         });
         setBlocked(`${t('foundry.buildTray.missingSources', { count: missing.length })} ${t('foundry.buildTray.missingSourceList', 'Missing: {{files}}', { files: named.join(', ') })}`);
         return;
@@ -162,6 +164,11 @@ export default function FoundryBuildTray({ edits, outputName, onOutputNameChange
                 <strong className="text-text-primary">{edit.title}</strong>
                 <span className="ml-1 rounded-sm bg-bg-tertiary px-1 text-[10px] uppercase tracking-wide text-text-secondary">{t(KIND_LABEL_KEYS[edit.kind], edit.kind)}</span>
                 <br />{t('foundry.buildTray.editSummary', { files: edit.affectedFiles.length, precedence: edit.precedence })}
+                {isStagedVisualEdit(edit) && (
+                  <span className="block truncate text-[11px] text-text-secondary" title={edit.source.imageLabel ?? portraitImageLabel(edit.source.imagePath, null)}>
+                    {edit.source.imageLabel ?? portraitImageLabel(edit.source.imagePath, null)}
+                  </span>
+                )}
               </span>
             </label>
             <button type="button" onClick={() => onRemove(edit.id)} title={t('foundry.buildTray.remove', 'Remove from tray')} aria-label={t('foundry.buildTray.remove', 'Remove from tray')} className="shrink-0 text-text-secondary transition-colors hover:text-red-400">

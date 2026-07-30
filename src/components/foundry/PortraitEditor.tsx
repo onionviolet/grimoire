@@ -9,6 +9,7 @@ import {
   foundryFullImage,
   foundryInspectAssetSources,
   foundryListPortraitImages,
+  foundryPortraitImageNames,
   foundryStagePortraitImage,
 } from '../../lib/api';
 import type { TextureGridItem } from '../../types/foundry';
@@ -24,6 +25,7 @@ import {
   type PortraitCrop,
   type PortraitVariant,
 } from './portraitFamily';
+import { portraitImageLabel } from './portraitImageLabel';
 
 interface PortraitEditorProps {
   /** The catalog entry the user opened the editor from, or null when closed. */
@@ -286,11 +288,16 @@ export default function PortraitEditor({ item, catalog, heroName, initialFile, o
     setBusy(true);
     setError(null);
     try {
+      const imageNames = await foundryPortraitImageNames().catch(() => ({} as Record<string, string>));
       const staged = await stagePortraitFamily<TextureGridItem>({
         variants,
         catalog,
         familyImagePath: familyImage,
         overrides,
+        imageLabel: (entry) => portraitImageLabel(
+          entry.imagePath,
+          imageNames[entry.imagePath.split(/[\\/]/).pop() || entry.imagePath] ?? null,
+        ),
         name: (entry) =>
           t('portraitEditor.editName', '{{label}} portrait', {
             label: entry.variant.item.label || item.label || 'Portrait',
@@ -412,17 +419,19 @@ export default function PortraitEditor({ item, catalog, heroName, initialFile, o
                         type="button"
                         disabled={busy}
                         onClick={() => void loadIntoFrame(image.dataUrl, image.label)}
-                        // A hash is not a name. When the original filename was
-                        // recorded, it is what identifies the tile.
-                        title={image.label ?? t('portraitEditor.recentHint')}
-                        className="h-12 w-12 overflow-hidden rounded-sm border border-border transition-colors hover:border-accent/60 disabled:opacity-50 cursor-pointer"
+                        title={portraitImageLabel(image.path, image.label)}
+                        aria-label={portraitImageLabel(image.path, image.label)}
+                        className="w-20 overflow-hidden rounded-sm border border-border transition-colors hover:border-accent/60 disabled:opacity-50 cursor-pointer"
                       >
                         <img
                           src={image.dataUrl}
-                          alt={image.label ?? ''}
-                          className="h-full w-full object-cover"
+                          alt=""
+                          className="h-12 w-full object-cover"
                           draggable={false}
                         />
+                        <span className="block truncate px-1 py-0.5 text-[10px] text-text-secondary">
+                          {portraitImageLabel(image.path, image.label)}
+                        </span>
                       </button>
                     ))}
                   </div>

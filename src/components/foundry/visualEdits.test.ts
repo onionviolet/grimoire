@@ -16,6 +16,7 @@ describe('serializeVisualReplacement', () => {
     expect(serializeVisualReplacement({
       entryPath: '\\panorama\\images\\heroes\\mina.png',
       imagePath: 'C:/art/mina.png',
+      imageLabel: 'mina-reference.jpg',
       name: ' Mina portrait ',
       category: 'hero-image',
     })).toEqual({
@@ -24,7 +25,7 @@ describe('serializeVisualReplacement', () => {
       title: 'Mina portrait',
       affectedFiles: ['panorama/images/heroes/mina.png'],
       precedence: 0,
-      source: { entryPath: 'panorama/images/heroes/mina.png', imagePath: 'C:/art/mina.png', name: ' Mina portrait ', category: 'hero-image' },
+      source: { entryPath: 'panorama/images/heroes/mina.png', imagePath: 'C:/art/mina.png', imageLabel: 'mina-reference.jpg', name: ' Mina portrait ', category: 'hero-image' },
     });
   });
 

@@ -6,6 +6,8 @@ import type { FoundryStagedEdit } from './buildTray';
 export interface VisualReplacementDraft {
   entryPath: string;
   imagePath: string;
+  /** Original source filename or the cache hash, for renderer-only display. */
+  imageLabel?: string;
   name: string;
   category: TextureCategory;
   /** Hero the catalog entry belongs to, when it knew one. Grouping and the
@@ -40,6 +42,8 @@ export interface VisualStageContext {
   item: TextureEntry;
   catalog: readonly TextureEntry[];
   imagePath: string;
+  /** Original source filename or the cache hash, for renderer-only display. */
+  imageLabel?: string;
   name: string;
   inspect: (paths: string[]) => Promise<FoundryAssetSourcesInspection>;
   /** Async because the acknowledgement is a real modal, not window.confirm. */
@@ -66,6 +70,7 @@ export async function prepareVisualStagedEdit(context: VisualStageContext): Prom
   return serializeVisualReplacement({
     entryPath: context.item.path,
     imagePath: context.imagePath,
+    imageLabel: context.imageLabel,
     name: context.name,
     category: context.item.category,
     // Driven by the catalog's own hero field, not by the label: an entry with
