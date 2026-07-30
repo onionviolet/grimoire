@@ -1,5 +1,7 @@
 # Deadlock Mod Manager - UI Overhaul Brief
 
+> **Status:** Living. Describes shipped behavior or a stable contract. Reviewed 2026-07-29.
+
 **Target Tabs:** Settings, Crosshair Designer, Autoexec Commands
 
 ---

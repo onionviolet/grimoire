@@ -1,5 +1,7 @@
 # 3D preview fidelity: feasibility + phased plan
 
+> **Status:** Research and plan, 2026-06-16. Partially delivered. Not maintained; read it for rationale, not for current state.
+
 Goal: make the Locker's 3D hero previews look close to in-game. Four axes the user
 named: cloth bones, lighting/materials (Source 2 shader parity), previewing effects
 (ambient passive FX + authentic ability casts), and applying custom animations

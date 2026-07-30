@@ -1,6 +1,8 @@
 # Foundry tab (design / vision)
 
-Status: design only, not yet built. Target home: a new first-class **Foundry** tab in the
+> **Status:** Design, 2026-06-20. Foundry has since shipped as the Door Stuck tab, so the code is the truth. Kept for original intent.
+
+Target home: a new first-class **Foundry** tab in the
 Grimoire desktop client (Electron). Engine: `vpkmerge-core` (+ `morphic`), the same crates
 that already back the vpkmerge GUI prototype. Authored 2026-06-20.
 

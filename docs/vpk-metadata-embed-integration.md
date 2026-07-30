@@ -1,5 +1,7 @@
 # VPK Imprinting: Grimoire Integration Spec
 
+> **Status:** Living. Describes shipped behavior or a stable contract. Reviewed 2026-07-29.
+
 Make Grimoire-produced and Grimoire-managed VPKs **self-identifying**: embed the two
 vpk-modinfo entries (`addoninfo.txt` + `modinfo.json`) into the VPK so an orphaned
 file (found on GameBanana, copied between machines, surviving a Grimoire DB wipe) can

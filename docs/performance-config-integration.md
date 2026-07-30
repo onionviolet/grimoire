@@ -1,11 +1,13 @@
 # Performance config integration
 
+> **Status:** Living. Describes shipped behavior or a stable contract. Reviewed 2026-07-29.
+
 How Grimoire integrates community gameinfo.gi performance configs, and why the
 strategy is "curate one upstream" rather than "ingest any config from
 GameBanana." Read this before touching `performanceConfig.ts`,
 `performanceConfigData.ts`, or building the planned manifest/preset UI.
 
-Status: six selectable presets shipped, generated from pinned upstream commits.
+Six selectable presets shipped, generated from pinned upstream commits.
 The research that drove the scope decision is recorded below and still holds;
 "What shipped" records where the delivered design differs from the plan it
 replaced.

@@ -1,6 +1,8 @@
 # Foundry handoff (next agent)
 
-Picking up the Grimoire **Foundry** tab. Read [foundry-tab-design.md](./foundry-tab-design.md)
+> **Status:** Archived. A point-in-time handoff note referencing branches that no longer matter. Kept for history only.
+
+Picking up the Grimoire **Foundry** tab. Read [foundry-tab-design.md](../foundry-tab-design.md)
 for the full vision. This file is the "where we are / what's next" snippet.
 
 ## Branch + state (both repos, NOT pushed)
@@ -101,7 +103,7 @@ The catalog engine already backs all of these; this is mostly UI wiring mirrorin
 Wiring checklist per tab: add a `catalog <kind>` JSON method to `foundryCatalog.ts` +
 `ipc/foundry.ts` + `api.ts`, flip the `SUBTOOLS` entry `enabled: true`, render a grid/list.
 
-### 2. Click an image to view it bigger (lightbox) — for textures AND assets
+### 2. Click an image to view it bigger (lightbox): for textures AND assets
 
 **Texture lightbox: BUILT (this session; pending the vpkmerge release gate above).** Verified:
 the `--path` single-entry decode against the live pak, plus `pnpm typecheck` / `lint` /
@@ -122,7 +124,7 @@ exists in the Locker (`HeroPoseViewer` / R3F on `main`); a Foundry model lightbo
 via `vpkmerge model export ... --glb`. Sounds want an inline `<audio>` of the decoded clip
 (needs the appended-MP3 extraction noted under ask 1's Sound tab).
 
-### 3. Drag-and-drop replace for textures — WE ARE CLOSE
+### 3. Drag-and-drop replace for textures: WE ARE CLOSE
 
 The engine is **already built and in-game-proven**:
 
@@ -151,7 +153,7 @@ drag-drop replace of a YCoCg icon will render wrong in-game. Fix one of:
      plain DXT5), or
   3. re-encode the replacement to a non-YCoCg format and clear the flag.
 Detection is already done: `morphic::TextureInfo.ycocg` (set from `RED2`). Reuse it to decide
-the write path. (Locker hero-card replace likely dodged this because card art isn't YCoCg —
+the write path. (Locker hero-card replace likely dodged this because card art isn't YCoCg , 
 verify before assuming the existing path is safe for icons.)
 
 ## Key reuse patterns / files
@@ -164,7 +166,7 @@ verify before assuming the existing path is safe for icons.)
   `registerFoundryThumbnailProtocol` / `grimoire-soul:`.
 - Decode correctness (just fixed): `morphic::inspect` now exposes `actual_width/height`
   (non-pow2) and `ycocg`; `morphic::crop_to_actual` for display crop. Re-encoders
-  (`recolor`/`icon`) intentionally keep the padded canvas and do NOT YCoCg-encode — that's
+  (`recolor`/`icon`) intentionally keep the padded canvas and do NOT YCoCg-encode: that's
   the ask-3 blocker.
 
 ## Open caveats carried over
@@ -172,7 +174,7 @@ verify before assuming the existing path is safe for icons.)
 - Recolor-of-YCoCg re-encode mismatch (same root as the ask-3 blocker).
 - Other display paths still uncropped for non-pow2: `vpkmerge-core/src/portrait.rs`,
   `recolor_texture_preview_png`, the old `gui/` preview. Apply `crop_to_actual` there too.
-- Stashed WIP on both repos' `main` (vpkmerge music-pack; grimoire locker dev panel) — restore
+- Stashed WIP on both repos' `main` (vpkmerge music-pack; grimoire locker dev panel): restore
   when done.
 
 ## Verify quickly

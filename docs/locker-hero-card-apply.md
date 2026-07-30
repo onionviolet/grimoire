@@ -1,6 +1,8 @@
 # Locker Hero Card: APPLY pipeline design
 
-Status: design (not yet built). Supersedes the "next step" note in the
+> **Status:** Design, 2026-05-27. The apply pipeline has since shipped, so the code is the truth. Kept for original intent.
+
+Supersedes the "next step" note in the
 `feat/locker-hero-card-picker` prototype. Read alongside the project memory
 `project_global_mod_type_signals.md` for the verified path signals and decode
 notes.

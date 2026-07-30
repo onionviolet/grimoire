@@ -1,5 +1,7 @@
 # Effects Feasibility Report: Particle FX for the Locker 3D Hero Preview
 
+> **Status:** Research, 2026-06-16. The findings stand and live code cites them, but this file is not maintained.
+
 Initiative: the "effects" axis of the 3D-preview program. Renderer locked to
 three.js + R3F with three.quarks for live sim; flipbook sprite-sheets and
 pre-baked WebM as fallbacks. Grounded in a 9,714-effect inventory (every hero

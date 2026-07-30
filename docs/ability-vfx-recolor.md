@@ -1,6 +1,8 @@
 # Ability VFX layer + recolor
 
-Status: in progress. Particle layer extraction and particle recoloring are proven end to end (verified in game on Paige). The texture recolor primitive (dragon, projectile) now ships as `vpkmerge texture`; the particle-recolor CLI surface and the Locker UI are still to build, and the in-game dragon check is still pending.
+> **Status:** Living, in progress. Particle extraction and recolor are proven; parts of the surface are still being built. Reviewed 2026-07-29.
+
+Particle layer extraction and particle recoloring are proven end to end (verified in game on Paige). The texture recolor primitive (dragon, projectile) now ships as `vpkmerge texture`; the particle-recolor CLI surface and the Locker UI are still to build, and the in-game dragon check is still pending.
 
 The recolor target is no longer hue-only: it carries a **saturation scale** and a **brightness scale** on top of the hue (see "Color accuracy" below), so pale/pastel colors like light blue are reachable, and the washed-out look of a hue-only retint on low-saturation source textures is fixable. The Locker picker (`HeroColorPicker.tsx`) exposes hue + saturation + brightness sliders with a **live recolored preview** (a real ability texture run through the recolor, not a CSS guess).
 

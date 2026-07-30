@@ -1,5 +1,7 @@
 # Mod Profile Format Spec
 
+> **Status:** Living. Describes shipped behavior or a stable contract. Reviewed 2026-07-29.
+
 A portable JSON format for sharing mod loadouts between mod managers.
 
 The format was first implemented in [Grimoire](https://github.com/Slush97/grimoire) for Deadlock, but the schema is intentionally game and manager agnostic. A profile is just a named, ordered list of mod references, each pinned to a specific source (currently GameBanana) plus optional manager-specific extensions.

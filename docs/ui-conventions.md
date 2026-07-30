@@ -1,5 +1,7 @@
 # UI conventions
 
+> **Status:** Living. Describes shipped behavior or a stable contract. Reviewed 2026-07-29.
+
 The house rules for building UI in the Grimoire renderer. The goal is uniformity by default: reach for an existing primitive before writing markup, and use tokens instead of raw values. New code that follows these keeps the design system honest; new code that doesn't is the "slop" we're paying down.
 
 Primitives live in `src/components/common/` (`ui.tsx`, `forms.tsx`, `PageComponents.tsx`, `Modal.tsx`, `menu.tsx`, `ToastStack.tsx`, `Skeleton.tsx`). Design tokens live in `src/index.css` under `@theme`.

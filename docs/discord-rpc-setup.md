@@ -1,5 +1,7 @@
 # Discord Rich Presence setup
 
+> **Status:** Living. Describes shipped behavior or a stable contract. Reviewed 2026-07-29.
+
 Grimoire can show what you are doing in the app on your Discord profile (browsing
 mods, in the Hero Locker, designing a crosshair, and so on), with buttons that
 link to the site and the Discord server.
