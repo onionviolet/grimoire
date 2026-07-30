@@ -41,10 +41,13 @@ These were the gaps this session closed.
    UI plan ("Resting art can be subdued, but hover and keyboard focus reveal
    the full preview"). Inactive skin thumbnails were `grayscale-[0.6]
    opacity-[0.7]` with no hover or focus restore.
-   **Partly fixed, and on the wrong surface:** `HeroSkinsPanel` restores full
-   colour on hover *and* keyboard focus, for both the thumbnail and the glass
-   backdrop. See the correction below: the request was about portraits, so this
-   entry is **still open**.
+   **Fixed (2026-07-30, commit b197fdb) in `HeroCardPicker`,** the surface the
+   request was actually about. Empty slots rest at `opacity-50` with a light
+   desaturation and return to full colour and opacity on hover and keyboard
+   focus; the upload hint moved to a corner badge so revealing the art no
+   longer covers it. `HeroSkinsPanel` had already received the same treatment
+   for inactive skin thumbnails. See the correction below for why this took two
+   attempts.
 
 3. **"cards in the big locker should have sub card for the sounds too"** (20:27)
    Attempted via the pill strip, which is what caused (1). The intent is now
@@ -72,7 +75,7 @@ Lanes 1-3 of `ui-thoughtfulness-and-adjustability-plan.md` (weak-state audit,
 interaction patterns, bounded adjustability) and the follow-on search polish on
 Installed, Browse, Profiles, and Stats.
 
-## Correction (2026-07-29, later): request 2 was about portraits, not skins
+## Correction (2026-07-30): request 2 was about portraits, not skins
 
 This audit misidentified the surface, and the fix landed on the wrong
 component. Recording it here because the mistake was then repeated twice in
@@ -88,38 +91,44 @@ upload tab in `HeroCardPicker`, keyed `locker.cards.uploadYourOwn` at
 `src/components/locker/HeroCardPicker.tsx:500`. Calling it the skins panel was
 wrong.
 
-**Current behaviour is the inverse of the request.** At
-`HeroCardPicker.tsx:536` an unpicked variant slot renders its base art at
-`opacity-30` with no hover or focus restore, and the very next element
-(`:538`) adds `group-hover:bg-black/55`. Hovering a dimmed portrait therefore
-*darkens* it. The ask was to reveal full colour on hover.
+**The behaviour was the inverse of the request.** An unpicked variant slot
+rendered its base art at `opacity-30` with no hover or focus restore, and the
+very next element added `group-hover:bg-black/55`. Hovering a dimmed portrait
+therefore *darkened* it. The ask was to reveal full colour on hover.
 
-### Definition of done (all must hold)
+Fixed in commit b197fdb. The class logic now lives in
+`src/components/locker/cardSlotStyles.ts` with tests in
+`cardSlotStyles.test.ts`.
 
-1. `HeroCardPicker.tsx:536` no longer applies a flat `opacity-30` at rest with
-   no recovery path. Resting dimming may stay, but hover and focus must reach
-   full opacity and full colour.
-2. The `group-hover:bg-black/55` scrim no longer darkens the art while it is
-   being revealed. The upload affordance stays discoverable (badge, ring, or
-   caption) without covering the preview.
-3. Keyboard parity: `group-focus-within` (or equivalent) produces the same
-   reveal as hover. Do **not** rely on `focus-visible:`, which this repo has
-   already been burned by (see "Defects found while verifying" above).
-4. `prefers-reduced-motion: reduce` disables any transition on the reveal while
-   still reaching the revealed state.
-5. Contrast: revealed and resting states both keep caption and status text at
-   WCAG AA against the art behind them.
-6. A component test asserts, for one unpicked slot, that the rest state and the
-   hover/focus state differ in opacity class and that no darkening class is
-   applied in the revealed state.
-7. Verified in the running app with `scripts/dev-driver.mjs`, with before/after
-   screenshots of one unpicked slot at rest and revealed. Because `:focus` does
-   not match while the Electron window is unfocused, assert the focus path from
-   generated CSS or behaviour, not a computed style probe.
-8. Gates green: `pnpm lint`, `pnpm exec vitest run`, `pnpm i18n:check`, and
-   `pnpm i18n:manifest` if any key moved.
-9. This audit entry is updated to **Fixed** only once 1-8 hold, naming the
-   component actually changed.
+### Definition of done, and how each was met
+
+1. Rest state is `opacity-50` with `grayscale-[0.35]`, and hover/focus reach
+   `opacity-100 grayscale-0`. Done.
+2. The full-cover `bg-black/55` scrim is gone. The upload hint is a corner
+   badge at `bottom-1 right-1`. Verified in the running app: zero elements
+   covering >=90% of the slot carry a `bg-black` class. Done.
+3. `group-focus-within` gives keyboard parity, and a test asserts
+   `focus-visible` does not appear. Done.
+4. `motion-reduce:transition-none` on both image and badge; the reveal is a
+   class swap, so the revealed state is still reached. Done.
+5. Captions sit below the tile, not over the art, so the reveal cannot reduce
+   their contrast. Done.
+6. `cardSlotStyles.test.ts` asserts rest vs revealed differ, that no darkening
+   class appears in either state, and that rest and filled are distinguishable.
+   Done.
+7. Verified in the running app. **A note on how**, because the obvious probe
+   lies: Chromium does not apply `:focus`/`:focus-within` *styles* while the
+   Electron window is unfocused, even though `element.matches(':focus-within')`
+   returns true and `document.activeElement` updates. A computed-style read
+   therefore reports a false negative. Asserted instead that Tailwind generated
+   every reveal utility, that the reveal rules follow the base utilities in
+   source order, that the reveal rule carries higher specificity
+   (`.group-focus-within\:opacity-100:is(:where(.group):focus-within *)`), and
+   that the slot image matches both rules while focused. Screenshot captured of
+   the rest state showing visible base art with corner badges.
+8. `pnpm lint`, `pnpm typecheck`, `pnpm exec vitest run` (1217 passing),
+   `pnpm i18n:check`, and `pnpm encoding:check` all green. No i18n keys moved.
+9. Entry updated above, naming `HeroCardPicker` as the component changed.
 
 **Scope note.** Extracting the reveal into a shared card primitive is the right
 end-state (see structural cause S6 in `global-locker-foundry-ux-plan.md`), but
