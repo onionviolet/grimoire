@@ -575,6 +575,18 @@ export interface VpkEntryStat {
     size: number;
 }
 
+/** A directory-tree-only description of an entry, suitable for build diffs.
+ * Kept separate from VpkEntryStat because imprint parity deliberately only
+ * compares path and logical size. */
+export interface VpkEntryIndex {
+    path: string;
+    /** CRC32 supplied by the VPK directory entry (not calculated from payload). */
+    crc: number;
+    /** Logical entry byte length: preload bytes + archive entry length. */
+    size: number;
+    archiveIndex: number;
+}
+
 /**
  * Parse a VPK's directory tree into per-entry logical sizes (preload bytes +
  * archive entry length). Built for the imprint repack parity check: it needs
@@ -646,6 +658,62 @@ export function parseVpkEntryStats(vpkPath: string): VpkEntryStat[] | null {
         }
         console.warn(`[parseVpkEntryStats] Error parsing ${vpkPath}:`, error);
         return null;
+    }
+}
+
+/**
+ * Parse the VPK directory into the compact index needed for Foundry's
+ * patch-to-patch comparison. This never opens an archive chunk or decodes an
+ * asset: CRC, size, and archive number are all present in the directory tree.
+ */
+export function parseVpkEntryIndex(vpkPath: string): VpkEntryIndex[] | null {
+    if (!existsSync(vpkPath)) return null;
+    let fd: number | null = null;
+    try {
+        fd = openSync(vpkPath, 'r');
+        const header = Buffer.alloc(12);
+        readSync(fd, header, 0, header.length, 0);
+        if (header.readUInt32LE(0) !== VPK_SIGNATURE) return null;
+        const version = header.readUInt32LE(4);
+        const treeSize = header.readUInt32LE(8);
+        const tree = Buffer.alloc(treeSize);
+        readSync(fd, tree, 0, treeSize, version === 2 ? 28 : 12);
+
+        const entries: VpkEntryIndex[] = [];
+        let offset = 0;
+        while (offset < tree.length) {
+            const ext = readNullTerminatedString(tree, offset); offset += ext.bytesRead;
+            if (!ext.str) break;
+            while (offset < tree.length) {
+                const dir = readNullTerminatedString(tree, offset); offset += dir.bytesRead;
+                if (!dir.str) break;
+                const dirPath = dir.str === ' ' ? '' : dir.str;
+                while (offset < tree.length) {
+                    const name = readNullTerminatedString(tree, offset); offset += name.bytesRead;
+                    if (!name.str) break;
+                    if (offset + 18 > tree.length) return null;
+                    const crc = tree.readUInt32LE(offset);
+                    const preloadBytes = tree.readUInt16LE(offset + 4);
+                    const archiveIndex = tree.readUInt16LE(offset + 6);
+                    const entryLength = tree.readUInt32LE(offset + 12);
+                    entries.push({
+                        path: dirPath ? `${dirPath}/${name.str}.${ext.str}` : `${name.str}.${ext.str}`,
+                        crc,
+                        size: preloadBytes + entryLength,
+                        archiveIndex,
+                    });
+                    offset += 18 + preloadBytes;
+                }
+            }
+        }
+        return entries;
+    } catch (error) {
+        console.warn(`[parseVpkEntryIndex] Error parsing ${vpkPath}:`, error);
+        return null;
+    } finally {
+        if (fd !== null) {
+            try { closeSync(fd); } catch { /* already closed */ }
+        }
     }
 }
 

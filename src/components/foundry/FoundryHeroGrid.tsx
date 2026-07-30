@@ -33,6 +33,7 @@ interface FoundryHeroGridProps {
 export default function FoundryHeroGrid({ heroes, onPick }: FoundryHeroGridProps) {
   const { t } = useTranslation();
   const [query, setQuery] = useState('');
+  const [showDisabled, setShowDisabled] = useState(false);
   const summaryId = useId();
   const mods = useAppStore((s) => s.mods);
   const modsLoaded = useAppStore((s) => s.modsLoaded);
@@ -55,12 +56,15 @@ export default function FoundryHeroGrid({ heroes, onPick }: FoundryHeroGridProps
 
   // The roster the search narrows, which is the selectable heroes rather than
   // every row in the catalog: "of 38" has to match what an empty field shows.
-  const rosterCount = useMemo(() => heroes.filter((h) => !h.disabled).length, [heroes]);
+  const rosterCount = useMemo(
+    () => heroes.filter((h) => showDisabled || !h.disabled).length,
+    [heroes, showDisabled]
+  );
 
   const ordered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return heroes
-      .filter((h) => !h.disabled)
+      .filter((h) => showDisabled || !h.disabled)
       .filter((h) => (q ? h.name.toLowerCase().includes(q) || h.codename.includes(q) : true))
       .sort((a, b) => {
         const aFav = isFavorite(a.name);
@@ -72,10 +76,11 @@ export default function FoundryHeroGrid({ heroes, onPick }: FoundryHeroGridProps
         if (a.selectable !== b.selectable) return a.selectable ? -1 : 1;
         return a.name.localeCompare(b.name);
       });
-  }, [heroes, query, isFavorite, countFor]);
+  }, [heroes, query, showDisabled, isFavorite, countFor]);
 
   return (
     <div className="space-y-5">
+      <div className="flex flex-wrap items-center gap-3">
       <div className="flex items-center gap-2 rounded-sm border border-border bg-bg-tertiary px-3 py-2 w-full max-w-xs">
         <Search size={15} className="text-text-secondary" />
         <input
@@ -86,6 +91,16 @@ export default function FoundryHeroGrid({ heroes, onPick }: FoundryHeroGridProps
           aria-describedby={summaryId}
           className="w-full bg-transparent text-sm text-text-primary placeholder:text-text-secondary/60 focus:outline-none"
         />
+      </div>
+      <label className="flex cursor-pointer items-center gap-2 text-xs text-text-secondary">
+        <input
+          type="checkbox"
+          checked={showDisabled}
+          onChange={(event) => setShowDisabled(event.target.checked)}
+          className="accent-accent"
+        />
+        {t('foundry.heroes.showDisabled', 'Show disabled heroes')}
+      </label>
       </div>
       <ResultSummary
         id={summaryId}
@@ -181,6 +196,11 @@ function HeroCard({
           {!hero.selectable && (
             <span className="text-[10px] uppercase tracking-wide text-accent/90">
               {t('foundry.heroes.inDevelopment')}
+            </span>
+          )}
+          {hero.disabled && (
+            <span className="block text-[10px] uppercase tracking-wide text-amber-300">
+              {t('foundry.heroes.disabled', 'Not in the live roster')}
             </span>
           )}
         </div>

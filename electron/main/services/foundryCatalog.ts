@@ -25,6 +25,8 @@ import { runVpkmerge, runVpkmergeStdout, verifyVpkOutput } from './modMerger';
 import { prepareAudioForMint } from './audioConversion';
 import { getCitadelPath } from './deadlock';
 import { soundCodenameForHero } from './heroSoundCodenames';
+import { parseVpkEntryIndex } from './vpk';
+import { recordBuildSnapshot } from './foundryBuildSnapshots';
 import type {
     CatalogDiagnostics,
     GlobalSound,
@@ -81,6 +83,12 @@ export const FOUNDRY_SOURCE_THUMB_DIR = '_sources';
 
 function catalogCacheDir(): string {
     return join(app.getPath('userData'), 'foundry-catalog-cache');
+}
+
+/** Unlike thumbnails, build snapshots intentionally survive a game update: a
+ * stale build is the baseline used to identify what changed in the new one. */
+export function foundryBuildSnapshotsRoot(): string {
+    return join(app.getPath('userData'), 'foundry-build-snapshots');
 }
 
 /**
@@ -749,13 +757,12 @@ function thumbUrl(key: string, category: string, file: string): string {
  */
 export async function warmCache(deadlockPath: string): Promise<void> {
     try {
-        await runCatalogJson<CacheReport>([
-            'cache',
-            '--vpk',
-            pak01Path(deadlockPath),
-            '--dir',
-            catalogCacheDir(),
-        ]);
+        const fingerprint = await buildFingerprint(deadlockPath);
+        // The snapshot parse is directory-tree-only: no pak archive data is
+        // decoded or changed, and a malformed/unreadable directory simply means
+        // this opportunistic baseline will be retried next warm.
+        const entries = parseVpkEntryIndex(pak01Path(deadlockPath));
+        if (entries) await recordBuildSnapshot(foundryBuildSnapshotsRoot(), fingerprintKey(fingerprint), entries);
     } catch {
         /* best-effort warm; the catalog rebuilds lazily if this missed */
     }
