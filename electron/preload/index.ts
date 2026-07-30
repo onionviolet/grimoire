@@ -85,6 +85,11 @@ import type {
     UpdateProfileRequest,
 } from '@grimoire/social-types';
 
+const slotArgument = process.argv.find((argument) => argument.startsWith('--grimoire-dev-slot='));
+if (slotArgument) {
+    contextBridge.exposeInMainWorld('__GRIMOIRE_DEV_SLOT', Number(slotArgument.slice('--grimoire-dev-slot='.length)));
+}
+
 // Expose the API to the renderer process
 contextBridge.exposeInMainWorld('electronAPI', {
     platform: process.platform,

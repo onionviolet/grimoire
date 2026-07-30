@@ -15,7 +15,7 @@ unattended destructive operations.
 
 The repo can already drive a running dev build: `dev-driver.mjs` attaches over
 the Chrome DevTools Protocol and evaluates arbitrary JavaScript in the renderer
-(`GRIMOIRE_DEV_CDP_PORT`, see `electron/main/index.ts`). So "an agent can see the
+(`GRIMOIRE_DEV_SLOT`, with `GRIMOIRE_DEV_CDP_PORT` as an override; see `electron/main/index.ts`). So "an agent can see the
 UI" is already solved in development, and the Agent UI Lab is **not** additive
 capability. It is a strictly narrower replacement with a different threat model:
 

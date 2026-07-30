@@ -73,9 +73,19 @@ pnpm package:win                                  # Package for Windows (NSIS + 
 
 `scripts/dev-driver.mjs` talks to the renderer over the Chrome DevTools Protocol, so a check can be a question about the DOM ("what do these rows say?") rather than a guess about pixels. Start the app with the port open, then drive it:
 
+Use a numbered slot whenever another agent might be running a dev build. One
+setting derives the Vite port, CDP port, and isolated user-data directory:
+
 ```bash
-GRIMOIRE_DEV_CDP_PORT=9222 pnpm dev
+GRIMOIRE_DEV_SLOT=2 pnpm dev
+GRIMOIRE_DEV_SLOT=2 node scripts/dev-driver.mjs route foundry
 ```
+
+Slot 2 uses Vite `5175`, CDP `9224`, and a `<userData>-dev2` directory. Slot 0
+keeps the normal ports and data directory; an unslotted `pnpm dev` is therefore
+unsafe in a parallel session. `GRIMOIRE_DEV_CDP_PORT` remains an explicit CDP
+override. Confirm the target before trusting it with
+`node scripts/dev-driver.mjs eval "window.__GRIMOIRE_DEV_SLOT"`.
 
 ```bash
 node scripts/dev-driver.mjs route foundry

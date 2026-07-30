@@ -10,7 +10,8 @@
  *
  * Start the app with the port open, then drive it:
  *
- *   GRIMOIRE_DEV_CDP_PORT=9222 pnpm dev
+ *   GRIMOIRE_DEV_SLOT=2 pnpm dev
+ *   GRIMOIRE_DEV_SLOT=2 node scripts/dev-driver.mjs eval "window.__GRIMOIRE_DEV_SLOT"
  *   node scripts/dev-driver.mjs eval "location.hash"
  *   node scripts/dev-driver.mjs text "nav"
  *   node scripts/dev-driver.mjs click "button:has-text(My changes)"
@@ -21,14 +22,36 @@
  */
 import { readFileSync, writeFileSync } from 'fs';
 
-const PORT = process.env.GRIMOIRE_DEV_CDP_PORT || '9222';
+function slotPort() {
+    const raw = process.env.GRIMOIRE_DEV_SLOT;
+    if (raw === undefined || raw === '') return undefined;
+    if (!/^(?:0|[1-9]\d*)$/.test(raw)) throw new Error('GRIMOIRE_DEV_SLOT must be a non-negative integer.');
+    const slot = Number(raw);
+    if (!Number.isSafeInteger(slot) || slot > 65535 - 9222) throw new Error('GRIMOIRE_DEV_SLOT is too large for a CDP port.');
+    return String(9222 + slot);
+}
+
+const SLOT = process.env.GRIMOIRE_DEV_SLOT;
+const PORT = process.env.GRIMOIRE_DEV_CDP_PORT || slotPort() || '9222';
 const HOST = `http://127.0.0.1:${PORT}`;
+
+async function listTargets() {
+    let res;
+    try {
+        res = await fetch(`${HOST}/json/list`);
+    } catch (error) {
+        if (SLOT !== undefined && !process.env.GRIMOIRE_DEV_CDP_PORT) {
+            throw new Error(`No dev app is listening for GRIMOIRE_DEV_SLOT=${SLOT} on CDP port ${PORT}.`);
+        }
+        throw error;
+    }
+    if (!res.ok) throw new Error(`CDP list failed: ${res.status}`);
+    return res.json();
+}
 
 /** The renderer target, skipping devtools and any extension pages. */
 async function pageTarget() {
-    const res = await fetch(`${HOST}/json/list`);
-    if (!res.ok) throw new Error(`CDP list failed: ${res.status}`);
-    const targets = await res.json();
+    const targets = await listTargets();
     const page = targets.find((t) => t.type === 'page' && !t.url.startsWith('devtools://'));
     if (!page) throw new Error(`No renderer page found. Targets: ${targets.map((t) => `${t.type} ${t.url}`).join(', ') || 'none'}`);
     return page;
@@ -250,8 +273,7 @@ try {
             break;
         }
         case 'targets': {
-            const res = await fetch(`${HOST}/json/list`);
-            console.log((await res.json()).map((t) => `${t.type}\t${t.url}`).join('\n'));
+            console.log((await listTargets()).map((t) => `${t.type}\t${t.url}`).join('\n'));
             break;
         }
         default:

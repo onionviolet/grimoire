@@ -2,6 +2,9 @@ import { defineConfig, externalizeDepsPlugin } from 'electron-vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { resolve } from 'path';
+import { devSlotConfig } from './electron/main/devSlot';
+
+const { vitePort } = devSlotConfig();
 
 // Resolve the shared @grimoire/social-types workspace package straight from the
 // sibling checkout. pnpm's symlink for this out-of-root package
@@ -132,7 +135,10 @@ export default defineConfig(({ mode }) => {
         plugins: [react(), tailwindcss()],
         server: {
             host: '127.0.0.1',
-            port: 5173,
+            port: vitePort,
+            // A second agent must never silently drive the first agent's Vite
+            // server. Pick a slot instead of accepting Vite's fallback port.
+            strictPort: true,
         },
     },
     };

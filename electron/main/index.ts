@@ -2,6 +2,7 @@ import { app, BrowserWindow, shell, session, protocol, nativeTheme, screen } fro
 import { join, resolve } from 'path';
 import { pathToFileURL } from 'url';
 import { electronApp, optimizer, is } from '@electron-toolkit/utils';
+import { devSlotConfig } from './devSlot';
 import { SOUL_MODEL_SCHEME, registerSoulModelProtocol } from './services/soulContainerModels';
 import { HERO_POSE_SCHEME, registerHeroPoseProtocol, sweepHeroPoseCache } from './services/heroPoseModels';
 import { FOUNDRY_THUMB_SCHEME, registerFoundryThumbnailProtocol } from './services/foundryCatalog';
@@ -31,19 +32,8 @@ protocol.registerSchemesAsPrivileged([
 // light, and it makes prefers-color-scheme report dark in the renderer.
 nativeTheme.themeSource = 'dark';
 
-// Initialize the file logger before anything else so console.* calls in IPC
-// and service modules (imported below) flow into the rolling log file from
-// the very first line. The "Save diagnostic report" button in Settings hands
-// the user that file to attach to bug reports.
 import { initLogger } from './services/diagnostics';
-initLogger();
-
-// Start the event-loop lag monitor right after the logger so its periodic
-// "[event-loop] blocked Xms" warnings land in the same rolling file. The
-// monitor only logs when the loop is genuinely stalled (>=100ms in a 10s
-// window), so it stays quiet on a healthy session.
 import { initEventLoopMonitor } from './services/eventLoopMonitor';
-initEventLoopMonitor();
 
 import {
     GRIMOIRE_PROTOCOL,
@@ -66,13 +56,27 @@ app.commandLine.appendSwitch(
     'HardwareMediaKeyHandling,MediaSessionService'
 );
 
+const dev = devSlotConfig();
+
+// Each non-default slot gets independent SQLite databases, settings, and
+// caches. Set this before Electron creates any of its per-user state.
+if (dev.slot !== undefined && dev.slot !== 0) {
+    app.setPath('userData', `${app.getPath('userData')}-dev${dev.slot}`);
+}
+
+// Initialize runtime services only after a slot has selected its user-data
+// directory, so their logs and persistent state are isolated too.
+initLogger();
+initEventLoopMonitor();
+
 // Opt-in renderer debugging port, for driving the app from a script during
 // development (see scripts/dev-driver.mjs). Deliberately env-gated rather than
 // keyed off `is.dev`: an always-open port in dev is an always-open port on any
 // developer's machine, and this one accepts arbitrary code in the renderer.
 // Never set in a packaged build.
-if (process.env.GRIMOIRE_DEV_CDP_PORT) {
-    app.commandLine.appendSwitch('remote-debugging-port', process.env.GRIMOIRE_DEV_CDP_PORT);
+const devCdpPort = process.env.GRIMOIRE_DEV_CDP_PORT ?? dev.cdpPort?.toString();
+if (devCdpPort) {
+    app.commandLine.appendSwitch('remote-debugging-port', devCdpPort);
     // Bind to loopback only. Without this Chromium may accept connections from
     // the local network, which would expose renderer eval to anything on it.
     app.commandLine.appendSwitch('remote-allow-origins', 'http://127.0.0.1');
@@ -236,7 +240,7 @@ function createWindow(): void {
             : {}),
         minWidth: MIN_WINDOW_WIDTH,
         minHeight: MIN_WINDOW_HEIGHT,
-        title: 'Grimoire',
+        title: dev.slot === undefined ? 'Grimoire' : `Grimoire [dev slot ${dev.slot}]`,
         show: false, // Don't show until ready to prevent white flash
         backgroundColor: '#0f0f0f', // Dark background matching app theme
         autoHideMenuBar: true,
@@ -250,6 +254,7 @@ function createWindow(): void {
             contextIsolation: true,
             nodeIntegration: false,
             sandbox: true,
+            additionalArguments: dev.slot === undefined ? [] : [`--grimoire-dev-slot=${dev.slot}`],
             // Enables the <webview> element used by the in-app Browser page.
             // Turning this on means the renderer can ASK to embed arbitrary web
             // content, so the attach handler below re-asserts the guest's
@@ -466,7 +471,11 @@ if (process.defaultApp) {
 const initialProtocolUrl = findGrimoireUrlInArgv(process.argv);
 
 // Single instance lock
-const gotTheLock = app.requestSingleInstanceLock();
+// The normal application remains single-instance. Slots have independent
+// state, so deliberately allow one Electron process per slot.
+const gotTheLock = dev.slot !== undefined && dev.slot !== 0
+    ? true
+    : app.requestSingleInstanceLock();
 
 if (!gotTheLock) {
     app.quit();
