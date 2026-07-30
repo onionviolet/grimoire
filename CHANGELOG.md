@@ -2,6 +2,43 @@
 
 All notable changes to this project are documented here. Format is loosely based on [Keep a Changelog](https://keepachangelog.com/), and the project adheres to semantic versioning.
 
+## [1.26.1] - 2026-07-29
+
+This fork release absorbs upstream v1.26.0 and adds Grimoire's latest Locker,
+settings, and accessibility work. It is a Windows release; Linux and macOS
+artifacts are not currently published.
+
+### Added
+- **Curated performance presets.** Choose among six maintained upstream FPS
+  presets, with per-preset opt-ins and a clearer view of the HUD and advanced
+  console values Grimoire manages.
+- **A keyboard-first Locker hero picker.** Type a hero name to jump to it,
+  with matching results and Escape behavior that stay within the picker.
+- **A real Global sounds shelf in Locker.** Announcer packs, killstreak music,
+  and interface sounds now share the same consistent locker structure as
+  hero-specific sound mods.
+- **Remembered UI preferences.** View choices and scroll positions persist
+  across the library, Locker, Foundry, and related browsing surfaces.
+- **A configurable appearance finish.** Background gradients and a
+  transparent-sidebar option are available in Settings.
+
+### Changed
+- **Settings is organized into focused sections.** Navigation is now
+  categorized, making updates, appearance, privacy, maintenance, and game
+  options easier to locate.
+- **Search and confirmation UI are shared across the app.** Search fields,
+  scroll restoration, filtered-result summaries, and confirmation dialogs now
+  behave consistently across their respective surfaces.
+- **Accessibility and keyboard behavior were normalized.** Tab controls are
+  correctly wired to their panels, filtered lists announce their narrowed
+  results, and transient surfaces follow one dismissal contract.
+
+### Fixed
+- **Browse category filters now apply to the local catalog.**
+- **Performance configuration recognizes the broader set of managed ConVar
+  keys** and reports the preset value accurately in HUD rows.
+- **Gradient picker tabs now expose the correct tab semantics.**
+
 ## [1.25.1724] - 2026-07-29
 
 ### Added
