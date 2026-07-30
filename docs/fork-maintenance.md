@@ -12,6 +12,25 @@ upstream pull request.
   are optional interoperability artifacts, not the delivery path.
 - Keep the fork's public remote (`origin`) current after verification.
 
+## Attribution
+
+Independence is not anonymity: this fork ships upstream's work, upstream's
+Ko-fi jar, and upstream's Discord, so every surface that carries one has to say
+whose it is. The pass that established this is issue #20; the inventory lives
+in [third-party-notices.md](./third-party-notices.md).
+
+- The GitHub repo description names the original project and its author, and
+  disclaims affiliation. Keep it that way when editing repo settings, since it
+  is the one attribution surface that lives outside the tree and so is invisible
+  to review.
+- The README states the fork relationship near the top; Settings has an About
+  block, and the welcome modal says it on first run.
+- Support and donation copy names the beneficiary. The Ko-fi link pays Slush97
+  and must never be labelled as the fork's own.
+- Credit strings belong in `src/locales/en/translation.json` so they translate.
+  When the meaning of one changes, delete the key and add a new one rather than
+  rewording in place, or stale translations keep displaying the old claim.
+
 ## Branch hygiene
 
 - Integrate completed work into `main` promptly.
