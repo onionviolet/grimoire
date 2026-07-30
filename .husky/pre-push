@@ -3,3 +3,8 @@
 # sub-second and need no build. See grimoire/CLAUDE.md for the i18n workflow.
 pnpm i18n:check
 node scripts/gen-locale-manifest.mjs --check
+
+# Mojibake guard. v1.26.1 shipped 77 cp1252-round-tripped sequences because the
+# corruption is invisible in review and the fix happened to sit uncommitted in
+# the working tree. This is the cheapest place to catch a recurrence.
+pnpm encoding:check

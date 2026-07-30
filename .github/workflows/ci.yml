@@ -85,6 +85,13 @@ jobs:
           pnpm i18n:check
           node scripts/gen-locale-manifest.mjs --check
 
+      # v1.26.1 shipped 77 cp1252-round-tripped sequences (a middle dot, an
+      # ellipsis and an em dash, rendered as mojibake throughout the packaged
+      # app). The corruption is invisible in diff review, so gate on it.
+      - name: Source encoding
+        working-directory: grimoire
+        run: pnpm encoding:check
+
       # The prod-build gate refuses to build without GRIMOIRE_SOCIAL_BASE_URL
       # set to an https URL. CI uses a placeholder to exercise the build
       # pipeline; the value is meaningless at runtime (CI doesn't run the app).
