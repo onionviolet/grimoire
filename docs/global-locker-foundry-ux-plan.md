@@ -370,11 +370,12 @@ decision, and safe to land in Pass A:
   simply never consults it. Route the labels through the resolver, and present
   genuinely unknown codenames under an explicit unreleased/internal grouping
   (A3's datamining status, applied to a dropdown). See S5.
-- **Portrait upload slots dim base art and darken it further on hover.**
+- ~~**Portrait upload slots dim base art and darken it further on hover.**
   [HeroCardPicker.tsx:536](src/components/locker/HeroCardPicker.tsx:536) plus
   [:538](src/components/locker/HeroCardPicker.tsx:538). This is the original
   20:04 request, still open and currently inverted. Small fix, high value: see
-  Stage 3.
+  Stage 3.~~ **Done in `b197fdb`** (closes issue #1); treatment extracted to
+  [cardSlotStyles.ts](src/components/locker/cardSlotStyles.ts) with tests.
 - **User-supplied assets show raw hashes (upstream issue #261).** An uploaded
   image displays its content-hash filename instead of the original name.
   Store and display the original filename alongside the hashed storage key
@@ -722,13 +723,14 @@ sample of each current category.
    later, it becomes an orthogonal `Voice | SFX | Music` facet, never a
    parallel category tree.
 
-3. **Written, not yet committed.** Add a small, reviewed override table keyed by
-   stable evidence (exact event or normalized VPK path, not the download title)
-   for exceptions that the general classifier cannot safely identify. Keep a
-   reason beside each entry. `CLASSIFICATION_OVERRIDES` exists in the working
-   tree, checked first in `classifySoundToken` and deliberately empty (no case
-   in the installed corpus needs it), with both admission conditions written
-   down. Commit it.
+3. ~~Add a small, reviewed override table keyed by stable evidence (exact event
+   or normalized VPK path, not the download title) for exceptions that the
+   general classifier cannot safely identify. Keep a reason beside each entry.~~
+   **Done in `02edcde`.** `CLASSIFICATION_OVERRIDES` is checked first in
+   `classifySoundToken` and is deliberately empty: every case in the installed
+   corpus is handled by a rule, and an override table that starts full is a rule
+   set that gave up early. Both admission conditions are documented at the
+   definition.
 4. ~~Replace the current `shared` fallback rule with either a concrete category
    or `unclassified`. Do not infer a category from a mod's marketing name.~~
    **Done (a87eb6e).** `shared` and `other` are both gone; the fallback is
@@ -852,6 +854,27 @@ rescanning the full catalog.
 
 ## Stage 3: build a browse-first portrait experience
 
+**Partly done. The 20:04 request is closed; the gallery is not built.**
+
+- ~~The reported surface, `HeroCardPicker`'s upload slots.~~ **Fixed in
+  `b197fdb`** ("reveal portrait base art on hover and focus instead of
+  darkening it"), which closes issue #1. `opacity-30` and the
+  `group-hover:bg-black/55` scrim are both gone: slots rest at `opacity-50`
+  with a light desaturation and return to full colour and opacity on hover and
+  keyboard focus, the upload hint moved to a corner badge so the reveal is not
+  covered, and the treatment respects `motion-reduce`. The class logic lives in
+  [cardSlotStyles.ts](src/components/locker/cardSlotStyles.ts) with tests, which
+  is also where the Pass G shared card primitive should absorb it. Note it uses
+  `group-focus-within`, not `focus-visible`, because this repo has already
+  shipped a reveal that never fired under plain `:focus`.
+- ~~The audit ledger's wrong "Fixed" line.~~ **Corrected in `ea49548`**, with
+  success criteria recorded in `96b02c9`.
+- ~~The Abrams "no portraits match" report.~~ **Closed-unexplained in A2c**, and
+  the catalog diagnostics that would explain a recurrence shipped in `f4509b7`.
+- **Still open: the browse-first gallery itself** (both subsections below). That
+  is new design work, not a restoration, and it is Pass E under the shared hero
+  shell decided in A2d.
+
 ### What happened to the earlier interaction (resolved from session history)
 
 This section has been wrong twice. The Codex transcript settles it. Source:
@@ -872,7 +895,9 @@ is the **portrait** upload tab in `HeroCardPicker`, keyed
 [HeroCardPicker.tsx:500](src/components/locker/HeroCardPicker.tsx:500). It is
 not the skins panel.
 
-**That surface is still unfixed, and hovering makes it worse.** At
+**That surface was still unfixed at the time of writing, and hovering made it
+worse.** (Fixed since, in `b197fdb`; line numbers below refer to the pre-fix
+file.) At
 [HeroCardPicker.tsx:536](src/components/locker/HeroCardPicker.tsx:536) the base
 art renders `opacity-30` when no upload has been picked, with no hover or focus
 restore. The very next element,
@@ -881,11 +906,13 @@ restore. The very next element,
 *darkens* it further. The request asked for the exact opposite, and the code
 does the inverse of it today.
 
-The colour-restore treatment that was eventually written lives only in
+The colour-restore treatment that was eventually written lived only in
 [HeroSkinsPanel.tsx:456](src/components/locker/HeroSkinsPanel.tsx:456) and
 [:473](src/components/locker/HeroSkinsPanel.tsx:473). It landed on skins while
 the complaint was about portraits, which is why the portrait surface still
-feels wrong and why the audit doc's "Fixed" line is misleading.
+felt wrong and why the audit doc's "Fixed" line was misleading. Both are now
+addressed: `b197fdb` gave portraits their own treatment in `cardSlotStyles.ts`,
+and `ea49548` corrected the ledger.
 
 **The second memory is a separate, real regression.** At **20:22** the same
 evening: *"the locker looks a lot different from 1.25.1, did we change something
@@ -902,17 +929,17 @@ full colour, which is precisely what `opacity-30` plus a hover scrim prevents.
 
 **Consequences for this plan:**
 
-1. Fix the actual reported surface: remove the scrim-on-dim behaviour in
+1. ~~Fix the actual reported surface: remove the scrim-on-dim behaviour in
    `HeroCardPicker` and restore full colour on hover *and* keyboard focus, as
-   originally asked at 20:04. This is a small, self-contained Pass A fix and it
-   closes a request that has been open for a day and mis-marked as done.
-2. Stage 3 remains a first implementation, not a restoration. The expanded
-   interactive high-res card is a **new** design: a variant slot that opens into
-   a large, full-colour, zoomable preview. Design it deliberately.
-3. Correct `docs/codex-request-audit-2026-07-29.md`: entry 2 should say the fix
+   originally asked at 20:04.~~ **Done in `b197fdb`, closing issue #1.**
+2. **Still open (Pass E).** Stage 3 remains a first implementation, not a
+   restoration. The expanded interactive high-res card is a **new** design: a
+   variant slot that opens into a large, full-colour, zoomable preview. Design
+   it deliberately.
+3. ~~Correct `docs/codex-request-audit-2026-07-29.md`: entry 2 should say the fix
    was applied to `HeroSkinsPanel` while the request targeted `HeroCardPicker`,
-   so it is still open. This is S7 in action, and the ledger only helps if it
-   is accurate.
+   so it is still open.~~ **Done in `ea49548`.** This is S7 in action, and the
+   ledger only helps if it is accurate.
 
 The Foundry editor's later improvement added **Use current art** and **Recent
 images**, but its modal is crop-first and visually dense, so it still does not
@@ -1079,20 +1106,18 @@ July 29 portrait styling. Stage 3 already established from session history that
 there is no earlier design to restore, so diffing for it would be looking for
 something known not to exist.
 
-**Pass B is complete as of 2026-07-30**, in commit `a87eb6e`. Stage 0 items 1,
-2, 2b, 2c (labels), and 4 landed with their fixture tests; the Global sound rail
+**Pass B is complete as of 2026-07-30**, in commits `a87eb6e` and `02edcde`.
+All of Stage 0 landed with its fixture tests; the Global sound rail
 now reads `Announcer 0 · Music 4 · Interface 1 · Ambience 0 · NPC 2 · Items 6 ·
 Melee 2 · Needs classification 0` against the same 15 mods that produced the
 original defect. The pass advances **S2**, and incidentally **S1**: the two
 `Pak92`/`Pak93` collisions it surfaced are the first time this fork showed two
 mods fighting over one sound path from a browse surface.
 
-Two Pass B loose ends carry into Pass C rather than blocking it:
-
-- The `CLASSIFICATION_OVERRIDES` table (Stage 0 item 3) is uncommitted. **S9:
-  commit it first.**
-- Foundry's base-game catalog still has no `Melee` group, so the shared
-  vocabulary is honoured in wording but not yet in structure (Stage 0 item 2c).
+One Pass B loose end carries into Pass C rather than blocking it: Foundry's
+base-game catalog still has no `Melee` group, so the shared vocabulary is
+honoured in wording but not yet in structure (Stage 0 item 2c). That needs the
+catalog engine taught about melee, not a rename.
 
 Pass C (the Global inventory prototype) is next. Its cheap half is already in
 from Pass A (`ff9e8d3`, non-empty default category), and the taxonomy it needs
