@@ -268,10 +268,62 @@ decision, and safe to land in Pass A:
   everywhere user-supplied assets appear (Recent images, staged entries,
   Build tray).
 
+### A2b-done. Landed on 2026-07-30
+
+Driven and confirmed in the dev build after the change, not inferred.
+
+- **Hero-scoped icon embed (S3).** `LibraryBrowse` now takes `hero`/
+  `heroDisplayName` as props and opens on a `scope:<codename>` filter that means
+  "this hero's assets plus the unattributed ones". The scope survives a category
+  change (the reset goes back to the scope, not to `all`), and the widen
+  affordance stays: the dropdown still offers `All heroes`, and the empty state's
+  action becomes `Show assets from all heroes` inside a workshop. Live check in
+  the Abrams workshop: `Showing 13 of 232 assets`, previously all 232 including
+  Bebop, Lash, and Holliday.
+- **Attribution is derived, not just filtered.** Ability icons live flat in
+  `panorama/images/hud/abilities/` with `hero: null`, so a scope over the
+  catalog's own attribution alone still showed every hero. `attributedHeroCodename`
+  in `assetSearch.ts` reads the filename's leading token through the alias table
+  (`bull_charge` -> Abrams, `inferno_dash` -> Infernus). **It fails open on
+  purpose:** the naming is not systematic (most icons are named for the ability,
+  not the hero: `uppercut`, `dragon`, `charged`), so an unrecognised token stays
+  visible as shared. Two known leaks remain in the Abrams view, `giga_*` (Seven,
+  whose panorama name is `gigawatt`) and `phalanx_*`. Closing them properly is
+  the ability-to-hero mapping A0 called for, not more prefix guessing;
+  `docs/per-ability-sound-map.json` already holds `class`/`image` pairs that
+  would supply it.
+- **Raw codenames in the hero dropdown (S5).** Labels resolve through the
+  roster, then `displayNameForHeroCodename` (new, a reverse index over the same
+  alias table), so `archer` reads as Grey Talon, `punkgoat` as Billy, `nano` as
+  Calico. What is genuinely unresolved is now grouped under an explicit
+  `Unreleased or internal` optgroup rather than sitting inline among heroes:
+  live, that group is `duo, genericperson, grappler, targetdummy, theboss`.
+- **Global no longer opens on an empty category (Stage 1's cheap half).** The
+  Visuals landing type is now the first type with installed content; a prop
+  container only lands by default when the whole inventory is empty, since its
+  import-only empty state is the least informative thing to open on. It is state
+  resolved at render, not in a `useState` initializer, because the mod list
+  arrives after mount and the old initializer froze on the empty list. Live: the
+  drill-in opens on `Hideout 2 mods` instead of `Soul Containers 0`.
+- **Plural bug in the portrait coverage line.** It read `2 portrait family
+  available`; the key had no `_one`/`_other` forms.
+
+Tests: `assetSearch.test.ts` covers the scope filter (including "a hero-scoped
+embed never renders another hero"), the flat-icon attribution, and the
+fail-open cases; `heroPortraitIdentity.test.ts` covers the reverse lookup and
+the codename scope.
+
 ### A2c. Establish what still needs looking at
 
-- **Abrams portraits genuinely resolve to nothing, and it is not a filter
-  state.** A screenshot from the 15-08 Codex session at 20:19 on 2026-07-29
+- **Abrams portraits: no longer reproducing (checked 2026-07-30).** The Abrams
+  workshop `Portraits` section now reads `2 portrait families available: base,
+  card, card_critical, card_gloat, mm, sm, vertical` in the dev build against
+  the current tree. Something between the two reports and today fixed it, and
+  nothing in this pass touched `PortraitBrowse` beyond the plural string. Treat
+  it as closed-unexplained rather than fixed: without the catalog diagnostics
+  line below there is still no way to tell a user *why* it resolves, so if it
+  returns the diagnosis starts from zero again. Ship the diagnostics.
+- **The original report, for the record.** A screenshot from the 15-08 Codex session at 20:19 on 2026-07-29
   shows the Abrams workshop `Portraits` section reading "No portraits match /
   No portrait families match that hero or search" with an **empty search box
   and no hero filter applied**. The user reported it again in this session, so
@@ -783,13 +835,14 @@ time.
    variant strips), one surface per session, each ending with the Stage 4
    audit checklist.
 
-Pass A is now partly done: the A0 live findings are recorded, the packaged-build
-interface path (A0b) is established, and the portrait-history question is
-answered. What remains in Pass A is the git diff work (A1b), the cheap fixes
-(A2b: hero-scoped icon embed, non-empty default category, packaged-build
-encoding, catalog diagnostics, original filenames for uploads), the remaining
-catalog check (A2c), and the prototype scoring (A2d). Commit the current tree
-before starting (S9).
+Pass A is now mostly done: the A0 live findings are recorded, the packaged-build
+interface path (A0b) is established, the portrait-history question is answered,
+the encoding fix and its CI guard shipped, the 20:04 portrait reveal landed, and
+A2b-done lists the fixes that landed on 2026-07-30 (hero-scoped icon embed with
+derived attribution, resolved hero-codename labels, non-empty default category).
+What remains in Pass A is the git diff work (A1b), the two remaining A2b fixes
+(**catalog diagnostics**, which A2c now depends on, and original filenames for
+uploads), and the prototype scoring (A2d).
 
 Each pass should also name which structural cause (S1-S9) it advances, so the
 work stays aimed at the cause rather than the screenshot.
