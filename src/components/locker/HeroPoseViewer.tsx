@@ -52,6 +52,9 @@ import { resolveHeroPoseRenderFeatures } from './heroPoseRenderFeatures';
 import type { HeroPoseSkinSource } from '../../types/portrait';
 import type { TrippySpriteResult } from '../../types/mod';
 import type { TrippyPreview } from '../../stores/trippyPreviewStore';
+import { usePoseFailureStore } from '../../stores/poseFailureStore';
+import { usePrefersReducedMotion } from '../../lib/usePrefersReducedMotion';
+import { attributeBrokenSkinSources } from './poseFailureAttribution';
 
 /**
  * Live 3D preview of a hero's menu pose for the Locker's per-hero view.
@@ -178,6 +181,28 @@ function effectTextureBaseUrl(key: string): string {
 // Turntable rotation rate (rad/s). The spin pauses while the user holds (orbits)
 // the model with the mouse.
 const SPIN_SPEED = 0.25;
+
+// Whether the turntable was left paused. Remembered for the same reason the
+// panel remembers being open: re-pausing the spin on every visit is the same
+// papercut one layer down. Unset (never toggled) defers to prefers-reduced-motion.
+const SPIN_PAUSED_KEY = 'grimoire.locker.pose.spinPaused';
+
+function readSpinPaused(): boolean | null {
+  try {
+    const raw = localStorage.getItem(SPIN_PAUSED_KEY);
+    return raw === null ? null : raw === '1';
+  } catch {
+    return null;
+  }
+}
+
+function writeSpinPaused(paused: boolean): void {
+  try {
+    localStorage.setItem(SPIN_PAUSED_KEY, paused ? '1' : '0');
+  } catch {
+    /* ignore quota/availability errors */
+  }
+}
 
 function meshUrlFor(key: string, mtimeMs: number | null): string {
   // The key contains `::` (and a `/` for overflow skins), which a standard
@@ -890,13 +915,20 @@ export default function HeroPoseViewer({
   trippyPreview?: TrippyPreview;
 }) {
   const { t } = useTranslation();
+  // Grabbed off the store rather than through a hook subscription: these are
+  // stable actions, and the viewer only ever writes this state.
+  const markBroken = usePoseFailureStore((s) => s.markBroken);
+  const clearBroken = usePoseFailureStore((s) => s.clearBroken);
   const [scene, setScene] = useState<THREE.Object3D | null>(null);
   const [clips, setClips] = useState<THREE.AnimationClip[]>([]);
   const [rigged, setRigged] = useState(false);
   const [clothModel, setClothModel] = useState<ClothModel | null>(null);
   const [generating, setGenerating] = useState(false);
-  const interaction = useRef<TurntableInteraction>({ dragging: false, paused: false });
-  const [spinPaused, setSpinPaused] = useState(false);
+  // Start paused if that is how the user left it, or if they have asked the OS
+  // for reduced motion and have never said otherwise here.
+  const prefersReducedMotion = usePrefersReducedMotion();
+  const [spinPaused, setSpinPaused] = useState(() => readSpinPaused() ?? prefersReducedMotion);
+  const interaction = useRef<TurntableInteraction>({ dragging: false, paused: spinPaused });
   const [failure, setFailure] = useState<HeroPoseFailureKind | null>(null);
   const [retryNonce, setRetryNonce] = useState(0);
   const [effect, setEffect] = useState<EffectMount | null>(null);
@@ -1025,11 +1057,14 @@ export default function HeroPoseViewer({
 
         // --- Attempt 2: static --pose glb (the default). ---
         let info = await getHeroPoseInfo(heroName, skinSources);
+        // A cached export for this exact stack means the stack poses fine.
+        let stackPosed = info.hasModel;
         if (!info.hasModel) {
           if (cancelled) return;
           setGenerating(true);
           try {
             info = await exportHeroPose(heroName, skinSources, fallbackSkinMetaKey);
+            stackPosed = true;
           } catch (skinError) {
             // A successful vanilla retry proves the installed skin stack is the
             // problem. Keep showing that usable base pose, but make the warning
@@ -1037,7 +1072,20 @@ export default function HeroPoseViewer({
             if (skinSources.length > 0 && !isUnsupportedPoseError(skinError)) {
               try {
                 info = await exportHeroPose(heroName, []);
-                if (!cancelled) setFailure('skin');
+                if (!cancelled) {
+                  setFailure('skin');
+                  // Name the culprit so the grid can badge it. Detached from the
+                  // render path: the base pose is already showing, and narrowing
+                  // a stack costs an export per member.
+                  void attributeBrokenSkinSources(
+                    skinSources,
+                    (source) =>
+                      exportHeroPose(heroName, [source]).then((probed) => probed.hasModel),
+                    () => cancelled
+                  ).then((metaKeys) => {
+                    if (!cancelled && metaKeys.length > 0) markBroken(heroName, metaKeys);
+                  });
+                }
               } catch (baseError) {
                 if (!cancelled) {
                   setFailure(isUnsupportedPoseError(baseError) ? 'unsupported' : 'export');
@@ -1057,6 +1105,11 @@ export default function HeroPoseViewer({
         if (!info.hasModel) {
           if (!cancelled) setFailure('export');
           return;
+        }
+        // The stack posed, so nothing in it is broken: heal any card badge left
+        // over from an older, genuinely broken version of one of these mods.
+        if (stackPosed && !cancelled && skinSources.length > 0) {
+          clearBroken(skinSources.map((source) => source.metaKey));
         }
         const url = meshUrlFor(info.key, info.mtimeMs);
         const gltf = await loadGltfPreview(url);
@@ -1129,6 +1182,14 @@ export default function HeroPoseViewer({
       cancelled = true;
     };
   }, [heroName, effectPreviewEnabled]);
+
+  // The preference can be turned on while the app is open. Honor it live, but
+  // never override an explicit choice the user made here.
+  useEffect(() => {
+    if (!prefersReducedMotion || readSpinPaused() !== null) return;
+    interaction.current.paused = true;
+    setSpinPaused(true);
+  }, [prefersReducedMotion]);
 
   if (failure === 'unsupported' || failure === 'export') {
     return <HeroPoseFailureState kind={failure} t={t} onRetry={() => setRetryNonce((n) => n + 1)} />;
@@ -1216,6 +1277,7 @@ export default function HeroPoseViewer({
           const next = !interaction.current.paused;
           interaction.current.paused = next;
           setSpinPaused(next);
+          writeSpinPaused(next);
         }}
         className="absolute bottom-3 left-3 z-10 cursor-pointer rounded-full border border-border/70 bg-bg-secondary/80 px-3 py-1.5 text-xs font-semibold text-text-secondary backdrop-blur transition-colors hover:text-text-primary"
       >

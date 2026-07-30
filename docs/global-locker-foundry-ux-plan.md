@@ -1074,9 +1074,11 @@ time.
    **Complete 2026-07-30 (`a87eb6e`).** Advances **S2** (one classification
    module reading recorded evidence, with the base-game catalog's labels pulled
    into the same vocabulary). No rail redesign was done, as scoped.
-3. **Pass C -- Global inventory prototype.** Apply the selected category model
+3. ~~**Pass C -- Global inventory prototype.** Apply the selected category model
    to one Global layout and test populated/empty/narrow states. Do not touch
-   portrait code in this pass.
+   portrait code in this pass.~~
+   **Counting half complete 2026-07-30** (`0b134f5`, `ffbb13b`). Advances
+   **S1/S4**. See the Pass C note below for what is and is not closed.
 4. **Pass D -- source-result interaction.** Add selected-row Sources & winner
    behavior to Foundry sound rows, test cancellation/staleness, and then reuse
    it only where the portrait decision says it belongs.
@@ -1114,14 +1116,52 @@ original defect. The pass advances **S2**, and incidentally **S1**: the two
 `Pak92`/`Pak93` collisions it surfaced are the first time this fork showed two
 mods fighting over one sound path from a browse surface.
 
-One Pass B loose end carries into Pass C rather than blocking it: Foundry's
+~~One Pass B loose end carries into Pass C rather than blocking it: Foundry's
 base-game catalog still has no `Melee` group, so the shared vocabulary is
 honoured in wording but not yet in structure (Stage 0 item 2c). That needs the
-catalog engine taught about melee, not a rename.
+catalog engine taught about melee, not a rename.~~ **Closed 2026-07-30
+(`896c6f9`), and the reasoning above was wrong**: it needed no engine change at
+all. See the S2 note under Pass C.
 
-Pass C (the Global inventory prototype) is next. Its cheap half is already in
-from Pass A (`ff9e8d3`, non-empty default category), and the taxonomy it needs
-to render now exists.
+**Pass C's counting half is complete as of 2026-07-30**, in `0b134f5` and
+`ffbb13b`. The Global drill-in and the Locker tile that leads to it now read
+projections of one inventory (`countGlobalInventoryMods`,
+`countGlobalInventoryCategories`), so a mod carrying a legacy sound-shaped
+`globalType` is counted once rather than once per axis, and the header no
+longer changes with the tab. Sound-shaped types are out of the visual rail
+(`GLOBAL_VISUAL_MOD_TYPE_ORDER`) and out of the retag menu, which would
+otherwise have moved a card into a list nothing renders.
+
+The tile reads the installed VPKs to do it. That is the point rather than a
+cost: without the discovered paths a sound mod falls back to the GameBanana
+category that caused this defect, so the tile would have counted an honest
+number of mods into dishonest categories.
+
+What Pass C has NOT done is the layout half: the rail still lists empty visual
+types, and the narrow-width behaviour is untested. Those are the remaining
+prototype questions.
+
+**S1/S4 and S2 landed alongside it** (`896c6f9`, `a2d8b14`), out of the pass
+order, because #5's counting half could not be honestly closed while the fact
+it counts was still derived twice:
+
+- `src/lib/assetClaims.ts` is now the only place the load-order rule is
+  written down. `inspectFoundryAssetSources` (main, over VPK directories) and
+  `overlappingClaims` (renderer, over recorded entries) both project from it,
+  keeping only the difference that is legitimate: what evidence each can see.
+- `classifySound` returns the category **and** the reason, and the
+  Needs-classification queue says which evidence ran out, so a queue item can
+  be acted on.
+- The Foundry base-game surface groups by `SoundCategory` through
+  `soundCategoryFromCatalog`, which reads clip paths before falling back to the
+  catalog engine's coarse families. **This closes the Pass B loose end recorded
+  below**: the base-game catalog now has a Melee group. The earlier note that
+  it needed "the catalog engine taught about melee" was wrong. The melee pool
+  was always identifiable by its tree (`sounds/player/melee/`); only the
+  grouping axis was the engine's rather than ours.
+- The asset-source inspection cache is invalidated on any real mod-state
+  change. It previously outlived the mod list it was a cache of, which made a
+  stale ownership answer render instantly.
 
 Each pass should also name which structural cause (S1-S9) it advances, so the
 work stays aimed at the cause rather than the screenshot.

@@ -1,4 +1,5 @@
 import type { Mod } from './mods';
+import { buildAssetClaimsIndex, normalizeAssetPath } from '../../../src/lib/assetClaims';
 
 export type AssetSourceProvenance = 'Downloaded' | 'Imported' | 'Forged' | 'Third-party';
 
@@ -55,8 +56,11 @@ export interface FoundryAssetSourcesInspection {
     }>;
 }
 
+/** Kept as the name this module's callers already import; the normalization
+ *  itself belongs to the claims index, so there is one spelling of "same
+ *  asset" rather than one per surface. */
 export function normalizeFoundryAssetPath(path: string): string {
-    return path.replace(/\\/g, '/').replace(/^\/+/, '').toLowerCase();
+    return normalizeAssetPath(path);
 }
 
 function provenance(candidate: InstalledAssetSourceCandidate): AssetSourceProvenance {
@@ -67,8 +71,14 @@ function provenance(candidate: InstalledAssetSourceCandidate): AssetSourceProven
     return 'Third-party';
 }
 
-/** Exact VPK-directory inspection for Foundry assets. Priority is deliberately
- * resolved here from enabled contenders only: lower pakNN priority wins. */
+/**
+ * Exact VPK-directory inspection for Foundry assets.
+ *
+ * This module's job is reading VPK directories and describing sources; who
+ * wins a path is the claims index's job (S1/S4). It used to resolve the load
+ * order itself, which meant the rule "lowest enabled priority wins" was
+ * written down in two processes and could drift in one.
+ */
 export function inspectFoundryAssetSources(
     paths: string[],
     installed: InstalledAssetSourceCandidate[],
@@ -114,14 +124,25 @@ export function inspectFoundryAssetSources(
             auditionable: entries.filter((entry) => entry.endsWith('.vsnd_c')),
         });
     }
-    // Deadlock loads lower pakNN later, so the lowest priority enabled writer wins.
+    const claims = buildAssetClaimsIndex(
+        [...wanted.keys()],
+        sources.map((source) => ({
+            id: source.modId,
+            enabled: source.enabled,
+            priority: source.priority,
+            entries: source.entries,
+        }))
+    );
+    // Every requested path gets an answer, including the ones nothing claims:
+    // "no source writes this" is a result the panel renders, not a gap.
     const winners: Record<string, string | null> = {};
+    const byModId = new Map(sources.map((source) => [source.modId, source]));
     for (const path of wanted.keys()) {
-        const contender = sources.filter((source) => source.enabled && source.entries.some((entry) => normalizeFoundryAssetPath(entry) === path))
-            .sort((a, b) => a.priority - b.priority || a.modId.localeCompare(b.modId))[0];
-        winners[path] = contender?.modId ?? null;
-        if (contender) contender.wins.push(path);
+        const winner = claims.winnerOf(path);
+        winners[path] = winner;
+        if (winner) byModId.get(winner)?.wins.push(path);
     }
+    for (const source of sources) source.wins.sort((a, b) => a.localeCompare(b));
     sources.sort((a, b) => Number(b.enabled) - Number(a.enabled) || a.priority - b.priority || a.modName.localeCompare(b.modName));
     return { paths: [...wanted.keys()].sort(), sources, winners, unreadableMods };
 }

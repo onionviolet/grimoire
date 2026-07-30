@@ -1,5 +1,6 @@
 import type { AbilitySlot, Mod } from '../types/mod';
 import { canonicalHeroName, getEffectiveGlobalType } from './lockerUtils';
+import { buildAssetClaimsIndex } from './assetClaims';
 
 /**
  * The sound inventory: what sound content you already have, folded out of the
@@ -659,7 +660,8 @@ export function countEnabledMods(list: readonly SoundInventoryEntry[]): number {
 /** One path claimed by more than one enabled entry, with its claimants. */
 export interface SoundClaimOverlap {
     path: string;
-    /** Entry keys claiming the path, in the list's own order. */
+    /** Enabled entry keys claiming the path, winner first: the load order the
+     *  claims index resolves, so the reader can see who currently wins. */
     entryKeys: string[];
 }
 
@@ -675,17 +677,21 @@ export interface SoundClaimOverlap {
  * the user to the inspector, an invented one sends them chasing nothing.
  */
 export function overlappingClaims(list: readonly SoundInventoryEntry[]): SoundClaimOverlap[] {
-    const byPath = new Map<string, string[]>();
-    for (const entry of list) {
-        if (!entry.enabled) continue;
-        for (const path of new Set(entry.paths)) {
-            const claimants = byPath.get(path);
-            if (claimants) claimants.push(entry.key);
-            else byPath.set(path, [entry.key]);
-        }
-    }
-    return [...byPath.entries()]
-        .filter(([, entryKeys]) => entryKeys.length > 1)
-        .map(([path, entryKeys]) => ({ path, entryKeys }))
-        .sort((a, b) => a.path.localeCompare(b.path));
+    // Projection of the shared claims index, not a second derivation of it: the
+    // question "who claims this path" has one implementation, and this surface
+    // only differs in the evidence it can offer (recorded entries, never a VPK
+    // read) and in reporting entry keys rather than mod ids.
+    const claims = buildAssetClaimsIndex(
+        [],
+        list.map((entry) => ({
+            id: entry.key,
+            enabled: entry.enabled,
+            priority: entry.priority,
+            entries: entry.paths,
+        }))
+    );
+    return claims.contested.map((path) => ({
+        path,
+        entryKeys: claims.byPath.get(path)?.enabledClaimants ?? [],
+    }));
 }
