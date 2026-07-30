@@ -261,6 +261,14 @@ the combined Foundry forge in particular has never been run end to end by a
 human. Run the checklist in section 1 below when a build and the game are both
 in front of you, and fix forward if it finds something.
 
+**Deferred fork-support cleanup.** Before treating this fork as a supported
+public build, remove or replace the upstream Discord invite in fork-owned
+surfaces. In particular, the updater modal (`src/components/UpdateModal.tsx`)
+currently sends users to the main Grimoire Discord, where they could
+accidentally request help for this fork. Decide on a fork-specific support
+destination first (or omit the link entirely), then apply that decision
+consistently to the updater and other in-app support links.
+
 ## Next-version implementation plan
 
 ### Delivery contract and sequencing
