@@ -73,6 +73,16 @@ for (const hero of HEROES) {
   }
 }
 
+// Reverse direction: a catalog codename back to the hero it belongs to. Asset
+// catalogs are keyed on engine codenames (`archer`, `punkgoat`), so any surface
+// that shows one to a user needs this or it prints a codename as a hero name.
+const byAnyCodename = new Map<string, PortraitHeroDefinition>();
+for (const hero of HEROES) {
+  for (const code of [...(hero.rosterCodenames ?? []), ...hero.panoramaCodenames]) {
+    byAnyCodename.set(key(code), hero);
+  }
+}
+
 /** Resolve a display name or roster codename to every portrait folder it owns. */
 export function resolvePortraitHero(identity: string | null | undefined): PortraitHeroIdentity | null {
   if (!identity) return null;
@@ -92,6 +102,35 @@ export function matchesPortraitHero(
 /** Compatibility helper for Locker's existing source discovery callers. */
 export function portraitCodenamesForHero(heroName: string): string[] {
   return [...(resolvePortraitHero(heroName)?.panoramaCodenames ?? [])];
+}
+
+/**
+ * Display name for an engine codename (`archer` -> `Grey Talon`), or null when
+ * the codename belongs to no known hero. Null is a real answer: unreleased and
+ * internal codenames (`genericperson`, `duo`) exist in shipped catalogs and
+ * should be presented as unresolved, not as heroes.
+ */
+export function displayNameForHeroCodename(codename: string | null | undefined): string | null {
+  if (!codename) return null;
+  return byAnyCodename.get(key(codename))?.displayName ?? null;
+}
+
+/**
+ * Every codename that can carry this hero's assets, including the identity that
+ * was passed in. Use it to scope a catalog to one hero without losing the
+ * aliases a subsystem happens to use.
+ */
+export function heroCodenameScope(identity: string | null | undefined): Set<string> {
+  const scope = new Set<string>();
+  if (!identity) return scope;
+  scope.add(key(identity));
+  const hero = byKnownName.get(key(identity)) ?? byAnyCodename.get(key(identity));
+  if (hero) {
+    for (const code of [...(hero.rosterCodenames ?? []), ...hero.panoramaCodenames]) {
+      scope.add(key(code));
+    }
+  }
+  return scope;
 }
 
 /** Compatibility helper for callers that only need the current panorama name. */

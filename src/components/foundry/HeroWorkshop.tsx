@@ -337,7 +337,13 @@ export default function HeroWorkshop({
             <h4 className="text-sm font-semibold text-white/90">
               {t('foundry.workshop.abilityIcons', 'Ability & item icons')}
             </h4>
-            <LibraryBrowse heroNames={heroNames} initialCategory="ability-icon" onStage={stage} />
+            <LibraryBrowse
+              heroNames={heroNames}
+              initialCategory="ability-icon"
+              hero={hero.codename}
+              heroDisplayName={hero.name}
+              onStage={stage}
+            />
           </div>
         </div>
       ) : section === 'myChanges' ? (

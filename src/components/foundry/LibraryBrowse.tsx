@@ -11,7 +11,8 @@ import PortraitEditor from './PortraitEditor';
 import TextureGrid from './TextureGrid';
 import TextureLightbox from './TextureLightbox';
 import SearchInput from '../common/SearchInput';
-import { filterTextureGridItems } from './assetSearch';
+import { filterTextureGridItems, HERO_SCOPE_PREFIX } from './assetSearch';
+import { displayNameForHeroCodename } from '../../lib/heroPortraitIdentity';
 import { prepareVisualStagedEdit, visualAssetInspectionPaths, type VisualStagedEdit } from './visualEdits';
 
 interface LibraryBrowseProps {
@@ -19,6 +20,14 @@ interface LibraryBrowseProps {
   heroNames: Map<string, string>;
   /** Category the grid opens on (the Items sub-tool lands on item icons). */
   initialCategory?: TextureCategory;
+  /** Roster codename of the hero this browse is embedded inside, when it is
+   *  embedded at all. The grid then opens scoped to that hero plus the shared,
+   *  unattributed assets, and keeps that scope across category changes. The
+   *  widen-to-all-heroes affordance stays; the default is what changes. */
+  hero?: string;
+  /** Display label for `hero`, so the scope option can name a hero rather than
+   *  a codename. */
+  heroDisplayName?: string;
   onStage?: (edit: VisualStagedEdit) => void;
 }
 
@@ -36,7 +45,13 @@ const CATEGORIES: { value: TextureCategory; labelKey: string; fallback: string }
  * client-side hero/search narrowing and an enlarge-on-click lightbox. One IPC
  * call per category (thumbnails decoded once and cached); filtering is local.
  */
-export default function LibraryBrowse({ heroNames, initialCategory = 'ability-icon', onStage }: LibraryBrowseProps) {
+export default function LibraryBrowse({
+  heroNames,
+  initialCategory = 'ability-icon',
+  hero,
+  heroDisplayName,
+  onStage,
+}: LibraryBrowseProps) {
   const { t } = useTranslation();
   const confirm = useConfirm();
   const [category, setCategory] = useState<TextureCategory>(initialCategory);
@@ -44,7 +59,10 @@ export default function LibraryBrowse({ heroNames, initialCategory = 'ability-ic
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-  const [heroFilter, setHeroFilter] = useState('all');
+  // Hero context is given, not defaulted: an embedded browse that forgets its
+  // hero shows another hero's art inside this hero's workshop.
+  const defaultHeroFilter = hero ? `${HERO_SCOPE_PREFIX}${hero}` : 'all';
+  const [heroFilter, setHeroFilter] = useState(defaultHeroFilter);
   const [lightbox, setLightbox] = useState<TextureGridItem | null>(null);
   const [replacingPath, setReplacingPath] = useState<string | null>(null);
   // Portrait/hero-image drops open the editor instead of staging the raw file:
@@ -106,23 +124,39 @@ export default function LibraryBrowse({ heroNames, initialCategory = 'ability-ic
   }, []);
 
   useEffect(() => {
-    setHeroFilter('all');
+    // Each category is a different catalog, so the per-hero selection cannot
+    // carry over. It returns to the embedding hero's scope, not to all heroes.
+    setHeroFilter(defaultHeroFilter);
     void loadCategory(category);
-  }, [category, loadCategory]);
+  }, [category, loadCategory, defaultHeroFilter]);
 
   // Hero dropdown is scoped to the codenames actually present in this category.
+  // Labels resolve through the roster first, then the codename alias table, so
+  // `archer` reads as Grey Talon. Whatever is left is genuinely unresolved
+  // (unreleased or internal content) and says so rather than posing as a hero.
   const presentHeroes = useMemo(() => {
     const codes = new Set<string>();
     for (const it of items) if (it.hero) codes.add(it.hero);
-    return [...codes]
-      .map((code) => ({ code, name: heroNames.get(code) ?? code }))
-      .sort((a, b) => a.name.localeCompare(b.name));
+    const resolved: { code: string; name: string }[] = [];
+    const unresolved: { code: string; name: string }[] = [];
+    for (const code of codes) {
+      const name = heroNames.get(code) ?? displayNameForHeroCodename(code);
+      if (name) resolved.push({ code, name });
+      else unresolved.push({ code, name: code });
+    }
+    const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name);
+    return { resolved: resolved.sort(byName), unresolved: unresolved.sort(byName) };
   }, [items, heroNames]);
+  const hasHeroOptions = presentHeroes.resolved.length + presentHeroes.unresolved.length > 0;
   const visibleItems = useMemo(
     () => filterTextureGridItems(items, search, heroFilter),
     [items, search, heroFilter],
   );
-  const hasActiveFilter = Boolean(search.trim()) || heroFilter !== 'all';
+  // Two different questions. `isNarrowed` drives the count line, so a grid that
+  // opens pre-scoped still says how much of the catalog it is hiding. `hasActiveFilter`
+  // drives the reset affordance, which has nothing to undo in the default state.
+  const isNarrowed = Boolean(search.trim()) || heroFilter !== 'all';
+  const hasActiveFilter = Boolean(search.trim()) || heroFilter !== defaultHeroFilter;
 
   return (
     <>
@@ -143,7 +177,7 @@ export default function LibraryBrowse({ heroNames, initialCategory = 'ability-ic
           </select>
         </div>
 
-        {presentHeroes.length > 0 && (
+        {(hasHeroOptions || hero) && (
           <div className="flex items-center gap-1.5 rounded-sm border border-border bg-bg-tertiary px-2 py-1.5">
             <Users size={14} className="text-text-secondary" />
             <select
@@ -151,14 +185,30 @@ export default function LibraryBrowse({ heroNames, initialCategory = 'ability-ic
               onChange={(e) => setHeroFilter(e.target.value)}
               className="bg-transparent text-sm text-text-primary focus:outline-none"
             >
+              {hero && (
+                <option value={`${HERO_SCOPE_PREFIX}${hero}`} className="bg-bg-secondary">
+                  {t('foundry.filters.heroAndShared', '{{hero}} & shared', {
+                    hero: heroDisplayName ?? displayNameForHeroCodename(hero) ?? hero,
+                  })}
+                </option>
+              )}
               <option value="all" className="bg-bg-secondary">
                 {t('foundry.filters.allHeroes', 'All heroes')}
               </option>
-              {presentHeroes.map((h) => (
+              {presentHeroes.resolved.map((h) => (
                 <option key={h.code} value={h.code} className="bg-bg-secondary">
                   {h.name}
                 </option>
               ))}
+              {presentHeroes.unresolved.length > 0 && (
+                <optgroup label={t('foundry.filters.unreleasedGroup', 'Unreleased or internal')}>
+                  {presentHeroes.unresolved.map((h) => (
+                    <option key={h.code} value={h.code} className="bg-bg-secondary">
+                      {h.name}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
             </select>
           </div>
         )}
@@ -170,7 +220,7 @@ export default function LibraryBrowse({ heroNames, initialCategory = 'ability-ic
           clearLabel={t('foundry.search.clear', 'Clear asset search')}
           scope={t('foundry.search.assetScope', 'Searches asset names and game paths.')}
           summary={
-            hasActiveFilter
+            isNarrowed
               ? t('foundry.search.resultCount', 'Showing {{visible}} of {{total}} assets', {
                   visible: visibleItems.length,
                   total: items.length,
@@ -198,7 +248,21 @@ export default function LibraryBrowse({ heroNames, initialCategory = 'ability-ic
           icon={Library}
           title={<Tx k="foundry.library.empty.title" fallback="No assets match" />}
           description={<Tx k="foundry.library.empty.description" fallback="Try a different asset name or game-path fragment." />}
-          action={hasActiveFilter ? <button type="button" onClick={() => { setSearch(''); setHeroFilter('all'); }} className="rounded-sm border border-border px-3 py-1.5 text-sm text-text-primary hover:border-accent/50">{t('foundry.search.clearFilters', 'Clear search and filters')}</button> : undefined}
+          action={
+            hasActiveFilter || hero ? (
+              <button
+                type="button"
+                onClick={() => { setSearch(''); setHeroFilter('all'); }}
+                className="rounded-sm border border-border px-3 py-1.5 text-sm text-text-primary hover:border-accent/50"
+              >
+                {/* Inside a hero workshop the useful escape hatch is widening past
+                    the hero, not just clearing the search box. */}
+                {hero
+                  ? t('foundry.search.showAllHeroes', 'Show assets from all heroes')
+                  : t('foundry.search.clearFilters', 'Clear search and filters')}
+              </button>
+            ) : undefined
+          }
         />
       ) : (
         // No count paragraph here: it belongs in the search field's own status
