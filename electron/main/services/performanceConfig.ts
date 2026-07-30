@@ -65,8 +65,12 @@ const GAMEINFO_BACKUP_SUFFIX = '.grimoire-bak';
 // Remove restores the original file regardless of overrides.
 const STATE_FILENAME = 'grimoire-performance.json';
 
-const HUD_BY_KEY = new Map(HUD_CONVARS.map((entry) => [entry.key, entry]));
-const ADVANCED_BY_KEY = new Map(ADVANCED_GAMEINFO_CONVARS.map((entry) => [entry.key, entry]));
+const HUD_BY_KEY: Map<string, (typeof HUD_CONVARS)[number]> = new Map(
+    HUD_CONVARS.map((entry) => [entry.key, entry])
+);
+const ADVANCED_BY_KEY: Map<string, (typeof ADVANCED_GAMEINFO_CONVARS)[number]> = new Map(
+    ADVANCED_GAMEINFO_CONVARS.map((entry) => [entry.key, entry])
+);
 const USER_FACING_KEYS = new Set([...HUD_BY_KEY.keys(), ...ADVANCED_BY_KEY.keys()]);
 
 /** Compare equivalent boolean spellings as one value while preserving all
