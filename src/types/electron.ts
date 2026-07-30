@@ -144,6 +144,12 @@ export interface PerformanceConvarState {
     presetValue: string | null;
     /** The engine's stock value, or null when Grimoire does not know it. */
     gameDefault: string | null;
+    /** Value Deadlock will use after file precedence is resolved. */
+    resolvedValue: string | null;
+    /** The winning source. autoexec.cfg runs after gameinfo.gi. */
+    resolvedFrom: 'game-default' | 'gameinfo.gi' | 'autoexec.cfg';
+    /** Present when autoexec.cfg overrides the gameinfo.gi value. */
+    autoexec?: AutoexecConvarConflict;
     /** A numeric control whose file value sits outside the supported range. */
     outOfRange?: boolean;
 }

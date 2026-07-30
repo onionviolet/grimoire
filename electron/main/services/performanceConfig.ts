@@ -23,6 +23,7 @@ import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { getGameinfoPath } from './deadlock';
 import { findAutoexecConvars } from './autoexec';
+import { CONFIG_KEY_BY_NAME, CONFIG_KEY_INDEX, USER_CONTROL_KEYS } from './configKeyIndex';
 import type {
     PerformanceConfigStatus,
     PerformanceConvarOrigin,
@@ -73,7 +74,7 @@ const HUD_BY_KEY: Map<string, (typeof HUD_CONVARS)[number]> = new Map(
 const ADVANCED_BY_KEY: Map<string, (typeof ADVANCED_GAMEINFO_CONVARS)[number]> = new Map(
     ADVANCED_GAMEINFO_CONVARS.map((entry) => [entry.key, entry])
 );
-const USER_FACING_KEYS = new Set([...HUD_BY_KEY.keys(), ...ADVANCED_BY_KEY.keys()]);
+const USER_FACING_KEYS = USER_CONTROL_KEYS;
 
 /** Compare equivalent boolean spellings as one value while preserving all
  * other convar values exactly. Presets mix both Source encodings. */
@@ -1095,8 +1096,9 @@ export function getPerformanceConfigStatus(deadlockPath: string | null): Perform
         // autoexec.cfg runs after gameinfo.gi, so a line there beats every
         // control on this surface. Reported on the status so the controls can
         // show it as a state instead of burying it in a description.
-        const autoexecConflicts = findAutoexecConvars(deadlockPath, USER_FACING_KEYS);
-        const convarStates = computeConvarStates(content, activePreset);
+        const autoexecConflicts = findAutoexecConvars(deadlockPath, CONFIG_KEY_BY_NAME.keys());
+        const sidecar = readAppliedState(gameinfoPath);
+        const convarStates = computeConvarStates(content, activePreset, sidecar?.optIns, autoexecConflicts);
         const convarValues = Object.fromEntries(
             Object.entries(convarStates).flatMap(([key, entry]) => entry.value === null ? [] : [[key, entry.value]])
         );
@@ -1104,7 +1106,6 @@ export function getPerformanceConfigStatus(deadlockPath: string | null): Perform
             // The sidecar records a hash of the exact bytes Grimoire wrote, so
             // a mismatch while the markers are intact means hand edits. Old
             // sidecars without a hash just never set the flag.
-            const sidecar = readAppliedState(gameinfoPath);
             const handEdited =
                 typeof sidecar?.contentHash === 'string' && sidecar.contentHash !== sha256(content);
             // The marker is authoritative for which preset is in the file: the
@@ -1184,7 +1185,12 @@ export function getPerformanceConfigStatus(deadlockPath: string | null): Perform
     }
 }
 
-function computeConvarStates(content: string, preset: PerformancePreset | null): Record<string, PerformanceConvarState> {
+function computeConvarStates(
+    content: string,
+    preset: PerformancePreset | null,
+    optIns: string[] | undefined,
+    autoexecConflicts: Record<string, { value: string; line: number; managed: boolean }>
+): Record<string, PerformanceConvarState> {
     const normalized = content.replace(/\r\n/g, '\n');
     const range = findSectionByPath(normalized, ['ConVars']);
     const values = new Map<string, string>();
@@ -1194,12 +1200,14 @@ function computeConvarStates(content: string, preset: PerformancePreset | null):
         const entry = matchEntryLine(line, key);
         if (entry) values.set(key, entry.value.replace(/^"|"$/g, ''));
     }
-    const presetValues = new Map(preset?.convars ?? []);
+    const presetValues = new Map(preset ? effectiveConvars(preset, optIns) : []);
     const output: Record<string, PerformanceConvarState> = {};
-    for (const [key, control] of [...HUD_BY_KEY, ...ADVANCED_BY_KEY]) {
+    for (const definition of CONFIG_KEY_INDEX) {
+        const { key } = definition;
+        const control = CONFIG_KEY_BY_NAME.get(key)!;
         const value = values.get(key) ?? null;
         const presetValue = presetValues.get(key) ?? null;
-        const gameDefault = 'gameDefault' in control && control.gameDefault !== null ? String(control.gameDefault) : null;
+        const gameDefault = control.gameDefault;
         const matchesPreset = value !== null && presetValue !== null && normalizeConvarValue(value) === normalizeConvarValue(presetValue);
         const numeric = ADVANCED_BY_KEY.get(key);
         const outOfRange = numeric && value !== null && (!Number.isFinite(Number(value)) || Number(value) < numeric.min || Number(value) > numeric.max);
@@ -1208,7 +1216,17 @@ function computeConvarStates(content: string, preset: PerformancePreset | null):
             : matchesPreset ? 'managed-preset'
             : outOfRange ? 'unsupported'
             : 'user-override';
-        output[key] = { origin, value, presetValue, gameDefault, ...(outOfRange ? { outOfRange: true } : {}) };
+        const autoexec = autoexecConflicts[key];
+        output[key] = {
+            origin,
+            value,
+            presetValue,
+            gameDefault,
+            resolvedValue: autoexec?.value ?? value ?? gameDefault,
+            resolvedFrom: autoexec ? 'autoexec.cfg' : value === null ? 'game-default' : 'gameinfo.gi',
+            ...(autoexec ? { autoexec } : {}),
+            ...(outOfRange ? { outOfRange: true } : {}),
+        };
     }
     return output;
 }

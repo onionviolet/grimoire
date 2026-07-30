@@ -522,6 +522,24 @@ describe('HUD and advanced controls', () => {
     });
 });
 
+describe('resolved ConVar status', () => {
+    it('reports autoexec.cfg as the winning source for every indexed preset key', () => {
+        applyPerformanceConfig(gameRoot, { presetId: 'sqooky-default' });
+        const cfg = join(gameRoot, 'game', 'citadel', 'cfg');
+        mkdirSync(cfg, { recursive: true });
+        writeFileSync(join(cfg, 'autoexec.cfg'), 'r_shadows 1\n', 'utf-8');
+
+        const state = getPerformanceConfigStatus(gameRoot).convarStates?.r_shadows;
+        expect(state).toMatchObject({
+            value: '0',
+            presetValue: '0',
+            resolvedValue: '1',
+            resolvedFrom: 'autoexec.cfg',
+            autoexec: { value: '1', line: 1, managed: false },
+        });
+    });
+});
+
 // #17. These are fork-owned personal preferences, not a deviation from whichever
 // preset happens to be applied, and they used to exist only as text inside the
 // marked block: re-parsed on every apply, so anything that made the applied body
