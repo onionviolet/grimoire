@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
     buildSoundInventory,
     categoriesPresent,
+    classifySound,
     classifySoundToken,
+    soundCategoryFromCatalog,
     countEnabledMods,
     countMods,
     entriesInCategory,
@@ -433,5 +435,77 @@ describe('soundEntriesInVpk', () => {
 
     it('reports nothing for a VPK with no sound content, rather than guessing', () => {
         expect(soundEntriesInVpk(['materials/hud/icon.vtex_c'])).toEqual([]);
+    });
+});
+
+describe('classifySound', () => {
+    it('says which path segment decided it, not just the answer', () => {
+        expect(classifySound('sounds/mods/tech/refresher/refresher_cast.vsnd_c')).toEqual({
+            category: 'item',
+            reason: { kind: 'path', evidence: 'sounds/mods/' },
+        });
+    });
+
+    it('reports a word hint as a word hint, so weak evidence reads as weak', () => {
+        expect(classifySound('XPTrooperCreepKill')).toEqual({
+            category: 'npc',
+            reason: { kind: 'word', evidence: 'trooper' },
+        });
+    });
+
+    it('reports unreadable rather than a reason it does not have', () => {
+        expect(classifySound('Something.Entirely.Unknown')).toEqual({
+            category: 'unclassified',
+            reason: { kind: 'unreadable' },
+        });
+    });
+
+    it('prefers the path rule over the word in the same token', () => {
+        // `music` the word appears nowhere; `shop` and `menu` both do, and both
+        // would win on words alone. The directory is the fact.
+        expect(classifySound('sounds/music/menu/shop/bau_01.vsnd_c')).toEqual({
+            category: 'music',
+            reason: { kind: 'path', evidence: 'sounds/music/' },
+        });
+    });
+});
+
+describe('soundCategoryFromCatalog', () => {
+    it('gives the base-game catalog a Melee group its engine grouping has no word for', () => {
+        // The catalog files every melee sound under `gameplay`, a bag. The clip
+        // path is the same evidence the Locker reads, so both surfaces land on
+        // the same category and #5 DoD 10 holds without a second vocabulary.
+        expect(
+            soundCategoryFromCatalog({
+                category: 'gameplay',
+                source: 'player/melee',
+                vsnd: ['sounds/player/melee/shared/charged_melee_full.vsnd'],
+            })
+        ).toEqual({ category: 'melee', reason: { kind: 'path', evidence: 'sounds/player/melee/' } });
+    });
+
+    it('falls back to the catalog family when no path reads, and says so', () => {
+        expect(
+            soundCategoryFromCatalog({ category: 'ui', source: 'somewhere_odd', vsnd: [] })
+        ).toEqual({ category: 'ui', reason: { kind: 'word', evidence: 'ui' } });
+    });
+
+    it('does not turn the catalog shrug into a category', () => {
+        expect(soundCategoryFromCatalog({ category: 'other', source: '', vsnd: [] })).toEqual({
+            category: 'unclassified',
+            reason: { kind: 'unreadable' },
+        });
+    });
+
+    it('reads the clip path even when the catalog family already had an answer', () => {
+        // `gameplay` would have been Weapon-ish; the tree says these are item
+        // modifier sounds, and the tree wins.
+        expect(
+            soundCategoryFromCatalog({
+                category: 'gameplay',
+                source: 'mods/tech',
+                vsnd: ['sounds/mods/tech/refresher/refresher_cast.vsnd'],
+            }).category
+        ).toBe('item');
     });
 });

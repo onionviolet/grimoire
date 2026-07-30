@@ -6,8 +6,12 @@ import SoundEntryRow from './SoundEntryRow';
 import { useSoundAnnotations } from './useSoundAnnotations';
 import { useClipPlayer } from '../foundry/useClipPlayer';
 import { useAppStore } from '../../stores/appStore';
-import { globalSoundFoundryCategory, globalSoundSectionLabel } from '../../lib/globalSoundSections';
-import type { SoundCategory, SoundInventoryEntry } from '../../lib/soundInventory';
+import { globalSoundSectionLabel } from '../../lib/globalSoundSections';
+import type {
+  SoundCategory,
+  SoundClassificationBasis,
+  SoundInventoryEntry,
+} from '../../lib/soundInventory';
 
 /**
  * The Global sounds shelf: installed sound mods that belong to no hero
@@ -77,7 +81,7 @@ export default function GlobalSoundShelf({ category, shown }: GlobalSoundShelfPr
         <button
           type="button"
           onClick={() =>
-            navigate(`/foundry?tool=globalSound&category=${globalSoundFoundryCategory(category)}`)
+            navigate(`/foundry?tool=globalSound&category=${category}`)
           }
           className="inline-flex items-center gap-1.5 rounded-lg border border-accent/40 bg-accent/10 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:border-accent/60 hover:bg-accent/20 cursor-pointer"
         >
@@ -97,16 +101,60 @@ export default function GlobalSoundShelf({ category, shown }: GlobalSoundShelfPr
     // one shared surface instead, so the tint lands on this and not on the art.
     <div className="space-y-1.5 rounded-xl border border-white/10 bg-bg-sunken/60 p-3 backdrop-blur-sm">
       {shown.map((entry) => (
-        <SoundEntryRow
-          key={entry.key}
-          entry={entry}
-          annotations={annotations}
-          audioUrl={audioUrls[entry.modId]}
-          player={player}
-          onToggleEnabled={toggleEnabled}
-          onOpenInInstalled={openInInstalled}
-        />
+        <div key={entry.key} className="space-y-1">
+          <SoundEntryRow
+            entry={entry}
+            annotations={annotations}
+            audioUrl={audioUrls[entry.modId]}
+            player={player}
+            onToggleEnabled={toggleEnabled}
+            onOpenInInstalled={openInInstalled}
+          />
+          {/* Needs classification is a work queue, and a queue item you cannot
+              act on is just a complaint. Saying which evidence ran out tells
+              the reader whether to expect a rule fix or an unreadable VPK. */}
+          {category === 'unclassified' && (
+            <p className="px-2 pb-0.5 text-[11px] text-white/45">
+              {unclassifiedReason(t, entry.basis)}
+            </p>
+          )}
+        </div>
       ))}
     </div>
   );
+}
+
+/** Why this entry is in the queue, in the reader's terms. */
+function unclassifiedReason(
+  t: (key: string, fallback: string) => string,
+  basis: SoundClassificationBasis
+): string {
+  switch (basis) {
+    case 'vpk':
+      return t(
+        'soundLocker.global.unclassified.vpk',
+        'Its files were read, but none of their paths name a kind of sound we know.'
+      );
+    case 'recorded':
+      return t(
+        'soundLocker.global.unclassified.recorded',
+        'It recorded what it writes, but those entries name no kind of sound we know.'
+      );
+    case 'download-category':
+      return t(
+        'soundLocker.global.unclassified.downloadCategory',
+        'Only its download category was readable, and it describes how it was filed rather than what it changes.'
+      );
+    case 'projected':
+      return t(
+        'soundLocker.global.unclassified.projected',
+        'Nothing in its classified contents named a kind of sound we know.'
+      );
+    case 'none':
+    default:
+      return t(
+        'soundLocker.global.unclassified.none',
+        'Nothing readable: its VPK lists no sound entries and it recorded none.'
+      );
+  }
 }

@@ -17,6 +17,7 @@ import {
 import { useLocation, useNavigate } from 'react-router-dom';
 import { EmptyState, PageHeader } from '../components/common/PageComponents';
 import { canonicalHeroName } from '../lib/lockerUtils';
+import { CATEGORY_ORDER, type SoundCategory } from '../lib/soundInventory';
 import Tx from '../components/translation/Tx';
 import { useAppStore } from '../stores/appStore';
 import { foundryForge, foundryForgeInstall, foundryHeroes, foundryScanNonStandard, foundryWarmCache } from '../lib/api';
@@ -171,11 +172,13 @@ export default function Foundry() {
     const wanted = new URLSearchParams(location.search).get('tool');
     return SUBTOOLS.find((entry) => entry.id === wanted)?.id ?? null;
   }, [location.search]);
+  // The link carries a Locker SoundCategory verbatim now: both surfaces group
+  // by the same vocabulary, so there is nothing left to translate between them
+  // (the old `gameplay`/`other` spellings were the engine's, not ours).
   const linkedGlobalSoundCategory = useMemo(() => {
     const category = new URLSearchParams(location.search).get('category');
-    return category === 'ui' || category === 'music' || category === 'ambience' || category === 'npc' ||
-      category === 'item' || category === 'gameplay' || category === 'voice' || category === 'other'
-      ? category
+    return category && (CATEGORY_ORDER as readonly string[]).includes(category)
+      ? (category as SoundCategory)
       : 'all';
   }, [location.search]);
   const clearLinkedTool = useCallback(() => {

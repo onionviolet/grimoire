@@ -32,6 +32,7 @@ const sound = (
   fileCount: 0,
   provenance: 'third-party',
   managed: false,
+  basis: 'vpk',
 });
 
 describe('countGlobalInventoryMods', () => {

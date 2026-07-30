@@ -75,7 +75,6 @@ import {
 } from '../lib/soundInventory';
 import {
   GLOBAL_SOUND_SECTIONS,
-  globalSoundFoundryCategory,
   globalSoundSectionLabel,
 } from '../lib/globalSoundSections';
 import {
@@ -2016,7 +2015,7 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
                   type="button"
                   onClick={() =>
                     navigate(
-                      `/foundry?tool=globalSound&category=${globalSoundFoundryCategory(activeSoundCategory)}`
+                      `/foundry?tool=globalSound&category=${activeSoundCategory}`
                     )
                   }
                   className="ml-auto inline-flex items-center gap-1.5 self-center rounded-lg border border-accent/40 bg-accent/10 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:border-accent/60 hover:bg-accent/20 cursor-pointer"

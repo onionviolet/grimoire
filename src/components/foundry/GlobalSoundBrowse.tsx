@@ -24,51 +24,51 @@ import { foundryGlobalSounds, foundrySoundAnnotations, foundrySoundAnnotationKey
 import { showToast } from '../../stores/toastStore';
 import { describeSound, primaryClipName } from '../../lib/soundDescribe';
 import { isAnnotated, matchSoundWithAnnotation } from '../../lib/soundAnnotationSearch';
-import type { GlobalSound, GlobalSoundCategory, SoundAnnotation } from '../../types/foundry';
+import type { GlobalSound, SoundAnnotation } from '../../types/foundry';
+import { soundCategoryFromCatalog, type SoundCategory } from '../../lib/soundInventory';
+import { globalSoundSectionLabel } from '../../lib/globalSoundSections';
 import type { FoundryStagedSoundEdit } from './soundStagedEdit';
 
+// One vocabulary across surfaces, now literally: these are the Locker's own
+// SoundCategory values, labelled from the Locker's own keys. A user who learns
+// "Items" or "Melee" on the Global shelf finds the same word here.
+//
+// The catalog engine still groups the base game's ~1100 sounds its own way
+// (`gameplay` is a bag holding weapon, ability, movement and melee, `other` is
+// a shrug). soundCategoryFromCatalog reads the clip paths first and only falls
+// back to those families, which is what finally gives this surface the Melee
+// group it could not have while the engine's grouping was the axis.
+//
 // Display order: what a modder reaches for first (UI clicks, music) leads, then
-// the world layers, then the odds-and-ends bucket.
-const CATEGORY_ORDER: GlobalSoundCategory[] = [
+// the world layers, then the work queue.
+const CATEGORY_ORDER: SoundCategory[] = [
     'ui',
     'music',
     'item',
-    'gameplay',
+    'melee',
+    'weapon',
+    'ability',
+    'movement',
     'npc',
     'ambience',
     'voice',
-    'other',
+    'announcer',
+    'unclassified',
 ];
 
-const CATEGORY_ICON: Record<GlobalSoundCategory, typeof AudioLines> = {
+const CATEGORY_ICON: Record<SoundCategory, typeof AudioLines> = {
     ui: MousePointerClick,
     music: Music,
     item: ShoppingBag,
-    gameplay: Swords,
+    melee: Swords,
+    weapon: Swords,
+    ability: Swords,
+    movement: Swords,
     npc: Skull,
     ambience: Trees,
     voice: MessageSquare,
-    other: AudioLines,
-};
-
-// One vocabulary across surfaces: a user who learns "Items" or "NPC" on the
-// Locker's Global shelf must find the same word here. Two names for one thing
-// is how the app came to have three sound taxonomies (see the plan's S2).
-//
-// `gameplay` and `other` deliberately have no Locker equivalent: these are the
-// engine's own groupings of the base game's 1100 sounds, not a classification
-// Grimoire made, and the base-game melee pool lives under `gameplay`. Adding a
-// Melee group here means teaching the catalog engine about it, not renaming a
-// label.
-const CATEGORY_FALLBACK: Record<GlobalSoundCategory, string> = {
-    ui: 'Interface',
-    music: 'Music',
-    item: 'Items',
-    gameplay: 'Gameplay',
-    npc: 'NPC',
-    ambience: 'Ambience',
-    voice: 'Voice',
-    other: 'Other',
+    announcer: MessageSquare,
+    unclassified: AudioLines,
 };
 
 // The whole index is ~1100 rows, small enough to fetch once and filter in the
@@ -76,7 +76,7 @@ const CATEGORY_FALLBACK: Record<GlobalSoundCategory, string> = {
 const NO_SOUNDS: GlobalSound[] = [];
 
 interface Section {
-    category: GlobalSoundCategory;
+    category: SoundCategory;
     total: number;
     /** Rows grouped by their source file (`ui`, `npc/troopers`), so a section
      *  spanning several files stays legible. */
@@ -98,12 +98,12 @@ export default function GlobalSoundBrowse({
     initialCategory = 'all',
     onStage,
 }: {
-    initialCategory?: GlobalSoundCategory | 'all';
+    initialCategory?: SoundCategory | 'all';
     onStage?: (edit: FoundryStagedSoundEdit) => void;
 }) {
     const { t } = useTranslation();
     const [search, setSearch] = useState('');
-    const [category, setCategory] = useState<GlobalSoundCategory | 'all'>(initialCategory);
+    const [category, setCategory] = useState<SoundCategory | 'all'>(initialCategory);
     const [annotationsVisible, setAnnotationsVisible] = useState(false);
     const [annotatedOnly, setAnnotatedOnly] = useState(false);
     const [selectedRow, setSelectedRow] = useState<string | null>(null);
@@ -174,15 +174,28 @@ export default function GlobalSoundBrowse({
     const sounds = data?.sounds ?? NO_SOUNDS;
 
     const player = useClipPlayer();
-    const sections = useMemo(() => groupSounds(sounds, search, category, annotations, annotatedOnly), [sounds, search, category, annotations, annotatedOnly]);
+    // Classify once for the whole catalog, not per filter keystroke: the row's
+    // category is a property of the sound, and recomputing it inside the filter
+    // would make typing O(1100 x rules).
+    const classified = useMemo(() => {
+        const map = new Map<string, SoundCategory>();
+        for (const sound of sounds) {
+            map.set(rowKey(sound), soundCategoryFromCatalog(sound).category);
+        }
+        return map;
+    }, [sounds]);
+    const sections = useMemo(
+        () => groupSounds(sounds, classified, search, category, annotations, annotatedOnly),
+        [sounds, classified, search, category, annotations, annotatedOnly]
+    );
     const totalShown = sections.reduce((n, s) => n + s.total, 0);
 
     // Only offer the categories the installed pak actually carries, so a game
     // update that drops a tree doesn't leave a dead filter chip behind.
     const present = useMemo(() => {
-        const seen = new Set(sounds.map((s) => s.category));
+        const seen = new Set(classified.values());
         return CATEGORY_ORDER.filter((c) => seen.has(c));
-    }, [sounds]);
+    }, [classified]);
 
     return (
         <>
@@ -226,7 +239,7 @@ export default function GlobalSoundBrowse({
                             active={category === c}
                             onClick={() => { setCategory(c); setSelectedRow(null); }}
                             icon={CATEGORY_ICON[c]}
-                            label={t(`foundry.globalSound.category.${c}`, CATEGORY_FALLBACK[c])}
+                            label={globalSoundSectionLabel(t, c)}
                         />
                     ))}
                 </div>
@@ -310,10 +323,7 @@ function FilterChip({
 function CategorySection({ section, player, annotations, onSaveAnnotation, annotationsVisible, onStage, selectedRow, onSelectRow }: { section: Section; player: ClipPlayer; annotations: Record<string, SoundAnnotation>; onSaveAnnotation: (key: string, name: string, note: string, tags: string[]) => Promise<void>; annotationsVisible: boolean; onStage?: (edit: FoundryStagedSoundEdit) => void; selectedRow: string | null; onSelectRow: (key: string) => void }) {
     const { t } = useTranslation();
     const Icon = CATEGORY_ICON[section.category];
-    const title = t(
-        `foundry.globalSound.category.${section.category}`,
-        CATEGORY_FALLBACK[section.category]
-    );
+    const title = globalSoundSectionLabel(t, section.category);
 
     return (
         <section className="space-y-2">
@@ -371,10 +381,16 @@ function swapContextFor(row: GlobalSound): SwapContext {
     return { hero: '', heroName: '', soundeventsEntry: row.soundevents };
 }
 
+/** Stable per-row identity: an event name repeats across soundevents files. */
+function rowKey(sound: GlobalSound): string {
+    return `${sound.soundevents}:${sound.event}`;
+}
+
 function groupSounds(
     sounds: GlobalSound[],
+    classified: ReadonlyMap<string, SoundCategory>,
     search: string,
-    category: GlobalSoundCategory | 'all',
+    category: SoundCategory | 'all',
     annotations: Record<string, SoundAnnotation>,
     annotatedOnly: boolean
 ): Section[] {
@@ -383,19 +399,21 @@ function groupSounds(
     // far more often than an event name, and pasting one used to return nothing.
     // See lib/soundDescribe.ts for why, and its test for the pinned case.
     const q = search.trim();
+    const categoryOf = (s: GlobalSound): SoundCategory => classified.get(rowKey(s)) ?? 'unclassified';
     const matches = (s: GlobalSound) => {
         const annotation = annotations[foundrySoundAnnotationKey(s.event, s.vsnd[0] ?? '')];
-        return (category === 'all' || s.category === category) && (!annotatedOnly || isAnnotated(annotation))
+        return (category === 'all' || categoryOf(s) === category) && (!annotatedOnly || isAnnotated(annotation))
             && matchSoundWithAnnotation([s.label, s.event, s.source, ...s.vsnd], annotation, q) !== null;
     };
 
-    const byCategory = new Map<GlobalSoundCategory, Map<string, GlobalSound[]>>();
+    const byCategory = new Map<SoundCategory, Map<string, GlobalSound[]>>();
     for (const s of sounds) {
         if (!matches(s)) continue;
-        let sources = byCategory.get(s.category);
+        const own = categoryOf(s);
+        let sources = byCategory.get(own);
         if (!sources) {
             sources = new Map();
-            byCategory.set(s.category, sources);
+            byCategory.set(own, sources);
         }
         const rows = sources.get(s.source);
         if (rows) rows.push(s);

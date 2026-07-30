@@ -466,15 +466,7 @@
         "description": "Your installed game files carry no non-hero soundevents."
       },
       "category": {
-        "all": "All",
-        "ui": "Interface",
-        "music": "Music",
-        "item": "Items",
-        "gameplay": "Gameplay",
-        "npc": "NPC",
-        "ambience": "Ambience",
-        "voice": "Voice",
-        "other": "Other"
+        "all": "All"
       }
     },
     "sources": {
@@ -2296,7 +2288,9 @@
       "loadOrderHint": "Drag to set which skin wins when two cover the same files. Top loads first.",
       "dragToReorder": "Drag to reorder",
       "loadOrderPosition": "Load order position {{position}}",
-      "deleteSkin": "Delete {{name}}"
+      "deleteSkin": "Delete {{name}}",
+      "previewBroken": "May be broken",
+      "previewBrokenHint": "Grimoire could not build a 3D preview with this skin. It may be broken or made for an older game version."
     },
     "deleteConfirm": {
       "title": "Delete mod?",
@@ -2428,6 +2422,7 @@
       "unfavorite": "Unfavorite",
       "lockerSections": "Locker sections",
       "hero3dModel": "{{hero}} 3D model",
+      "hero3dModelSkin": "{{hero}} 3D model: {{skin}}",
       "editInFoundry": "Edit in Foundry",
       "manageInstalled": "Manage installed"
     },
@@ -3695,6 +3690,13 @@
       "makeNew": "Forge {{type}} sound",
       "empty": {
         "description": "No installed {{type}} sound mods yet. Browse {{type}} sounds in Foundry to forge one."
+      },
+      "unclassified": {
+        "vpk": "Its files were read, but none of their paths name a kind of sound we know.",
+        "recorded": "It recorded what it writes, but those entries name no kind of sound we know.",
+        "downloadCategory": "Only its download category was readable, and it describes how it was filed rather than what it changes.",
+        "projected": "Nothing in its classified contents named a kind of sound we know.",
+        "none": "Nothing readable: its VPK lists no sound entries and it recorded none."
       }
     },
     "hero": {
