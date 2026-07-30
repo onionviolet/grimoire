@@ -46,6 +46,8 @@ function BrowseFilterHarness() {
               placeholder: 'Filter...',
               getEmptyMessage: (query) => `No matches for “${query}”`,
               clearLabel: 'Clear',
+              scope: 'Searches hero names.',
+              getResultCount: (visible, total) => `Showing ${visible} of ${total} heroes`,
             }}
           />
         </div>

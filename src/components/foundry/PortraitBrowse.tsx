@@ -152,6 +152,14 @@ export default function PortraitBrowse({ heroNames, hero, onStage }: PortraitBro
           placeholder={t('foundry.portraits.searchPlaceholder', 'Search portraits...')}
           clearLabel={t('foundry.search.clear', 'Clear asset search')}
           scope={t('foundry.search.portraitScope', 'Searches portrait names, heroes, and game paths.')}
+          summary={
+            hasActiveFilter
+              ? t('foundry.search.resultCount', 'Showing {{visible}} of {{total}} assets', {
+                  visible: visible.length,
+                  total: scopedFamilies.length,
+                })
+              : undefined
+          }
         />
       </div>
 
@@ -202,14 +210,14 @@ export default function PortraitBrowse({ heroNames, hero, onStage }: PortraitBro
         />
       ) : (
         <div className="space-y-2">
-          {scope && <p className="text-sm text-text-secondary" aria-live="polite">
+          {/* Standing scope, not an announcement: it describes what this surface
+              covers and does not change under a keystroke. The search count is
+              what gets announced, from the field's own status line. */}
+          {scope && <p className="text-sm tabular-nums text-text-secondary">
             {t('foundry.portraits.coverage', 'Families available: {{count}} · Targets: {{variants}}', {
               count: scopedFamilies.length,
               variants: targetVariants.join(', '),
             })}
-          </p>}
-          {hasActiveFilter && <p className="text-[11px] text-text-secondary">
-            {t('foundry.search.resultCount', 'Showing {{visible}} of {{total}} assets', { visible: visible.length, total: scopedFamilies.length })}
           </p>}
         <div className="grid grid-cols-[repeat(auto-fill,minmax(168px,1fr))] gap-3">
           {visible.map((family) => (

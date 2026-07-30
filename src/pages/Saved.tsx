@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import { Heart, ExternalLink, Loader2, Search, Trash2, Pencil, Save as SaveIcon, X, Upload, Download, RefreshCw, ListChecks } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import ModThumbnail from '../components/ModThumbnail';
 import { Button, IconButton } from '../components/common/ui';
+import ResultSummary from '../components/common/ResultSummary';
 import type { CachedMod, SavedMod, SavedModUpdateResult } from '../types/electron';
 import { formatDate } from '../types/gamebanana';
 import { useAppStore } from '../stores/appStore';
@@ -31,6 +32,7 @@ export default function Saved() {
   const [filter, setFilter] = useState<SavedFilter>('all');
   const [sort, setSort] = useState<SavedSort>('saved');
   const [search, setSearch] = useState('');
+  const summaryId = useId();
   const [loading, setLoading] = useState(true);
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [draft, setDraft] = useState({ notes: '', tags: '', whySaved: '', watchUpdates: false });
@@ -168,9 +170,23 @@ export default function Saved() {
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder={t('saved.search')}
+                aria-label={t('saved.search')}
+                aria-describedby={summaryId}
                 className="min-w-0 flex-1 bg-transparent text-sm text-text-primary outline-none placeholder:text-text-secondary"
               />
             </div>
+            {/* The section chips below narrow the same list, so the count follows
+                either control. */}
+            <ResultSummary
+              id={summaryId}
+              className="w-full text-right text-[11px]"
+              scope={t('saved.searchScope')}
+              summary={
+                search.trim() || filter !== 'all'
+                  ? t('saved.resultCount', { visible: visibleRows.length, total: rows.length })
+                  : undefined
+              }
+            />
             {fileAction && <span className="w-full text-right text-xs text-text-secondary">{fileAction}</span>}
           </div>
         </div>

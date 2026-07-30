@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import {
   Server as ServerIcon,
   Users,
@@ -15,6 +15,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import { Button, Badge } from '../components/common/ui';
 import { Input, Select } from '../components/common/forms';
+import ResultSummary from '../components/common/ResultSummary';
 import { EmptyState, PageHeader, PageLayout } from '../components/common/PageComponents';
 import Tx from '../components/translation/Tx';
 import { useAppStore } from '../stores/appStore';
@@ -48,6 +49,7 @@ export default function Servers() {
   const [error, setError] = useState<string | null>(null);
 
   const [query, setQuery] = useState('');
+  const summaryId = useId();
   const [region, setRegion] = useState<string>('all');
   const [mapFilter, setMapFilter] = useState<string>('all');
   const [hideFull, setHideFull] = useState(false);
@@ -164,6 +166,20 @@ export default function Servers() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={t('servers.filters.searchPlaceholder')}
+            aria-label={t('servers.filters.searchPlaceholder')}
+            aria-describedby={summaryId}
+          />
+          {/* Region, map, and hide-full narrow the same list, so the count
+              follows any of them, not only the typed query. */}
+          <ResultSummary
+            id={summaryId}
+            className="mt-1 text-[11px]"
+            scope={t('servers.filters.searchScope')}
+            summary={
+              query.trim() || region !== 'all' || mapFilter !== 'all' || hideFull
+                ? t('servers.filters.resultCount', { visible: visible.length, total: servers.length })
+                : undefined
+            }
           />
         </div>
 

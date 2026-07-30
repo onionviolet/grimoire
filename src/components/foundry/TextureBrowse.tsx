@@ -9,6 +9,7 @@ import { showToast } from '../../stores/toastStore';
 import type { HeroInfo, TextureCategory, TextureEntry, TextureGridItem } from '../../types/foundry';
 import TextureLightbox from './TextureLightbox';
 import { prepareVisualStagedEdit, type VisualStagedEdit } from './visualEdits';
+import ResultSummary from '../common/ResultSummary';
 
 interface TextureBrowseProps {
   /** Full roster, used to populate the hero filter the list is scoped by. */
@@ -224,13 +225,18 @@ export default function TextureBrowse({ heroes, heroNames, onStage }: TextureBro
         />
       ) : (
         <div className="space-y-2">
-          <p className="text-[11px] text-text-secondary">
-            {truncated
-              ? t('foundry.texture.countCapped', 'Showing the first {{count}}. Refine your search to see more.', {
-                  count: items.length,
-                })
-              : t('foundry.texture.count', '{{count}} textures', { count: items.length })}
-          </p>
+          {/* Already the right sentence, now in a live region: a list that only
+              gets shorter tells a screen reader nothing. */}
+          <ResultSummary
+            className="text-[11px]"
+            scope={
+              truncated
+                ? t('foundry.texture.countCapped', 'Showing the first {{count}}. Refine your search to see more.', {
+                    count: items.length,
+                  })
+                : t('foundry.texture.count', '{{count}} textures', { count: items.length })
+            }
+          />
           <ul className="divide-y divide-border/60 overflow-hidden rounded-sm border border-border">
             {items.map((entry) => (
               <li key={entry.path} className="flex items-center transition-colors hover:bg-bg-tertiary">

@@ -476,7 +476,7 @@ test count went from 1109 to 1140.
 | 5. One preference store | Done | `src/lib/uiPrefs.ts`, 19 tests, Settings reset |
 | 6. One confirmation dialog | Done | `useConfirm`; no `window.confirm` left in `src/` |
 | 7. One search input, one scroll restore | Done | `common/SearchInput`, `useScrollRestore` |
-| 8. Keyboard and assistive-tech floor | Partly | Lane 2 wired the three real tablists and demoted the one that was not; the `SegmentedControl` tablist and all the Escape and live-region work remain |
+| 8. Keyboard and assistive-tech floor | Done | Three commits, one per part. `useEscapeKey` + `useDismissable`; `useSegmentedTabs`; `common/ResultSummary` |
 | 9. Consequence and reversibility | Open | |
 | 10. Cross-page copy and state vocabulary | Open | |
 
@@ -498,6 +498,29 @@ Found and fixed while working, none of it in the original brief:
 - `scripts/dev-driver.mjs` opened a socket per command, so a device-metrics
   override died before the next command could observe it and no narrow-layout
   check was possible. Added `at <w>x<h> <expr>`, which does both on one socket.
+
+Found while working on Lane 8:
+
+- No anchored menu or popover put focus back on the control that opened it, so
+  dismissing a card's action menu dropped a keyboard user to the document.
+- The two GLB import modals (`SoulContainerImportModal`,
+  `SpiritUrnImportModal`) had no Escape and no `role="dialog"` at all. They are
+  hand-rolled portals, so nothing shared reached them.
+- Lane 2's own audit table was wrong about two of the tablists it called
+  wired. Locker Global and Browse gave each tab its own panel id, so only the
+  selected tab's `aria-controls` resolved. The mechanical check for this is
+  now written into the brief.
+- `LibraryBrowse` and `PortraitBrowse` had two summary shapes at once: the
+  live `role="status"` line inside `SearchInput`, plus a separate
+  non-live "Showing X of Y" paragraph further down the page.
+- `HeroSelect` announced only its zero-result message, so a search that
+  narrowed 38 heroes to 3 said nothing.
+
+Lane 8's remit was to reconcile live regions rather than add another shape, so
+the count now comes from one component (`common/ResultSummary`) whether or not
+the surface can use `common/SearchInput`. The remaining `aria-live` regions are
+deliberately not result counts: toasts, update and impostor banners, loading
+skeletons, and save/launch status lines.
 
 Two gotchas worth keeping, both from an unfocused Electron window:
 

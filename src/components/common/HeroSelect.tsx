@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { createPortal } from 'react-dom';
 import { ChevronDown, Search, X } from 'lucide-react';
 import { getHeroChipIconPath } from '../../lib/lockerUtils';
+import ResultSummary from './ResultSummary';
 
 export interface HeroSelectOption {
   value: string;
@@ -15,6 +16,14 @@ export interface HeroSelectSearchConfig {
   placeholder: string;
   getEmptyMessage: (query: string) => string;
   clearLabel: string;
+  /** What this field searches, stated while the field is empty. */
+  scope: string;
+  /**
+   * The narrowed count, in the app's one shape ("Showing X of Y heroes"). The
+   * caller owns the wording because it owns the noun; it is required so a
+   * filtered listbox cannot ship without announcing what it filtered to.
+   */
+  getResultCount: (visible: number, total: number) => string;
 }
 
 interface HeroSelectProps {
@@ -393,6 +402,15 @@ export function HeroSelect({
                   </button>
                 )}
               </div>
+              <ResultSummary
+                className="mt-1 text-[10px]"
+                scope={search.scope}
+                summary={
+                  normalizedSearchQuery
+                    ? search.getResultCount(visibleOptions.length, options.length)
+                    : undefined
+                }
+              />
             </div>
           )}
 
@@ -432,8 +450,10 @@ export function HeroSelect({
               );
             })}
 
+            {/* Not a live region: the count above already announced the
+                narrowing. This is the zero-state and its way out. */}
             {search && normalizedSearchQuery && visibleOptions.length === 0 && (
-              <div className="px-4 py-5 text-center" aria-live="polite">
+              <div className="px-4 py-5 text-center">
                 <p className="text-xs leading-5 text-text-secondary">
                   {search.getEmptyMessage(searchQuery.trim())}
                 </p>

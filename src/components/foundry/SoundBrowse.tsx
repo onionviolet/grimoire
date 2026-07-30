@@ -49,6 +49,7 @@ import { showToast } from '../../stores/toastStore';
 import { useAppStore } from '../../stores/appStore';
 import type { HeroInfo, HeroSound, HeroSoundCategory, VoiceLine, SoundAnnotation, FoundrySoundConflictInspection, SoundConflictResolution } from '../../types/foundry';
 import { serializeSoundStagedEdit, type FoundryStagedSoundEdit } from './soundStagedEdit';
+import ResultSummary from '../common/ResultSummary';
 import type { HeroAbilitySlot } from '../../types/mod';
 
 /** Context threaded to a row so it can offer an inline sound-swap (drop your own
@@ -296,11 +297,14 @@ export default function SoundBrowse({ heroes, heroNames, only, onStage }: SoundB
                             )
                         ) : (
                             <>
-                                <p className="text-xs text-text-secondary">
-                                    {t('foundry.sound.gameplayCount', '{{count}} gameplay sounds', {
+                                {/* Live, so narrowing the list announces what it
+                                    narrowed to rather than just getting shorter. */}
+                                <ResultSummary
+                                    className="text-xs"
+                                    scope={t('foundry.sound.gameplayCount', '{{count}} gameplay sounds', {
                                         count: totalShown,
                                     })}
-                                </p>
+                                />
                                 {sections.map((section) => (
                                     <CategorySection
                                         key={section.category}

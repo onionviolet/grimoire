@@ -169,6 +169,14 @@ export default function LibraryBrowse({ heroNames, initialCategory = 'ability-ic
           placeholder={t('foundry.filters.searchPlaceholder', 'Search assets...')}
           clearLabel={t('foundry.search.clear', 'Clear asset search')}
           scope={t('foundry.search.assetScope', 'Searches asset names and game paths.')}
+          summary={
+            hasActiveFilter
+              ? t('foundry.search.resultCount', 'Showing {{visible}} of {{total}} assets', {
+                  visible: visibleItems.length,
+                  total: items.length,
+                })
+              : undefined
+          }
         />
       </div>
 
@@ -193,10 +201,8 @@ export default function LibraryBrowse({ heroNames, initialCategory = 'ability-ic
           action={hasActiveFilter ? <button type="button" onClick={() => { setSearch(''); setHeroFilter('all'); }} className="rounded-sm border border-border px-3 py-1.5 text-sm text-text-primary hover:border-accent/50">{t('foundry.search.clearFilters', 'Clear search and filters')}</button> : undefined}
         />
       ) : (
-        <div className="space-y-2">
-          {hasActiveFilter && <p className="text-[11px] text-text-secondary">
-            {t('foundry.search.resultCount', 'Showing {{visible}} of {{total}} assets', { visible: visibleItems.length, total: items.length })}
-          </p>}
+        // No count paragraph here: it belongs in the search field's own status
+        // line, so this list has one live region rather than two.
         <TextureGrid
           items={visibleItems}
           heroNames={heroNames}
@@ -205,7 +211,6 @@ export default function LibraryBrowse({ heroNames, initialCategory = 'ability-ic
           onOpen={setLightbox}
           onReplace={replacingPath ? undefined : replace}
         />
-        </div>
       )}
 
       <PortraitEditor

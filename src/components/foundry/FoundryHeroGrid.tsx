@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import { Search, Star } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { HeroInfo } from '../../types/foundry';
@@ -7,6 +7,7 @@ import { useHeroRenderFallback } from '../../lib/heroRenderFallback';
 import { useHeroFavorites } from '../../lib/heroFavorites';
 import { useAppStore } from '../../stores/appStore';
 import { countFoundryChangesByHero } from './changeList';
+import ResultSummary from '../common/ResultSummary';
 
 interface FoundryHeroGridProps {
   /** Full roster from `catalog heroes`. */
@@ -32,6 +33,7 @@ interface FoundryHeroGridProps {
 export default function FoundryHeroGrid({ heroes, onPick }: FoundryHeroGridProps) {
   const { t } = useTranslation();
   const [query, setQuery] = useState('');
+  const summaryId = useId();
   const mods = useAppStore((s) => s.mods);
   const modsLoaded = useAppStore((s) => s.modsLoaded);
   const loadMods = useAppStore((s) => s.loadMods);
@@ -50,6 +52,10 @@ export default function FoundryHeroGrid({ heroes, onPick }: FoundryHeroGridProps
     (hero: HeroInfo) => changeCounts.get(canonicalHeroName(hero.name)) ?? 0,
     [changeCounts]
   );
+
+  // The roster the search narrows, which is the selectable heroes rather than
+  // every row in the catalog: "of 38" has to match what an empty field shows.
+  const rosterCount = useMemo(() => heroes.filter((h) => !h.disabled).length, [heroes]);
 
   const ordered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -77,9 +83,23 @@ export default function FoundryHeroGrid({ heroes, onPick }: FoundryHeroGridProps
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={t('foundry.heroes.search', 'Search heroes')}
+          aria-describedby={summaryId}
           className="w-full bg-transparent text-sm text-text-primary placeholder:text-text-secondary/60 focus:outline-none"
         />
       </div>
+      <ResultSummary
+        id={summaryId}
+        className="-mt-3 text-[11px]"
+        scope={t('foundry.heroes.searchScope', 'Searches hero names and codenames.')}
+        summary={
+          query.trim()
+            ? t('foundry.heroes.resultCount', 'Showing {{visible}} of {{total}} heroes', {
+                visible: ordered.length,
+                total: rosterCount,
+              })
+            : undefined
+        }
+      />
 
       <div className="grid grid-cols-[repeat(auto-fill,minmax(132px,1fr))] gap-3">
         {ordered.map((hero) => (

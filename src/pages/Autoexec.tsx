@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useId, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Terminal, Copy, Check, Plus, Trash2, RefreshCw, Zap, Globe, Layout, Map, Users, MousePointer2, Search, Save, AlertTriangle, Rocket, ChevronDown } from 'lucide-react';
 import { getSettings, setSettings } from '../lib/api';
@@ -6,6 +6,7 @@ import { Card, Badge, Button, Toggle } from '../components/common/ui';
 import { Input } from '../components/common/forms';
 import { ConfirmModal } from '../components/common/PageComponents';
 import Tx from '../components/translation/Tx';
+import ResultSummary from '../components/common/ResultSummary';
 import type { AppSettings } from '../types/mod';
 import type { SteamLaunchOptionsStatus } from '../types/electron';
 import { memeToastSuffix } from '../lib/easterEggs';
@@ -102,6 +103,7 @@ export default function Autoexec() {
     const [manualCommands, setManualCommands] = useState<string[]>([]);
     const [customCommand, setCustomCommand] = useState('');
     const [searchTerm, setSearchTerm] = useState('');
+    const presetSummaryId = useId();
     const [presetsExpanded, setPresetsExpanded] = useState(false);
     const [copied, setCopied] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
@@ -188,6 +190,17 @@ export default function Autoexec() {
             )
         })).filter(cat => cat.commands.length > 0);
     }, [searchTerm, t]);
+
+    // Commands, not categories: the search hides whole categories, so counting
+    // categories would report "3 of 5" for a list that dropped 40 commands.
+    const totalPresetCommandCount = useMemo(
+        () => COMMAND_PRESETS.reduce((sum, cat) => sum + cat.commands.length, 0),
+        [],
+    );
+    const filteredPresetCommandCount = useMemo(
+        () => filteredPresets.reduce((sum, cat) => sum + cat.commands.length, 0),
+        [filteredPresets],
+    );
 
     const visibleCommandCount = commands.length + manualCommands.length;
     const copiedCommands = useMemo(() => [...commands, ...manualCommands], [commands, manualCommands]);
@@ -320,6 +333,20 @@ export default function Autoexec() {
                                             value={searchTerm}
                                             onChange={(e) => setSearchTerm(e.target.value)}
                                             placeholder={t('autoexec.search.placeholder')}
+                                            aria-describedby={presetSummaryId}
+                                        />
+                                        <ResultSummary
+                                            id={presetSummaryId}
+                                            className="-mt-1.5 text-[11px]"
+                                            scope={t('autoexec.search.scope')}
+                                            summary={
+                                                searchTerm.trim()
+                                                    ? t('autoexec.search.resultCount', {
+                                                          visible: filteredPresetCommandCount,
+                                                          total: totalPresetCommandCount,
+                                                      })
+                                                    : undefined
+                                            }
                                         />
 
                                         <div className="max-h-[min(52vh,calc(100vh-20rem))] space-y-4 overflow-y-auto overscroll-contain pr-1 [scrollbar-gutter:stable]">

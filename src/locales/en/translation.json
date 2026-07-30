@@ -147,7 +147,9 @@
       "updated": "Saved file is no longer the newest live file",
       "missing": "No live files found",
       "unavailable": "Could not reach GameBanana"
-    }
+    },
+    "searchScope": "Searches names, creators, categories, and filenames.",
+    "resultCount": "Showing {{visible}} of {{total}} saved mods"
   },
   "foundry": {
     "header": {
@@ -164,7 +166,9 @@
       "changeCount_one": "{{count}} change you made for this hero",
       "changeCount_other": "{{count}} changes you made for this hero",
       "favorite": "Favorite this hero",
-      "unfavorite": "Remove from favorites"
+      "unfavorite": "Remove from favorites",
+      "searchScope": "Searches hero names and codenames.",
+      "resultCount": "Showing {{visible}} of {{total}} heroes"
     },
     "workshop": {
       "appearance": "Appearance",
@@ -544,7 +548,9 @@
       "openInSoundLocker": "Open in Sound Locker",
       "reforgeConflictTitle": "Rebuild as a separate mod?",
       "reforgeConflictBody": "These installed mods are enabled and change the same thing. The rebuild is a new managed mod layered over them; the existing one is left alone.",
-      "reforgeConflictConfirm": "Rebuild"
+      "reforgeConflictConfirm": "Rebuild",
+      "searchScope": "Searches change names and game paths.",
+      "resultCount": "Showing {{visible}} of {{total}} changes"
     }
   },
   "autoexec": {
@@ -688,7 +694,9 @@
       }
     },
     "search": {
-      "placeholder": "Search commands..."
+      "placeholder": "Search commands...",
+      "scope": "Searches preset names, commands, and descriptions.",
+      "resultCount": "Showing {{visible}} of {{total}} commands"
     },
     "status": {
       "error": "Error: {{error}}",
@@ -842,7 +850,9 @@
       "allMaps": "All maps",
       "allRegions": "All regions",
       "hasSpace": "Has space",
-      "searchPlaceholder": "Search by name or map"
+      "searchPlaceholder": "Search by name or map",
+      "searchScope": "Searches server names and maps.",
+      "resultCount": "Showing {{visible}} of {{total}} servers"
     },
     "header": {
       "description": "Browse and join Deadworks community dedicated servers.",
@@ -2799,7 +2809,9 @@
       "placeholder": "Search mods...",
       "searching": "Searching",
       "clear": "Clear search",
-      "submit": "Search"
+      "submit": "Search",
+      "scope": "Searches mod titles on GameBanana.",
+      "resultCount": "Showing {{visible}} of {{total}} mods"
     },
     "import": {
       "gamebananaCollection": "GameBanana Collection",
@@ -2873,7 +2885,9 @@
       "from": "From",
       "to": "To",
       "catalogSyncing": "Syncing the mod catalog. Content and date filters will be ready shortly.",
-      "catalogUnavailable": "Content and date filters need the local mod catalog. Sync it from Settings."
+      "catalogUnavailable": "Content and date filters need the local mod catalog. Sync it from Settings.",
+      "heroSearchScope": "Searches hero names.",
+      "heroResultCount": "Showing {{visible}} of {{total}} heroes"
     },
     "previewVolume": "Preview volume",
     "loadMore": {

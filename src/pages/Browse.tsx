@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useId, useLayoutEffect, useCallback, useMemo, useRef } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -98,6 +98,7 @@ import { Button, IconButton, Tag } from '../components/common/ui';
 import { Select } from '../components/common/forms';
 import { IconText } from '../components/common/IconText';
 import { ConfirmModal, EmptyState } from '../components/common/PageComponents';
+import ResultSummary from '../components/common/ResultSummary';
 import ModDetailsModal from '../components/ModDetailsModal';
 import { HiddenCreatorsModal } from '../components/HiddenCreatorsManager';
 import ImportCollectionModal from '../components/ImportCollectionModal';
@@ -1188,6 +1189,7 @@ export default function Browse() {
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(() => initialCache?.page ?? 1);
   const [_totalCount, setTotalCount] = useState(() => initialCache?.totalCount ?? 0);
+  const searchSummaryId = useId();
   const perPage = DEFAULT_PER_PAGE; // Fixed value for infinite scroll
   const [sections, setSections] = useState<GameBananaSection[]>([]);
   const [categories, setCategories] = useState<GameBananaCategoryNode[]>([]);
@@ -3283,6 +3285,7 @@ export default function Browse() {
                 }}
                 aria-label={t('browse.search.placeholder')}
                 placeholder={t('browse.search.placeholder')}
+                aria-describedby={searchSummaryId}
                 className="w-full h-10 bg-bg-secondary border border-border rounded-lg pl-3 pr-16 text-sm text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:ring-2 focus:ring-accent"
               />
               <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5">
@@ -3313,6 +3316,19 @@ export default function Browse() {
                   <Search className="w-4 h-4" />
                 </button>
               </div>
+              {/* Same sentence as every other filtered list, though here the
+                  numbers mean loaded-so-far of matches on GameBanana rather than
+                  a local narrowing: the list is paged, not client-filtered. */}
+              <ResultSummary
+                id={searchSummaryId}
+                className="mt-1 text-[11px]"
+                scope={t('browse.search.scope')}
+                summary={
+                  _totalCount > 0
+                    ? t('browse.search.resultCount', { visible: mods.length, total: _totalCount })
+                    : undefined
+                }
+              />
             </div>
 
             {/* Import menu: GameBanana collection or portable profile. */}
@@ -3686,6 +3702,9 @@ export default function Browse() {
                               getEmptyMessage: (query) =>
                                 t('browse.filters.noHeroesMatch', { query }),
                               clearLabel: t('browse.filters.clearHeroSearch'),
+                              scope: t('browse.filters.heroSearchScope'),
+                              getResultCount: (visible, total) =>
+                                t('browse.filters.heroResultCount', { visible, total }),
                             }}
                           />
                         </div>

@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useConfirm } from '../common/confirmContext';
+import ResultSummary from '../common/ResultSummary';
 import {
   AlertTriangle,
   ChevronDown,
@@ -96,6 +97,7 @@ export default function MyChanges({ onAddNew, heroName }: MyChangesProps) {
   const shuffleOnLaunch = useAppStore((state) => state.shuffleOnLaunch);
 
   const [filter, setFilter] = useState<FoundryChangeFilter>('all');
+  const summaryId = useId();
   const [sort, setSort] = useState<FoundryChangeSort>('recent');
   // The flat list stays the default: it is how you find one thing. The pool
   // view is the deciding surface, so it is opt-in rather than a replacement.
@@ -175,9 +177,25 @@ export default function MyChanges({ onAddNew, heroName }: MyChangesProps) {
             onChange={(event) => setQuery(event.target.value)}
             placeholder={t('foundry.myChanges.searchPlaceholder', 'Search your changes, or paste a game path')}
             aria-label={t('foundry.myChanges.search', 'Search changes')}
+            aria-describedby={summaryId}
             className="w-full rounded-sm border border-border bg-bg-primary py-1.5 pl-7 pr-2 text-sm text-text-primary"
           />
         </label>
+        {/* The dropdown beside the field narrows the same list, so the count
+            follows either control, not just the typed query. */}
+        <ResultSummary
+          id={summaryId}
+          className="basis-full text-[11px]"
+          scope={t('foundry.myChanges.searchScope', 'Searches change names and game paths.')}
+          summary={
+            query.trim() || filter !== 'all'
+              ? t('foundry.myChanges.resultCount', 'Showing {{visible}} of {{total}} changes', {
+                  visible: shown,
+                  total: all.length,
+                })
+              : undefined
+          }
+        />
         <label className="min-w-0 flex-1 text-xs text-text-secondary">
           <span className="sr-only">{t('foundry.myChanges.filterLabel', 'Show')}</span>
           <select

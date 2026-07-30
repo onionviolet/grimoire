@@ -1,5 +1,6 @@
 import { useId, type KeyboardEvent } from 'react';
 import { Search, X } from 'lucide-react';
+import ResultSummary from './ResultSummary';
 
 /**
  * One search field, with the contract every search surface owes the user.
@@ -88,11 +89,9 @@ export default function SearchInput({
           </button>
         )}
       </div>
-      {/* One live region per field: a narrowed list should announce what it
-          narrowed to, not leave the user to notice it got shorter. */}
-      <p id={summaryId} role="status" className="mt-1 text-[11px] tabular-nums text-text-secondary">
-        {summary ?? scope}
-      </p>
+      {/* One live region per field, and the same one the surfaces that cannot
+          use this field render on their own (see ResultSummary). */}
+      <ResultSummary id={summaryId} scope={scope} summary={summary} className="mt-1 text-[11px]" />
     </div>
   );
 }
