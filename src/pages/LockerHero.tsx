@@ -19,6 +19,7 @@ import HeroCardPicker from '../components/locker/HeroCardPicker';
 import HeroSoundShelf from '../components/locker/HeroSoundShelf';
 import HeroEffectsPanel from '../components/locker/HeroEffectsPanel';
 import FloatingModelPanel from '../components/locker/FloatingModelPanel';
+import { useModelPanelOpen } from '../components/locker/useModelPanelOpen';
 // three.js viewer is heavy; only pull the chunk when the user flips to 3D.
 const HeroPoseViewer = lazy(() => import('../components/locker/HeroPoseViewer'));
 import { useAppStore } from '../stores/appStore';
@@ -121,7 +122,8 @@ export function LockerHeroView({
   // name (only meaningful when a custom backdrop is in play).
   const hideHeroName = activeSkinKey ? Boolean(lockerBgHideHeroName[activeSkinKey]) : false;
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [view3d, setView3d] = useState(false);
+  // Remembered across visits: see useModelPanelOpen.
+  const [view3d, setView3d] = useModelPanelOpen('locker');
   // `?section=sounds` opens straight into the Sounds tab. It is only the
   // initial value: once the user picks a section, the rail owns the choice.
   const [section, setSection] = useState<SectionId>(initialSection ?? 'skins');
@@ -332,7 +334,7 @@ export function LockerHeroView({
           )}
           <button
             type="button"
-            onClick={() => setView3d((v) => !v)}
+            onClick={() => setView3d(!view3d)}
             aria-pressed={view3d}
             title={view3d ? t('locker.hero.hide3dModel') : t('locker.hero.showLive3dModel')}
             className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${

@@ -1159,7 +1159,7 @@ export default function HeroPoseViewer({
           interaction.current.paused = next;
           setSpinPaused(next);
         }}
-        className="absolute bottom-3 left-3 z-10 rounded bg-black/60 px-3 py-1.5 text-xs text-white hover:bg-black/80"
+        className="absolute bottom-3 left-3 z-10 cursor-pointer rounded-full border border-border/70 bg-bg-secondary/80 px-3 py-1.5 text-xs font-semibold text-text-secondary backdrop-blur transition-colors hover:text-text-primary"
       >
         {spinPaused ? t('locker.pose.resumeSpin') : t('locker.pose.pauseSpin')}
       </button>
@@ -1265,13 +1265,22 @@ function DevViewerControls({
     [bloomParams, devFlags, setBloomParams, setDevFlag]
   );
 
+  // `fill` drops leva's fixed viewport-corner placement and makes it fill this
+  // wrapper instead, so the dev panel stays inside the model panel rather than
+  // spilling over the app chrome around it. Dragging is off for the same
+  // reason: it would drag the panel back out of its box.
   return (
-    <Leva
-      collapsed={false}
-      hideCopyButton
-      theme={COMPACT_LEVA_THEME}
-      titleBar={{ title: 'Preview', drag: true, filter: false }}
-    />
+    <div className="pointer-events-none absolute right-2 top-2 z-20 w-[15rem] max-w-[calc(100%-1rem)]">
+      <div className="pointer-events-auto overflow-hidden rounded-lg shadow-lg">
+        <Leva
+          fill
+          collapsed={false}
+          hideCopyButton
+          theme={COMPACT_LEVA_THEME}
+          titleBar={{ title: 'Preview', drag: false, filter: false }}
+        />
+      </div>
+    </div>
   );
 }
 

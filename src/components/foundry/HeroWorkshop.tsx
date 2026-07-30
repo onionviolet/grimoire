@@ -23,6 +23,7 @@ import HeroDetailFrame, { type HeroDetailSection } from '../common/HeroDetailFra
 import HeroEffectsPanel from '../locker/HeroEffectsPanel';
 import HeroSoundPicker from '../locker/HeroSoundPicker';
 import FloatingModelPanel from '../locker/FloatingModelPanel';
+import { useModelPanelOpen } from '../locker/useModelPanelOpen';
 import SoundBrowse from './SoundBrowse';
 import TextureBrowse from './TextureBrowse';
 import LibraryBrowse from './LibraryBrowse';
@@ -109,7 +110,7 @@ export default function HeroWorkshop({
   // The other half of the trade with the Locker: Foundry could review a write
   // set but never look at it. Authoring a visual edit blind is the largest
   // quality gap in the app, so the workshop gets the Locker's 3D panel.
-  const [view3d, setView3d] = useState(false);
+  const [view3d, setView3d] = useModelPanelOpen('foundry');
   const stage = useCallback((edit: FoundryStagedEdit) => {
     onStage(edit);
     setTrayOpen(true);
@@ -216,7 +217,7 @@ export default function HeroWorkshop({
       topRight={
         <button
           type="button"
-          onClick={() => setView3d((open) => !open)}
+          onClick={() => setView3d(!view3d)}
           aria-pressed={view3d}
           title={
             view3d
