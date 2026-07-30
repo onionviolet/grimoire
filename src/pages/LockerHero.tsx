@@ -355,7 +355,15 @@ export function LockerHeroView({
               loads on demand. */}
           {view3d && (
             <FloatingModelPanel
-              title={t('locker.hero.hero3dModel', { hero: hero.name })}
+              surface="locker"
+              /* Name the skin, not just the hero: while comparing skins the
+                 title is otherwise the one thing that does not say what you
+                 are looking at. */
+              title={
+                activeSkin
+                  ? t('locker.hero.hero3dModelSkin', { hero: hero.name, skin: activeSkin.name })
+                  : t('locker.hero.hero3dModel', { hero: hero.name })
+              }
               onClose={() => setView3d(false)}
             >
               <Suspense

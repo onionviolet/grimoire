@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { GripHorizontal, PanelLeft, PanelRight, PictureInPicture2, X } from 'lucide-react';
+import type { ModelPanelSurface } from './useModelPanelOpen';
 
 /**
  * An adjustable panel for a surface's live 3D hero model.
@@ -39,8 +40,9 @@ interface PanelState {
   dockW: number;
 }
 
-const STORAGE_KEY = 'grimoire.locker.modelPanel.state';
-/** Pre-modes key: geometry only. Read once so parked panels survive the upgrade. */
+const storageKey = (surface: ModelPanelSurface) => `grimoire.${surface}.modelPanel.state`;
+/** Pre-modes key: geometry only. Read once so parked panels survive the upgrade.
+ *  Locker-only because the panel did not exist on any other surface then. */
 const LEGACY_GEOM_KEY = 'grimoire.locker.modelPanel.geom';
 const DEFAULT_SIZE = { w: 360, h: 460 };
 const DEFAULT_DOCK_W = 420;
@@ -59,9 +61,9 @@ function isGeom(v: unknown): v is Geom {
   );
 }
 
-function readStored(): PanelState {
+function readStored(surface: ModelPanelSurface): PanelState {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(storageKey(surface));
     if (raw) {
       const v = JSON.parse(raw) as Partial<PanelState>;
       return {
@@ -73,7 +75,7 @@ function readStored(): PanelState {
         dockW: typeof v?.dockW === 'number' ? v.dockW : DEFAULT_DOCK_W,
       };
     }
-    const legacy = localStorage.getItem(LEGACY_GEOM_KEY);
+    const legacy = surface === 'locker' ? localStorage.getItem(LEGACY_GEOM_KEY) : null;
     if (legacy) {
       const g: unknown = JSON.parse(legacy);
       if (isGeom(g)) return { mode: 'float', geom: g, dockW: DEFAULT_DOCK_W };
@@ -133,17 +135,22 @@ const EDGE_GRIPS: Array<{ edge: Edge; className: string }> = [
 ];
 
 export default function FloatingModelPanel({
+  surface,
   title,
   onClose,
   children,
 }: {
+  /** Which surface's remembered panel this is. Locker and Foundry are separate
+   *  habits: where you park the stage while picking skins is not where you want
+   *  it while editing one. Matches the key split in useModelPanelOpen. */
+  surface: ModelPanelSurface;
   title: string;
   onClose: () => void;
   children: ReactNode;
 }) {
   const { t } = useTranslation();
   const ref = useRef<HTMLDivElement>(null);
-  const [state, setState] = useState<PanelState>(() => readStored());
+  const [state, setState] = useState<PanelState>(() => readStored(surface));
   const [parent, setParent] = useState<{ w: number; h: number } | null>(null);
   const { mode, geom, dockW } = state;
   const docked = mode !== 'float';
@@ -185,11 +192,20 @@ export default function FloatingModelPanel({
   // Persist mode and both geometries so the panel comes back as it was left.
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      localStorage.setItem(storageKey(surface), JSON.stringify(state));
     } catch {
       /* ignore quota/availability errors */
     }
-  }, [state]);
+  }, [state, surface]);
+
+  // Esc closes it, like every other dismissable overlay in the app.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
 
   const beginGesture = useCallback(
     (e: React.PointerEvent, onDelta: (dx: number, dy: number) => void) => {

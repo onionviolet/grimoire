@@ -272,6 +272,7 @@ export default function HeroWorkshop({
               three.js chunk loads on demand. */}
           {view3d && (
             <FloatingModelPanel
+              surface="foundry"
               title={t('foundry.workshop.preview3dTitle', '{{hero}} preview', { hero: hero.name })}
               onClose={() => setView3d(false)}
             >

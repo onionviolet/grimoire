@@ -71,6 +71,7 @@ import {
 } from '../lib/api';
 import { getActiveDeadlockPath } from '../lib/appSettings';
 import { useStableCallback } from '../lib/useStableCallback';
+import { usePrefersReducedMotion } from '../lib/usePrefersReducedMotion';
 import { readPref, writePref, CARD_SIZE_MIN, CARD_SIZE_MAX } from '../lib/uiPrefs';
 import type {
   GameBananaMod,
@@ -678,27 +679,6 @@ function BrowseReadableUpdatedLine({
       ↻ {relative}
     </span>
   );
-}
-
-function usePrefersReducedMotion() {
-  const [prefersReducedMotion, setPrefersReducedMotion] = useState(() => (
-    typeof window !== 'undefined'
-      ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
-      : false
-  ));
-
-  useEffect(() => {
-    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
-
-    const handleChange = (event: MediaQueryListEvent) => {
-      setPrefersReducedMotion(event.matches);
-    };
-
-    mediaQuery.addEventListener('change', handleChange);
-    return () => mediaQuery.removeEventListener('change', handleChange);
-  }, []);
-
-  return prefersReducedMotion;
 }
 
 function BrowseArtParallaxCard({

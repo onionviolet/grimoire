@@ -1,13 +1,66 @@
 # Locker deep dive: make the model the stage, playable abilities, and honest failure states
 
-Umbrella design document. #13 (model panel modes) and #14 (backdrop framing) are
-the two tactical pieces already open; this is the direction they should steer
-toward so the small fixes do not have to be undone later. Their scope is
-unchanged by this document.
+Umbrella design document, tracked as #15. #13 (model panel modes) and #14
+(backdrop framing) are the two tactical pieces it was written around; this is
+the direction they should steer toward so the small fixes do not have to be
+undone later. Their scope is unchanged by this document.
 
 Every claim about the code carries a `file:line` verified against the working
 tree on 2026-07-30. Sections that go past what was asked are marked
 **Extrapolation**.
+
+---
+
+## Status since this was written
+
+*Reconciliation pass, 2026-07-30, against the tree and the sibling plans. The
+body below is unedited except where a claim went stale; each of those carries a
+`Landed:` or `Resolved:` note inline. Read this section first, because three of
+the things the body calls open are not open any more.*
+
+**#13 landed.** `853ba98 feat(locker): give the 3D model panel dock modes and a
+memory` shipped persisted open state, eight-way resize, and float / dock-left /
+dock-right. The body describes #13 as uncommitted throughout; it is not. Two
+follow-on claims died with it:
+
+- The shared-storage-key bug is fixed. Both keys are now per-surface functions:
+  `grimoire.${surface}.modelPanel.state` (`FloatingModelPanel.tsx:43`) and
+  `grimoire.${surface}.modelPanel.open` (`useModelPanelOpen.ts:14`), with
+  `LEGACY_GEOM_KEY` (`:46`) migrating parked panels. Locker and Foundry no
+  longer disagree.
+- The three missing i18n keys landed (`locker.model.dockLeft`, `.dockRight`,
+  `.float`, `translation.json:2321-2323`). The inline-fallback pattern the body
+  warns against is no longer present in the panel.
+
+**Axis 4 is in flight, uncommitted.** `src/stores/poseFailureStore.ts` (new,
+untracked) is the "badge on the skin card" row of the taxonomy, built the way
+the body argues for: keyed by `metaKey`, persisted so the mark survives
+navigation, self-healing on a later successful export, and written by
+`HeroPoseViewer` narrowing the stack failure to a single VPK. That narrowing is
+the part the body calls the non-obvious one. `HeroPoseViewer.tsx` carries +107
+lines against `main`. This is #16.
+
+**`prefers-reduced-motion` is being answered.** `src/lib/usePrefersReducedMotion.ts`
+(new, untracked) extracts the live media-query hook out of `Browse.tsx`
+explicitly because the 3D pose viewer needed the same answer. The body lists
+this as an open question; it is being closed.
+
+**The recipe-coverage contradiction resolves at 38.** `COLOR_CODENAME_BY_HERO`
+holds exactly 38 entries (`heroColors.ts:56-108`), and `RECIPE_CACHE_VERSION`
+is 7, whose own comment reads "full selectable-roster recipe coverage" (`:105`).
+The "only `bookworm` and `unicorn` exist" line in `docs/ability-vfx-recolor.md`
+is a stale bullet in that document's historical status log, not a competing
+claim. Sizing that depends on recipe coverage can use 38.
+
+**Line numbers into `HeroPoseViewer.tsx` have shifted.** The in-flight axis-4
+work moved them by a few lines (`USE_EFFECT_PREVIEW` is now `:110`, not `:108`).
+Every other file's references still resolve.
+
+**Still true, re-verified:** `USE_EFFECT_PREVIEW` is `false`; `RELEASE_RENDER_FLAGS.rigged`
+is `false`; `HeroPoseInfo` is still `{ hasModel, mtimeMs, key }` with nowhere to
+put a reason (`types/portrait.ts:79-83`); `getHeroPoseClips`,
+`BACKGROUND_CODENAME_BY_HERO` and `getHeroPanoramaBackdrop` return nothing
+anywhere in `src` or `electron`.
 
 ---
 
@@ -174,13 +227,12 @@ frame's `after` slot (`HeroDetailFrame.tsx:260`). So:
   docked stage overlays the cards instead of reflowing them. #13 lists that as
   an open decision and it stays #13's call; the stage box just has to work
   either way.
-- Worth fixing while in here: `FloatingModelPanel`'s doc comment says mode and
-  geometry persist "per surface" (`FloatingModelPanel.tsx:14-15`) but
-  `STORAGE_KEY` is the constant `'grimoire.locker.modelPanel.state'`
-  (`:42`), shared by both surfaces. Open state is genuinely per surface
-  (`useModelPanelOpen.ts:14`). So today Locker and Foundry disagree about
-  whether the panel is open while agreeing about where it is. That is a #13
-  bug, noted here because a stage proposal would otherwise inherit it.
+- ~~Worth fixing while in here: `FloatingModelPanel`'s doc comment says mode and
+  geometry persist "per surface" but `STORAGE_KEY` is a shared constant.~~
+  **Resolved:** `853ba98` made both keys per-surface functions
+  (`FloatingModelPanel.tsx:43`, `useModelPanelOpen.ts:14`), so the stage
+  proposal does not inherit this. Kept in the record because the stage box must
+  stay per-surface too: Locker and Foundry are separate habits.
 
 ### The veil control
 
@@ -245,11 +297,36 @@ does not, because one rigged GLB carries the clip. So:
 
 1. Adopt upstream pose cycling first (it exists, it is honest about clipless
    heroes, and it needs no new pipeline work).
-2. Then un-gate the rigged path per hero rather than globally, using the same
-   shape as the existing per-hero gates (`MODEL_ENTRY_OVERRIDES` at
-   `heroPoseModels.ts:92` is the precedent: named heroes, stated reasons).
+2. Then un-gate the rigged path, following the sequence
+   [rigged-preview-spike.md](./rigged-preview-spike.md) already established
+   rather than inventing one here (see below).
 3. Only then consider exporting several clips into one GLB, and measure the
    size before committing to it.
+
+**Reconciled with the spike.** This document's first draft proposed un-gating
+per hero, on the model of `MODEL_ENTRY_OVERRIDES` (`heroPoseModels.ts:92`).
+That is not the plan of record and should not become one.
+[rigged-preview-spike.md](./rigged-preview-spike.md) section 9 measured the
+rigged path across three pilots and recommends shipping it gated, with an
+explicit four-step unblock. Its state today:
+
+| Spike step | Status |
+| --- | --- |
+| 1. Decouple `riggedPreviewEnabled` from `clothPreviewEnabled` | **Done**, 2026-07-28. Rigged has its own switch, and the code comment at `HeroPoseViewer.tsx:117-118` says so |
+| 2. A human measures Seven (`gigawatt_prisoner`, the worst case on every axis), section 8 check 3 | **Not done. This is the gate**, and it is the single blocker named in `feature-status.md` item 1c |
+| 3. If frame time is within ~1 ms, sweep `model clips --json` across the roster and record which heroes yield no animated clip | Blocked on 2. Cheap: one call per hero, no export |
+| 4. Only then consider defaulting on, and whether the static GLB can be dropped once a hero's rigged export is known good | Blocked on 3 |
+
+Two corrections fall out. The gate is **an fps reading on real hardware**, not
+the A-pose fallback quality the viewer comment cites; the spike found the
+fallback logic sound across all four failure modes. And step 3 is a
+**roster-wide sweep**, which is the honest way to learn which heroes are
+clipless: a hand-maintained per-hero override list is what the sweep exists to
+avoid. The per-hero-gate idea is withdrawn.
+
+Also worth taking from the spike rather than re-deriving: the rigged GLB is a
+**sibling** of the static one and the static one has to stay as the fallback, so
+cache pressure roughly doubles per hero. That sharpens the cache risk below.
 
 ### Ability VFX: staged from the code's own roadmap
 
@@ -435,10 +512,15 @@ for evidence that the cheap one is not enough.
 
 Copy for all of this needs real keys in `src/locales/en/translation.json`; per
 `CLAUDE.md` that file is the only translatable catalog and `pnpm i18n:check`
-gates it. #13 is already blocked on three missing keys
-(`locker.model.dockLeft`, `locker.model.float`, `locker.model.dockRight`,
-called with inline fallbacks at `FloatingModelPanel.tsx:263-269`); do not add
-more of that shape.
+gates it. ~~#13 is already blocked on three missing keys.~~ **Resolved:**
+`locker.model.dockLeft`, `.float` and `.dockRight` landed with `853ba98`
+(`translation.json:2321-2323`). The rule stands for the copy this document
+adds: real keys, not inline `t(key, 'fallback')` pairs.
+
+**Status:** in flight as #16, uncommitted. `src/stores/poseFailureStore.ts`
+implements the per-skin mark (change 2 above) including the single-skin
+narrowing; change 1, the typed `reason` on `HeroPoseInfo`, is not done, so the
+taxonomy's other four rows still collapse into one string.
 
 ---
 
@@ -523,9 +605,12 @@ either cheap or expensive.
 5. **Tint operators before frame-exact playback** (stage 3 before stage 4). The
    tint is what the Effects tab edits, so it is the stage that turns a preview
    into a live editor.
-6. **Live clip playback after all of the above**, gated per hero, because it
-   depends on un-gating the rigged path (`HeroPoseViewer.tsx:116`, reason at
-   `:951-953`) and that reason has not gone away.
+6. **Live clip playback after all of the above**, and it does not start with
+   code. It starts with one person taking one frame-time reading on Seven per
+   section 8 of [rigged-preview-spike.md](./rigged-preview-spike.md). That
+   measurement gates the whole axis, it is the oldest open item in
+   `feature-status.md` (1c), and it needs no work from this document to happen.
+   It could be taken today.
 7. **Ability playback**, which is the sum of 4, 5 and 6 plus the three-namespace
    join.
 8. **Sound last.** It is wiring, and it needs the ability rail from 7 to hang
@@ -550,16 +635,22 @@ three, then a static blurred snapshot, then keep the panel.
 **Cache growth.** Each pose GLB is 50-95 MB and every hero-plus-stack
 combination is its own entry; the byte cap exists because 1.7 GB was observed
 (`heroPoseModels.ts:456-459`). Anything that multiplies entries per clip has to
-account for that. Upstream `c21909f` (clear preview cache) is the mitigation and
-should land alongside.
+account for that. Two things sharpen this since the first draft: the rigged GLB
+is a sibling of the static one and the static one must stay as the fallback, so
+enabling live playback roughly **doubles** per-hero cache cost
+([rigged-preview-spike.md](./rigged-preview-spike.md) section 9), and against a
+2 GB cap that means more frequent LRU eviction for anyone who browses a lot.
+Upstream `c21909f` (clear preview cache) is the mitigation and should land
+alongside.
 
-**Per-hero coverage is uneven and the docs disagree with themselves.**
-`docs/ability-vfx-recolor.md:13` states 38 heroes carry a pinned recipe
-(re-verified 2026-07-28) while its own status section at `:219-221` says only
-`bookworm` and `unicorn` exist. Confirm against `COLOR_CODENAME_BY_HERO`
-(`heroColors.ts:55`) and `recipe_for` in vpkmerge before sizing anything that
-depends on recipe coverage. Whatever the number, the UI has to be honest about
-the gaps, the way `getHeroColorSupport` already gates the Effects tab
+**~~Per-hero coverage is uneven and the docs disagree with themselves.~~
+Resolved: 38.** `COLOR_CODENAME_BY_HERO` holds exactly 38 entries
+(`heroColors.ts:56-108`) and `RECIPE_CACHE_VERSION` is 7, described in its own
+comment as "full selectable-roster recipe coverage" (`:105`). The competing
+"only `bookworm` and `unicorn` exist" line was a stale bullet in
+`docs/ability-vfx-recolor.md`'s historical status log, now corrected there.
+Size against 38. The UI still has to be honest about the gaps, the way
+`getHeroColorSupport` already gates the Effects tab
 (`HeroEffectsPanel.tsx:33-44`).
 
 **Making 3D the default costs on every hero open.** The three.js chunk is lazy
@@ -571,15 +662,18 @@ Appearance section that owns how much the hero surfaces cost you.
 decision, unresolved there. The stage box works either way; noting it so it
 does not get decided twice.
 
-**Open: `prefers-reduced-motion`.** The turntable starts spinning
+**~~Open:~~ `prefers-reduced-motion`.** The turntable started spinning
 unconditionally (`spinPaused` is `useState(false)`, `HeroPoseViewer.tsx:871`).
-Adding animation playback and particles to a surface that already ignores the
-preference makes an existing inconsistency worse. #13's comment already raises
-it; it becomes load-bearing here.
+**Being closed:** `src/lib/usePrefersReducedMotion.ts` (uncommitted) extracts
+the live media-query hook out of `Browse.tsx` for exactly this. The rule it
+establishes is the one this document inherits: CSS animation is already covered
+by the stylesheet, but anything driven from JS, a three.js turntable or a
+particle sim, has to ask for itself. Ability playback and particle emission must
+both respect it when they land, and a user-initiated ability press is a
+different case from ambient motion: honor the press, do not autoplay.
 
-**Open: the shared panel storage key.** See the composition section. Locker and
-Foundry share `FloatingModelPanel`'s mode and geometry (`:42`) but not its open
-state (`useModelPanelOpen.ts:14`).
+**~~Open: the shared panel storage key.~~ Resolved** by `853ba98`. Both keys
+are per-surface now. See Status above.
 
 ---
 
@@ -611,9 +705,34 @@ An umbrella issue without a boundary is a wishlist.
 
 ## Cross references
 
-- #13 owns the panel: persisted open state, dock modes, resize, and the open
-  question of whether a docked stage reflows the content. Its scope is
-  unchanged; the composition section here is what it should steer toward.
-- #14 owns the veil-versus-art mismatch. The stage box is the shared set of
+Issues:
+
+- **#13** owned the panel: persisted open state, dock modes, resize. **Landed**
+  as `853ba98`. What survives it is the open question of whether a docked stage
+  reflows the content or overlays it, which the stage box works either way.
+- **#14** owns the veil-versus-art mismatch. The stage box is the shared set of
   numbers it asks for, and its option 3 (an Appearance slider) is where the
   requested opacity control belongs.
+- **#16** is the honesty-surfaces section, spun out. In flight, uncommitted.
+
+Documents. This one is the umbrella; where it disagrees with these on their own
+subject, they win, and the disagreement is a bug in this file:
+
+- [rigged-preview-spike.md](./rigged-preview-spike.md) is the authority on live
+  clip playback. It has measurements this document does not, and its section 9
+  is the sequence of record for un-gating the rigged path.
+- [feature-status.md](./feature-status.md) is the authority on what is shipped
+  versus dark. Item 1c is the fps-measurement gate; item 5 is the standing
+  entry for animated previews and ability VFX.
+- [3d-preview-fidelity-plan.md](./3d-preview-fidelity-plan.md) is the authority
+  on renderer fidelity, materials parity, and what hits a ceiling in Three.js.
+  Its Phase 0 spike results already answer several "can we" questions.
+- [ability-vfx-recolor.md](./ability-vfx-recolor.md) is the authority on the
+  particle pipeline and the codename namespaces. Read it before touching the
+  three-namespace join, which is the real work in ability playback.
+- [hero-pose-locker.md](./hero-pose-locker.md) is the authority on the pose
+  export itself and on the hero-namespace traps.
+- [design-overhaul-brief.md](./design-overhaul-brief.md) supplies the shell rule
+  the stage has to satisfy: switching sections must not change the shell.
+- [locker-foundry-parity-plan.md](./locker-foundry-parity-plan.md) is why every
+  stage change lands on Foundry the same day. Its invariant governs here too.

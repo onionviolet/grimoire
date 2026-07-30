@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ChevronDown, ExternalLink, GripVertical, ImagePlus, Shuffle, Trash2 } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ExternalLink, GripVertical, ImagePlus, Shuffle, Trash2 } from 'lucide-react';
 import {
   DndContext,
   KeyboardSensor,
@@ -22,6 +22,7 @@ import type { Mod } from '../../types/mod';
 import { getLockerSkinKey, modLoadOrder } from '../../lib/lockerUtils';
 import { shuffleSkinKey, type VariantChoice } from '../../lib/lockerRandomizer';
 import { useAppStore } from '../../stores/appStore';
+import { usePoseFailureStore, type BrokenPoseSkins } from '../../stores/poseFailureStore';
 import ModThumbnail from '../ModThumbnail';
 import AudioPreviewPlayer from '../AudioPreviewPlayer';
 import DownloadableSkinsSection from './DownloadableSkinsSection';
@@ -43,6 +44,49 @@ function variantPillLabel(mod: Mod): string {
     mod.fileDescription ??
     mod.sourceFileName ??
     mod.fileName
+  );
+}
+
+/** Variants of this group that the 3D viewer could not pose. See
+ *  poseFailureStore: the badge below is the whole point of recording them. */
+function groupBrokenVariants(group: SkinGroup, broken: BrokenPoseSkins): Mod[] {
+  return group.variants.filter((variant) => Boolean(broken[variant.metaKey]));
+}
+
+/**
+ * "This mod is probably broken" on the card, so you find out here instead of
+ * in-game. Deliberately hedged: what we actually know is that the model failed
+ * to pose, which is strong evidence but not proof the skin is unusable.
+ *
+ * Icon plus text, never colour alone, per the accessibility bar in
+ * docs/global-locker-foundry-ux-plan.md.
+ */
+export function BrokenPreviewBadge({
+  names,
+  t,
+  className = '',
+}: {
+  /** Variant labels that failed, listed in the tooltip when the group has more
+   *  than one so the badge points at a file rather than the whole card. */
+  names: string[];
+  /** Passed in rather than pulled from useTranslation so the badge can be
+   *  rendered directly in a test, the same seam HeroPoseFailureState uses. */
+  t: (key: string) => string;
+  className?: string;
+}) {
+  const hint =
+    names.length > 1
+      ? `${t('locker.skins.previewBrokenHint')} (${names.join(', ')})`
+      : t('locker.skins.previewBrokenHint');
+  return (
+    <span
+      title={hint}
+      className={`inline-flex items-center gap-1 rounded-full border border-amber-300/45 bg-amber-950/85 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-100 backdrop-blur-sm ${className}`}
+    >
+      <AlertTriangle className="h-2.5 w-2.5 flex-shrink-0" aria-hidden />
+      {t('locker.skins.previewBroken')}
+      <span className="sr-only">. {hint}</span>
+    </span>
   );
 }
 
@@ -381,6 +425,7 @@ function SkinGroupCard({
   shuffleVariantChoice,
   onSetShuffleVariant,
   shuffleArmed,
+  brokenPoseSkins,
 }: {
   group: SkinGroup;
   onSelect: (modId: string) => void;
@@ -390,6 +435,8 @@ function SkinGroupCard({
   useHeroPortraitThumbnails: boolean;
   heroName?: string;
   soundVolume: number;
+  /** VPKs the 3D viewer has failed to pose, keyed by metaKey. */
+  brokenPoseSkins: BrokenPoseSkins;
   /** 1-based load-order position, shown as a corner chip. Only set when 2+
    *  skins are active for the hero (otherwise order is meaningless). */
   loadOrderPosition?: number;
@@ -413,6 +460,7 @@ function SkinGroupCard({
   const primary = group.primary;
   // The user's chosen image wins over the uploader's thumbnail (issue #208).
   const displaySrc = overrideSrc ?? primary.thumbnailUrl;
+  const brokenVariants = groupBrokenVariants(group, brokenPoseSkins);
   const cardRef = useRef<HTMLDivElement>(null);
   const [variantsOpen, setVariantsOpen] = useState(false);
   // Close the variant popover on any click outside the card.
@@ -489,10 +537,19 @@ function SkinGroupCard({
           />
         </div>
         <div className="pointer-events-none absolute inset-0 bg-bg-primary/0 transition-colors duration-200 group-hover/card:bg-bg-primary/20" />
-        {groupActive && (
-          <span className="pointer-events-none absolute left-2 top-2 z-10 rounded-full bg-accent px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-accent-foreground">
-            {t('common.status.active')}
-          </span>
+        {/* Status chips share one column so a broken skin that is also active
+            stacks instead of overlapping. */}
+        {(groupActive || brokenVariants.length > 0) && (
+          <div className="absolute left-2 top-2 z-10 flex flex-col items-start gap-1">
+            {groupActive && (
+              <span className="pointer-events-none rounded-full bg-accent px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-accent-foreground">
+                {t('common.status.active')}
+              </span>
+            )}
+            {brokenVariants.length > 0 && (
+              <BrokenPreviewBadge names={brokenVariants.map(variantPillLabel)} t={t} />
+            )}
+          </div>
         )}
         {loadOrderPosition !== undefined && (
           <span
@@ -708,6 +765,7 @@ function SkinGroupRow({
   shuffleVariantChoice,
   onSetShuffleVariant,
   shuffleArmed,
+  brokenPoseSkins,
 }: {
   group: SkinGroup;
   onSelect: (modId: string) => void;
@@ -717,6 +775,8 @@ function SkinGroupRow({
   useHeroPortraitThumbnails: boolean;
   heroName?: string;
   soundVolume: number;
+  /** VPKs the 3D viewer has failed to pose, keyed by metaKey. */
+  brokenPoseSkins: BrokenPoseSkins;
   /** Issue #208: user-chosen Locker image for this skin (data URL), if any. */
   overrideSrc?: string;
   /** Open the image picker for this skin. Omitted for sound mods. */
@@ -737,6 +797,7 @@ function SkinGroupRow({
   const primary = group.primary;
   // The user's chosen image wins over the uploader's thumbnail (issue #208).
   const displaySrc = overrideSrc ?? primary.thumbnailUrl;
+  const brokenVariants = groupBrokenVariants(group, brokenPoseSkins);
   return (
     <div
       className={`group/row relative rounded-md border transition-colors ${
@@ -842,7 +903,16 @@ function SkinGroupRow({
           />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="font-medium truncate">{primary.name}</div>
+          <div className="flex min-w-0 items-center gap-1.5">
+            <span className="truncate font-medium">{primary.name}</span>
+            {brokenVariants.length > 0 && (
+              <BrokenPreviewBadge
+                names={brokenVariants.map(variantPillLabel)}
+                t={t}
+                className="flex-shrink-0"
+              />
+            )}
+          </div>
           {isMulti ? (
             enabledCount === 0 ? (
               // Action prompt — the card itself isn't clickable for
@@ -950,6 +1020,9 @@ export default function HeroSkinsPanel({
   const lockerModImages = useAppStore((s) => s.lockerModImages);
   // The "Locker image" (grid-thumbnail surface) the picker mirrors from.
   const lockerModThumbnails = useAppStore((s) => s.lockerModThumbnails);
+  // Skins the 3D viewer has failed to pose. Recorded there, surfaced here: the
+  // grid is where finding out is worth something (see poseFailureStore).
+  const brokenPoseSkins = usePoseFailureStore((s) => s.broken);
   const groups = useMemo(() => groupVariants(mods), [mods]);
   // Issue #208: which skin's image picker is open (null = none). Skins only;
   // sound mods keep the hero-portrait thumbnail and get no picker.
@@ -993,6 +1066,7 @@ export default function HeroSkinsPanel({
     useHeroPortraitThumbnails,
     heroName,
     soundVolume,
+    brokenPoseSkins,
   };
 
   return (

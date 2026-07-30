@@ -65,6 +65,17 @@ describe('HeroPoseViewer fallback states', () => {
     expect(html).toContain('locker.pose.retry');
   });
 
+  // The unsupported case must NOT offer a retry: retrying a hero with no known
+  // model codename fails identically every time.
+  it('keeps the unsupported case free of a retry affordance', () => {
+    const html = renderToStaticMarkup(
+      React.createElement(HeroPoseFailureState, { kind: 'unsupported', t, onRetry: () => {} })
+    );
+
+    expect(html).not.toContain('locker.pose.retry');
+    expect(html).not.toContain('locker.pose.exportFailed');
+  });
+
   it('shows single-source generation copy while posing', () => {
     const html = renderToStaticMarkup(
       React.createElement(HeroPoseLoadingState, {
