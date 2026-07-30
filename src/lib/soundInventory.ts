@@ -1,6 +1,16 @@
 import type { AbilitySlot, Mod } from '../types/mod';
 import { canonicalHeroName, getEffectiveGlobalType } from './lockerUtils';
 import { overlappingRecordedClaims, type RecordedClaimOverlap } from './recordedClaims';
+import {
+    CATEGORY_ORDER,
+    categoryRank,
+    classifyDownloadCategory,
+    classifySound,
+    type SoundCategory,
+} from './soundVocabulary';
+
+export { CATEGORY_ORDER };
+export type { SoundCategory };
 
 /**
  * The sound inventory: what sound content you already have, folded out of the
@@ -19,31 +29,13 @@ import { overlappingRecordedClaims, type RecordedClaimOverlap } from './recorded
  * hero name, or a classification count is never an ownership signal.
  */
 
-/** What kind of sound an entry changes. A single mod can cover several. */
-export type SoundCategory =
-    | 'ability'
-    | 'voice'
-    | 'weapon'
-    | 'movement'
-    | 'music'
-    | 'announcer'
-    | 'ui'
-    | 'ambience'
-    | 'npc'
-    | 'item'
-    | 'melee'
-    /**
-     * Nothing could be read from this mod's evidence.
-     *
-     * Replaces the old `shared` and `other` buckets, which were two different
-     * ways of saying the same thing while sounding like content types. `shared`
-     * in particular was an implementation leak: it meant "the path contained the
-     * word shared", which is true of every player melee sound in the game.
-     *
-     * This is a work queue, not a shelf: an entry here is a classification the
-     * app owes the user, and it should be possible to act on it.
-     */
-    | 'unclassified';
+/**
+ * `SoundCategory` and `CATEGORY_ORDER` are re-exported above from
+ * `soundVocabulary.ts`, which owns the terms, the classification rules, and the
+ * English labels for the whole app (S2). They used to be defined here, which is
+ * how the Locker and Foundry's base-game catalog came to describe one domain
+ * with two word lists and neither of them containing `Melee`.
+ */
 
 /** Where an entry belongs: a hero's shelf, or the Global shelf. */
 export type SoundScope = 'hero' | 'global';
@@ -93,116 +85,20 @@ export interface SoundInventory {
     all: SoundInventoryEntry[];
 }
 
-/** Display order for categories, most reached-for first. */
-export const CATEGORY_ORDER: readonly SoundCategory[] = [
-    'ability',
-    'voice',
-    'weapon',
-    'movement',
-    'announcer',
-    'music',
-    'ui',
-    'ambience',
-    'npc',
-    'item',
-    'melee',
-    // Always last: it is the queue of things the app could not read, and it
-    // should never sit above a category that says something.
-    'unclassified',
-];
-
-const CATEGORY_RANK = new Map(CATEGORY_ORDER.map((category, index) => [category, index]));
-
 const canonicalPath = (path: string): string =>
     path.replace(/\\/g, '/').replace(/^\/+/, '').toLowerCase();
 
 /**
- * Where the game itself puts each kind of sound.
- *
- * These run before any word-matching, because the tree is real evidence and a
- * word in a filename is a hint. Two cases in the installed corpus prove why the
- * order matters:
- *
- *  - `sounds/music/menu/shop/bau_01.vsnd_c` is a music pack. Word-matching sees
- *    `menu` and `shop` and files it under Interface or Items.
- *  - `sounds/player/melee/shared/charged_melee_full.vsnd_c` is melee. Word
- *    matching saw `shared` and invented a whole category for it, which is the
- *    entire "Shared / Shared melee" defect.
- *
- * `sounds/mods/...` is not user mods: `mods` is the game's own word for item
- * modifiers, so `sounds/mods/tech/refresher/refresher_cast.vsnd_c` is the
- * Refresher item. That one rule is what moves six mods off the Announcer shelf.
- */
-const PATH_RULES: ReadonlyArray<readonly [RegExp, SoundCategory]> = [
-    [/(^|\/)sounds\/vo\//, 'voice'],
-    [/(^|\/)soundevents\/vo[/.]/, 'voice'],
-    [/(^|\/)sounds\/player\/melee\//, 'melee'],
-    // Item modifiers, both the clips and the soundevent manifests beside them.
-    [/(^|\/)sounds\/mods\//, 'item'],
-    [/(^|\/)soundevents\/mods[/.]/, 'item'],
-    [/(^|\/)sounds\/items?\//, 'item'],
-    [/(^|\/)sounds\/npc\//, 'npc'],
-    [/(^|\/)soundevents\/npc[/.]/, 'npc'],
-    [/(^|\/)sounds\/music\//, 'music'],
-    [/(^|\/)soundevents\/music[/.]/, 'music'],
-    [/(^|\/)sounds\/ui\//, 'ui'],
-    [/(^|\/)soundevents\/ui[/.]/, 'ui'],
-    [/(^|\/)sounds\/announcer\//, 'announcer'],
-    [/(^|\/)sounds\/abilities\//, 'ability'],
-    [/(^|\/)sounds\/weapons?\//, 'weapon'],
-    [/(^|\/)sounds\/ambient\//, 'ambience'],
-];
-
-/**
- * Reviewed exceptions, keyed on evidence the rules genuinely cannot read.
- *
- * Deliberately empty right now: every case in the installed corpus is handled
- * by a rule, and an override table that starts full is a rule set that gave up
- * early. It exists so the next unreadable case has an honest home instead of
- * becoming a special case bolted into `classifySoundToken`, where it would look
- * like a general rule and quietly mis-file everything that resembles it.
- *
- * Two conditions for adding an entry: the key must be an exact normalized entry
- * path or soundevent name (never a download title, which the author controls),
- * and the reason must be written down. If two entries want the same reason, that
- * is a rule, not an override.
- */
-const CLASSIFICATION_OVERRIDES: ReadonlyMap<string, { category: SoundCategory; reason: string }> =
-    new Map<string, { category: SoundCategory; reason: string }>();
-
-/**
  * Category of a single recorded clip path or soundevent name.
  *
- * Three tiers, in this order: a reviewed override, where the file lives, then
- * what it is called. A token that reads as nothing concrete returns
- * `unclassified` rather than a vague bucket, because "we could not tell" is a
- * fact worth showing and a wrong category files a mod under a heading it has
- * nothing to do with.
+ * The rules (path tree first, then word-matching, with a reviewed override
+ * table above both) live in `soundVocabulary.ts`, shared with Foundry's
+ * base-game catalog. They return the reason alongside the verdict; this wrapper
+ * drops it for the callers that only need to file a mod on a shelf. A surface
+ * that wants to explain a classification should call `classifySound` itself.
  */
 export function classifySoundToken(token: string): SoundCategory {
-    const value = token.replace(/\\/g, '/').toLowerCase();
-    const override = CLASSIFICATION_OVERRIDES.get(value);
-    if (override) return override.category;
-    for (const [pattern, category] of PATH_RULES) {
-        if (pattern.test(value)) return category;
-    }
-    if (/(^|[/.])vo([/.]|$)|voice|_vo_/.test(value)) return 'voice';
-    // Melee before weapon: a charged melee is not a gun, and before the old
-    // shared/generic rule, which used to swallow the whole player melee tree.
-    if (/melee|punch|parry|swing|riposte/.test(value)) return 'melee';
-    if (/weapon|\bgun\b|shoot|reload|bullet|muzzle/.test(value)) return 'weapon';
-    if (/footstep|footsteps|movement|dash|jump|land(ing)?\b|slide/.test(value)) return 'movement';
-    if (/abilit(y|ies)|\bcast\b|\bult\b|ultimate/.test(value)) return 'ability';
-    if (/announcer/.test(value)) return 'announcer';
-    if (/music|stinger|killstreak/.test(value)) return 'music';
-    if (/(^|[/.])ui([/.]|$)|panorama|menu|hud/.test(value)) return 'ui';
-    if (/ambience|ambient/.test(value)) return 'ambience';
-    // Deadlock's neutral camps and lane creeps, by the names the files use.
-    if (/npc|creep|neutral|trooper|sinner|breed|vault|guardian|walker|patron|midboss/.test(value)) {
-        return 'npc';
-    }
-    if (/item|pickup|shop/.test(value)) return 'item';
-    return 'unclassified';
+    return classifySound(token).category;
 }
 
 /**
@@ -214,7 +110,7 @@ export function classifySoundToken(token: string): SoundCategory {
 function sortCategories(categories: Iterable<SoundCategory>): SoundCategory[] {
     const unique = new Set(categories);
     if (unique.size > 1) unique.delete('unclassified');
-    return [...unique].sort((a, b) => (CATEGORY_RANK.get(a) ?? 99) - (CATEGORY_RANK.get(b) ?? 99));
+    return [...unique].sort((a, b) => categoryRank(a) - categoryRank(b));
 }
 
 /**
@@ -285,20 +181,10 @@ function globalCategory(mod: Mod): SoundCategory {
     const globalType = getEffectiveGlobalType(mod);
     if (globalType === 'announcer') return 'announcer';
     if (globalType === 'killstreak-music') return 'music';
-    const category = mod.categoryName?.trim().toLowerCase() ?? '';
-    if (category.includes('music')) return 'music';
-    if (category.includes('announcer')) return 'announcer';
-    if (category === 'ui' || category === 'ui sounds') return 'ui';
-    if (category.includes('ambience') || category.includes('ambient')) return 'ambience';
-    if (category.includes('npc') || category.includes('creep')) return 'npc';
-    if (category.includes('item')) return 'item';
-    if (category.includes('melee')) return 'melee';
-    // A kill sound in this game is a creep/trooper kill: NPC content, not a
-    // nameless bucket. Weak evidence though, so any real path beats it.
-    if (category.includes('killsound')) return 'npc';
-    // `shared` and `generic` used to become a category of their own here. They
-    // describe how the author labelled a download, not what it changes.
-    return 'unclassified';
+    // The download's own category name, read through the shared vocabulary's
+    // weakest tier. It is the last resort on purpose: an author's label says how
+    // an upload was filed, not what it changes.
+    return classifyDownloadCategory(mod.categoryName).category;
 }
 
 interface HeroDraft {
@@ -521,7 +407,7 @@ export function entriesInCategory(
  *  can still contain one that is not, and that entry needs a section to sit in. */
 export function categoriesPresent(list: readonly SoundInventoryEntry[]): SoundCategory[] {
     return [...new Set(list.flatMap((entry) => entry.categories))].sort(
-        (a, b) => (CATEGORY_RANK.get(a) ?? 99) - (CATEGORY_RANK.get(b) ?? 99)
+        (a, b) => categoryRank(a) - categoryRank(b)
     );
 }
 

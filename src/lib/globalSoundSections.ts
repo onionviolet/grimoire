@@ -1,5 +1,4 @@
-import type { SoundCategory } from './soundInventory';
-import type { GlobalSoundCategory } from '../types/foundry';
+import { soundTermLabel, type SoundCategory } from './soundVocabulary';
 
 /**
  * The Global sounds vocabulary: which sound categories the Global drill-in's
@@ -25,42 +24,15 @@ export const GLOBAL_SOUND_SECTIONS: readonly SoundCategory[] = [
   'unclassified',
 ];
 
-/** English fallbacks, for the window between a key landing in the en catalog
- *  and a translation arriving. The catalog is the source of truth. */
-const GLOBAL_SECTION_FALLBACK: Record<string, string> = {
-  announcer: 'Announcer',
-  music: 'Music',
-  ui: 'Interface',
-  ambience: 'Ambience',
-  npc: 'NPC',
-  item: 'Items',
-  melee: 'Melee',
-  unclassified: 'Needs classification',
-};
-
-/** The rail (and pane heading) label for a global sound category. */
+/** The rail (and pane heading) label for a global sound category.
+ *
+ *  The English wording comes from the shared vocabulary's one label table, so
+ *  this rail and Foundry's base-game catalog cannot end up calling the same
+ *  thing two different names (S2). The i18n key namespace stays this surface's
+ *  own, because those strings are already translated. */
 export function globalSoundSectionLabel(
   t: (key: string, fallback: string) => string,
   category: SoundCategory
 ): string {
-  return t(`soundLocker.category.${category}`, GLOBAL_SECTION_FALLBACK[category] ?? category);
-}
-
-/** The catalog filter that lets the Foundry link open the matching sound family. */
-export function globalSoundFoundryCategory(category: SoundCategory): GlobalSoundCategory {
-  const categories: Record<SoundCategory, GlobalSoundCategory> = {
-    announcer: 'voice',
-    music: 'music',
-    ui: 'ui',
-    ambience: 'ambience',
-    npc: 'npc',
-    item: 'item',
-    melee: 'gameplay',
-    unclassified: 'other',
-    ability: 'gameplay',
-    voice: 'voice',
-    weapon: 'gameplay',
-    movement: 'gameplay',
-  };
-  return categories[category];
+  return t(`soundLocker.category.${category}`, soundTermLabel(category));
 }

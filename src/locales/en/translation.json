@@ -468,10 +468,12 @@
         "music": "Music",
         "item": "Items",
         "gameplay": "Gameplay",
+        "melee": "Melee",
         "npc": "NPC",
         "ambience": "Ambience",
         "voice": "Voice",
-        "other": "Other"
+        "other": "Other",
+        "catalogOther": "Other"
       }
     },
     "sources": {
