@@ -28,17 +28,15 @@ import {
 // (deadlock-api `hero_<codename>`, stripped of the `hero_` prefix) that hero
 // card art lives under as `panorama/images/heroes/<codename>_<variant>`.
 //
-// This deliberately does NOT reuse the sound-codename table (heroSoundCodenames
-// .ts). That table is scoped to the ~35 heroes that ship ability sounds, so it
-// (a) omits heroes whose only modded art is panorama cards (Doorman, Graves,
-// Rem, Sinclair, Venator, Victor, Warden, Wraith) and (b) uses the sound-path
-// codename, which diverges from the panorama/class_name codename for Abrams
-// (sound `abrams` vs panorama `atlas`) and Mo & Krill (`mokrill` vs `krill`).
-// Both bugs made the card picker silently return nothing for those heroes.
+// The names come from the one hero identity table (src/lib/heroIdentity.ts) via
+// its panorama accessors. Asking it for the PANORAMA namespace is the whole
+// point: the sound namespace disagrees for Abrams (sound `abrams` vs panorama
+// `atlas`) and Mo & Krill (`mokrill` vs `krill`), and reading the wrong one
+// made the card picker silently return nothing for those heroes.
 //
-// Source of truth: assets.deadlock-api.com/v2/heroes `class_name`. Both
-// "Doorman" (GameBanana's category name) and "The Doorman" (the API/roster
-// name) are keyed so the lookup works whichever name flows in.
+// Source of truth for the values: assets.deadlock-api.com/v2/heroes
+// `class_name`. Both "Doorman" (GameBanana's category name) and "The Doorman"
+// (the API/roster name) resolve, so the lookup works whichever name flows in.
 /** Resolve a hero display name (e.g. "Vindicta") to its primary panorama
  *  codename (e.g. "hornet"), or undefined when the name is unknown. */
 export function codenameForHero(heroName: string): string | undefined {

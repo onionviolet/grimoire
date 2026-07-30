@@ -25,6 +25,49 @@ describe('portrait hero identity', () => {
     expect(matchesPortraitHero('grey_talon', 'archer')).toBe(true);
   });
 
+  /**
+   * Every hero whose panorama folder is not just their lowercased display name.
+   * The panorama view has to round-trip all of them, because a miss here does
+   * not throw: the card picker just silently finds no art for that hero, which
+   * is exactly how the Abrams and Mo & Krill cases shipped.
+   */
+  const ALIASED_PANORAMA: ReadonlyArray<[string, string[]]> = [
+    ['Abrams', ['atlas', 'bull']],
+    ['Apollo', ['fencer']],
+    ['Billy', ['punkgoat']],
+    ['Calico', ['nano']],
+    ['Celeste', ['unicorn']],
+    ['Dynamo', ['dynamo', 'sumo']],
+    ['Graves', ['necro']],
+    ['Grey Talon', ['orion', 'archer']],
+    ['Holliday', ['astro']],
+    ['Infernus', ['inferno']],
+    ['Ivy', ['tengu']],
+    ['Lady Geist', ['ghost', 'spectre']],
+    ['McGinnis', ['forge', 'engineer']],
+    ['Mina', ['vampirebat']],
+    ['Mo & Krill', ['krill', 'digger']],
+    ['Paige', ['bookworm']],
+    ['Paradox', ['chrono']],
+    ['Pocket', ['synth']],
+    ['Rem', ['familiar']],
+    ['Seven', ['gigawatt']],
+    ['Silver', ['werewolf']],
+    ['Sinclair', ['magician']],
+    ['Venator', ['priest']],
+    ['Victor', ['frank']],
+    ['Vindicta', ['hornet']],
+    ['Vyper', ['viper']],
+  ];
+
+  it.each(ALIASED_PANORAMA)('round-trips every %s portrait folder', (displayName, codenames) => {
+    expect(portraitCodenamesForHero(displayName)).toEqual(codenames);
+    for (const codename of codenames) {
+      expect(matchesPortraitHero(displayName, codename)).toBe(true);
+      expect(displayNameForHeroCodename(codename)).toBe(displayName);
+    }
+  });
+
   it('does not guess an unknown hero mapping', () => {
     expect(resolvePortraitHero('Not a hero')).toBeNull();
     expect(matchesPortraitHero('Not a hero', 'atlas')).toBe(false);
