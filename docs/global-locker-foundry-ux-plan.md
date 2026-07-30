@@ -28,6 +28,82 @@ tabs, but the screenshots show why that still reads as two disconnected areas:
 the Sounds tab starts on an empty category and hides both the global inventory
 and the reason a category exists.
 
+## Known issue, deliberately not fixed yet: Global sound categorisation
+
+Re-confirmed live on 2026-07-30, unchanged from the A0 capture. This is the
+largest open user-visible defect in this plan and it is **not** part of Pass A,
+because fixing labels before the classifier is agreed just moves rows around.
+It is Stage 0 (evidence + rules) and lands in **Pass B**.
+
+The rail today, with 15 global sound mods installed:
+
+```
+Announcer 6 · Music 5 · Interface 0 · Ambience 0 · NPC 0 · Items 0 ·
+Shared melee 0 · Shared 0 · Other 4
+```
+
+What is wrong with it, in order of how badly it misleads:
+
+1. **`Announcer` is a dumping ground.** Its six entries are the JoJo/Colossus
+   loop, Magic Carpet Arabian Nights, JBL Speaker Magic Carpet, the Daft Punk
+   Refresher, and two unnamed imported paks (`Pak92`, `Pak93`). None of those is
+   an announcer. Four are music/killstreak; two are unclassified imports that
+   landed here because nothing else claimed them.
+2. **`Shared` and `Shared melee` are implementation leaks, not content types.**
+   They exist because `classifySoundToken` returns `shared` for any token
+   containing `shared|generic|common`, and the charged-melee pool lives in
+   `sounds/player/melee/shared/`. Every one of those belongs in a **Melee**
+   category, which currently exists in no vocabulary in the app.
+3. **`NPC` is empty while `Other` holds the NPC content.** The Sinners/Breed and
+   XP-trooper/creep-kill sounds are the four `Other` rows; `globalCategory` maps
+   any GameBanana category containing `killsound` straight to `other`.
+4. **Six of nine categories are empty and still rendered**, so the rail reads as
+   mostly broken even where the classification is right.
+5. **Sound categories are also in the Visuals rail** (`Announcer / SFX`,
+   `Killstreak Music`), and the same six mods are counted in both, which is why
+   the header says `20 mods` on Visuals and `15 mods` on Sounds for one
+   inventory (S1, S4).
+6. **`Pak92`/`Pak93` are unusable as list entries** whatever category they land
+   in (Stage 4).
+
+No database migration is needed for any of it: classification is computed at
+render time, so fixing the rules reclassifies every existing install. See
+Stage 0 for the rule changes and the fixture, Stage 1 for the one-inventory
+rail, and Stage 4 for the unnamed-pak entries.
+
+**The evidence Stage 0 needs already exists, and it is not the metadata.**
+`SoundEntryRow` now reads the installed VPK directory (via the same
+`list-unknown-mod-files` call the Installed page uses) whenever a mod recorded
+no write set, so every one of those six Announcer rows names its entries on
+expand:
+
+| Row | Entries |
+| --- | --- |
+| JoJo Pillar man theme over Colossus loop | `armor.vsndevts_c`, `colossus_cast`, `colossus_lp` |
+| Magic Carpet Arabian Nights | `magiccarpet_lp` |
+| JBL Speaker Magic Carpet | `magiccarpet_lp` |
+| One More Time (Daft Punk) Refresher | `refresher_cast`, `refresher_cast_delay` |
+| `Pak92` | `armor.vsndevts_c`, `trophy_collector_proc` |
+| `Pak93` | `refresher_cast`, `refresher_cast_delay` |
+
+Every one is an **item** sound: Refresher, Magic Carpet, Colossus, Trophy
+Collector, Armor. Not one is an announcer. So the Stage 0 classifier does not
+need new plumbing or a re-inspect pass to fix this shelf, it needs to consult
+the VPK entry list the row already reads, and the `Items` category that is
+currently sitting at 0 is where all six belong.
+
+Two more things fall out of the same read, both cheap and both already visible
+in the UI:
+
+- **The unnamed paks stop being unidentifiable.** `Pak92` and `Pak93` can be
+  described by what they write, which is most of what Stage 4 wanted from a
+  rename.
+- **Two real collisions surface that nothing else reported.** `Pak93` writes the
+  same `refresher_cast` as the Daft Punk mod and `Pak92` the same
+  `armor.vsndevts_c` as the JoJo loop; the winner lookup labels both. A user
+  with two enabled mods fighting over one sound previously had no way to see it
+  from this surface.
+
 ## Pass A: evidence and a convergence decision (no product rewrite)
 
 This is the next pass. It should produce a short decision record, screenshots,

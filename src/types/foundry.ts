@@ -350,6 +350,24 @@ export interface FoundryForgeRequest {
     };
 }
 
+/** What the Foundry catalog is currently built from, so an empty grid can say
+ *  why instead of leaving the user to guess. `pakModifiedIso` is the game build
+ *  being indexed; `indexed*` are the engine's own entry counts; `cacheKey` is
+ *  the fingerprint directory the decoded thumbnails live under. A non-null
+ *  `error` means the catalog could not be read at all, and the counts are null. */
+export interface CatalogDiagnostics {
+    gamePath: string;
+    pakPath: string;
+    pakBytes: number | null;
+    pakModifiedIso: string | null;
+    indexedTextures: number | null;
+    indexedVoicelines: number | null;
+    cacheKey: string | null;
+    thumbsDir: string;
+    cachedCategories: Array<{ category: string; thumbnails: number; cachedAtIso: string | null }>;
+    error: string | null;
+}
+
 /** Which vpkmerge engine the app is actually running, for the Settings card.
  *  `bundled` is false when settings.vpkmergeBinaryPath overrides it. A non-null
  *  `error` with a non-null `path` means the binary resolved but would not run. */

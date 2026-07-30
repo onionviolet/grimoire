@@ -26,6 +26,7 @@ import { prepareAudioForMint } from './audioConversion';
 import { getCitadelPath } from './deadlock';
 import { soundCodenameForHero } from './heroSoundCodenames';
 import type {
+    CatalogDiagnostics,
     GlobalSound,
     GlobalSoundFilters,
     HeroInfo,
@@ -758,6 +759,106 @@ export async function warmCache(deadlockPath: string): Promise<void> {
     } catch {
         /* best-effort warm; the catalog rebuilds lazily if this missed */
     }
+}
+
+/**
+ * Answer "why does this catalog look like that" without a support round trip.
+ *
+ * A Foundry surface that renders an empty grid currently gives no reason, so a
+ * "my portraits disappeared" report costs a session of guessing. Every fact
+ * needed to distinguish the real causes (no game path, a pak that moved or
+ * shrank, a cache from an older build, an engine that will not run) is cheap to
+ * read: the pak's stat, the engine's own cache report, and a directory listing
+ * of the thumbnail cache.
+ *
+ * Never throws. A diagnostic that fails to render is worse than one that says
+ * which part it could not read, so each half degrades independently.
+ */
+export async function catalogDiagnostics(deadlockPath: string): Promise<CatalogDiagnostics> {
+    const pakPath = pak01Path(deadlockPath);
+    const diagnostics: CatalogDiagnostics = {
+        gamePath: deadlockPath,
+        pakPath,
+        pakBytes: null,
+        pakModifiedIso: null,
+        indexedTextures: null,
+        indexedVoicelines: null,
+        cacheKey: null,
+        thumbsDir: thumbsRoot(),
+        cachedCategories: [],
+        error: null,
+    };
+
+    try {
+        const info = await fs.stat(pakPath);
+        diagnostics.pakBytes = info.size;
+        diagnostics.pakModifiedIso = info.mtime.toISOString();
+    } catch (err) {
+        diagnostics.error = `Could not read ${pakPath}: ${err instanceof Error ? err.message : String(err)}`;
+        return diagnostics;
+    }
+
+    try {
+        const report = await runCatalogJson<CacheReport>([
+            'cache',
+            '--vpk',
+            pakPath,
+            '--dir',
+            catalogCacheDir(),
+        ]);
+        diagnostics.indexedTextures = report.texture.count;
+        diagnostics.indexedVoicelines = report.voiceline.count;
+        diagnostics.cacheKey = fingerprintKey(report.fingerprint);
+    } catch (err) {
+        // The pak is readable but the engine is not usable. That is a different
+        // failure from a missing game path and the user should see which it is.
+        diagnostics.error = err instanceof Error ? err.message : String(err);
+        return diagnostics;
+    }
+
+    try {
+        const dir = join(thumbsRoot(), diagnostics.cacheKey);
+        const entries = await fs.readdir(dir, { withFileTypes: true });
+        diagnostics.cachedCategories = (
+            await Promise.all(
+                entries
+                    .filter((entry) => entry.isDirectory())
+                    .map(async (entry) => {
+                        const categoryDir = join(dir, entry.name);
+                        const files = await fs.readdir(categoryDir).catch(() => [] as string[]);
+                        const stamp = await fs.stat(categoryDir).catch(() => null);
+                        return {
+                            category: entry.name,
+                            // manifest.json is bookkeeping, not a decoded asset.
+                            thumbnails: files.filter((file) => file.endsWith('.png')).length,
+                            cachedAtIso: stamp ? stamp.mtime.toISOString() : null,
+                        };
+                    })
+            )
+        ).sort((a, b) => a.category.localeCompare(b.category));
+    } catch {
+        // No thumbnail cache yet for this build. Not an error: the first browse
+        // of a category creates it.
+    }
+
+    return diagnostics;
+}
+
+/**
+ * Drop the derived caches and re-warm the engine index. Only deletes what this
+ * module owns and can rebuild from the pak: the thumbnail sets and the engine's
+ * index cache. The user's own source thumbnails (`_sources`) are keyed by their
+ * files, not by a pak build, so they are left alone.
+ */
+export async function rebuildCatalogCaches(deadlockPath: string): Promise<void> {
+    const root = thumbsRoot();
+    const entries = await fs.readdir(root, { withFileTypes: true }).catch(() => []);
+    for (const entry of entries) {
+        if (!entry.isDirectory() || entry.name === FOUNDRY_SOURCE_THUMB_DIR) continue;
+        await fs.rm(join(root, entry.name), { recursive: true, force: true });
+    }
+    await fs.rm(catalogCacheDir(), { recursive: true, force: true });
+    await warmCache(deadlockPath);
 }
 
 /**

@@ -1239,6 +1239,8 @@ export interface ElectronAPI {
         sourceThumbnail: (sourcePath: string) => Promise<string | null>;
         warmCache: () => Promise<void>;
         engineInfo: () => Promise<import('./foundry').EngineInfo>;
+        catalogDiagnostics: () => Promise<import('./foundry').CatalogDiagnostics>;
+        rebuildCatalog: () => Promise<import('./foundry').CatalogDiagnostics>;
         exportHeroEffect: (
             req: import('./foundry').HeroEffectExportRequest
         ) => Promise<import('./foundry').VpkExportResult>;

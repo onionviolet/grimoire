@@ -1494,6 +1494,19 @@ export async function foundryWarmCache(): Promise<void> {
   return window.electronAPI.foundry.warmCache();
 }
 
+/** What the Foundry catalog is built from right now: which pak, from when, how
+ *  many entries were indexed, and which thumbnail cache belongs to that build.
+ *  Read on demand by the catalog diagnostics disclosure, not on every render. */
+export async function foundryCatalogDiagnostics(): Promise<import('../types/foundry').CatalogDiagnostics> {
+  return window.electronAPI.foundry.catalogDiagnostics();
+}
+
+/** Delete the derived catalog caches and re-warm, returning fresh diagnostics.
+ *  Only touches what the app can rebuild from the game's pak. */
+export async function foundryRebuildCatalog(): Promise<import('../types/foundry').CatalogDiagnostics> {
+  return window.electronAPI.foundry.rebuildCatalog();
+}
+
 /** Bake the given hero ability-VFX effect into a standalone addon VPK and prompt
  *  the user to save it to disk (instead of applying it into the mod manager).
  *  Resolves with `{ exported: false }` if the save dialog is cancelled. */

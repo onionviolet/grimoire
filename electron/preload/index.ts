@@ -690,6 +690,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
             ipcRenderer.invoke('foundry:sourceThumbnail', sourcePath),
         warmCache: () => ipcRenderer.invoke('foundry:warmCache'),
         engineInfo: () => ipcRenderer.invoke('foundry:engineInfo'),
+        catalogDiagnostics: () => ipcRenderer.invoke('foundry:catalogDiagnostics'),
+        rebuildCatalog: () => ipcRenderer.invoke('foundry:rebuildCatalog'),
         exportHeroEffect: (req: HeroEffectExportRequest) =>
             ipcRenderer.invoke('foundry:exportHeroEffect', req),
         swapSound: (req: HeroSoundSwapRequest) =>

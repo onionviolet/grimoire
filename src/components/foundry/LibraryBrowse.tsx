@@ -3,6 +3,7 @@ import { Library, Loader2, AlertTriangle, Users } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useConfirm } from '../common/confirmContext';
 import { EmptyState } from '../common/PageComponents';
+import CatalogDiagnostics from './CatalogDiagnostics';
 import Tx from '../translation/Tx';
 import { foundryInspectAssetSources, foundryThumbnails } from '../../lib/api';
 import { showToast } from '../../stores/toastStore';
@@ -237,12 +238,15 @@ export default function LibraryBrowse({
           <Tx k="foundry.loading" fallback="Building catalog from your game files..." />
         </div>
       ) : error ? (
-        <EmptyState
-          icon={AlertTriangle}
-          variant="error"
-          title={<Tx k="foundry.error.title" fallback="Couldn't read the catalog" />}
-          description={error}
-        />
+        <div className="space-y-3">
+          <EmptyState
+            icon={AlertTriangle}
+            variant="error"
+            title={<Tx k="foundry.error.title" fallback="Couldn't read the catalog" />}
+            description={error}
+          />
+          <div className="flex justify-center"><CatalogDiagnostics /></div>
+        </div>
       ) : visibleItems.length === 0 ? (
         <EmptyState
           icon={Library}

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Images, Loader2, Users } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { EmptyState } from '../common/PageComponents';
+import CatalogDiagnostics from './CatalogDiagnostics';
 import Tx from '../translation/Tx';
 import { foundryThumbnails } from '../../lib/api';
 import { matchesPortraitHero, resolvePortraitHero } from '../../lib/heroPortraitIdentity';
@@ -188,14 +189,23 @@ export default function PortraitBrowse({ heroNames, hero, onStage }: PortraitBro
           >
             {t('common.actions.retry', 'Retry')}
           </button>
+          {/* An unreadable catalog is exactly when "which pak, from when" is
+              the question, so the diagnostics sit under the retry. */}
+          <div className="flex justify-center"><CatalogDiagnostics /></div>
         </div>
       ) : scope && scopedFamilies.length === 0 ? (
-        <EmptyState
-          icon={Images}
-          title={<Tx k="foundry.portraits.notIndexed.title" fallback="No base-game portrait family found" />}
-          description={<Tx k="foundry.portraits.notIndexed.description" fallback="This hero has no indexed editable portrait family in this game build. Browse the global catalog or report the missing mapping." />}
-          action={<a href="/foundry?section=portraits" className="rounded-sm border border-border px-3 py-1.5 text-sm text-text-primary hover:border-accent/50">{t('foundry.portraits.browseGlobal', 'Browse global portrait catalog')}</a>}
-        />
+        // The "Abrams portraits disappeared" surface. Whether the cause is an
+        // unindexed family or a stale cache is not guessable from the message,
+        // so the diagnostics ship with it.
+        <div className="space-y-3">
+          <EmptyState
+            icon={Images}
+            title={<Tx k="foundry.portraits.notIndexed.title" fallback="No base-game portrait family found" />}
+            description={<Tx k="foundry.portraits.notIndexed.description" fallback="This hero has no indexed editable portrait family in this game build. Browse the global catalog or report the missing mapping." />}
+            action={<a href="/foundry?section=portraits" className="rounded-sm border border-border px-3 py-1.5 text-sm text-text-primary hover:border-accent/50">{t('foundry.portraits.browseGlobal', 'Browse global portrait catalog')}</a>}
+          />
+          <div className="flex justify-center"><CatalogDiagnostics /></div>
+        </div>
       ) : visible.length === 0 ? (
         <EmptyState
           icon={Images}

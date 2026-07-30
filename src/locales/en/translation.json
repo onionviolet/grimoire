@@ -244,6 +244,17 @@
       "unreleasedGroup": "Unreleased or internal",
       "searchPlaceholder": "Search assets..."
     },
+    "diagnostics": {
+      "summary": "Where this catalog comes from",
+      "reading": "Reading the catalog...",
+      "pak": "Indexing {{path}}",
+      "built": "Game files last changed {{when}}",
+      "builtUnknown": "Game file timestamp unavailable",
+      "indexed": "{{textures}} textures and {{voicelines}} voice lines indexed",
+      "cached": "Decoded thumbnails: {{summary}}",
+      "noThumbs": "No decoded thumbnails cached for this game build yet.",
+      "rebuild": "Rebuild the catalog cache"
+    },
     "loading": "Building catalog from your game files...",
     "error": {
       "title": "Couldn't read the catalog"

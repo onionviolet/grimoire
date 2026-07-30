@@ -20,6 +20,8 @@ import {
     ensureModClip,
     pruneModClips,
     warmCache,
+    catalogDiagnostics,
+    rebuildCatalogCaches,
 } from '../services/foundryCatalog';
 import { scanMods } from '../services/mods';
 import { buildHeroEffectVpkForExport } from '../services/heroColors';
@@ -39,6 +41,7 @@ import {
     saveSoundAnnotation,
 } from '../services/soundAnnotations';
 import type {
+    CatalogDiagnostics,
     EngineInfo,
     GlobalSound,
     GlobalSoundFilters,
@@ -244,6 +247,22 @@ ipcMain.handle('foundry:warmCache', async (): Promise<void> => {
     const deadlockPath = getActiveDeadlockPath();
     if (!deadlockPath) return; // nothing to warm; silent (called opportunistically)
     await warmCache(deadlockPath);
+});
+
+// What the catalog is currently built from, and a way to rebuild it. The
+// renderer shows this when a browse surface comes back empty: "the portraits
+// disappeared" is unanswerable without knowing which pak was indexed, when, and
+// whether the thumbnail cache belongs to that build.
+ipcMain.handle('foundry:catalogDiagnostics', async (): Promise<CatalogDiagnostics> => {
+    return catalogDiagnostics(requireDeadlockPath());
+});
+
+// Drop the derived caches and re-warm. Deletes only what this app rebuilds from
+// the game's own pak, never user content.
+ipcMain.handle('foundry:rebuildCatalog', async (): Promise<CatalogDiagnostics> => {
+    const deadlockPath = requireDeadlockPath();
+    await rebuildCatalogCaches(deadlockPath);
+    return catalogDiagnostics(deadlockPath);
 });
 
 // Bake a hero ability-VFX effect (recolor / prism / gradient / trippy) into a
