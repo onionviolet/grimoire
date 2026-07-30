@@ -168,7 +168,9 @@
       "favorite": "Favorite this hero",
       "unfavorite": "Remove from favorites",
       "searchScope": "Searches hero names and codenames.",
-      "resultCount": "Showing {{visible}} of {{total}} heroes"
+      "resultCount": "Showing {{visible}} of {{total}} heroes",
+      "showDisabled": "Show disabled heroes",
+      "disabled": "Not in the live roster"
     },
     "workshop": {
       "appearance": "Appearance",
@@ -242,7 +244,14 @@
       "allHeroes": "All heroes",
       "heroAndShared": "{{hero}} & shared",
       "unreleasedGroup": "Unreleased or internal",
-      "searchPlaceholder": "Search assets..."
+      "searchPlaceholder": "Search assets...",
+      "heroLabel": "Filter assets by hero",
+      "heroSearchLabel": "Search heroes",
+      "heroSearchPlaceholder": "Hero or codename...",
+      "heroSearchEmpty": "No hero matches \"{{query}}\".",
+      "heroSearchClear": "Clear hero search",
+      "heroSearchScope": "Searches hero names and engine codenames.",
+      "heroSearchCount": "Showing {{visible}} of {{total}} heroes"
     },
     "diagnostics": {
       "summary": "Where this catalog comes from",
@@ -355,8 +364,8 @@
       "annotate": "Annotate",
       "annotatedOnly": "Annotated only",
       "baseGameLabel": "Base-game label:",
-      "existingSources": "Existing sources",
-      "existingSourcesHint": "Inspect installed VPKs that write these exact sound paths",
+      "existingSources": "Sources & winner",
+      "existingSourcesHint": "Show installed sources and the current winner for these exact sound paths",
       "loading": "Reading sounds from your game files...",
       "play": "Audition",
       "poolPosition": "clip {{n}} of {{total}}",
@@ -449,6 +458,9 @@
     },
     "sources": {
       "inspecting": "Inspecting installed sources; actions will be available when this finishes.",
+      "checking": "Checking installed replacements…",
+      "stock": "Stock",
+      "incompleteSummary": "Installed-source inspection is incomplete.",
       "inspect": "Existing sources",
       "reinspect": "Re-inspect",
       "inspectHint": "Inspect installed VPKs that write this exact asset path",
@@ -3321,7 +3333,7 @@
       "wipedRestoreNote_other": " Your {{count}} saved overrides will be restored too.",
       "notApplied": "Performance config is not applied."
     },
-    "credit": "Map looks dark? Set in-game shadows to Medium or Low. Game updates wipe the config; Grimoire spots that here so you can reapply. By <sqooky>Sqooky</sqooky> and <contributors>contributors<extlink></extlink></contributors>. If it helps, <kofi>buy them a coffee</kofi>.",
+    "tip": "Map looks dark? Set in-game shadows to Medium or Low. Game updates wipe the config; Grimoire spots that here so you can reapply.",
     "restoreBackup": "Restore Backup",
     "reapply": "Reapply",
     "reapplyConfig": "Reapply Config",
@@ -3346,6 +3358,7 @@
       "meta_other": "{{count}} settings, by {{author}}",
       "unstable": "Upstream labels this config experimental and changes it often. Expect rough edges.",
       "credit": "Values from {{credit}}, licensed {{license}}.",
+      "creditSqooky": "<sqooky>Sqooky</sqooky> is on GameBanana; if this preset helps, <kofi>buy them a coffee</kofi>.",
       "pinnedTag": "Pinned to release {{ref}}",
       "pinnedCommit": "Pinned to upstream {{ref}} (no git tag published)",
       "tier": {

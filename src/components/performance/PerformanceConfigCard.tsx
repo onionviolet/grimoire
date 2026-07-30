@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useTranslation, Trans } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { useNavigate } from 'react-router-dom';
-import { Gauge, ExternalLink, RefreshCw, RotateCcw, Settings2, SquarePen } from 'lucide-react';
+import { Gauge, RefreshCw, RotateCcw, Settings2, SquarePen } from 'lucide-react';
 import { Card, Badge, Button, Toggle } from '../common/ui';
 import EditorPickerModal from './EditorPickerModal';
 import OutOfRangeDialog from './OutOfRangeDialog';
@@ -28,8 +28,15 @@ import type {
   PerformancePresetSummary,
 } from '../../types/electron';
 
-const OPTIMIZATIONLOCK_URL = 'https://github.com/Sqooky/OptimizationLock';
 const SQOOKY_KOFI_URL = 'https://ko-fi.com/sqooky';
+
+// The bundled presets come from two different upstreams, Sqooky's
+// OptimizationLock and dacooder's OptiLock, and this card used to credit Sqooky
+// in fixed prose whichever one was selected. PresetPicker already names the
+// right upstream and license from the preset itself; what it cannot know is
+// that Sqooky also has a GameBanana identity and a tip jar worth linking, so
+// that half rides in as a slot and only for their presets. Issue #20.
+const SQOOKY_REPO_PREFIX = 'Sqooky/';
 
 // Sqooky's GameBanana identity, so the credit opens the in-app artist view
 // (Browse scoped to their submissions) like any other artist link.
@@ -461,43 +468,44 @@ export default function PerformanceConfigCard() {
       }
     >
       <div className="space-y-4 mb-4">
-        {presets.length > 0 && <PresetPicker presets={presets} selectedId={selectedId} onSelect={onSelectPreset} disabled={busy} />}
+        {presets.length > 0 && (
+          <PresetPicker
+            presets={presets}
+            selectedId={selectedId}
+            onSelect={onSelectPreset}
+            disabled={busy}
+            creditSlot={
+              selectedPreset?.upstream.repo.startsWith(SQOOKY_REPO_PREFIX) ? (
+                <Trans
+                  i18nKey="performance.preset.creditSqooky"
+                  components={{
+                    sqooky: (
+                      <button
+                        type="button"
+                        onClick={viewSqookyInBrowse}
+                        className="text-accent hover:underline"
+                      />
+                    ),
+                    kofi: (
+                      <a
+                        href={SQOOKY_KOFI_URL}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        className="text-accent hover:underline"
+                      />
+                    ),
+                  }}
+                />
+              ) : null
+            }
+          />
+        )}
         {selectedPreset && <GameplayOptIns preset={selectedPreset} selected={selectedOptIns} onChange={onChangeOptIns} disabled={busy} />}
       </div>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="min-w-0 space-y-1">
           <p className="text-sm text-text-secondary">{status ? performanceStatusMessage(status, t) : t('performance.checkingGameinfo')}</p>
-          <p className="text-xs text-text-secondary">
-            <Trans
-              i18nKey="performance.credit"
-              components={{
-                sqooky: (
-                  <button
-                    type="button"
-                    onClick={viewSqookyInBrowse}
-                    className="text-accent hover:underline"
-                  />
-                ),
-                contributors: (
-                  <a
-                    href={OPTIMIZATIONLOCK_URL}
-                    target="_blank"
-                    rel="noreferrer noopener"
-                    className="text-accent hover:underline inline-flex items-center gap-0.5"
-                  />
-                ),
-                extlink: <ExternalLink className="w-3 h-3" aria-hidden="true" />,
-                kofi: (
-                  <a
-                    href={SQOOKY_KOFI_URL}
-                    target="_blank"
-                    rel="noreferrer noopener"
-                    className="text-accent hover:underline"
-                  />
-                ),
-              }}
-            />
-          </p>
+          <p className="text-xs text-text-secondary">{t('performance.tip')}</p>
           {actionNote && <p className="text-xs text-text-secondary/80">{actionNote}</p>}
           {openError && <p className="text-xs text-state-danger">{openError}</p>}
         </div>
