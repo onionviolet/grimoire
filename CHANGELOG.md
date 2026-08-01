@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented here. Format is loosely based on [Keep a Changelog](https://keepachangelog.com/), and the project adheres to semantic versioning.
 
-## [1.26.2] - 2026-08-01
+## [1.26.20] - 2026-08-01
 
 ### Fixed
 - Hardened the in-app ad and tracker blocker so its filter-list fetch works reliably in packaged Electron builds.
