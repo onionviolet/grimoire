@@ -154,6 +154,22 @@ export interface PerformanceConvarState {
     outOfRange?: boolean;
 }
 
+/** Describes a ConVar Grimoire knows how to manage.  This is data rather than
+ * a writer: edits still go through the file-specific services. */
+export interface ConfigKeyDefinition {
+    key: string;
+    file: 'gameinfo.gi';
+    type: 'boolean' | 'enum' | 'numeric' | 'string';
+    allowedValues?: readonly string[];
+    min?: number;
+    max?: number;
+    step?: number;
+    label: string;
+    description: string;
+    surfaces: readonly ('performance-preset' | 'game-configuration')[];
+    gameDefault: string | null;
+}
+
 /** A gameplay/visibility convar a preset's author set, which Grimoire holds
  *  back from the preset body and writes only when the user opts in. */
 export interface PerformanceOptIn {
@@ -1002,6 +1018,7 @@ export interface ElectronAPI {
     getGameinfoStatus: () => Promise<GameinfoStatus>;
     fixGameinfo: () => Promise<GameinfoStatus>;
     getPerformanceConfigStatus: () => Promise<PerformanceConfigStatus>;
+    getConfigKeyIndex: () => Promise<readonly ConfigKeyDefinition[]>;
     listPerformancePresets: () => Promise<PerformancePresetSummary[]>;
     applyPerformanceConfig: (
         presetId?: string,

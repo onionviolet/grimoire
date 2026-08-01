@@ -236,6 +236,8 @@ export default function Foundry() {
         // Only meaningful alongside `?hero=`: a deep link opens a specific
         // hero's workshop on a specific section (the Locker links portraits).
         initialSection={new URLSearchParams(location.search).get('section') ?? undefined}
+        // The Locker links a specific portrait family, not just the section.
+        initialFamilyKey={new URLSearchParams(location.search).get('family') ?? undefined}
         onBack={leaveWorkshop}
         stagedEdits={stagedEdits}
         onStage={stageEdit}

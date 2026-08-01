@@ -16,6 +16,7 @@ import Crosshair from './pages/Crosshair';
 import Autoexec from './pages/Autoexec';
 import Stats from './pages/Stats';
 import ChatWheel from './pages/ChatWheel';
+import Config from './pages/Config';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { ConfirmProvider } from './components/common/confirm';
 import { useSocialStore } from './stores/socialStore';
@@ -95,6 +96,7 @@ export default function App() {
             <Route path="autoexec" element={<Autoexec />} />
             <Route path="stats" element={<Stats />} />
             <Route path="chat-wheel" element={<ChatWheel />} />
+            <Route path="config" element={<Config />} />
             <Route path="settings" element={<Settings />} />
           </Route>
         </Routes>

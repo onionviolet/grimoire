@@ -11,6 +11,7 @@ import { getSettings } from '../lib/api';
 import { Button, SegmentedControl } from '../components/common/ui';
 import { PageHeader } from '../components/common/PageComponents';
 import Tx from '../components/translation/Tx';
+import { useSegmentedTabs } from '../components/common/useSegmentedTabs';
 
 // The in-game crosshair is authored in 1080p-reference px and scaled by
 // screen height, so the preview multiplies by (resolution / 1080).
@@ -33,6 +34,7 @@ export default function Crosshair() {
     const { t } = useTranslation();
     const [copied, setCopied] = useState(false);
     const [imported, setImported] = useState(false);
+    const resolutionTabs = useSegmentedTabs<string>();
     const [resolution, setResolution] = useState(detectResolutionHeight);
     const [zoom, setZoom] = useState(1);
     const [background, setBackground] = useState<StageBackground>('street');
@@ -260,6 +262,7 @@ export default function Crosshair() {
                                     options={RESOLUTIONS.map((r) => ({ value: String(r.height), label: r.label }))}
                                     value={String(resolution)}
                                     onChange={(v) => setResolution(parseInt(v, 10))}
+                                    tabs={resolutionTabs}
                                     label={t('crosshair.preview.resolutionTitle')}
                                 />
                                 <div className="flex items-center gap-1 border-l border-white/10 pl-2">

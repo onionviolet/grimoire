@@ -920,6 +920,10 @@ export async function getPerformanceConfigStatus(): Promise<PerformanceConfigSta
   return window.electronAPI.getPerformanceConfigStatus();
 }
 
+export async function getConfigKeyIndex(): Promise<import('../types/electron').ConfigKeyDefinition[]> {
+  return [...await window.electronAPI.getConfigKeyIndex()];
+}
+
 export async function listPerformancePresets(): Promise<PerformancePresetSummary[]> {
   return window.electronAPI.listPerformancePresets();
 }

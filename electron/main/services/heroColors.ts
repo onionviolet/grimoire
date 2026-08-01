@@ -43,55 +43,7 @@ import type {
     TrippyVfxChoice,
 } from '../../../src/types/mod';
 import type { HeroEffectExportRequest } from '../../../src/types/foundry';
-
-/**
- * Display name -> model/particle recolor codename, scoped to heroes that have a
- * pinned recipe in vpkmerge's `recolor-hero` (the recipe key must match exactly).
- * This is deliberately its OWN table, not the sound/panorama codename maps: the
- * recolor recipe is keyed by the `models/` + `particles/abilities/` codename,
- * which can diverge from those. Add a hero here in lockstep with adding its
- * recipe to vpkmerge (`recipe_for` in vpkmerge-core/src/hero_recolor.rs).
- */
-const COLOR_CODENAME_BY_HERO: Readonly<Record<string, string>> = {
-    Paige: 'bookworm',
-    Abrams: 'abrams',
-    Apollo: 'fencer',
-    Bebop: 'bebop',
-    Billy: 'punkgoat',
-    Calico: 'nano',
-    Celeste: 'unicorn',
-    Doorman: 'doorman',
-    Drifter: 'drifter',
-    Dynamo: 'dynamo',
-    Graves: 'necro',
-    'Grey Talon': 'archer',
-    Haze: 'haze',
-    Holliday: 'astro',
-    Infernus: 'inferno',
-    Ivy: 'tengu',
-    Kelvin: 'kelvin',
-    'Lady Geist': 'ghost',
-    Lash: 'lash',
-    McGinnis: 'mcginnis',
-    Mina: 'vampirebat',
-    Mirage: 'mirage',
-    'Mo & Krill': 'digger',
-    Paradox: 'chrono',
-    Pocket: 'pocket',
-    Rem: 'familiar',
-    Seven: 'gigawatt',
-    Shiv: 'shiv',
-    Silver: 'werewolf',
-    Sinclair: 'magician',
-    Venator: 'priest',
-    Victor: 'frank',
-    Vindicta: 'hornet',
-    Viscous: 'viscous',
-    Vyper: 'viper',
-    Warden: 'warden',
-    Wraith: 'wraith',
-    Yamato: 'yamato',
-};
+import { particleCodenameForHero } from '../../../src/lib/heroCodenames';
 
 /** Bumped when the recolor recipe/binary changes in a way that should re-bake
  *  cached addons. Part of the cache filename so a stale bake is never reused.
@@ -104,9 +56,20 @@ const COLOR_CODENAME_BY_HERO: Readonly<Record<string, string>> = {
  *  v7: bundled vpkmerge main build with full selectable-roster recipe coverage. */
 const RECIPE_CACHE_VERSION = 7;
 
-/** The recolor codename for a hero, or null when no recipe is pinned for it. */
+/**
+ * The recolor codename for a hero, or null when no recipe is pinned for it.
+ *
+ * Reads the `particle` column of the hero codename join
+ * (`src/lib/heroCodenames.ts`), which is also the `particles/abilities/<x>/`
+ * namespace. It used to be a table here, which meant this file and
+ * `heroPoseModels.ts` each held part of "the model codename" without either
+ * saying so: the recolor recipe key and the `.vmdl_c` basename are different
+ * strings for Abrams, McGinnis and Seven. Add a hero to the join in lockstep
+ * with adding its recipe to vpkmerge (`recipe_for` in
+ * vpkmerge-core/src/hero_recolor.rs); a null `particle` is what gates the rest.
+ */
 export function colorCodenameForHero(heroName: string): string | null {
-    return COLOR_CODENAME_BY_HERO[heroName] ?? null;
+    return particleCodenameForHero(heroName);
 }
 
 /** Whether ability-color recolor is available for this hero (a recipe exists). */

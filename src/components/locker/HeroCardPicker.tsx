@@ -30,29 +30,17 @@ import { collectFoundryChanges } from '../foundry/changeList';
 import { foundryChangeEntries } from '../../lib/foundryChanges';
 import { buildPortraitInventory, overlappingClaims, portraitProvenanceOf } from '../../lib/portraitInventory';
 import { variantPreviewClass } from './cardSlotStyles';
+import HeroPortraitFamilies from './HeroPortraitFamilies';
+import {
+  normalizePortraitVariant,
+  portraitVariantLabelKey,
+  portraitVariantRank,
+} from '../../lib/portraitFamilyView';
 
 interface HeroCardPickerProps {
   heroName: string;
 }
 
-const VARIANT_LABEL_KEY: Record<string, string> = {
-  card: 'locker.cards.variants.card',
-  vertical: 'locker.cards.variants.vertical',
-  card_critical: 'locker.cards.variants.cardCritical',
-  card_gloat: 'locker.cards.variants.cardGloat',
-  minimap: 'locker.cards.variants.minimap',
-  small: 'locker.cards.variants.small',
-  other: 'locker.cards.variants.other',
-};
-
-/** Display order for the variant strip. The full "card" cover reads first,
- *  then the rest roughly by prominence; unknown variants sort last. */
-const VARIANT_ORDER = ['card', 'vertical', 'card_critical', 'card_gloat', 'minimap', 'small', 'other'];
-
-function variantRank(variant: string): number {
-  const i = VARIANT_ORDER.indexOf(variant);
-  return i === -1 ? VARIANT_ORDER.length : i;
-}
 
 
 /** A cheap order-independent fingerprint of the current picks, used to tell
@@ -80,7 +68,21 @@ interface PortraitFileGroup {
  */
 export default function HeroCardPicker({ heroName }: HeroCardPickerProps) {
   const { t } = useTranslation();
-  const variantLabel = useCallback((variant: string) => t(VARIANT_LABEL_KEY[variant] ?? 'locker.cards.variants.other'), [t]);
+  // Labels and ordering come from the shared portrait view model, so the base
+  // card manifest's `minimap`/`small` and the compiled catalog's `mm`/`sm` are
+  // one variant with one name wherever they are shown (#10 Part 2 item 9).
+  const variantLabel = useCallback(
+    (variant: string) => {
+      const canonical = normalizePortraitVariant(variant);
+      const key = portraitVariantLabelKey(canonical);
+      return key ? t(key) : variant;
+    },
+    [t],
+  );
+  const variantRank = useCallback(
+    (variant: string) => portraitVariantRank(normalizePortraitVariant(variant)),
+    [],
+  );
   const loadMods = useAppStore((s) => s.loadMods);
   const mods = useAppStore((s) => s.mods);
   const foundryShuffleIncluded = useAppStore((s) => s.foundryShuffleIncluded);
@@ -344,7 +346,7 @@ export default function HeroCardPicker({ heroName }: HeroCardPickerProps) {
       modFileName,
       variants: [...variants].sort((a, b) => variantRank(a.variant) - variantRank(b.variant)),
     }));
-  }, [portraits]);
+  }, [portraits, variantRank]);
 
   return (
     <section className="space-y-3 border-t border-border/60 pt-5">
@@ -377,6 +379,21 @@ export default function HeroCardPicker({ heroName }: HeroCardPickerProps) {
           <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
           <span className="break-words">{actionError}</span>
         </div>
+      )}
+
+      {/* Browse first: the base-game family, what the game draws for it now,
+          and where each variant came from. Everything below this is the
+          existing install-and-upload flow, which starts from a mod or a file
+          rather than from the portrait. */}
+      {!error && (
+        <HeroPortraitFamilies
+          heroName={heroName}
+          slots={slots}
+          portraits={portraits}
+          mods={mods}
+          loading={loading}
+          onReplaceVariant={handlePickVariant}
+        />
       )}
 
       {!loading && !error && fileGroups.length === 0 && (
@@ -418,8 +435,17 @@ export default function HeroCardPicker({ heroName }: HeroCardPickerProps) {
                 } ${busySource !== null && !isBusy ? 'opacity-60' : ''}`}
               >
                 <div className="relative z-10 flex items-center justify-between gap-2 border-b border-border/50 px-3 py-2">
-                  <span className="truncate text-xs font-semibold text-text-primary">
-                    {group.modFileName.replace(/_dir\.vpk$/, '')}
+                  {/* The mod's own name, the same string the sources panel one
+                      scroll below uses. These read as two different mods
+                      otherwise: the 2026-07-30 matrix caught `pak12` heading a
+                      card whose sources row called it
+                      `Crying Girlfriend Mina`. */}
+                  <span
+                    className="truncate text-xs font-semibold text-text-primary"
+                    title={group.modFileName}
+                  >
+                    {modByMetaKey.get(group.modFileName)?.name?.trim() ||
+                      group.modFileName.replace(/_dir\.vpk$/, '')}
                   </span>
                   <div className="flex flex-shrink-0 items-center gap-2">
                     {source && (<span className="rounded-full border border-border/70 px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-text-secondary">{t(`locker.cards.provenance.${source.provenance}`)} {source.enabled ? t('locker.cards.enabled') : t('locker.cards.disabled')}</span>)}

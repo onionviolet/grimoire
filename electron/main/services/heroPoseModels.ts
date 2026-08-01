@@ -31,29 +31,11 @@ import { app, protocol, net } from 'electron';
 import { runVpkmerge, runVpkmergeStdout, verifyVpkOutput } from './modMerger';
 import { SOURCE2_EXTRAS_VERSION } from '../../../src/lib/source2ExtrasVersion';
 import { codenamesForHero } from './heroPortraits';
+import { divergentBodyModelForHero } from '../../../src/lib/heroCodenames';
 import { getCitadelPath, getAddonsPath, getDisabledPath } from './deadlock';
 import { resolvePreviewVpk } from './previewVpkRegistry';
 
 export const HERO_POSE_SCHEME = 'grimoire-hero';
-
-/**
- * Heroes whose body-model file basename diverges from their panorama codename,
- * so `--hero <panorama>` discovery (`<dir>/<codename>.vmdl_c` under
- * `models/heroes*`) misses them. Verified against the base pak: these names are
- * the actual `.vmdl_c` basenames. Every other hero resolves from its panorama
- * codename (codenamesForHero), so only the divergent ones are listed here.
- *
- * `--hero` matches by file basename regardless of the `_vN` dir, so e.g.
- * Vindicta's `hornet_v3/hornet.vmdl_c` is found by plain `hornet` and needs no
- * entry here.
- */
-const MODEL_CODENAME_OVERRIDES: Readonly<Record<string, string[]>> = {
-    Abrams: ['atlas_detective'],
-    McGinnis: ['engineer'],
-    'Grey Talon': ['archer'],
-    'Mo & Krill': ['digger'],
-    Seven: ['gigawatt_prisoner'],
-};
 
 /**
  * Heroes Valve reworked in the "6 hero update": the current body model moved to
@@ -105,7 +87,12 @@ const MODEL_ENTRY_OVERRIDES: Readonly<Record<string, string>> = {
  *  body-model basename, then the panorama codename(s) that cover the rest of
  *  the roster. De-duplicated, order preserved. */
 function modelCodenamesForHero(heroName: string): string[] {
-    const ordered = [...(MODEL_CODENAME_OVERRIDES[heroName] ?? []), ...codenamesForHero(heroName)];
+    // Any body-model basename that diverges from the panorama codename first,
+    // from the hero codename join (`src/lib/heroCodenames.ts`). `--hero`
+    // discovery looks for `<dir>/<codename>.vmdl_c` under `models/heroes*` and
+    // misses those five heroes otherwise. The join only reports a divergent
+    // name, so the panorama codenames below are never listed twice.
+    const ordered = [...divergentBodyModelForHero(heroName), ...codenamesForHero(heroName)];
     return [...new Set(ordered)];
 }
 

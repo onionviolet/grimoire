@@ -60,7 +60,9 @@ describe('portraitFamilyVariants', () => {
   it('names known state suffixes and leaves unknown ones raw', () => {
     expect(portraitVariantKey('panorama/images/heroes/mina.png')).toBe('base');
     expect(portraitVariantKey('panorama/images/heroes/mina_low-hp.png')).toBe('low_hp');
-    expect(portraitVariantLabelKey('gloat')).toBe('portraitEditor.variants.gloat');
+    // `gloat` and `card_gloat` are one variant under two spellings, so both
+    // land on the one shared label key.
+    expect(portraitVariantLabelKey('gloat')).toBe('portrait.variants.card_gloat');
     expect(portraitVariantLabelKey('card_low_hp')).toBeNull();
   });
 });
@@ -125,7 +127,7 @@ describe('groupPortraitFamilies', () => {
       new Set(['card', 'card_critical', 'card_gloat', 'mm', 'sm', 'vertical']),
     );
     expect(portraitVariantKey('panorama/images/heroes/astro_sm_psd_e2407af5.vtex_c')).toBe('sm');
-    expect(portraitVariantLabelKey('card_critical')).toBe('portraitEditor.variants.card_critical');
+    expect(portraitVariantLabelKey('card_critical')).toBe('portrait.variants.card_critical');
   });
 
   it('ignores non hero-image categories entirely', () => {

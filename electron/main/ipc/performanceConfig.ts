@@ -14,7 +14,9 @@ import {
     setPerformanceHudConvars,
     clearPerformanceConvars,
 } from '../services/performanceConfig';
+import { CONFIG_KEY_INDEX } from '../services/configKeyIndex';
 import type {
+    ConfigKeyDefinition,
     EditorCandidate,
     PerformanceConfigStatus,
     PerformancePresetSummary,
@@ -41,6 +43,10 @@ function selection(presetId?: string, optIns?: string[]) {
 ipcMain.handle('get-performance-config-status', (): PerformanceConfigStatus => {
     return getPerformanceConfigStatus(getActiveDeadlockPath());
 });
+
+// Metadata only. Keeping this behind IPC makes the Config workspace read the
+// same index the main-process resolver uses, without creating another writer.
+ipcMain.handle('get-config-key-index', (): readonly ConfigKeyDefinition[] => CONFIG_KEY_INDEX);
 
 // list-performance-presets
 ipcMain.handle('list-performance-presets', (): PerformancePresetSummary[] => {

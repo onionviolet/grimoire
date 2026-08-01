@@ -25,9 +25,13 @@
  */
 import type { FoundryAssetSourcesInspection, TextureEntry } from '../../types/foundry';
 import {
+  normalizePortraitVariant,
+  portraitVariantKey,
+  portraitVariantLabelKey as sharedVariantLabelKey,
+} from '../../lib/portraitFamilyView';
+import {
   portraitFamilyKey,
   prepareVisualStagedEdit,
-  stripPortraitFileTokens,
   visualAssetInspectionPaths,
   type VisualStagedEdit,
 } from './visualEdits';
@@ -57,50 +61,29 @@ export interface PortraitVariant<T extends PortraitFamilyItem = TextureEntry> {
   anchor: boolean;
 }
 
-/** The state suffixes the catalog actually uses, mirrored from the family-key
- *  stripper in visualEdits. Anything else keeps its raw suffix as its label. */
-const KNOWN_VARIANT_KEYS: ReadonlySet<string> = new Set([
-  'base',
-  'card',
-  'portrait',
-  'low_hp',
-  'gloat',
-  'minimap',
-  // The live pak's stacked card states (e.g. astro_card_gloat_psd).
-  'card_gloat',
-  'card_critical',
-  'vertical',
-]);
-
 function normalizePath(path: string): string {
   return path.replace(/\\/g, '/').replace(/^\/+/, '');
 }
 
-function basename(path: string): string {
-  const normalized = normalizePath(path).toLowerCase();
-  return normalized.slice(normalized.lastIndexOf('/') + 1).replace(/\.[^.]+$/, '');
-}
+/**
+ * Which state inside its family a portrait path is. Re-exported from the shared
+ * portrait view model, which owns it now: the Locker needs the same derivation
+ * and importing it from an authoring module would be the wrong direction.
+ */
+export { portraitVariantKey };
 
 /**
- * Which state inside its family a portrait path is: the part of the filename the
- * family key strips. `mina_card_low_hp.png` in the `.../mina` family is
- * `card_low_hp`; an unsuffixed `mina.png` is `base`.
+ * Translation key for a variant, or null when the suffix is not one the catalog
+ * is known to use (the caller then shows the raw suffix rather than inventing a
+ * friendly name for something it did not recognize).
+ *
+ * Delegates to the shared portrait view model, which owns the one variant
+ * vocabulary both surfaces label from. Before that, the compiled catalog's
+ * `mm`/`sm` and the base-card manifest's `minimap`/`small` were two names for
+ * one variant with two sets of translations behind them.
  */
-export function portraitVariantKey(path: string): string {
-  // Diff against the family stem with the pak's hash/format tail removed, so
-  // `astro_card_gloat_psd` reads as the `card_gloat` state, not `card_gloat_psd`.
-  const base = stripPortraitFileTokens(basename(path));
-  const family = portraitFamilyKey(path);
-  const familyBase = family.slice(family.lastIndexOf('/') + 1);
-  const suffix = base.startsWith(familyBase) ? base.slice(familyBase.length) : '';
-  return suffix.replace(/^[_-]+/, '').replace(/-/g, '_') || 'base';
-}
-
-/** Translation key for a variant, or null when the suffix is not one the catalog
- *  is known to use (the caller then shows the raw suffix rather than inventing
- *  a friendly name for something it did not recognize). */
 export function portraitVariantLabelKey(key: string): string | null {
-  return KNOWN_VARIANT_KEYS.has(key) ? `portraitEditor.variants.${key}` : null;
+  return sharedVariantLabelKey(normalizePortraitVariant(key));
 }
 
 /**

@@ -28,6 +28,7 @@ import {
   Volume2,
   VolumeX,
   MessageCircle,
+  SlidersHorizontal,
 } from 'lucide-react';
 import {
   getConflicts,
@@ -498,6 +499,7 @@ export default function Sidebar() {
       { to: '/foundry', icon: Hammer, labelKey: 'nav.foundry', label: t('nav.foundry'), tooltip: t('sidebar.tooltip.foundry'), experimental: 'foundry' },
       { to: '/crosshair', icon: Target, labelKey: 'nav.crosshair', label: t('nav.crosshair'), tooltip: t('sidebar.tooltip.crosshair'), experimental: 'crosshair' },
       { to: '/autoexec', icon: ScrollText, labelKey: 'nav.autoexec', label: t('nav.autoexec'), tooltip: t('sidebar.tooltip.autoexec') },
+      { to: '/config', icon: SlidersHorizontal, labelKey: 'nav.config', label: t('nav.config'), tooltip: t('sidebar.tooltip.config') },
       { to: '/chat-wheel', icon: MessageCircle, labelKey: 'nav.chatWheel', label: t('nav.chatWheel', 'Chat Wheel'), tooltip: t('sidebar.tooltip.chatWheel', 'Edit ChatLane chat wheels'), experimental: 'chatWheel' },
       { to: '/stats', icon: Activity, labelKey: 'nav.stats', label: t('nav.stats'), tooltip: t('sidebar.tooltip.stats'), experimental: 'stats' },
       { to: '/conflicts', icon: Swords, labelKey: 'nav.conflicts', label: t('nav.conflicts'), tooltip: t('sidebar.tooltip.conflicts'), badge: conflictCount, badgeTone: 'warning' },

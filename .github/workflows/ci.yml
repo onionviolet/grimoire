@@ -14,6 +14,10 @@ jobs:
         uses: actions/checkout@v6
         with:
           path: grimoire
+          # Full history: the upstream backlink guard walks the commits this
+          # push/PR actually adds, and needs upstream/main to exempt upstream's
+          # own "(#326)" squash subjects.
+          fetch-depth: 0
 
       # pnpm-lock.yaml resolves @grimoire/social-types to
       # link:../grimoire-social/packages/social-types. Local dev works because
@@ -91,6 +95,27 @@ jobs:
       - name: Source encoding
         working-directory: grimoire
         run: pnpm encoding:check
+
+      # This repo is the fork. A commit message that writes a bare upstream
+      # number or a github.com upstream URL makes GitHub post a reference into
+      # Slush97/grimoire's timeline under the pusher's name, and the entry
+      # survives any later edit of the text. Local hooks cover the normal path;
+      # this covers pushes made with --no-verify or from another machine.
+      - name: Upstream backlink guard
+        working-directory: grimoire
+        run: |
+          git remote add upstream https://github.com/Slush97/grimoire.git || true
+          git fetch --quiet --no-tags upstream main || true
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch --quiet --no-tags origin "${{ github.base_ref }}"
+            range="origin/${{ github.base_ref }}..HEAD"
+          elif [ -n "${{ github.event.before }}" ] && git cat-file -e "${{ github.event.before }}^{commit}" 2>/dev/null; then
+            range="${{ github.event.before }}..${{ github.sha }}"
+          else
+            range="HEAD~1..HEAD"
+          fi
+          echo "checking $range"
+          node scripts/check-upstream-refs.mjs --range "$range"
 
       # The prod-build gate refuses to build without GRIMOIRE_SOCIAL_BASE_URL
       # set to an https URL. CI uses a placeholder to exercise the build

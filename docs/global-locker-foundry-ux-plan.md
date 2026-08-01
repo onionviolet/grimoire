@@ -533,13 +533,237 @@ Forbidden:
 - A component that both toggles a mod and stages an edit.
 - Any new derivation of "who claims this path". One index, consumed twice.
 
-**Exit criteria, honestly reported.** The decision record and the architecture
-choice are done. The screenshot matrix for stock/installed/empty portrait states
-is **not** captured: what was verified live is that the empty case no longer
-reproduces on any hero checked (Abrams, Wraith, Venator, Mina, Drifter, Paige all
-resolve families), which removes the defect that motivated the matrix but does
-not replace the artifact. Capture it at the start of Pass E, when there is a
-gallery to photograph.
+**Exit criteria.** ~~The screenshot matrix is not captured.~~ Captured on
+2026-07-30, see A2d-matrix below. The decision record, the architecture choice
+and the matrix are all done, so A2d is closed.
+
+### A2d-matrix. The portrait state matrix. Captured 2026-07-30.
+
+Six shots in [docs/screenshots/portrait-matrix](screenshots/portrait-matrix),
+taken against the working tree at `8193f67` in dev slot 3 at 1440x900, on a
+profile with 126 installed mods. The fixture is two heroes: **Wraith**, which
+has no installed portrait source, and **Mina**, which has five (four enabled).
+
+| State | Locker (`Cards & portraits`) | Foundry (`Portraits`) |
+| --- | --- | --- |
+| Stock | `locker-stock-wraith.png` | `foundry-stock-wraith.png` |
+| Installed | `locker-installed-mina.png`, `locker-installed-mina-winners.png` | `foundry-installed-mina.png` |
+| Empty | **no such state, see below** | `foundry-empty-filtered.png` |
+
+The matrix was supposed to be a baseline. It is better read as evidence, because
+four of the six cells disagree with a neighbour.
+
+**1. Foundry shows vanilla art as though it were current.** Mina's `Card` family
+in `foundry-installed-mina.png` renders the base game portrait. On the same hero
+in the same session, `locker-installed-mina-winners.png` reports
+`Hero card: Current winner: Lucy Cyberpunk Edgerunners as Mina`, resolved from
+the same `panorama/images/heroes/vampirebat_card_psd.vtex_c` the Foundry card is
+drawn from. Foundry says this is Mina's card; the game will draw something else.
+This is a sharper case for one shared family view model than A0's double-counting
+(S1, S4): those two derivations disagreed about a *count*, these two disagree
+about *the picture on the screen*.
+
+**2. The Locker has no stock state and no empty state.** It has "some installed
+card art" and "none". `locker-stock-wraith.png` is the whole of the second case,
+and it opens with `Card art found in your installed mods.` immediately above
+`No card art found in your installed mods for Wraith.` Wraith's actual current
+portrait appears nowhere on the surface except incidentally, as the faded
+placeholder inside the six upload slots. The Locker never names a family, so it
+cannot say "stock" and it cannot be empty. That is the browse-first gap in Part 2
+of #10, and it is why the shared view model is the seam rather than a nicety.
+
+**3. Two mods are both labelled `winner` in one flat list.**
+`locker-installed-mina-winners.png` marks `Crying Girlfriend Mina` (priority 12)
+and `Lucy Cyberpunk Edgerunners as Mina` (priority 27) both as `winner`. Both are
+true: the first wins `card_critical`, the second wins the other five paths. The
+per-path truth above the list says so; the badges below it do not carry the path
+they won, so the list reads as a contradiction. Fix in the shared summary, not
+per surface.
+
+**4. The two surfaces call the same mod two different things, on the same
+screen.** The family cards are headed `pak12`, `pak27`, `pak44`, `pak90`
+(`modFileName`); the sources panel four rows below calls the same mods
+`Crying Girlfriend Mina`, `Lucy Cyberpunk Edgerunners as Mina`,
+`Vivian Banshee Mod (Mina)`, `Zarietu's Mina Icons`. Same component, one scroll
+apart.
+
+**5. The empty state cannot say why it is empty.** `foundry-empty-filtered.png`
+was produced by typing a nonsense search, and it renders the exact string the
+2026-07-29 Abrams report screenshotted: `No portraits match` /
+`No portrait families match that hero or search.` A filter miss and a catalog
+miss are indistinguishable, which is precisely why that report could not be
+diagnosed. Ship the catalog diagnostics line (A2c) and split the two messages.
+
+**6. The empty state is the least legible screen in the app.** Foundry passes
+`contentWidth="fluid"`, so the content pane spans the full width while the veil
+stays at `clamp(680px, 56vw, 1160px)`. The empty state centres itself in the
+pane, which lands it on the unblurred hero art: in the shot, white body text sits
+on Mina's face. Compare `foundry-stock-wraith.png`, where the family cards stop
+at the veil edge and read cleanly. This is #15 Axis 1's `clearZoneStart` argument
+with a photograph attached, and it is the reason that token must derive from the
+veil rather than from the content pane.
+
+**Two composition problems visible in passing**, both belonging to #15 Axis 1
+rather than here. `locker-installed-mina.png` has a hard vertical seam about
+three quarters of the way across, with the same backdrop art continuing on both
+sides at different brightness; `foundry-installed-mina.png` shows the same hero
+with no seam. **The cause is not established.** It did not reproduce when the
+plate was re-inspected after the Axis 1 refactor, at which point the Locker was
+serving Mina the hero render rather than a per-skin backdrop, so reproducing it
+starts by getting a skin backdrop back on the stage. Recorded as an artifact to
+diagnose, not as a diagnosis. And the header above the family cards reads
+`2 portrait families available: base, card, card_critical, card_gloat, mm, sm,
+vertical` for Mina, `3 ...` with the identical seven-name list for Wraith: the
+count counts families and the list lists variants, so the sentence cannot be
+read as written. Cheap string fix, tracked in A2b.
+
+**What the matrix did not settle.** No hero on this profile has an *applied*
+Locker card, so the "installed" row is "installed sources contend for this
+family", not "a Grimoire-managed cosmetics VPK is winning". Reaching that state
+means writing a VPK into the real game addons directory, which a dev slot does
+not isolate. Capture it during Part 2, when there is a reason to apply one
+anyway.
+
+### A2d-lane. What the shared shell keeps open, and what would close it.
+
+The shell was chosen partly because it is the reversible option, so the lane back
+to either neighbour is worth writing down rather than rediscovering.
+
+**Toward the full merge**, the only remaining step after Part 2 is deleting a
+route and hoisting the Foundry catalog into the hero shell. Everything else the
+merge wants (one hero identity, one family view model, one claims index, one
+sources summary) is already committed above and is merge-shaped, not
+split-shaped. So the merge stays one commit of UI away for as long as the two
+stores stay separate.
+
+**Back to the hard split** is cheaper still: stop passing the shared view model
+and let each surface derive its own again. Nothing in the committed list is
+load-bearing for the *routes*.
+
+**What would close a door, and is therefore forbidden until re-decided:**
+
+- Merging the two stores. Installed authority and authoring state in one store
+  forecloses the split permanently and is the one thing A0's evidence argues
+  against. This is the same boundary the "Forbidden" list above already draws;
+  it is restated here because it is the only irreversible item on it.
+- Teaching the shared view model about staging. A view model that carries
+  `staged`/`cropped` stops being consumable by a Locker that does not author.
+- Making `HeroDetailFrame` aware of either domain. It is the shell both options
+  need; a `surface === 'foundry'` branch that reads Foundry types turns the
+  shared shell into a merge that has not been decided.
+
+Note that #15 Axis 1 lands `heroStage.ts` inside this lane deliberately: it owns
+composition only, reads no store, and is therefore neutral between all three
+shapes.
+
+### A2d-part2. The browse-first journey. Landed 2026-07-30.
+
+#10 Part 2 is built. The eleven "Done when" items map onto four pieces of code,
+and the design input was A2d-matrix rather than the issue text: four of the six
+matrix cells disagreed with a neighbour, and three of those disagreements are
+now impossible to reintroduce because there is only one place left that answers
+the question.
+
+**The shared view model.**
+[src/lib/portraitFamilyView.ts](../src/lib/portraitFamilyView.ts) is the seam
+(item 9). It takes base-game family members, installed claimants, decoded
+candidate art and a claims index, and returns one view per family: names,
+aliases, variants, base preview, and source state. It is pure, reads no store,
+and carries no staging or crop state, which is what A2d-lane requires of it.
+
+Four things it settles that were previously settled twice, or not at all:
+
+1. **`stockImage` and `currentImage` are different fields.** Matrix finding 1
+   was Foundry drawing Mina's stock card as though it were current while the
+   Locker, same session, reported `Lucy Cyberpunk Edgerunners as Mina` winning
+   that exact path. `currentImage` is null exactly when something wins the path
+   and the surface cannot decode its art, and both surfaces now say so out loud
+   rather than falling back silently. That case is a test
+   (`never presents stock art as current when a mod wins the path`).
+2. **A winner is a `(variant, source)` pair.** Matrix finding 3 was two mods
+   both badged `winner` in one flat list, both true per path, with no path on
+   the badge. `family.winners` cannot be built without the variant.
+3. **A source has one name.** Matrix finding 4 was `pak12` heading a card whose
+   sources panel four rows below called the same mod `Crying Girlfriend Mina`.
+   `name` is the mod's own name; the file name is a separate, secondary field.
+   The Locker's installed-source cards were changed to match.
+4. **`unknown` is a real status.** Foundry's catalog mode lists thousands of
+   entries and deliberately inspects none of them, so it reports "not checked"
+   instead of implying "stock". Only the hero-pinned surface inspects, where
+   the question is bounded to one hero's families.
+
+It also ends the two variant vocabularies. The base-card manifest said
+`minimap`/`small` and the compiled catalog said `mm`/`sm`, with two sets of
+translations behind them (`locker.cards.variants.*` and
+`portraitEditor.variants.*`). Both are gone, replaced by one `portrait.*`
+namespace that every surface labels from. Where one family genuinely contains
+two entries under the same variant name (the pak ships a hash-suffixed
+duplicate of `vampirebat_sm_psd`), the view model appends the file stem rather
+than printing the same label twice with different states.
+
+**The two browsers.**
+[PortraitFamilyCard](../src/components/common/PortraitFamilyCard.tsx) and
+[PortraitFamilyPreview](../src/components/common/PortraitFamilyPreview.tsx) are
+view-model-only and shared, so the card is not derived twice (items 1, 2, 4).
+The expanded preview is full colour throughout, zooms 1x to 4x, and answers #1's
+complaint directly: nothing in it dims art to signal state, because state is
+words. Hover and keyboard focus preview a sibling identically and neither
+selects it, which is what keeps item 3's "never silently changes the family
+image" true; selection is a click or Enter, and only then does the per-variant
+action appear. Arrow keys walk the family, `+`/`-`/`0` zoom.
+
+The Locker's browser
+([HeroPortraitFamilies](../src/components/locker/HeroPortraitFamilies.tsx))
+gives that surface its first stock state and its first empty state, which
+matrix finding 2 says it never had. It builds the family from
+`getCustomCardSlots`, which is one hero's card art and was already loaded for
+the uploader, so item 7 holds: the Locker still does not copy the game catalog,
+and `Create replacement in Foundry` routes out to it. The Stage 2 sources
+summary is the same `AssetSourcesPanel`, handed the inspection it already has
+(item 5).
+
+**The deep link** carries `hero`, `section` and now `family`
+(`/foundry?hero=Mina&section=portraits&family=panorama/images/heroes/vampirebat`),
+and Foundry opens straight into that family's expanded preview. It links by
+display name, so alias resolution is `heroPortraitIdentity.ts`'s job and Abrams
+(`atlas`), Doorman, Paige (`bookworm`) and the legacy panorama codenames all
+resolve through the one map rather than through a second table (item 6).
+
+**Foundry's editor keeps its contract** (item 8). The crop frame, the coverage
+refusal and the "staging adds this to the build tray, nothing is installed"
+line are untouched; the family gallery simply moved ahead of the crop controls
+in reading, tab and visual order.
+
+**The empty states are two states now.** Matrix finding 5: a filter miss and a
+catalog miss rendered the identical string, which is why the 2026-07-29 Abrams
+report could not be diagnosed. They are separate messages, and the catalog miss
+ships the diagnostics line.
+
+**Matrix finding 6 is fixed, and it moved a number.** Foundry's fluid content
+pane let the centred empty state land on unblurred hero art. `heroStage.ts`
+gained `veiledContentWidth` and `VEILED_CONTENT_CLASS`, and PortraitBrowse is
+the first consumer of the clear zone. Measuring it against the running build
+corrected the token twice: the offset is the **wider** rail (340px, not 300px,
+because available width is the clear zone *minus* the rail, so a narrow
+assumption is the optimistic one) **plus the pane's own 24px padding**. With
+both, the block's right edge lands exactly on the veil's clear stop at 1440px.
+The cap is a `lg:` class rather than an inline style, because below `lg` the
+plate and veil are `hidden` and there is nothing to avoid. It is written as a
+literal string: an interpolated class name is invisible to Tailwind's scanner,
+so the utility was never generated and `max-width` silently stayed `none`. A
+test pins the literal to the variable name.
+
+**Verified** in dev slot 3 at 1440x900 and 900x800, keyboard and mouse, with
+`scripts/dev-driver.mjs`. Two shots in
+[docs/screenshots/portrait-browse](screenshots/portrait-browse). The Locker card
+for Mina draws the winning mod's art; Foundry's card for the same family draws
+the stock art and says so. That is the same pair of surfaces that produced
+matrix finding 1, now disagreeing about nothing.
+
+**Still not captured:** the matrix's own open item. No hero on this profile has
+an *applied* Locker card, because reaching that state writes a Grimoire-managed
+VPK into the real game addons directory, which a dev slot does not isolate. Part
+2 did not need to apply one, so it still has not been observed.
 
 ### A3. Keep Foundry's data-mining role explicit
 

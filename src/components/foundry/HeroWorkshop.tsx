@@ -59,6 +59,9 @@ interface HeroWorkshopProps {
   /** Section to open on (deep links like `/foundry?hero=X&section=portraits`).
    *  Unknown values fall back to the default first section. */
   initialSection?: string;
+  /** Portrait family to open on, carried by the Locker's "Create replacement in
+   *  Foundry" link alongside `section=portraits`. */
+  initialFamilyKey?: string;
 }
 
 type SectionId = 'appearance' | 'abilities' | 'voice' | 'portraits' | 'icons' | 'myChanges';
@@ -94,6 +97,7 @@ export default function HeroWorkshop({
   onForge,
   onInstall,
   initialSection,
+  initialFamilyKey,
 }: HeroWorkshopProps) {
   const { t } = useTranslation();
   const mods = useAppStore((s) => s.mods);
@@ -331,7 +335,12 @@ export default function HeroWorkshop({
       ) : section === 'portraits' ? (
         // The family-first portrait surface, pinned to this hero. Staging goes
         // through the same editor and preflight as the catalog-mode tab.
-        <PortraitBrowse hero={hero.codename} heroNames={heroNames} onStage={stage} />
+        <PortraitBrowse
+          hero={hero.codename}
+          heroNames={heroNames}
+          onStage={stage}
+          initialFamilyKey={initialFamilyKey}
+        />
       ) : section === 'icons' ? (
         <div className="space-y-8">
           <TextureBrowse heroes={scopedRoster} heroNames={heroNames} onStage={stage} />

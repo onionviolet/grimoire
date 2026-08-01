@@ -173,6 +173,48 @@ typed descriptor, so each plate declares its own anchoring instead of the slot
 inferring it. The model becomes a third plate rather than a panel drawn on top
 of a plate.
 
+**Landed 2026-07-30.** [src/lib/heroStage.ts](../src/lib/heroStage.ts) owns all
+four tokens and `HeroDetailFrame` reads it for both the plate and the veil. The
+adoption is behaviour-preserving by design and was verified as such against the
+running build: the veil resolves to the same 806.58px at 1440 with the same
+three blur/mask pairs, and the render plate keeps
+`absolute top-0 right-0 h-full w-auto max-w-none`. Three things are worth
+knowing about what did and did not change:
+
+- `clearZoneStart` is **derived** from the heaviest layer's `clearStopPct`
+  rather than written down as `0.94`, because a token whose whole job is to say
+  "the blur has finished here" must not be able to disagree with the mask. It is
+  published on the frame root as `--hero-stage-clear-zone-start`, so a
+  descendant can respect the clear zone without importing the veil.
+  **It got its first consumer the same day** (#10 Part 2, plan doc A2d-part2):
+  Foundry's portrait empty state, which the fluid content pane was centring onto
+  unblurred hero art. That consumer needed a second derived token,
+  `veiledContentWidth`, and building it corrected the arithmetic twice. The
+  offset from the stage's left edge to the content is the **wider** rail (340px,
+  not 300px: available width is the clear zone *minus* the rail, so assuming a
+  narrow rail is the optimistic error) **plus the pane's own 24px padding**.
+  Measured against the running veil at 1440, both corrections were worth exactly
+  the 40px and 24px they sound like, and the block's right edge then landed on
+  the clear stop to the pixel. Two lessons for the next consumer: the cap is a
+  `lg:` class, not an inline style, because below `lg` the plate and veil are
+  `hidden` and capping would only narrow the content for nothing; and the class
+  is a **literal** string, because Tailwind scans source text and never
+  generated the utility while the class name was interpolated from the variable
+  constant. `max-width` stayed `none` and the failure was silent. A test pins
+  the literal to the variable name.
+- `subjectX` ships as the single source but has **no runtime consumer yet**, and
+  that is deliberate. The `render` plate is height-scaled with no `object-fit`,
+  so an `object-position` on it does nothing, and re-anchoring it would reframe
+  all 38 heroes at once: a design change, not a refactor. The `skinImage` plate
+  stays centred because the table was calibrated against the bundled hero
+  renders and that art is mod-authored. Its first real consumer is the model
+  camera.
+- The Locker grid (`Locker.tsx:1836`) has a **second** frosted veil with the
+  same three blur radii and deliberately shorter tapers, because it backs a
+  300px sidebar rather than a 300px rail plus a 480px pane. That is a variant,
+  not drift. `heroStage.ts` says so in a comment so nobody unifies them by
+  pointing the grid at `HERO_STAGE_VEIL`.
+
 Then the three questions the request implies, answered rather than noted:
 
 **Does the model inherit the right-anchored, height-scaled composition?**
@@ -196,6 +238,42 @@ what it samples today on the left, which is the solid `bg-primary`
 (`HeroDetailFrame.tsx:109`). If a hero's framing genuinely needs to extend
 under the veil, drop to the single 10px layer for that hero rather than
 accepting three. Measure before defaulting either way; see Risks.
+
+**Measured 2026-07-30, and the measurement did not answer the question.**
+[tools/veil-blur-bench.js](../tools/veil-blur-bench.js) puts a canvas that
+dirties its whole surface every frame into the plate position and samples 240
+`requestAnimationFrame` deltas per condition, on the real stage (1216x900 CSS at
+DPR 1.24, clear zone 758px). Every condition landed between 10.2 and 11.0 ms
+mean, roughly 92-97 fps:
+
+| Condition | Mean | p95 |
+| --- | --- | --- |
+| A. Static `<img>` plate, three layers (today) | 10.28 ms | 14.6 ms |
+| B. Repainting canvas spanning the stage, three layers | 10.81 ms | 15.0 ms |
+| C. Same canvas, veil hidden | 10.25 ms | 15.2 ms |
+| D. Same canvas, one blur layer | 10.95 ms | 15.4 ms |
+| E. Canvas framed right of `clearZoneStart`, three layers | 10.98 ms | 14.9 ms |
+| F. **Positive control:** canvas spanning the stage, blur radii quadrupled to 192/96/40px | 10.74 ms | 15.0 ms |
+
+**F is the row that matters, and it failed.** Quadrupling the blur radius over a
+repainting canvas cost nothing, and hiding the veil entirely (C) cost nothing
+either. A harness that cannot see a 4x blur cannot be trusted to have seen a 1x
+one, so the flat B/D/E rows are not evidence that blur over a canvas is cheap.
+They are evidence that on this machine the frame loop is bounded by vsync at
+about 100 Hz and by the main-thread canvas paint, with the compositor's blur
+work never on the critical path.
+
+So the risk register's question stands, and its phrasing was already right: this
+needs **a low-end GPU**, where the ceiling is low enough for the blur to reach
+it. What this run does establish is a method and a null baseline on capable
+hardware, plus the harness to re-run in one command. It also lines up with the
+Axis 2 gate: both blockers here are readings a human has to take on real
+hardware, not code anyone can write.
+
+The compositional fix in the paragraph above is unaffected either way. Framing
+the model right of `clearZoneStart` makes the veil sample what it already
+samples, so it is correct by construction and costs nothing to adopt while the
+measurement is outstanding.
 
 **What is the fallback when a hero has no recipe?** The 2D plate, unchanged and
 without an error. This is already the shape upstream chose: `--require-pose`
@@ -384,6 +462,60 @@ card/model `bookworm` versus background `patience`). "Relevant" means joining
 three namespaces per hero. That join, not the playback, is the work. It should
 be one table with one row per hero and an explicit null where a namespace is
 unknown, because a wrong join here silently plays another hero's effect.
+
+**Built 2026-07-30, and the premise above was wrong in one respect: it is four
+namespaces, not three.** [src/lib/heroCodenames.ts](../src/lib/heroCodenames.ts)
+is the join. What the tree actually says, once the three tables it folds are put
+side by side, is that "the model codename" was two different strings wearing one
+name:
+
+| Column | Namespace | Owned by |
+| --- | --- | --- |
+| `panorama` | `panorama/images/heroes/<x>_*`, API `class_name` | `heroPortraitIdentity.ts` (aliases live there too) |
+| `sound` | `sounds/abilities/<x>/`, keys `HERO_ABILITY_SLOTS` | `heroSoundCodenames.ts` |
+| `particle` | `particles/abilities/<x>/`, and the `recolor-hero` recipe key | **this table** (was `COLOR_CODENAME_BY_HERO` in `heroColors.ts`) |
+| `bodyModel` | the `<x>.vmdl_c` basename under `models/heroes*` | **this table** (was `MODEL_CODENAME_OVERRIDES` in `heroPoseModels.ts`) |
+| `background` | hero-select `_bg` art | **this table**, null everywhere but Paige until `f91b9a1` lands |
+
+Six heroes diverge, and only six:
+
+| Hero | panorama | sound | particle | bodyModel |
+| --- | --- | --- | --- | --- |
+| Abrams | `atlas` | `abrams` | `abrams` | `atlas_detective` |
+| Grey Talon | `orion` | `orion` | `archer` | `archer` |
+| McGinnis | `forge` | `forge` | `mcginnis` | `engineer` |
+| Mo & Krill | `krill` | `mokrill` | `digger` | `digger` |
+| Pocket | `synth` | `synth` | `pocket` | `synth` |
+| Seven | `gigawatt` | `gigawatt` | `gigawatt` | `gigawatt_prisoner` |
+
+Three observations worth keeping:
+
+- **Mo & Krill and Abrams each use three distinct names across four
+  namespaces.** Every other hero on the roster agrees with itself, which is
+  exactly why a join written from one hero's example passes review.
+- **Pocket diverges on `particle` only** (`pocket`, not `synth`), so a rule of
+  the form "the particle codename is the model codename" is wrong even for
+  heroes whose body model needs no override.
+- **The five sound-only rows** (Fathom, Kali, Tokamak, Trapper, Wrecker) have a
+  `sound` codename and null everywhere else. Their sound mods must still
+  classify, and nothing else about them may be assumed. That is why the columns
+  are nullable per column rather than per row, and why `translateHeroCodename`
+  returns null instead of echoing its input: an echo is what would send the app
+  looking for `particles/abilities/fathom/`.
+
+`heroColors.ts` and `heroPoseModels.ts` now read the join rather than carrying
+their own tables, and the change is behaviour-preserving:
+`heroCodenames.test.ts` pins the five body-model overrides and the 38 recolor
+recipe keys to exactly what those files listed by hand. It also checks the two
+columns the join does *not* own against their owning tables in both directions,
+so a hero added to `heroSoundCodenames.ts` alone fails CI rather than resolving
+to the wrong asset at runtime, and it asserts that no codename in any namespace
+is claimed by two heroes.
+
+Everything above is data, so it landed ahead of the stage box exactly as the
+sequencing said it could. What it does **not** do is decide anything about
+playback: no clip is selected, no particle is fired, and `USE_EFFECT_PREVIEW` is
+still `false`.
 
 **Where it belongs in the UI: on the stage.** Argued, not just noted.
 
@@ -631,6 +763,12 @@ sits outside the blurred region, but that has to be measured on a low-end GPU
 before 3D becomes the default presentation rather than assumed from the
 geometry. If it does not hold, the fallback ladder is: one blur layer instead of
 three, then a static blurred snapshot, then keep the panel.
+
+Attempted on 2026-07-30 with [tools/veil-blur-bench.js](../tools/veil-blur-bench.js)
+and **still open**: on this desktop GPU the positive control (4x blur radii)
+was free, so the harness could not resolve blur cost at all. Details in Axis 1.
+The low-end reading is the remaining gate, alongside Axis 2's fps reading on
+Seven. Both are human measurements on real hardware.
 
 **Cache growth.** Each pose GLB is 50-95 MB and every hero-plus-stack
 combination is its own entry; the byte cap exists because 1.7 GB was observed

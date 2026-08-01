@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useCrosshairStore } from '../../stores/crosshairStore';
 import { SegmentedControl, Slider, Toggle } from '../common/ui';
+import { useSegmentedTabs } from '../common/useSegmentedTabs';
 import Tx from '../translation/Tx';
 
 type ControlTab = 'lines' | 'dot' | 'color' | 'game';
@@ -95,6 +96,7 @@ export default function CrosshairControls() {
     { value: 'color' as const, label: t('crosshair.tabs.color') },
     { value: 'game' as const, label: t('crosshair.tabs.game') },
   ];
+  const controlTabs = useSegmentedTabs<ControlTab>();
 
   return (
     <div className="flex h-full min-h-0 flex-col rounded-sm border border-white/5 bg-bg-secondary/50 backdrop-blur-sm">
@@ -104,11 +106,12 @@ export default function CrosshairControls() {
           options={tabs}
           value={tab}
           onChange={setTab}
+          tabs={controlTabs}
           label={t('crosshair.tabs.label')}
         />
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-5">
+      <div {...controlTabs.panelProps(tab)} className="min-h-0 flex-1 overflow-y-auto p-5">
         {tab === 'lines' && (
           <div className="space-y-5">
             <Slider editable label={<Tx k="crosshair.controls.gap" fallback="Gap" />} value={pipGap} min={-10} max={50} onChange={setPipGap} />

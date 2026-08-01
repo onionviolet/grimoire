@@ -1,7 +1,7 @@
 {
   "name": "grimoire",
   "private": true,
-  "version": "1.26.16",
+  "version": "1.26.2",
   "description": "Grimoire - A Deadlock mod manager and customization workshop",
   "license": "MIT",
   "author": {
@@ -34,6 +34,7 @@
     "typecheck": "tsc -b",
     "i18n:check": "node scripts/check-i18n.mjs",
     "encoding:check": "node scripts/check-encoding.mjs",
+    "refs:check": "node scripts/check-upstream-refs.mjs",
     "i18n:manifest": "node scripts/gen-locale-manifest.mjs",
     "perf:presets": "node scripts/gen-performance-presets.mjs",
     "i18n:extract-unwired": "node scripts/extract-unwired-i18n.mjs",

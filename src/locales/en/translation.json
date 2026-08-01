@@ -88,10 +88,42 @@
     "profiles": "Profiles",
     "crosshair": "Crosshair",
     "autoexec": "Autoexec",
+    "config": "Config",
     "stats": "Stats",
     "settings": "Settings",
     "browser": "Browser",
     "chatWheel": "Chat Wheel"
+  },
+  "config": {
+    "title": "Configuration",
+    "description": "The resolved settings Grimoire manages for your game.",
+    "count_one": "{{count}} setting",
+    "count_other": "{{count}} settings",
+    "precedence": "Deadlock reads autoexec.cfg after gameinfo.gi. When both set a key, the autoexec value is the resolved value shown here.",
+    "search": "Search settings",
+    "filter": "Filter settings",
+    "filters": {
+      "all": "All settings",
+      "changed": "Changed from stock",
+      "conflicted": "Overridden by autoexec",
+      "gameinfo": "gameinfo.gi"
+    },
+    "origins": {
+      "game-default": "Game default",
+      "managed-preset": "Performance preset",
+      "user-override": "Your override",
+      "unsupported": "Unrecognized value"
+    },
+    "overridden": "Autoexec wins",
+    "openEditor": "Open editor",
+    "resolved": "Resolved value",
+    "stock": "Game default",
+    "written": "gameinfo.gi value",
+    "unknown": "Unknown",
+    "notSet": "Not set",
+    "conflictDetail": "autoexec.cfg line {{line}} sets this to {{value}}, so it overrides gameinfo.gi.",
+    "empty": "No settings match these filters.",
+    "error": "Could not read configuration"
   },
   "saved": {
     "title": "Saved Mods",
@@ -223,17 +255,22 @@
     },
     "portraits": {
       "searchPlaceholder": "Search portraits...",
-      "coverage_one": "{{count}} portrait family available: {{variants}}",
-      "coverage_other": "{{count}} portrait families available: {{variants}}",
+      "coverage_one": "{{count}} portrait family. Variants it covers: {{variants}}",
+      "coverage_other": "{{count}} portrait families. Variants they cover: {{variants}}",
       "empty": {
-        "title": "No portraits match",
-        "description": "No portrait families match that hero or search."
+        "title": "No portraits in the catalog",
+        "description": "No portrait families were indexed from your game files. This is a catalog result, not a filter: nothing is being hidden."
       },
       "notIndexed": {
         "title": "No base-game portrait family found",
         "description": "This hero has no indexed editable portrait family in this game build. Browse the global catalog or report the missing mapping."
       },
-      "browseGlobal": "Browse global catalog"
+      "browseGlobal": "Browse global catalog",
+      "filtered": {
+        "title": "Nothing matches this search",
+        "description_one": "The search matched none of the {{total}} portrait family here. Clear it to see them again.",
+        "description_other": "The search matched none of the {{total}} portrait families here. Clear it to see them again."
+      }
     },
     "search": {
       "clear": "Clear asset search",
@@ -2249,15 +2286,6 @@
         "imported": "Imported",
         "third-party": "Third-party"
       },
-      "variants": {
-        "card": "Hero card",
-        "vertical": "Vertical card",
-        "cardCritical": "Low-health card",
-        "cardGloat": "Gloat card",
-        "minimap": "Minimap icon",
-        "small": "Compact hero portrait",
-        "other": "Other portrait variant"
-      },
       "decodingPortraits": "Decoding portraits...",
       "noCardArt": "No card art found in your installed mods for {{hero}}.",
       "applied": "Applied",
@@ -2941,6 +2969,7 @@
       "foundry": "Browse the game's asset catalog: textures, icons, and heroes.",
       "crosshair": "Custom crosshair editor.",
       "autoexec": "Console commands that run at game launch.",
+      "config": "See the resolved settings written across your game configuration.",
       "stats": "Match history and personal stats.",
       "conflicts": "Mods that overwrite the same game files.",
       "profiles": "Save and swap sets of enabled mods.",
@@ -3675,17 +3704,6 @@
     "stage_other": "Stage {{count}} changes",
     "staged_one": "Added 1 portrait change to the build tray. Nothing has been installed.",
     "staged_other": "Added {{count}} portrait changes to the build tray. Nothing has been installed.",
-    "variants": {
-      "base": "Portrait",
-      "card": "Hero card",
-      "portrait": "Portrait",
-      "low_hp": "Low HP",
-      "gloat": "Gloat",
-      "minimap": "Minimap",
-      "card_gloat": "Gloat",
-      "card_critical": "Critical",
-      "vertical": "Vertical"
-    },
     "useCurrentArt": "Use current art",
     "useCurrentArtHint": "Load the game's own art for this variant into the frame",
     "currentArtUnavailable": "The current art for this entry could not be decoded.",
@@ -3760,6 +3778,56 @@
       "takes_other": "{{count}} takes",
       "overriddenBy": "Overridden by {{winner}}",
       "openWinner": "open"
+    }
+  },
+  "portrait": {
+    "variants": {
+      "base": "Portrait",
+      "portrait": "Portrait",
+      "card": "Hero card",
+      "vertical": "Vertical card",
+      "card_critical": "Low-health card",
+      "card_gloat": "Gloat card",
+      "minimap": "Minimap icon",
+      "small": "Compact portrait",
+      "other": "Other portrait variant"
+    },
+    "status": {
+      "stock": "Base game art",
+      "installed": "Replaced by a mod",
+      "disabled": "Replacement installed but disabled",
+      "conflict": "Claimed by more than one enabled mod",
+      "unknown": "Not checked"
+    },
+    "family": {
+      "title": "{{hero}}: {{variant}}",
+      "browserTitle": "Portrait families",
+      "browserCount_one": "{{count}} family",
+      "browserCount_other": "{{count}} families",
+      "loading": "Reading the base game portrait family...",
+      "noneTitle": "No base game portrait family",
+      "noneBody": "Grimoire could not read a base game portrait family for {{hero}} from your installed game files, so there is nothing to compare a replacement against. Browsing the full catalog lives in Foundry.",
+      "expand": "Expand {{hero}} {{variant}} at full size",
+      "showingStock": "Base game art",
+      "showingCurrent": "What the game draws now",
+      "showStock": "Show base game art",
+      "showCurrent": "Show current art",
+      "variants": "Variants in this family",
+      "selectVariant": "Show {{variant}}",
+      "keyboardHint": "Left and right arrows move through the family. Plus, minus and 0 zoom.",
+      "winnerRow": "{{variant}}: {{name}}",
+      "moreWinners_one": "{{count}} more variant is replaced",
+      "moreWinners_other": "{{count}} more variants are replaced",
+      "thumbIsStock": "Showing base game art. A mod replaces this in game.",
+      "overriddenWithoutArt": "{{name}} replaces this in game. This screen cannot decode that mod's art, so the base game art is shown instead: it is not what you will see in game.",
+      "sourcesTitle": "Sources and winner",
+      "replaceVariant": "Replace {{variant}}",
+      "editVariant": "Open {{variant}} in the portrait editor",
+      "createInFoundry": "Create replacement in Foundry",
+      "createInFoundryHint": "Opens this hero and this family in the Foundry portrait workshop. Browsing or selecting an image there installs nothing.",
+      "zoomIn": "Zoom in",
+      "zoomOut": "Zoom out",
+      "zoomReset": "Reset zoom"
     }
   }
 }

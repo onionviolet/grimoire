@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here. Format is loosely based on [Keep a Changelog](https://keepachangelog.com/), and the project adheres to semantic versioning.
 
+## [1.26.2] - 2026-08-01
+
+### Fixed
+- Hardened the in-app ad and tracker blocker so its filter-list fetch works reliably in packaged Electron builds.
+- Integrated the latest upstream editor and catalog fixes while preserving fork-specific Foundry and Locker work.
+
 ## [1.26.16] - 2026-07-30
 
 A fork-only follow-up to v1.26.1. It repairs the text corruption that shipped in

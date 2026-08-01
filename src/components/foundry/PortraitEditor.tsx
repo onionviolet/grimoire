@@ -348,109 +348,11 @@ export default function PortraitEditor({ item, catalog, heroName, initialFile, o
             closeDisabled={busy}
           />
 
-          <div className="grid gap-5 overflow-y-auto p-5 md:grid-cols-[minmax(0,340px)_minmax(0,1fr)]">
-            {/* Frame: locked to the template's own aspect. */}
-            <div className="flex flex-col gap-3">
-              <div className="flex items-center justify-between gap-2 text-[11px] text-text-secondary">
-                <span>
-                  {activeTarget
-                    ? t('portraitEditor.target', { width: activeTarget.width, height: activeTarget.height })
-                    : t('portraitEditor.targetUnknown', 'Template size unknown')}
-                </span>
-                <span className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => void loadCurrentArt()}
-                    title={t('portraitEditor.useCurrentArtHint')}
-                    className="inline-flex cursor-pointer items-center gap-1 rounded-sm border border-border px-2 py-1 text-text-secondary transition-colors hover:border-accent/50 hover:text-text-primary disabled:opacity-50"
-                  >
-                    <Images size={12} />
-                    {t('portraitEditor.useCurrentArt')}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => fileRef.current?.click()}
-                    className="inline-flex cursor-pointer items-center gap-1 rounded-sm border border-border px-2 py-1 text-text-secondary transition-colors hover:border-accent/50 hover:text-text-primary disabled:opacity-50"
-                  >
-                    <Upload size={12} />
-                    {t('portraitEditor.choose', 'Choose image')}
-                  </button>
-                </span>
-              </div>
-
-              <LockerImageCropper
-                key={`${item.path}:${slotId(slot)}:${activeTarget ? `${activeTarget.width}x${activeTarget.height}` : 'unknown'}`}
-                imageDataUrl={source}
-                aspect={aspect}
-                nameControls={false}
-                allowHideName={false}
-                emptyHint={t('portraitEditor.emptyHint', 'Drop a PNG here, or click to choose one')}
-                onPickClick={() => fileRef.current?.click()}
-                onDropFile={(file) => void pick(file)}
-                busy={busy}
-                onApply={(result) => void applyCrop(result)}
-              />
-              <input
-                ref={fileRef}
-                type="file"
-                accept="image/png,image/jpeg,image/webp"
-                className="hidden"
-                onChange={(e) => {
-                  void pick(e.target.files?.[0]);
-                  e.target.value = '';
-                }}
-              />
-
-              {/* Images already framed in this or an earlier session. The
-                  staging cache is content-addressed, so this is a record of
-                  real work rather than a second store to keep in sync. */}
-              {recent.length > 0 && (
-                <div>
-                  <p className="mb-1 flex items-center gap-1 text-[11px] text-text-secondary">
-                    <History size={12} />
-                    {t('portraitEditor.recentTitle')}
-                  </p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {recent.map((image) => (
-                      <button
-                        key={image.path}
-                        type="button"
-                        disabled={busy}
-                        onClick={() => void loadIntoFrame(image.dataUrl, image.label)}
-                        title={portraitImageLabel(image.path, image.label)}
-                        aria-label={portraitImageLabel(image.path, image.label)}
-                        className="w-20 overflow-hidden rounded-sm border border-border transition-colors hover:border-accent/60 disabled:opacity-50 cursor-pointer"
-                      >
-                        <img
-                          src={image.dataUrl}
-                          alt=""
-                          className="h-12 w-full object-cover"
-                          draggable={false}
-                        />
-                        <span className="block truncate px-1 py-0.5 text-[10px] text-text-secondary">
-                          {portraitImageLabel(image.path, image.label)}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {upscales && activeTarget && sourceSize && (
-                <p className="flex items-start gap-2 rounded-sm border border-yellow-500/30 bg-yellow-500/10 p-2 text-[11px] text-yellow-300">
-                  <AlertTriangle size={13} className="mt-0.5 shrink-0" />
-                  {t('portraitEditor.upscaleWarning', {
-                    sourceWidth: sourceSize.width,
-                    sourceHeight: sourceSize.height,
-                    targetWidth: activeTarget.width,
-                    targetHeight: activeTarget.height,
-                  })}
-                </p>
-              )}
-            </div>
-
+          {/* Browse first, then author: the family gallery comes before the
+              crop controls in reading, tab and visual order (#10 Part 2 item
+              8). The crop and staging contract itself is untouched, including
+              the coverage warning and the "staging installs nothing" line. */}
+          <div className="grid gap-5 overflow-y-auto p-5 md:grid-cols-[minmax(0,1fr)_minmax(0,340px)]">
             {/* The family, made explicit. */}
             <div className="flex min-w-0 flex-col gap-3">
               <div>
@@ -572,6 +474,108 @@ export default function PortraitEditor({ item, catalog, heroName, initialFile, o
                   {t('portraitEditor.stage', { count: plan.length })}
                 </Button>
               </div>
+            </div>
+
+            {/* Frame: locked to the template's own aspect. */}
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center justify-between gap-2 text-[11px] text-text-secondary">
+                <span>
+                  {activeTarget
+                    ? t('portraitEditor.target', { width: activeTarget.width, height: activeTarget.height })
+                    : t('portraitEditor.targetUnknown', 'Template size unknown')}
+                </span>
+                <span className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void loadCurrentArt()}
+                    title={t('portraitEditor.useCurrentArtHint')}
+                    className="inline-flex cursor-pointer items-center gap-1 rounded-sm border border-border px-2 py-1 text-text-secondary transition-colors hover:border-accent/50 hover:text-text-primary disabled:opacity-50"
+                  >
+                    <Images size={12} />
+                    {t('portraitEditor.useCurrentArt')}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => fileRef.current?.click()}
+                    className="inline-flex cursor-pointer items-center gap-1 rounded-sm border border-border px-2 py-1 text-text-secondary transition-colors hover:border-accent/50 hover:text-text-primary disabled:opacity-50"
+                  >
+                    <Upload size={12} />
+                    {t('portraitEditor.choose', 'Choose image')}
+                  </button>
+                </span>
+              </div>
+
+              <LockerImageCropper
+                key={`${item.path}:${slotId(slot)}:${activeTarget ? `${activeTarget.width}x${activeTarget.height}` : 'unknown'}`}
+                imageDataUrl={source}
+                aspect={aspect}
+                nameControls={false}
+                allowHideName={false}
+                emptyHint={t('portraitEditor.emptyHint', 'Drop a PNG here, or click to choose one')}
+                onPickClick={() => fileRef.current?.click()}
+                onDropFile={(file) => void pick(file)}
+                busy={busy}
+                onApply={(result) => void applyCrop(result)}
+              />
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                className="hidden"
+                onChange={(e) => {
+                  void pick(e.target.files?.[0]);
+                  e.target.value = '';
+                }}
+              />
+
+              {/* Images already framed in this or an earlier session. The
+                  staging cache is content-addressed, so this is a record of
+                  real work rather than a second store to keep in sync. */}
+              {recent.length > 0 && (
+                <div>
+                  <p className="mb-1 flex items-center gap-1 text-[11px] text-text-secondary">
+                    <History size={12} />
+                    {t('portraitEditor.recentTitle')}
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {recent.map((image) => (
+                      <button
+                        key={image.path}
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void loadIntoFrame(image.dataUrl, image.label)}
+                        title={portraitImageLabel(image.path, image.label)}
+                        aria-label={portraitImageLabel(image.path, image.label)}
+                        className="w-20 overflow-hidden rounded-sm border border-border transition-colors hover:border-accent/60 disabled:opacity-50 cursor-pointer"
+                      >
+                        <img
+                          src={image.dataUrl}
+                          alt=""
+                          className="h-12 w-full object-cover"
+                          draggable={false}
+                        />
+                        <span className="block truncate px-1 py-0.5 text-[10px] text-text-secondary">
+                          {portraitImageLabel(image.path, image.label)}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {upscales && activeTarget && sourceSize && (
+                <p className="flex items-start gap-2 rounded-sm border border-yellow-500/30 bg-yellow-500/10 p-2 text-[11px] text-yellow-300">
+                  <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+                  {t('portraitEditor.upscaleWarning', {
+                    sourceWidth: sourceSize.width,
+                    sourceHeight: sourceSize.height,
+                    targetWidth: activeTarget.width,
+                    targetHeight: activeTarget.height,
+                  })}
+                </p>
+              )}
             </div>
           </div>
         </>

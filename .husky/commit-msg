@@ -1,0 +1,6 @@
+# Upstream backlink guard. A fork commit that writes "#261" or a github.com
+# upstream URL makes GitHub post a reference into Slush97/grimoire's timeline
+# under this account's name, and that entry cannot be taken back: editing the
+# text afterwards leaves the event in place. Catch it while the message is
+# still a file on disk. See scripts/check-upstream-refs.mjs.
+node scripts/check-upstream-refs.mjs --message-file "$1"

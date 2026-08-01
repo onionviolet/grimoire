@@ -8,3 +8,9 @@ node scripts/gen-locale-manifest.mjs --check
 # corruption is invisible in review and the fix happened to sit uncommitted in
 # the working tree. This is the cheapest place to catch a recurrence.
 pnpm encoding:check
+
+# Second half of the upstream backlink guard (commit-msg is the first). Amends,
+# rebases and cherry-picks can all rewrite a message past that hook, and the
+# push is the moment GitHub gets to act on it. Upstream's own "(#326)" squash
+# subjects are exempt: they are already reachable from upstream/main.
+pnpm refs:check

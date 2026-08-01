@@ -110,7 +110,13 @@ async function getOrLoadBlocker(): Promise<ElectronBlocker | null> {
 
         if (!blockerInstance) {
             try {
-                blockerInstance = await ElectronBlocker.fromPrebuiltAdsAndTracking(fetch);
+                // Electron's main process does not guarantee that a bare
+                // `fetch` reference retains the global receiver. Bind the
+                // runtime implementation explicitly so fetching the bundled
+                // filter lists works in packaged builds as well as tests.
+                const fetchImpl = globalThis.fetch?.bind(globalThis);
+                if (!fetchImpl) throw new Error('Global fetch is unavailable');
+                blockerInstance = await ElectronBlocker.fromPrebuiltAdsAndTracking(fetchImpl);
                 if (cachePath) {
                     try {
                         const dir = path.dirname(cachePath);
