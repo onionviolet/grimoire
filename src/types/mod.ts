@@ -685,6 +685,12 @@ export interface Mod {
   /** User opted out of the "update available" flag for this mod. Persisted
    *  in metadata; toggled from the mod details modal. */
   ignoreUpdates?: boolean;
+  /** User marked this mod Global. It lives in citadel/grimoire, the search
+   *  path the engine reads before citadel/addons, so it wins every file
+   *  collision and the launch shuffle never disables it. Note this is the
+   *  *precedence* axis and has nothing to do with `globalType`, which is the
+   *  Locker's non-hero *classification* axis (labelled "General" in the UI). */
+  priorityMod?: boolean;
   /** True once this VPK has been re-packed in place with a self-identifying
    *  `addoninfo.txt` embed (path B imprinting). A UI hint only: it does NOT
    *  affect canonical identity (sha256 stays the original). Projected from
@@ -1296,10 +1302,15 @@ export interface AppSettings {
    *  generated default. This is the pre-apply choice; what is actually in
    *  gameinfo.gi right now comes from the file's own marker. */
   performanceConfigPresetId?: string;
-  /** Gameplay/visibility convar keys the user opted into, per preset id.
-   *  These are held out of the presets by default (a performance preset must
-   *  not silently enable enemy outlines or change FOV), so an empty or missing
-   *  list means none are applied. */
+  /** Which bundled upstream release of a preset the user picked, per preset id.
+   *  Absent (or naming a release this build no longer bundles) means the newest
+   *  one. Kept per preset so rolling one preset back does not pin the others,
+   *  and separate from `performanceConfigPresetId` so switching preset and
+   *  switching version stay independent choices. */
+  performanceConfigVersions?: Record<string, string>;
+  /** Gameplay/visibility convar keys included for each preset. A missing entry
+   *  means creator defaults (visibility/camera on, developer tools off); an
+   *  explicit empty list means the user disabled every optional setting. */
   performanceConfigOptIns?: Record<string, string[]>;
   /** Editor binary used to open gameinfo.gi for hand edits. null = the OS
    *  default app; undefined = never chosen, so the picker is shown first.

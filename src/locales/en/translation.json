@@ -1337,7 +1337,7 @@
       "confirmProfileUpdate": "Confirm before overwriting a profile's saved mods. Off overwrites immediately.",
       "ignoreConflicts": "Hide all conflicts from the Conflicts page. Off shows them.",
       "discordRpc": "Show your current Grimoire activity on your Discord profile. Talks only to your local Discord app and sends nothing to Grimoire.",
-      "contributeSalts": "Share the replay keys Steam already caches for matches you view in-game. Sends only the match id, server cluster, and two download keys: no account id, no username, nothing about you or your mods.",
+      "contributeSalts": "Share the replay keys Steam already caches for matches you view in-game. Sends only the match id, server cluster, two download keys, and a fixed \"grimoire\" client tag: no account id, no player name, nothing about you or your mods.",
       "fixUnknown": "Match unknown local VPKs against GameBanana to recover names and thumbnails. May hit rate limits on large libraries.",
       "vpkImprint": "Give each newly installed mod a small identity imprint so an orphaned file can be recognized offline. Adds an Imprint installed mods button on the Installed page to imprint mods you already have.",
       "deadworks": "Add a Servers tab to browse and join Deadworks community servers. Required content downloads before connecting.",
@@ -1882,15 +1882,22 @@
       "mergeCombineHint_other": "Combine {{count}} mods into one VPK",
       "tag": "Tag",
       "tagEmptyHint": "Select mods to tag for the Locker",
-      "tagCountHint_one": "Tag {{count}} mod for a hero or Global category in the Locker",
-      "tagCountHint_other": "Tag {{count}} mods for a hero or Global category in the Locker",
+      "tagCountHint_one": "Tag {{count}} mod for a hero or General category in the Locker",
+      "tagCountHint_other": "Tag {{count}} mods for a hero or General category in the Locker",
       "tagDialogLabel": "Tag selected mods for the Locker"
     },
     "tag": {
       "clearLockerTag": "Clear Locker tag",
       "setLockerTag": "Set Locker tag",
-      "global": "Global",
+      "global": "General",
       "hero": "Hero"
+    },
+    "priority": {
+      "make": "Make Global",
+      "clear": "Remove from Global",
+      "chip": "Global",
+      "hint": "Global mods load before every other mod, so they always win when two mods change the same file. Shuffling skins never turns them off.",
+      "busy": "Moving..."
     },
     "card": {
       "soundPreview": "Sound Preview",
@@ -2032,6 +2039,20 @@
       "useLockerImage": "Use Locker image",
       "hideHeroName": "Hide hero name label",
       "hideHeroNameHint": "Turn on when the image already shows the hero's name."
+    },
+    "globalPicker": {
+      "title": "Add mods to Global",
+      "description": "Global mods load before everything else, so they always win when two mods change the same file. Shuffling skins never turns them off.",
+      "trigger": "Add mods",
+      "searchPlaceholder": "Search installed mods...",
+      "selectedCount_one": "{{count}} selected",
+      "selectedCount_other": "{{count}} selected",
+      "add": "Add to Global",
+      "adding": "Adding...",
+      "disabled": "Off",
+      "noMatches": "No installed mods match that search.",
+      "allGlobal": "Every installed mod is already Global.",
+      "empty": "Nothing is Global yet. Add a mod here to keep it on and winning over everything else."
     },
     "global": {
       "activeBadgeTitle": "This soul container is active and loaded in-game",
@@ -2427,7 +2448,7 @@
       "gallery": "Gallery",
       "list": "List",
       "noHeroCategoriesFound": "No hero categories found.",
-      "global": "Global",
+      "global": "General",
       "globalEmptyHint": "Import soul containers & spirit urns",
       "unassigned": "Unassigned",
       "unassignedDescription": "These mods couldn't be matched to a hero automatically. Tag one to move it into that hero's locker pile.",
@@ -2440,10 +2461,10 @@
       "back": "Back",
       "changeCategory": "Change category",
       "changeCategoryForNamed": "Change category for {{name}}",
-      "changeGlobalCategory": "Change global category",
+      "changeGlobalCategory": "Change General category",
       "moveToCategory": "Move to category",
-      "removeFromGlobal": "Remove from Global",
-      "noGlobalNonHeroCosmeticsInstalledYet": "No global (non-hero) cosmetics installed yet.",
+      "removeFromGlobal": "Remove from General",
+      "noGlobalNonHeroCosmeticsInstalledYet": "No general (non-hero) cosmetics installed yet.",
       "disableNamed": "Disable {{name}}",
       "enableNamed": "Enable {{name}}",
       "clickToDisable": "Click to disable",
@@ -3316,8 +3337,7 @@
     "copyingAddress": "Copying address",
     "addressCopied": "Address copied",
     "copyAddressFailed": "Copy address failed",
-    "openImage": "Open image",
-    "revealModInFolder": "Reveal mod in folder"
+    "openImage": "Open image"
   },
   "audioPreview": {
     "audioUnavailable": "Audio unavailable",
@@ -3436,7 +3456,7 @@
       "browse": "Browse for an application..."
     },
     "creditSqooky": "Browse <sqooky>Sqooky's mods</sqooky> or <kofi>buy them a coffee</kofi>.",
-    "shadowsHint": "Map looks dark? Set in-game shadows to Medium or Low. Game updates wipe the config; Grimoire spots that here so you can reapply.",
+    "shadowsHint": "Map looks dark? Set in-game shadows to Medium or Low.",
     "switchTo": "Switch to {{preset}}",
     "switchNote": "Applying replaces {{current}} with {{next}}. Your saved tweaks for {{current}} are kept in case you switch back.",
     "preset": {
@@ -3466,9 +3486,9 @@
       }
     },
     "optIn": {
-      "title": "Gameplay settings",
+      "title": "Creator gameplay settings",
       "count": "{{enabled}} of {{count}} enabled",
-      "description": "This preset's author also changed settings that affect what you can see or how the camera is framed, not how fast the game runs. Grimoire leaves these off so a performance preset never changes your game's feel behind your back. Turn on the ones you want.",
+      "description": "The creator's visibility and camera settings are included by default. Turn off anything you do not want. Developer and testing tools stay off unless you enable them.",
       "presetValue": "This preset sets it to {{value}}",
       "pending_one": "{{count}} gameplay setting changed. Reapply to write it to gameinfo.gi.",
       "pending_other": "{{count}} gameplay settings changed. Reapply to write them to gameinfo.gi.",
@@ -3477,7 +3497,16 @@
         "camera": "Camera and field of view",
         "devtools": "Developer and testing tools"
       }
-    }
+    },
+    "version": {
+      "label": "Version",
+      "hint": "Roll back if a newer release runs worse. Your tweaks carry over.",
+      "option": "{{ref}} ({{date}})",
+      "optionNewest": "{{ref}} ({{date}}, newest)",
+      "pending": "Version changed to v{{version}}. Reapply to write it to gameinfo.gi.",
+      "pinned": "Staying on v{{version}}. The newest bundled version is v{{latest}}."
+    },
+    "moreActions": "More actions"
   },
   "lockerOverrides": {
     "volume": "Volume",

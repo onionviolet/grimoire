@@ -6,7 +6,7 @@
  * them without making a new writer: it is descriptive data for status and for
  * the future Config workspace.
  */
-import { PRESETS } from './performanceConfigData';
+import { PRESETS, getPreset } from './performanceConfigData';
 import { ADVANCED_GAMEINFO_CONVARS, HUD_CONVARS } from './performanceUserControls';
 
 export type ConfigKeyType = 'boolean' | 'enum' | 'numeric' | 'string';
@@ -33,7 +33,8 @@ export interface ConfigKeyDefinition {
 
 const humanize = (key: string) => key.replace(/[_.]+/g, ' ');
 const presetValues = new Map<string, Set<string>>();
-for (const preset of PRESETS) {
+for (const family of PRESETS) {
+    const preset = getPreset(family.id);
     for (const [key, value] of [...preset.convars, ...preset.optIn.map(({ key, value }) => [key, value] as const)]) {
         const values = presetValues.get(key) ?? new Set<string>();
         values.add(value);

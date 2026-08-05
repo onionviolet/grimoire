@@ -1,4 +1,4 @@
-import { memo, startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { memo, startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
 import { createPortal } from 'react-dom';
 import {
@@ -67,9 +67,24 @@ import {
   Copy,
   ExternalLink,
   Star,
+  ArrowUpToLine,
+  ImageDown,
+  Link,
 } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { MenuContent, MenuItem, MenuRoot, MenuSeparator, MenuTrigger } from '../components/common/menu';
+import {
+  MenuContent,
+  MenuItem,
+  MenuLabel,
+  MenuRadioGroup,
+  MenuRadioItem,
+  MenuRoot,
+  MenuSeparator,
+  MenuSub,
+  MenuSubContent,
+  MenuSubTrigger,
+  MenuTrigger,
+} from '../components/common/menu';
 import { showToast } from '../stores/toastStore';
 import { useAppStore, type BrowseArtistRef } from '../stores/appStore';
 import { getActiveDeadlockPath } from '../lib/appSettings';
@@ -84,7 +99,6 @@ import type { Mod, GlobalModType, UnknownModDetectionProgress, UnknownModFilterG
 import type { GameBananaModDetails, GameBananaMod, GameBananaItemRef } from '../types/gamebanana';
 import { getModThumbnail } from '../types/gamebanana';
 import ModThumbnail from '../components/ModThumbnail';
-import ImageContextMenu from '../components/ImageContextMenu';
 import AudioPreviewPlayer from '../components/AudioPreviewPlayer';
 import ModDetailsModal from '../components/ModDetailsModal';
 import VariantPickerModal from '../components/VariantPickerModal';
@@ -96,10 +110,11 @@ import { Modal } from '../components/common/Modal';
 import { useBackdropDismiss } from '../components/common/useBackdropDismiss';
 import { useDismissable } from '../components/common/useDismissable';
 import { useEscapeKey } from '../components/common/useEscapeKey';
-import { inferHeroFromTitle, getHeroRenderPath, getHeroFacePosition, getHeroChipIconPath, HERO_NAMES, HERO_NAMES_SORTED, canonicalHeroName, GLOBAL_MOD_TYPE_ORDER, GLOBAL_MOD_TYPE_LABELS, getEffectiveGlobalType } from '../lib/lockerUtils';
+import { inferHeroFromTitle, getHeroRenderPath, getHeroFacePosition, getHeroChipIconPath, HERO_NAMES, HERO_NAMES_SORTED, canonicalHeroName, GLOBAL_MOD_TYPE_ORDER, GLOBAL_MOD_TYPE_LABELS, getEffectiveGlobalType, modLoadOrder } from '../lib/lockerUtils';
 import { formatRelativeDate, formatAbsoluteDate } from '../lib/dates';
 import { useStableCallback } from '../lib/useStableCallback';
 import { formatBytes } from '../lib/formatBytes';
+import { canOpenImageSource, copyImageToClipboard, resolveImageSource } from '../lib/imageActions';
 import { resolveUpdateTarget } from '../lib/updateFileMatch';
 import { createEnabledVpkRestoreSnapshot, shouldRestoreVpkEnabled, type EnabledVpkRestoreSnapshot } from '../lib/vpkRestore';
 import { modRestoreKey } from '../lib/soloRestore';
@@ -294,16 +309,6 @@ function isEntryEnabled(entry: ModEntry): boolean {
 /** Sort key for ordering enabled/disabled sections. Uses the primary's
  *  priority for groups so reorder math stays consistent with the existing
  *  per-mod priority system. */
-/** Global load-order rank of a mod: lower = higher priority. With overflow
- *  folders the pakNN (mod.priority) repeats per folder, so we fold in the folder
- *  index from metaKey (addons{N}/...) to get a single monotonic order. Base
- *  citadel/addons (and disabled) is folder 0, addons1 is 1, etc. */
-function modLoadOrder(mod: Mod): number {
-  const match = mod.metaKey.match(/^addons(\d+)\//);
-  const folderIndex = match ? parseInt(match[1], 10) : 0;
-  return folderIndex * 100 + mod.priority;
-}
-
 function entrySortPriority(entry: ModEntry): number {
   return modLoadOrder(entry.kind === 'single' ? entry.mod : entry.primary);
 }
@@ -432,6 +437,26 @@ function entryDisabledPreferenceKey(entry: ModEntry): string {
   return modPreferenceKey(entry.kind === 'single' ? entry.mod : entry.primary);
 }
 
+/** Stand-in for PriorityEditor on Global (priority-root) cards. They load
+ *  before every numbered mod and reorderMods filters them out of reposition
+ *  batches, so a position number would be both a lie and dead UI. Echoes the
+ *  PriorityEditor chip geometry, accent-tinted so Global reads as its own
+ *  tier rather than position zero. */
+function GlobalLoadBadge({ variant }: { variant: 'overlay' | 'inline' }) {
+  const { t } = useTranslation();
+  return (
+    <span
+      title={t('installed.priority.hint')}
+      aria-label={t('installed.priority.chip')}
+      className={`inline-flex h-[22px] min-w-[30px] items-center justify-center rounded-md border border-accent/60 px-2 text-accent ${
+        variant === 'overlay' ? 'bg-black/70' : 'bg-bg-tertiary'
+      }`}
+    >
+      <ArrowUpToLine className="h-3 w-3" strokeWidth={2.5} />
+    </span>
+  );
+}
+
 /**
  * Sortable grid item: useSortable wrapper + the memoized card, merged into a
  * single memo boundary. Keeping useSortable inside the memo matters: with the
@@ -534,6 +559,8 @@ interface InstalledEntryCardProps {
   onViewImprint: (mod: Mod) => void;
   onTagLocker: (entry: ModEntry, heroName: string | null) => Promise<void>;
   onTagGlobal: (entry: ModEntry, globalType: GlobalModType | null) => Promise<void>;
+  /** Move an entry into or out of the citadel/grimoire priority root. */
+  onSetPriority: (entry: ModEntry, priority: boolean) => Promise<void>;
   onFixUnknown: (mod: Mod) => void;
   onCommitPriority: (modId: string, newPosition: number) => Promise<void>;
   onUnmerge: (mod: Mod) => void;
@@ -582,6 +609,7 @@ const InstalledEntryCard = memo(function InstalledEntryCard({
   onViewImprint,
   onTagLocker,
   onTagGlobal,
+  onSetPriority,
   onFixUnknown,
   onCommitPriority,
   onUnmerge,
@@ -617,6 +645,7 @@ const InstalledEntryCard = memo(function InstalledEntryCard({
         onViewImprint={mod.imprinted ? () => onViewImprint(mod) : undefined}
         onTagLocker={(heroName) => onTagLocker(entry, heroName)}
         onTagGlobal={(globalType) => onTagGlobal(entry, globalType)}
+        onSetPriority={(priority) => onSetPriority(entry, priority)}
         onFixUnknown={
           // Any local (unlinked, non-merged) mod can search GameBanana and
           // link, not just ones flagged "unknown": naming a local mod via
@@ -677,6 +706,7 @@ const InstalledEntryCard = memo(function InstalledEntryCard({
       onDelete={() => onDelete(entry)}
       onTagLocker={(heroName) => onTagLocker(entry, heroName)}
       onTagGlobal={(globalType) => onTagGlobal(entry, globalType)}
+      onSetPriority={(priority) => onSetPriority(entry, priority)}
       loadPosition={loadPosition}
       loadCount={loadCount}
       onCommitPriority={(p) => onCommitPriority(entry.primary.id, p)}
@@ -806,6 +836,7 @@ export default function Installed() {
     editLocalMod,
     setModLockerHero,
     setModGlobalType,
+    setModPriorityFolder,
     setVariantLabel,
     soundVolume,
     setInstalledScrollTop,
@@ -3282,6 +3313,17 @@ export default function Installed() {
       await setModGlobalType(entry.mod.id, globalType);
     }
   });
+  // Marking a grouped entry Global moves every variant, so a submission whose
+  // files co-require each other (model plus voice lines) doesn't end up half in
+  // the priority root. Sequential, like the other per-variant loops here: each
+  // move renames a VPK under the main-process mutation lock.
+  const setEntryPriority = useStableCallback(async (entry: ModEntry, priority: boolean) => {
+    if (entry.kind === 'group') {
+      for (const variant of entry.variants) await setModPriorityFolder(variant.id, priority);
+    } else {
+      await setModPriorityFolder(entry.mod.id, priority);
+    }
+  });
   const fixUnknownEntry = useStableCallback((mod: Mod) => openUnknownModFix(mod, 'single'));
   // commitLoadPosition is declared after the early returns (it reads the
   // compact order built there); bridge it through the same synchronous-ref
@@ -3397,8 +3439,13 @@ export default function Installed() {
   const enabledByLoadOrder = visibleMods
     .filter((m) => m.enabled)
     .sort((a, b) => modLoadOrder(a) - modLoadOrder(b));
-  const enabledModCount = enabledByLoadOrder.length;
-  const loadPositionById = new Map(enabledByLoadOrder.map((m, i) => [m.id, i + 1] as const));
+  // Priority-root (Global) mods sit outside the pakNN ordering: they win by
+  // search-path position and reorderMods filters them out. Numbering only the
+  // rest keeps positions 1..N meaningful and editable, while Global cards get
+  // their own badge.
+  const numberedByLoadOrder = enabledByLoadOrder.filter((m) => !m.priorityMod);
+  const enabledModCount = numberedByLoadOrder.length;
+  const loadPositionById = new Map(numberedByLoadOrder.map((m, i) => [m.id, i + 1] as const));
 
   const handleCopyEnabledMods = async () => {
     // Use the same enabled list the UI shows (visibleMods / load order), not the
@@ -3699,7 +3746,7 @@ export default function Installed() {
    * modsError.
    */
   const commitLoadPosition = async (modId: string, newPosition: number): Promise<void> => {
-    const ordered = enabledByLoadOrder.slice();
+    const ordered = numberedByLoadOrder.slice();
     const fromIdx = ordered.findIndex((m) => m.id === modId);
     if (fromIdx === -1) throw new Error('Mod not found');
     // The editor validates 1..N, but a stale render could submit out of range;
@@ -3754,6 +3801,7 @@ export default function Installed() {
     onViewImprint: viewEntryImprint,
     onTagLocker: tagEntryLocker,
     onTagGlobal: tagEntryGlobal,
+    onSetPriority: setEntryPriority,
     onFixUnknown: fixUnknownEntry,
     onCommitPriority: commitEntryPriority,
     onUnmerge: unmergeEntry,
@@ -6980,6 +7028,9 @@ interface ModCardProps {
     lockerHero?: string;
     lockerHeroSource?: Mod['lockerHeroSource'];
     globalType?: GlobalModType;
+    /** Lives in the citadel/grimoire priority root: wins every file collision
+     *  and is never disabled by the launch shuffle. */
+    priorityMod?: boolean;
     merged?: import('../types/mod').MergedModInfo;
   };
   viewMode: ViewMode;
@@ -7003,10 +7054,12 @@ interface ModCardProps {
   onRenameLocal?: (newName: string) => Promise<void>;
   /** Open the imprint details modal. Passed only when the mod's wire
    *  `imprinted` flag is true (the parent gates on it); shown in the card's
-   *  right-click menu and the thumbnail image menus. */
+   *  right-click menu. */
   onViewImprint?: () => void;
   onTagLocker?: (heroName: string | null) => void | Promise<void>;
   onTagGlobal?: (globalType: GlobalModType | null) => void | Promise<void>;
+  /** Toggle this mod's Global (priority root) placement. */
+  onSetPriority?: (priority: boolean) => void | Promise<void>;
   onFixUnknown?: () => void;
   fixingUnknown?: boolean;
   /** Reposition commit. Passed through to PriorityEditor; the argument is a
@@ -7062,11 +7115,6 @@ interface ModMediaPreviewProps {
   audioPlayerClassName: string;
   onOpenDetails?: () => void;
   isGroupCard: boolean;
-  onRevealInFolder?: () => void;
-  onViewImprint?: () => void;
-  /** The card's "Add to list" submenu, threaded down because the image menu
-   *  rendered here swallows the right-clicks that would reach the card. */
-  listMenu?: ReactNode;
 }
 
 function SoundPlaceholder() {
@@ -7106,9 +7154,6 @@ function ModMediaPreview({
   audioPlayerClassName,
   onOpenDetails,
   isGroupCard,
-  onRevealInFolder,
-  onViewImprint,
-  listMenu,
 }: ModMediaPreviewProps) {
   const { t } = useTranslation();
   const isSound = mod.sourceSection === 'Sound' && !!mod.audioUrl;
@@ -7136,22 +7181,19 @@ function ModMediaPreview({
       nsfw={mod.nsfw}
       hideNsfw={hideNsfwPreviews}
       className="w-full h-full"
+      enableImageContextMenu={false}
       imageClassName="origin-center transition-transform duration-200 group-enabled:group-hover:scale-[1.03]"
       mergedSources={mod.merged?.sources}
-      onRevealInFolder={onRevealInFolder}
-      onViewImprint={onViewImprint}
     />
   );
   const soundMedia = mod.thumbnailUrl ? image : soundHeroRenderUrl ? (
-    <ImageContextMenu src={soundHeroRenderUrl} alt={soundHeroName ?? mod.name} onRevealInFolder={onRevealInFolder} onViewImprint={onViewImprint} extraItems={listMenu}>
-      <img
-        src={soundHeroRenderUrl}
-        alt={soundHeroName ?? mod.name}
-        draggable={false}
-        className="block h-full w-full object-cover origin-center transition-transform duration-200 group-enabled:group-hover:scale-[1.03]"
-        style={{ objectPosition: `${soundHeroFacePosX}% 25%` }}
-      />
-    </ImageContextMenu>
+    <img
+      src={soundHeroRenderUrl}
+      alt={soundHeroName ?? mod.name}
+      draggable={false}
+      className="block h-full w-full object-cover origin-center transition-transform duration-200 group-enabled:group-hover:scale-[1.03]"
+      style={{ objectPosition: `${soundHeroFacePosX}% 25%` }}
+    />
   ) : (
     <SoundPlaceholder />
   );
@@ -7247,11 +7289,6 @@ interface ModListRowContentProps {
   tagIconClassName: string;
   technicalMetaClasses: string;
   actions: ReactNode;
-  onRevealInFolder?: () => void;
-  onViewImprint?: () => void;
-  /** The card's "Add to list" submenu, threaded down for the same reason as in
-   *  ModMediaPreview: the thumbnail's image menu swallows the card's clicks. */
-  listMenu?: ReactNode;
 }
 
 function lockerHeroSourceLabel(source: Mod['lockerHeroSource']): string {
@@ -7497,9 +7534,6 @@ function ModListRowContent({
   tagIconClassName,
   technicalMetaClasses,
   actions,
-  onRevealInFolder,
-  onViewImprint,
-  listMenu,
 }: ModListRowContentProps) {
   const { t } = useTranslation();
   const isSound = mod.sourceSection === 'Sound' && !!mod.audioUrl;
@@ -7513,7 +7547,9 @@ function ModListRowContent({
   return (
     <>
       <div className="flex min-w-0 items-center justify-start">
-        {mod.enabled ? (
+        {mod.enabled && mod.priorityMod ? (
+          <GlobalLoadBadge variant="inline" />
+        ) : mod.enabled ? (
           <span data-card-action="true">
             <PriorityEditor
               modName={mod.name}
@@ -7546,15 +7582,13 @@ function ModListRowContent({
         onDragStart={stopMediaDrag}
       >
         {listHeroRenderUrl ? (
-          <ImageContextMenu src={listHeroRenderUrl} alt={listHeroName ?? mod.name} onRevealInFolder={onRevealInFolder} onViewImprint={onViewImprint} extraItems={listMenu}>
-            <img
-              src={listHeroRenderUrl}
-              alt={listHeroName ?? mod.name}
-              draggable={false}
-              className="block h-full w-full object-cover origin-center transition-transform duration-200 group-enabled:group-hover:scale-[1.03]"
-              style={{ objectPosition: `${listHeroFacePosX}% 25%` }}
-            />
-          </ImageContextMenu>
+          <img
+            src={listHeroRenderUrl}
+            alt={listHeroName ?? mod.name}
+            draggable={false}
+            className="block h-full w-full object-cover origin-center transition-transform duration-200 group-enabled:group-hover:scale-[1.03]"
+            style={{ objectPosition: `${listHeroFacePosX}% 25%` }}
+          />
         ) : isSound && !mod.thumbnailUrl ? (
           <SoundPlaceholder />
         ) : (
@@ -7564,8 +7598,7 @@ function ModListRowContent({
             nsfw={mod.nsfw}
             hideNsfw={hideNsfwPreviews}
             className="w-full h-full"
-            onRevealInFolder={onRevealInFolder}
-            onViewImprint={onViewImprint}
+            enableImageContextMenu={false}
             imageClassName="origin-center transition-transform duration-200 group-enabled:group-hover:scale-[1.03]"
             mergedSources={mod.merged?.sources}
           />
@@ -7660,6 +7693,7 @@ function ModCard({
   onViewImprint,
   onTagLocker,
   onTagGlobal,
+  onSetPriority,
   onFixUnknown,
   fixingUnknown,
   onCommitPriority,
@@ -7682,83 +7716,80 @@ function ModCard({
   const { t } = useTranslation();
   const hasConflicts = conflicts.length > 0;
   const isGroupCard = !!group;
-  // Shared by the card's own context menu and the image context menus on the
-  // thumbnail (which swallow right-clicks before they reach the card).
   const handleRevealInFolder = () => {
     revealModInFolder(mod.id).catch((err) => {
       console.error('[Installed] Failed to reveal mod in folder:', err);
     });
   };
-  const revealAction = selectMode ? undefined : handleRevealInFolder;
-  // "View imprint" mirrors reveal-in-folder: offered on the card's right-click
-  // menu and the image menus (which swallow right-clicks), hidden in select mode.
-  const imprintAction = selectMode ? undefined : onViewImprint;
-  // "Add to list" follows the same rules: shared across the card menu and both
-  // image menus, and stood down in select mode where clicks belong to selection.
-  const listSubmenu =
-    !selectMode && lists && onToggleList && onCreateList ? (
-      <ModListSubmenu
-        lists={lists}
-        memberIds={listIds}
-        onToggle={onToggleList}
-        onCreateNew={onCreateList}
-      />
-    ) : null;
+  const hasListActions = !selectMode && !!lists && !!onToggleList && !!onCreateList;
+  const menuHeroName = mod.sourceSection === 'Sound' && !mod.thumbnailUrl
+    ? mod.lockerHero ?? inferHeroFromTitle(mod.name)
+    : null;
+  // Right-clicking one tile of a merged mod's collage should act on that tile,
+  // not on the merged mod's first source. Captured from the pointer target
+  // before Radix opens the context menu, and cleared both when that menu closes
+  // and when the three-dot button opens the same actions instead.
+  const [pointerImageSrc, setPointerImageSrc] = useState<string | null>(null);
+  const rawCardImageSource = pointerImageSrc
+    ?? mod.thumbnailUrl
+    ?? (menuHeroName ? getHeroRenderPath(menuHeroName) : undefined)
+    ?? mod.merged?.sources.find((source) => !!source.thumbnailUrl)?.thumbnailUrl;
+  const cardImageSource = rawCardImageSource && !(mod.nsfw && hideNsfwPreviews)
+    ? resolveImageSource(rawCardImageSource)
+    : null;
+  const canOpenCardImage = cardImageSource ? canOpenImageSource(cardImageSource) : false;
+  const captureContextImage = (event: ReactMouseEvent<HTMLElement>) => {
+    const target = event.target as HTMLElement | null;
+    const cell = target?.closest?.('[data-collage-src]');
+    setPointerImageSrc(cell?.getAttribute('data-collage-src') ?? null);
+  };
   const variantStatusLabel = group ? `${group.enabledCount}/${group.variantCount}` : null;
   const enabledTitle = group?.enabledLabels.join(', ') ?? '';
   const variantStatusTitle = group
     ? t('installed.card.variantStatusTitle', { labels: enabledTitle || t('installed.card.noFilesEnabled') })
     : '';
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [tagPickerOpen, setTagPickerOpen] = useState(false);
   const [menuBusy, setMenuBusy] = useState(false);
-  const [menuError, setMenuError] = useState<string | null>(null);
-  // The menu (and its tall tag picker) opens upward by default, but for cards
-  // near the top of the scroll area that clips it. Flip downward when there's
-  // little room above. Measured from the trigger on open.
-  const [menuPlacement, setMenuPlacement] = useState<'up' | 'down'>('up');
-  // Trigger rect captured on open (and on scroll/resize) so the menu can be
-  // portaled to <body> and positioned in fixed coordinates. The card sits in an
-  // overflow-auto/transform-gpu subtree that would otherwise clip an absolutely
-  // (or even fixed) positioned menu, hiding its left edge behind the sidebar.
-  const [menuRect, setMenuRect] = useState<DOMRect | null>(null);
-  const menuPanelRef = useRef<HTMLDivElement>(null);
-  const closeMenu = useCallback(() => {
-    setMenuOpen(false);
-    setTagPickerOpen(false);
-  }, []);
-  // The panel is portaled out of menuRef, so it counts as inside explicitly.
-  const menuRef = useDismissable<HTMLDivElement>(closeMenu, {
-    enabled: menuOpen,
-    alsoInside: [menuPanelRef],
-  });
+  // The menu closes on select (Radix default), so outcomes are reported by
+  // toast rather than by a banner inside a panel the user can no longer see.
+  const reportMenuError = (context: string, err: unknown) => {
+    console.error(`[Installed] ${context}:`, err);
+    showToast(err instanceof Error ? err.message : String(err), { tone: 'error', duration: 4000 });
+  };
 
-  useEffect(() => {
-    if (!menuOpen) return;
-    // Keep the portaled menu anchored to its card as the list scrolls/resizes.
-    // Inner-container scroll doesn't bubble, so listen in the capture phase.
-    const reposition = () => {
-      if (menuRef.current) setMenuRect(menuRef.current.getBoundingClientRect());
-    };
-    window.addEventListener('scroll', reposition, true);
-    window.addEventListener('resize', reposition);
-    return () => {
-      window.removeEventListener('scroll', reposition, true);
-      window.removeEventListener('resize', reposition);
-    };
-  }, [menuOpen, menuRef]);
+  const copyCardImage = async () => {
+    if (!cardImageSource) return;
+    try {
+      await copyImageToClipboard(cardImageSource);
+      showToast(t('imageContextMenu.imageCopied'), { tone: 'success', duration: 2200 });
+    } catch (err) {
+      console.error('[Installed] Failed to copy card image:', err);
+      showToast(t('imageContextMenu.copyImageFailed'), { tone: 'error', duration: 4000 });
+    }
+  };
+
+  const copyCardImageAddress = async () => {
+    if (!cardImageSource) return;
+    try {
+      await navigator.clipboard.writeText(cardImageSource);
+      showToast(t('imageContextMenu.addressCopied'), { tone: 'success', duration: 2200 });
+    } catch (err) {
+      console.error('[Installed] Failed to copy card image address:', err);
+      showToast(t('imageContextMenu.copyAddressFailed'), { tone: 'error', duration: 4000 });
+    }
+  };
+
+  const openCardImage = () => {
+    if (!cardImageSource) return;
+    window.open(cardImageSource, '_blank', 'noopener,noreferrer');
+  };
 
   const applyLockerTag = async (heroName: string | null) => {
     if (!onTagLocker || menuBusy) return;
     setMenuBusy(true);
-    setMenuError(null);
     try {
       await onTagLocker(heroName);
-      setMenuOpen(false);
-      setTagPickerOpen(false);
     } catch (err) {
-      console.error('[Installed] Failed to set locker hero:', err);
-      setMenuError(err instanceof Error ? err.message : String(err));
+      reportMenuError('Failed to set locker hero', err);
     } finally {
       setMenuBusy(false);
     }
@@ -7767,14 +7798,25 @@ function ModCard({
   const applyGlobalTag = async (globalType: GlobalModType) => {
     if (!onTagGlobal || menuBusy) return;
     setMenuBusy(true);
-    setMenuError(null);
     try {
       await onTagGlobal(globalType);
-      setMenuOpen(false);
-      setTagPickerOpen(false);
     } catch (err) {
-      console.error('[Installed] Failed to set global locker tag:', err);
-      setMenuError(err instanceof Error ? err.message : String(err));
+      reportMenuError('Failed to set global locker tag', err);
+    } finally {
+      setMenuBusy(false);
+    }
+  };
+
+  // Toggle the Global (priority root) placement. The move renames the VPK, so
+  // the resulting mod carries a new id; the store refreshes the list, and this
+  // card is re-rendered from the new entry rather than trying to patch itself.
+  const togglePriority = async () => {
+    if (!onSetPriority || menuBusy) return;
+    setMenuBusy(true);
+    try {
+      await onSetPriority(!mod.priorityMod);
+    } catch (err) {
+      reportMenuError('Failed to change Global placement', err);
     } finally {
       setMenuBusy(false);
     }
@@ -7783,15 +7825,11 @@ function ModCard({
   const clearLockerTag = async () => {
     if (menuBusy) return;
     setMenuBusy(true);
-    setMenuError(null);
     try {
       await onTagLocker?.(null);
       await onTagGlobal?.(null);
-      setMenuOpen(false);
-      setTagPickerOpen(false);
     } catch (err) {
-      console.error('[Installed] Failed to clear locker tag:', err);
-      setMenuError(err instanceof Error ? err.message : String(err));
+      reportMenuError('Failed to clear locker tag', err);
     } finally {
       setMenuBusy(false);
     }
@@ -7854,8 +7892,6 @@ function ModCard({
   const favoriteVisibilityClasses = favorite
     ? (selectMode ? 'hidden' : '')
     : hoverActionVisibilityClasses;
-  const menuItemClasses = 'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-text-primary hover:bg-bg-tertiary focus:outline-none focus-visible:bg-bg-tertiary disabled:cursor-not-allowed disabled:opacity-50';
-  const dangerMenuItemClasses = 'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-state-danger hover:bg-state-danger/10 focus:outline-none focus-visible:bg-state-danger/10 disabled:cursor-not-allowed disabled:opacity-50';
   const toggleHitboxClasses = 'inline-flex h-7 w-12 items-center justify-center rounded-md cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:ring-offset-2 focus-visible:ring-offset-bg-primary';
   const toggleTrackClasses = `relative h-6 w-11 rounded-full transition-colors duration-200 ${
     mod.enabled ? 'bg-accent shadow-[0_0_0_1px_rgba(255,122,47,0.25)]' : 'bg-bg-tertiary border border-border group-hover/toggle:border-white/20'
@@ -7917,6 +7953,172 @@ function ModCard({
     : favorite
       ? t('installed.card.removeDisabledFavorite', { name: mod.name })
       : t('installed.card.addDisabledFavorite', { name: mod.name });
+
+  // One canonical list of card actions, mounted twice: once under the
+  // right-click (context) root wrapping the whole card, once under the
+  // dropdown root on the three-dot button. Only one of the two is open at a
+  // time, so this renders once in practice.
+  const hasTopActions = !!onEditLocal || !!onOpenDetails || !!onViewAuthor || !!cardImageSource;
+  const hasSecondaryActions =
+    !!onSoloLaunch || !!onSetPriority || !!onTagLocker || !!onTagGlobal || !!onFixUnknown
+    || !!(mod.merged && (onCopyShareCode || onUnmerge));
+  const cardMenuItems = (
+    <>
+      {onEditLocal && (
+        <MenuItem icon={Pencil} onSelect={onEditLocal}>
+          {t('installed.card.edit')}
+        </MenuItem>
+      )}
+      {onOpenDetails && (
+        <MenuItem icon={Info} onSelect={onOpenDetails}>
+          {t('installed.card.viewDetails')}
+        </MenuItem>
+      )}
+      {onViewAuthor && (
+        <MenuItem icon={Banana} onSelect={onViewAuthor}>
+          {t('installed.card.viewAuthorPage')}
+        </MenuItem>
+      )}
+      {cardImageSource && (
+        <MenuSub>
+          <MenuSubTrigger icon={ImagePlus}>{t('imageContextMenu.image')}</MenuSubTrigger>
+          <MenuSubContent>
+            <MenuItem icon={ImageDown} onSelect={() => void copyCardImage()}>
+              {t('imageContextMenu.copyImage')}
+            </MenuItem>
+            <MenuItem icon={Link} onSelect={() => void copyCardImageAddress()}>
+              {t('imageContextMenu.copyImageAddress')}
+            </MenuItem>
+            {canOpenCardImage && (
+              <MenuItem icon={ExternalLink} onSelect={openCardImage}>
+                {t('imageContextMenu.openImage')}
+              </MenuItem>
+            )}
+          </MenuSubContent>
+        </MenuSub>
+      )}
+      {hasTopActions && <MenuSeparator />}
+      {hasListActions && lists && onToggleList && onCreateList && (
+        <ModListSubmenu
+          lists={lists}
+          memberIds={listIds}
+          onToggle={onToggleList}
+          onCreateNew={onCreateList}
+        />
+      )}
+      <MenuItem icon={FolderOpen} onSelect={handleRevealInFolder}>
+        {t('installed.card.revealInFolder')}
+      </MenuItem>
+      {onViewImprint && (
+        <MenuItem icon={Fingerprint} onSelect={onViewImprint}>
+          {t('installed.imprintDetails.menuEntry')}
+        </MenuItem>
+      )}
+      {hasSecondaryActions && <MenuSeparator />}
+      {onSoloLaunch && (
+        <MenuItem icon={Beaker} disabled={soloBusy} onSelect={onSoloLaunch}>
+          {t('installed.card.soloLaunch')}
+        </MenuItem>
+      )}
+      {onSetPriority && (
+        <MenuItem
+          icon={ArrowUpToLine}
+          disabled={menuBusy}
+          tone={mod.priorityMod ? 'success' : 'default'}
+          onSelect={() => void togglePriority()}
+        >
+          {menuBusy
+            ? t('installed.priority.busy')
+            : mod.priorityMod
+              ? t('installed.priority.clear')
+              : t('installed.priority.make')}
+        </MenuItem>
+      )}
+      {(onTagLocker || onTagGlobal) && (
+        <MenuSub>
+          <MenuSubTrigger icon={TagIcon}>{t('installed.tag.setLockerTag')}</MenuSubTrigger>
+          {/* Cap the height: the hero list is the full roster and would
+              otherwise run taller than the window. */}
+          <MenuSubContent className="max-h-72 overflow-y-auto">
+            <MenuItem
+              disabled={menuBusy || (!mod.lockerHero && !mod.globalType)}
+              onSelect={() => void clearLockerTag()}
+            >
+              {t('installed.tag.clearLockerTag')}
+            </MenuItem>
+            <MenuSeparator />
+            {/* Global type and hero are independent axes (setModGlobalType does
+                not clear lockerHero), so they are two radio groups rather than
+                one. "Clear locker tag" above resets both. */}
+            {onTagGlobal && (
+              <>
+                <MenuLabel>{t('installed.tag.global')}</MenuLabel>
+                <MenuRadioGroup
+                  value={mod.globalType ?? ''}
+                  onValueChange={(value) => void applyGlobalTag(value as GlobalModType)}
+                >
+                  {GLOBAL_MOD_TYPE_ORDER.map((type) => (
+                    <MenuRadioItem key={type} value={type} disabled={menuBusy}>
+                      {GLOBAL_MOD_TYPE_LABELS[type]}
+                    </MenuRadioItem>
+                  ))}
+                </MenuRadioGroup>
+                <MenuSeparator />
+              </>
+            )}
+            <MenuLabel>{t('installed.tag.hero')}</MenuLabel>
+            <MenuRadioGroup
+              value={canonicalHeroName(mod.lockerHero) ?? ''}
+              onValueChange={(value) => void applyLockerTag(value)}
+            >
+              {HERO_NAMES_SORTED.map((heroName) => (
+                <MenuRadioItem
+                  key={heroName}
+                  value={heroName}
+                  disabled={menuBusy}
+                  // Inferred tags read as informational, manual ones as chosen.
+                  tone={mod.lockerHeroSource === 'manual' ? 'accent' : 'info'}
+                >
+                  <HeroTagLabel heroName={heroName} />
+                </MenuRadioItem>
+              ))}
+            </MenuRadioGroup>
+          </MenuSubContent>
+        </MenuSub>
+      )}
+      {onFixUnknown && (
+        <MenuItem
+          icon={fixingUnknown ? Loader2 : mod.isUnknown ? Wrench : Link2}
+          spinning={fixingUnknown}
+          onSelect={onFixUnknown}
+        >
+          {mod.isUnknown ? t('installed.card.fixUnknownMatch') : t('installed.unknown.linkToGamebanana')}
+        </MenuItem>
+      )}
+      {mod.merged && onCopyShareCode && (
+        <MenuItem icon={Share2} onSelect={onCopyShareCode}>
+          {t('installed.merge.copyShareCode')}
+        </MenuItem>
+      )}
+      {mod.merged && onUnmerge && (
+        <MenuItem icon={Scissors} onSelect={onUnmerge}>
+          {t('installed.merge.unmerge')}
+        </MenuItem>
+      )}
+      {/* A merged mod is removed via Unmerge (which deletes the merged VPK
+          and restores its sources), so a raw Delete alongside it would be
+          redundant and confusing. Non-merged mods keep Delete. */}
+      {!mod.merged && (
+        <>
+          <MenuSeparator />
+          <MenuItem icon={Trash2} tone="danger" onSelect={onDelete}>
+            {t('common.actions.delete')}
+          </MenuItem>
+        </>
+      )}
+    </>
+  );
+
   const actions = (
     <div className="ml-auto flex items-center gap-1">
       {onToggleFavorite && (
@@ -7951,274 +8153,24 @@ function ModCard({
           <Trash2 className="w-4 h-4" />
         </button>
       )}
-      <div className="relative" ref={menuRef} data-card-action="true">
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            setMenuOpen((open) => {
-              const willOpen = !open;
-              if (willOpen && menuRef.current) {
-                const rect = menuRef.current.getBoundingClientRect();
-                setMenuRect(rect);
-                // The menu can grow tall (tag picker). Prefer opening upward,
-                // but flip down when there's clearly more room below.
-                const spaceAbove = rect.top;
-                const spaceBelow = window.innerHeight - rect.bottom;
-                setMenuPlacement(spaceAbove < 340 && spaceBelow > spaceAbove ? 'down' : 'up');
-              }
-              return willOpen;
-            });
-            setTagPickerOpen(false);
-            setMenuError(null);
-          }}
-          className={`${utilityActionClasses} ${selectMode ? 'hidden' : `${isList ? '' : hoverRevealClasses} aria-expanded:opacity-100 aria-expanded:pointer-events-auto`}`}
-          title={t('installed.card.moreActions')}
-          aria-label={t('installed.card.moreActionsFor', { name: mod.name })}
-          aria-expanded={menuOpen}
-          data-card-action="true"
-        >
-          <MoreHorizontal className="w-4 h-4" />
-        </button>
-        {menuOpen && menuRect && createPortal(
-          <div
-            ref={menuPanelRef}
-            role="menu"
-            data-card-menu-open
-            className="z-[80] w-56 max-h-[70vh] overflow-y-auto rounded-lg border border-border bg-bg-secondary p-1 shadow-xl animate-fade-in"
-            style={{
-              position: 'fixed',
-              right: Math.max(8, window.innerWidth - menuRect.right),
-              ...(menuPlacement === 'up'
-                ? { bottom: window.innerHeight - menuRect.top + 8 }
-                : { top: menuRect.bottom + 8 }),
-            }}
-          >
-            {menuError && (
-              <div className="mb-1 rounded-md border border-state-danger/30 bg-state-danger/10 px-2 py-1.5 text-xs text-state-danger">
-                {menuError}
-              </div>
-            )}
-            {onEditLocal && (
-              <button
-                type="button"
-                role="menuitem"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setMenuOpen(false);
-                  onEditLocal();
-                }}
-                className={menuItemClasses}
-              >
-                <Pencil className="w-3.5 h-3.5" />
-                {t('installed.card.edit')}
-              </button>
-            )}
-            {onOpenDetails && (
-              <button
-                type="button"
-                role="menuitem"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setMenuOpen(false);
-                  onOpenDetails();
-                }}
-                className={menuItemClasses}
-              >
-                <Info className="w-3.5 h-3.5" />
-                {t('installed.card.viewDetails')}
-              </button>
-            )}
-            {onViewAuthor && (
-              <button
-                type="button"
-                role="menuitem"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setMenuOpen(false);
-                  onViewAuthor();
-                }}
-                className={menuItemClasses}
-              >
-                <Banana className="w-3.5 h-3.5" />
-                {t('installed.card.viewAuthorPage')}
-              </button>
-            )}
-            {onSoloLaunch && (
-              <button
-                type="button"
-                role="menuitem"
-                disabled={soloBusy}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setMenuOpen(false);
-                  onSoloLaunch();
-                }}
-                className={menuItemClasses}
-              >
-                <Beaker className="w-3.5 h-3.5" />
-                {t('installed.card.soloLaunch')}
-              </button>
-            )}
-            {(onTagLocker || onTagGlobal) && (
-              <>
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setTagPickerOpen((open) => !open);
-                  }}
-                  className={menuItemClasses}
-                >
-                  <TagIcon className="w-3.5 h-3.5" />
-                  {t('installed.tag.setLockerTag')}
-                </button>
-                {tagPickerOpen && (
-                  <div className="my-1 max-h-64 overflow-y-auto rounded-md border border-border bg-bg-primary/40 p-1">
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        void clearLockerTag();
-                      }}
-                      disabled={menuBusy || (!mod.lockerHero && !mod.globalType)}
-                      className="w-full rounded px-2 py-1.5 text-left text-xs text-text-secondary hover:bg-bg-tertiary hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {t('installed.tag.clearLockerTag')}
-                    </button>
-                    <div className="my-1 h-px bg-border" />
-                    {onTagGlobal && (
-                      <>
-                        <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-text-secondary">
-                          {t('installed.tag.global')}
-                        </div>
-                        {GLOBAL_MOD_TYPE_ORDER.map((type) => (
-                          <button
-                            key={type}
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              void applyGlobalTag(type);
-                            }}
-                            disabled={menuBusy}
-                            className={`flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-xs hover:bg-bg-tertiary disabled:cursor-not-allowed disabled:opacity-50 ${
-                              mod.globalType === type ? 'text-accent' : 'text-text-primary'
-                            }`}
-                          >
-                            <span className="truncate">{GLOBAL_MOD_TYPE_LABELS[type]}</span>
-                            {mod.globalType === type && <Check className="w-3.5 h-3.5 flex-shrink-0" />}
-                          </button>
-                        ))}
-                        <div className="my-1 h-px bg-border" />
-                      </>
-                    )}
-                    <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-text-secondary">
-                      {t('installed.tag.hero')}
-                    </div>
-                    {HERO_NAMES_SORTED.map((heroName) => {
-                      const tagged = canonicalHeroName(mod.lockerHero) === heroName;
-                      return (
-                      <button
-                        key={heroName}
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          void applyLockerTag(heroName);
-                        }}
-                        disabled={menuBusy}
-                        className={`flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-xs hover:bg-bg-tertiary disabled:cursor-not-allowed disabled:opacity-50 ${
-                          tagged
-                            ? mod.lockerHeroSource === 'manual'
-                              ? 'text-accent'
-                              : 'text-sky-200'
-                            : 'text-text-primary'
-                        }`}
-                      >
-                        <HeroTagLabel heroName={heroName} />
-                        {tagged && <Check className="w-3.5 h-3.5 flex-shrink-0" />}
-                      </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </>
-            )}
-            {onFixUnknown && (
-              <button
-                type="button"
-                role="menuitem"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setMenuOpen(false);
-                  onFixUnknown();
-                }}
-                className={menuItemClasses}
-              >
-                {fixingUnknown ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : mod.isUnknown ? (
-                  <Wrench className="w-3.5 h-3.5" />
-                ) : (
-                  <Link2 className="w-3.5 h-3.5" />
-                )}
-                {mod.isUnknown ? t('installed.card.fixUnknownMatch') : t('installed.unknown.linkToGamebanana')}
-              </button>
-            )}
-            {mod.merged && onCopyShareCode && (
-              <button
-                type="button"
-                role="menuitem"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setMenuOpen(false);
-                  onCopyShareCode();
-                }}
-                className={menuItemClasses}
-              >
-                <Share2 className="w-3.5 h-3.5" />
-                {t('installed.merge.copyShareCode')}
-              </button>
-            )}
-            {mod.merged && onUnmerge && (
-              <button
-                type="button"
-                role="menuitem"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setMenuOpen(false);
-                  onUnmerge();
-                }}
-                className={menuItemClasses}
-              >
-                <Scissors className="w-3.5 h-3.5" />
-                {t('installed.merge.unmerge')}
-              </button>
-            )}
-            {/* A merged mod is removed via Unmerge (which deletes the merged VPK
-                and restores its sources), so a raw Delete alongside it would be
-                redundant and confusing. Non-merged mods keep Delete. */}
-            {!mod.merged && (
-              <>
-                <div className="my-1 h-px bg-border" />
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setMenuOpen(false);
-                    onDelete();
-                  }}
-                  className={dangerMenuItemClasses}
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  {t('common.actions.delete')}
-                </button>
-              </>
-            )}
-          </div>,
-          document.body
-        )}
+      <div className="relative" data-card-action="true">
+        <MenuRoot kind="dropdown" onOpenChange={(open) => { if (open) setPointerImageSrc(null); }}>
+          <MenuTrigger asChild disabled={selectMode}>
+            <button
+              type="button"
+              onClick={(e) => e.stopPropagation()}
+              className={`${utilityActionClasses} ${selectMode ? 'hidden' : `${isList ? '' : hoverRevealClasses} aria-expanded:opacity-100 aria-expanded:pointer-events-auto`}`}
+              title={t('installed.card.moreActions')}
+              aria-label={t('installed.card.moreActionsFor', { name: mod.name })}
+              data-card-action="true"
+            >
+              <MoreHorizontal className="w-4 h-4" />
+            </button>
+          </MenuTrigger>
+          <MenuContent className="max-h-[70vh] overflow-y-auto" data-card-menu-open>
+            {cardMenuItems}
+          </MenuContent>
+        </MenuRoot>
       </div>
         <button
           onClick={onToggle}
@@ -8239,14 +8191,16 @@ function ModCard({
     </div>
   );
   return (
-    <MenuRoot>
+    <MenuRoot onOpenChange={(open) => { if (!open) setPointerImageSrc(null); }}>
       {/* Disabled in select mode so right-click doesn't fight the full-card
-          select overlay. Thumbnail right-clicks never reach here: the image
-          context menu's trigger stops propagation. */}
+          select overlay. The thumbnail's own image menu is switched off on
+          cards (enableImageContextMenu={false}), so artwork right-clicks reach
+          this one rather than a second, image-only menu. */}
       <MenuTrigger asChild disabled={selectMode}>
     <div
       data-mod-entry-key={entryKey}
-      className={`group/card relative rounded-xl border transform-gpu ${isList ? 'transition-[transform,box-shadow,border-color,background-color,opacity] duration-200 ease-out ' + stateClasses : glassStateClasses} ${mergedStackShadow} ${updateAvailable ? 'update-stripes' : ''} ${shellClasses} ${selected ? 'ring-2 ring-accent ring-offset-2 ring-offset-bg-primary' : ''}`}
+      onContextMenu={captureContextImage}
+      className={`group/card relative rounded-xl border transform-gpu ${isList ? 'transition-[transform,box-shadow,border-color,background-color,opacity] duration-200 ease-out ' + stateClasses : glassStateClasses} ${mergedStackShadow} ${updateAvailable ? 'update-stripes' : ''} ${shellClasses} ${selected ? 'ring-2 ring-accent ring-offset-2 ring-offset-bg-primary' : mod.priorityMod ? 'ring-1 ring-accent/40' : ''}`}
     >
       <div className={isList ? 'contents' : ''}>
         {selectMode && (
@@ -8294,9 +8248,6 @@ function ModCard({
             tagIconClassName={tagIconClassName}
             technicalMetaClasses={technicalMetaClasses}
             actions={actions}
-            onRevealInFolder={revealAction}
-            onViewImprint={imprintAction}
-            listMenu={listSubmenu}
           />
         ) : (
         <>
@@ -8318,6 +8269,11 @@ function ModCard({
         const overlayBadges = (
           <>
             {mod.enabled && !selectMode && (
+              mod.priorityMod ? (
+                <div className="absolute top-2 left-2 z-10 flex h-5 items-start">
+                  <GlobalLoadBadge variant="overlay" />
+                </div>
+              ) : (
               <div className="absolute top-2 left-2 z-10 flex h-5 items-start" data-card-action="true">
                 <PriorityEditor
                   modName={mod.name}
@@ -8327,6 +8283,7 @@ function ModCard({
                   onCommit={onCommitPriority}
                 />
               </div>
+              )
             )}
             {!mod.enabled && !selectMode && (
               <div className="absolute top-2 left-2 z-10 flex h-5 items-start">
@@ -8403,9 +8360,6 @@ function ModCard({
             audioPlayerClassName={audioPlayerClassName}
             onOpenDetails={onOpenDetails}
             isGroupCard={isGroupCard}
-            onRevealInFolder={revealAction}
-            onViewImprint={imprintAction}
-            listMenu={listSubmenu}
           />
         );
         })()}
@@ -8421,6 +8375,13 @@ function ModCard({
             title={`${mod.fileName} | ${formatBytes(mod.size)} | installed ${formatAbsoluteDate(mod.installedAt)}`}
           >
             <div className={`flex min-w-0 items-center gap-1.5 overflow-hidden text-xs text-text-secondary ${gridTagsClasses}`}>
+              {mod.priorityMod && (
+                <MetaTextChip
+                  label={t('installed.priority.chip')}
+                  className={manualTagChipClasses}
+                  title={t('installed.priority.hint')}
+                />
+              )}
               <LockerHeroChip
                 mod={mod}
                 manualTagChipClasses={manualTagChipClasses}
@@ -8478,21 +8439,8 @@ function ModCard({
 
     </div>
       </MenuTrigger>
-      <MenuContent>
-        {listSubmenu && (
-          <>
-            {listSubmenu}
-            <MenuSeparator />
-          </>
-        )}
-        <MenuItem icon={FolderOpen} onSelect={handleRevealInFolder}>
-          {t('installed.card.revealInFolder')}
-        </MenuItem>
-        {onViewImprint && (
-          <MenuItem icon={Fingerprint} onSelect={onViewImprint}>
-            {t('installed.imprintDetails.menuEntry')}
-          </MenuItem>
-        )}
+      <MenuContent className="max-h-[70vh] overflow-y-auto" data-card-menu-open>
+        {cardMenuItems}
       </MenuContent>
     </MenuRoot>
   );

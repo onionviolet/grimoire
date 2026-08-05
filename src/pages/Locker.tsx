@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Box, Check, ChevronDown, ChevronsDownUp, ChevronsUpDown, ExternalLink, Filter, Ghost, Hammer, Images, Layers, MoreVertical, Music, Palette, PowerOff, Shield, Shirt, Shuffle, Sparkles, Star, Trash2 } from 'lucide-react';
+import { ArrowLeft, ArrowUpToLine, Box, Check, ChevronDown, ChevronsDownUp, ChevronsUpDown, ExternalLink, Filter, Ghost, Hammer, Images, Layers, MoreVertical, Music, Palette, PowerOff, Shield, Shirt, Shuffle, Sparkles, Star, Trash2 } from 'lucide-react';
 import { useAppStore } from '../stores/appStore';
 import {
   getGamebananaCategories,
@@ -15,6 +15,7 @@ import { migrateLegacyHeroFavorites, useHeroFavorites } from '../lib/heroFavorit
 import { getActiveDeadlockPath, shouldBlurNsfw } from '../lib/appSettings';
 import { getAssetPath } from '../lib/assetPath';
 import HeroSkinsPanel from '../components/locker/HeroSkinsPanel';
+import GlobalModPicker from '../components/locker/GlobalModPicker';
 import { LockerHeroView } from './LockerHero';
 import GlobalSoundShelf from '../components/locker/GlobalSoundShelf';
 import ModThumbnail from '../components/ModThumbnail';
@@ -247,7 +248,7 @@ function FacetSheenDefs() {
 
 export default function Locker() {
   const { t } = useTranslation();
-  const { settings, mods, modsLoading, modsError, loadSettings, loadMods, toggleMod, reorderMods, deleteMod, setBrowseUi, setLockerHeroName, lockerModImages, lockerHideHeroName, lockerModThumbnails, lockerThumbHideHeroName, loadLockerModImages, shuffleOnLaunch, setShuffleOnLaunch, shuffleIncluded, toggleShuffleIncluded, shuffleVariants, setShuffleVariant, shuffleIncludeVanilla, setShuffleIncludeVanilla, soundShuffleIncluded, toggleSoundShuffleIncluded } =
+  const { settings, mods, modsLoading, modsError, loadSettings, loadMods, toggleMod, reorderMods, deleteMod, setModPriorityFolder, setBrowseUi, setLockerHeroName, lockerModImages, lockerHideHeroName, lockerModThumbnails, lockerThumbHideHeroName, loadLockerModImages, shuffleOnLaunch, setShuffleOnLaunch, shuffleIncluded, toggleShuffleIncluded, shuffleVariants, setShuffleVariant, shuffleIncludeVanilla, setShuffleIncludeVanilla, soundShuffleIncluded, toggleSoundShuffleIncluded } =
     useAppStore();
   const activeDeadlockPath = getActiveDeadlockPath(settings);
   const [categories, setCategories] = useState<GameBananaCategoryNode[]>(
@@ -564,6 +565,10 @@ export default function Locker() {
     () => countGlobalInventoryCategories(globalGroups, globalSoundInventory),
     [globalGroups, globalSoundInventory]
   );
+  const [globalPickerOpen, setGlobalPickerOpen] = useState(false);
+  const addModsToGlobal = async (modIds: string[]) => {
+    for (const modId of modIds) await setModPriorityFolder(modId, true);
+  };
 
   // Calculate heroMods, passing heroList for name-based category inference
   const heroMods = useMemo(() => {
@@ -1501,12 +1506,22 @@ export default function Locker() {
             onRequestDelete={(ids, name) => setDeletePrompt({ ids, name })}
             onImportSoul={() => setSoulImportOpen(true)}
             onImportUrn={() => setUrnImportOpen(true)}
+            onAddGlobal={() => setGlobalPickerOpen(true)}
             section={globalSection ?? 'looks'}
             onSelectSection={(next) =>
               navigate(next === 'sounds' ? '/locker/global?mode=sounds' : '/locker/global')
             }
           />
         </div>
+      )}
+
+      {globalPickerOpen && (
+        <GlobalModPicker
+          mods={mods}
+          hideNsfwPreviews={shouldBlurNsfw(settings)}
+          onClose={() => setGlobalPickerOpen(false)}
+          onConfirm={addModsToGlobal}
+        />
       )}
 
       {soulImportOpen && (
@@ -1671,6 +1686,8 @@ interface LockerGlobalViewProps {
   onImportSoul: () => void;
   /** Open the Spirit Urn GLB import modal (shown on the spirit-urn tab). */
   onImportUrn: () => void;
+  /** Open the picker that moves installed mods into the priority root. */
+  onAddGlobal: () => void;
   /** Which section of this drill-in is showing, from `?mode=`. */
   section: LockerMode;
   /** Select a section. Writes `?mode=` without leaving the drill-in. */
@@ -1691,7 +1708,7 @@ const GLOBAL_SECTION_TABS: readonly LockerMode[] = ['looks', 'sounds'];
  * shelf carries no category filter of its own; a second inline filter next to
  * an idle rail was the shape being fixed.
  */
-function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType, onRequestDelete, onImportSoul, onImportUrn, section, onSelectSection }: LockerGlobalViewProps) {
+function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType, onRequestDelete, onImportSoul, onImportUrn, onAddGlobal, section, onSelectSection }: LockerGlobalViewProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const soundVolume = useAppStore((s) => s.soundVolume);
@@ -1999,7 +2016,7 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
         tabIndex={0}
         className="relative z-10 flex-1 overflow-y-auto scrollbar-glass focus:outline-none"
       >
-        <div key={activeRailKey} className="space-y-4 p-6 animate-fade-in">
+        <div key={activeRailKey} className={`space-y-4 p-6 ${isPropContainer ? '' : 'animate-fade-in'}`}>
           {isSounds ? (
             <>
               {/* Same heading treatment as a visual type: the two sections of
@@ -2040,6 +2057,17 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
                 <span className="text-xs tabular-nums text-white/60">
                   {t('locker.page.modCount', { count: activeMods.length })}
                 </span>
+                {!isSounds && (
+                  <button
+                    type="button"
+                    onClick={onAddGlobal}
+                    className="ml-auto inline-flex items-center gap-1.5 self-center rounded-lg border border-accent/40 bg-accent/10 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:border-accent/60 hover:bg-accent/20 cursor-pointer"
+                    title={t('locker.globalPicker.description')}
+                  >
+                    <ArrowUpToLine className="h-3.5 w-3.5" />
+                    {t('locker.globalPicker.trigger')}
+                  </button>
+                )}
                 {isPropContainer && (
                   <button
                     type="button"

@@ -105,9 +105,6 @@ function firstExistingPath(paths: string[]): string | null {
 }
 
 function devVpkmergeBinaryPath(): string | null {
-    const explicit = process.env['VPKMERGE_BINARY'];
-    if (explicit && existsSync(explicit)) return explicit;
-
     const repoRoot = app.getAppPath();
     const siblingRoot = resolve(repoRoot, '..', 'vpkmerge', 'target');
     const exeName = process.platform === 'win32' ? 'vpkmerge.exe' : 'vpkmerge';
@@ -136,6 +133,12 @@ function devVpkmergeBinaryPath(): string | null {
  * whole point of the setting is knowing which engine produced a mod.
  */
 export function vpkmergeBinaryPath(): string {
+    // An explicit environment override wins in dev and packaged builds. Distro packages
+    // (e.g. nix) that run the app outside electron-builder's layout cannot
+    // rely on process.resourcesPath and point this at their own binary.
+    const explicit = process.env['VPKMERGE_BINARY'];
+    if (explicit && existsSync(explicit)) return explicit;
+
     const override = loadSettings().vpkmergeBinaryPath?.trim();
     if (override) {
         if (!existsSync(override)) {

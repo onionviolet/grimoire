@@ -469,6 +469,13 @@ export async function setModIgnoreUpdates(
   return window.electronAPI.setModIgnoreUpdates(modId, ignore);
 }
 
+export async function setModPriorityFolder(
+  modId: string,
+  priority: boolean
+): Promise<Mod> {
+  return window.electronAPI.setModPriorityFolder(modId, priority);
+}
+
 export async function backfillGameBananaFileId(
   modId: string,
   payload: { gameBananaFileId: number; fileDescription?: string; sourceFileName?: string }
@@ -930,9 +937,10 @@ export async function listPerformancePresets(): Promise<PerformancePresetSummary
 
 export async function applyPerformanceConfig(
   presetId?: string,
-  optIns?: string[]
+  optIns?: string[],
+  version?: string | null
 ): Promise<PerformanceConfigStatus> {
-  return window.electronAPI.applyPerformanceConfig(presetId, optIns);
+  return window.electronAPI.applyPerformanceConfig(presetId, optIns, version);
 }
 
 export async function setPerformanceHudConvars(values: Record<string, boolean>): Promise<PerformanceConfigStatus> {
@@ -956,9 +964,10 @@ export async function removePerformanceConfig(): Promise<PerformanceConfigStatus
 
 export async function resetPerformanceConfigOverrides(
   presetId?: string,
-  optIns?: string[]
+  optIns?: string[],
+  version?: string | null
 ): Promise<PerformanceConfigStatus> {
-  return window.electronAPI.resetPerformanceConfigOverrides(presetId, optIns);
+  return window.electronAPI.resetPerformanceConfigOverrides(presetId, optIns, version);
 }
 
 export async function restorePerformanceConfigBackup(): Promise<PerformanceConfigStatus> {

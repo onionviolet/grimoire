@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync, existsSync, readdirSync, unlinkSync } from 'fs';
 import { join, extname } from 'path';
-import { getGameinfoPath, getDisabledPath, getCitadelPath, getGrimoirePath, getOverflowFolderNames, getAddonFolderPaths, hasDeadworksContentRoot, DEADWORKS_SEARCH_PATH } from './deadlock';
+import { getGameinfoPath, getDisabledPath, getCitadelPath, getGrimoirePath, getOverflowFolderNames, getModScanRootPaths, hasDeadworksContentRoot, DEADWORKS_SEARCH_PATH } from './deadlock';
+import { ensureReplayFolderLink } from './replayFolder';
 
 // The canonical SearchPaths block for Deadlock with mod support
 const SEARCH_PATHS_BLOCK = `SearchPaths
@@ -261,6 +262,16 @@ export function fixGameinfo(deadlockPath: string): GameinfoStatus {
         };
     }
 
+    // The modded search paths are what redirect replay downloads into the addons
+    // folder, so this repair owns the link that keeps them decompressible. Runs
+    // before the already-configured early return: an install can have correct
+    // search paths and still be missing the link. Best-effort, like the backup.
+    try {
+        ensureReplayFolderLink(deadlockPath);
+    } catch (err) {
+        console.error('[system] Could not link the replays folder:', err);
+    }
+
     try {
         const content = readFileSync(gameinfoPath, 'utf-8');
         const block = findSearchPathsBlock(content);
@@ -368,10 +379,10 @@ export function cleanupAddons(deadlockPath: string): CleanupResult {
 
     const disabledPath = getDisabledPath(deadlockPath);
 
-    // Process every enabled addon folder (base citadel/addons plus any overflow
-    // addonsN) and the shared .disabled parking lot, so leftover archives are
+    // Process every enabled user-mod root (priority, base addons, and overflow
+    // addonsN) plus the shared .disabled parking lot, so leftover archives are
     // removed wherever a mod ended up.
-    for (const folder of [...getAddonFolderPaths(deadlockPath), disabledPath]) {
+    for (const folder of [...getModScanRootPaths(deadlockPath), disabledPath]) {
         if (!existsSync(folder)) continue;
 
         const files = readdirSync(folder);

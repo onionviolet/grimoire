@@ -271,6 +271,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
         ipcRenderer.invoke('set-mod-global-type', modId, globalType),
     setModIgnoreUpdates: (modId: string, ignore: boolean) =>
         ipcRenderer.invoke('set-mod-ignore-updates', modId, ignore),
+    setModPriorityFolder: (modId: string, priority: boolean) =>
+        ipcRenderer.invoke('set-mod-priority-folder', modId, priority),
     backfillGameBananaFileId: (
         modId: string,
         payload: { gameBananaFileId: number; fileDescription?: string; sourceFileName?: string }
@@ -415,14 +417,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getPerformanceConfigStatus: () => ipcRenderer.invoke('get-performance-config-status'),
     getConfigKeyIndex: () => ipcRenderer.invoke('get-config-key-index'),
     listPerformancePresets: () => ipcRenderer.invoke('list-performance-presets'),
-    applyPerformanceConfig: (presetId?: string, optIns?: string[]) =>
-        ipcRenderer.invoke('apply-performance-config', presetId, optIns),
+    applyPerformanceConfig: (presetId?: string, optIns?: string[], version?: string | null) =>
+        ipcRenderer.invoke('apply-performance-config', presetId, optIns, version),
     setPerformanceHudConvars: (values: Record<string, boolean>) => ipcRenderer.invoke('set-performance-hud-convars', values),
     setPerformanceAdvancedConvars: (values: Record<string, number>) => ipcRenderer.invoke('set-performance-advanced-convars', values),
     clearPerformanceConvars: (keys: string[]) => ipcRenderer.invoke('clear-performance-convars', keys),
     removePerformanceConfig: () => ipcRenderer.invoke('remove-performance-config'),
-    resetPerformanceConfigOverrides: (presetId?: string, optIns?: string[]) =>
-        ipcRenderer.invoke('reset-performance-config-overrides', presetId, optIns),
+    resetPerformanceConfigOverrides: (
+        presetId?: string,
+        optIns?: string[],
+        version?: string | null
+    ) => ipcRenderer.invoke('reset-performance-config-overrides', presetId, optIns, version),
     restorePerformanceConfigBackup: () => ipcRenderer.invoke('restore-performance-config-backup'),
     openPerformanceConfigFile: () => ipcRenderer.invoke('open-performance-config-file'),
     listEditorCandidates: () => ipcRenderer.invoke('list-editor-candidates'),
