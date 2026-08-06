@@ -150,6 +150,84 @@ reading and matter to anyone re-measuring later:
    consecutive static frames were byte-identical while three consecutive
    rigged frames all differed.
 
+### Roster-wide clip sweep
+
+Per D-18 the roster sweep runs only if RP-03 argues for shipping. RP-03
+passed, so the sweep ran: read-only `model clips --json`, once per hero,
+against `D:\Steam\steamapps\common\Deadlock\game\citadel\pak01_dir.vpk`, using
+the bundled `resources/vpkmerge/vpkmerge-windows-x86_64.exe` and the same
+selector logic `modelSelectorsForHero` in
+`electron/main/services/heroPoseModels.ts` uses (an explicit `--entry` for the
+nine `MODEL_ENTRY_OVERRIDES` heroes, `--hero <codename>` otherwise). Nothing
+was exported. Ranking replicates `riggedClipScore` / `chooseRiggedClip`
+exactly, including the tie-break chain: score, then looping, then duration,
+then `name.localeCompare`.
+
+Five roster rows in `src/lib/heroCodenames.ts` (Fathom, Kali, Tokamak,
+Trapper, Wrecker) carry no `panorama` and no `bodyModel` codename. They ship
+sound assets only and are not on the selectable Locker roster, so they have
+no model to address and are excluded from this sweep rather than reported as
+a clipless finding.
+
+**Every one of the 38 addressable heroes yielded an animated clip. No hero
+fell into the "no animated clip" case this sweep exists to catch**, so the
+static-pose fallback path (already correct per spike section 7) is not
+exercised by any hero on the strength of this sweep.
+
+| Hero | Codename/entry addressed | Clips (total) | First-ranked clip | Tie-break |
+| --- | --- | --- | --- | --- |
+| Abrams | `models/heroes_wip/abrams/abrams.vmdl_c` (--entry) | 300 | `primary_stand_idle` | none (unique top score) |
+| Apollo | `fencer` (--hero) | 6 | `respawn_countdown_idle` | none (unique top score) |
+| Bebop | `bebop` (--hero) | 444 | `primary_ooc_stand_idle` | alphabetical: 2 clips tied on score, looping, and duration; `name.localeCompare` chose `primary_ooc_stand_idle` |
+| Billy | `punkgoat` (--hero) | 5 | `primary_idle` | none (unique top score) |
+| Calico | `nano` (--hero) | 323 | `primary_stand_idle` | none (unique top score) |
+| Celeste | `unicorn` (--hero) | 7 | `respawn_countdown_idle` | none (unique top score) |
+| Doorman | `doorman` (--hero) | 168 | `primary_ooc_stand_idle` | alphabetical: 2 clips tied on score, looping, and duration; `name.localeCompare` chose `primary_ooc_stand_idle` |
+| Drifter | `drifter` (--hero) | 5 | `primary_stand_idle` | none (unique top score) |
+| Dynamo | `dynamo` (--hero) | 210 | `primary_stand_idle` | none (unique top score) |
+| Graves | `necro` (--hero) | 7 | `respawn_countdown_idle` | none (unique top score) |
+| Grey Talon | `archer` (--hero) | 304 | `primary_stand_idle` | none (unique top score) |
+| Haze | `haze` (--hero) | 247 | `primary_stand_idle` | none (unique top score) |
+| Holliday | `astro` (--hero) | 260 | `primary_stand_idle` | none (unique top score), matches spike section 2's pilot result |
+| Infernus | `models/heroes_wip/inferno/inferno.vmdl_c` (--entry) | 3 | `respawn_countdown_idle` | none (unique top score) |
+| Ivy | `models/heroes_wip/ivy/ivy.vmdl_c` (--entry) | 254 | `primary_stand_idle` | none (unique top score) |
+| Kelvin | `kelvin` (--hero) | 264 | `primary_stand_idle` | none (unique top score) |
+| Lady Geist | `models/heroes_wip/geist/geist.vmdl_c` (--entry) | 257 | `primary_stand_idle` | none (unique top score) |
+| Lash | `lash` (--hero) | 315 | `primary_stand_fire_idle` | alphabetical: 2 clips tied on score, looping, and duration; `name.localeCompare` chose `primary_stand_fire_idle` |
+| McGinnis | `models/heroes_wip/mcginnis/mcginnis.vmdl_c` (--entry) | 26 | `primary_stand_idle` | none (unique top score) |
+| Mina | `vampirebat` (--hero) | 5 | `respawn_countdown_idle` | none (unique top score) |
+| Mirage | `mirage` (--hero) | 197 | `primary_ooc_stand_idle` | alphabetical: 2 clips tied on score, looping, and duration; `name.localeCompare` chose `primary_ooc_stand_idle` |
+| Mo & Krill | `digger` (--hero) | 201 | `primary_stand_idle` | none (unique top score) |
+| Paige | `bookworm` (--hero) | 4 | `out_of_combat_stand_idle` | none (unique top score), matches spike section 2's pilot result |
+| Paradox | `chrono` (--hero) | 383 | `primary_stand_idle` | none (unique top score) |
+| Pocket | `models/heroes_wip/pocket/pocket.vmdl_c` (--entry) | 261 | `primary_stand_idle` | none (unique top score) |
+| Rem | `models/heroes_wip/familiar/familiar_wip.vmdl_c` (--entry) | 7 | `respawn_countdown_idle` | none (unique top score) |
+| Seven | `gigawatt_prisoner` (--hero) | 230 | `primary_stand_idle` | none (unique top score), matches spike section 2's pilot result and RP-03's fixture above |
+| Shiv | `shiv` (--hero) | 205 | `primary_stand_idle` | alphabetical: 2 clips tied on score, looping, and duration; `name.localeCompare` chose `primary_stand_idle` |
+| Silver | `werewolf` (--hero) | 16 | `item_stand_idle` | none (unique top score) |
+| Sinclair | `magician` (--hero) | 169 | `primary_stand_idle` | none (unique top score) |
+| Venator | `priest` (--hero) | 243 | `primary_stand_idle` | none (unique top score) |
+| Victor | `frank` (--hero) | 193 | `primary_stand_fire_idle` | alphabetical: 2 clips tied on score, looping, and duration; `name.localeCompare` chose `primary_stand_fire_idle` |
+| Vindicta | `hornet` (--hero) | 276 | `primary_stand_idle` | alphabetical: 2 clips tied on score, looping, and duration; `name.localeCompare` chose `primary_stand_idle` |
+| Viscous | `models/heroes_staging/viscous/viscous.vmdl_c` (--entry) | 308 | `primary_stand_idle` | none (unique top score) |
+| Vyper | `viper` (--hero) | 247 | `primary_stand_idle` | none (unique top score) |
+| Warden | `warden` (--hero) | 213 | `primary_stand_idle` | none (unique top score) |
+| Wraith | `models/heroes_wip/wraith/wraith.vmdl_c` (--entry) | 231 | `primary_stand_idle` | none (unique top score) |
+| Yamato | `yamato` (--hero) | 350 | `primary_stand_idle` | none (unique top score) |
+
+Excluded (no addressable model codename, sound assets only): Fathom, Kali,
+Tokamak, Trapper, Wrecker.
+
+Seven, sitting a row above in this same sweep, addressed the identical
+`gigawatt_prisoner` codename and returned the identical
+`primary_stand_idle` choice RP-03's fixture and spike section 2 both used,
+so the sweep and the frame-budget reading agree on which clip Seven's rigged
+preview actually plays.
+
+No change was made to `chooseRiggedClip`, `riggedClipScore`, or the fallback
+path on the strength of this sweep; every hero already animates, so nothing
+here argues for a behavior change.
+
 ## Table 3: ConVar readings (REQ-performance-convar-safer-experimentation)
 
 Every How to read cell names the console command to run: type the ConVar
