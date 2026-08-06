@@ -112,9 +112,13 @@ function ValueStateBadge({
   const { t } = useTranslation();
   const outOfRange = state.outOfRange === true;
   const slug = outOfRange ? 'outOfRange' : VALUE_STATE_SLUG[state.origin];
+  // The badge label always reads "Game default"; only the hint gains the
+  // number, and only when a console reading exists for this key.
   const hint = outOfRange
     ? t('settings.gameConvars.valueStateHint.outOfRange', { value: state.value ?? '', min, max })
-    : t(`settings.gameConvars.valueStateHint.${slug}`);
+    : slug === 'gameDefault' && state.engineDefault !== null
+      ? t('settings.gameConvars.valueStateHint.engineDefault', { value: state.engineDefault })
+      : t(`settings.gameConvars.valueStateHint.${slug}`);
   const variant =
     outOfRange || state.origin === 'unsupported'
       ? 'warning'
