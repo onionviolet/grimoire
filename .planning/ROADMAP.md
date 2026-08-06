@@ -38,15 +38,15 @@ Decimal phases appear between their surrounding integers in numeric order.
   4. Seven (`gigawatt_prisoner`) renders on the rigged preview with a measured frame rate on record, and the ship, gate, or per-hero recommendation is written down and applied to the release flag
   5. Every ConVar in the performance card shows a game default read off a running build, and the pool cards, alternatives gallery, portrait editor, seeded sound editor, and Chat Wheel VPK round trip each have a check that actually renders or exercises them
 
-**Plans**: 7 plans
+**Plans**: 4/7 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 01-01-PLAN.md — Render harness tracer: pin jsdom behind a package-legitimacy gate, then drive the pool-cards and audition-preview lanes end to end under jsdom
-- [ ] 01-04-PLAN.md — Chat Wheel starter to VPK to YAML round trip against the real bundled converter, plus its rejection paths
-- [ ] 01-05-PLAN.md — Thread `engineDefault` beside `gameDefault` end to end and let the value-state badge report what the game will do
-- [ ] 01-06-PLAN.md — Scaffold the in-game verification record (41 rows, verdicts blank) and the guard that makes its completion rule executable
+- [x] 01-01-PLAN.md — Render harness tracer: pin jsdom behind a package-legitimacy gate, then drive the pool-cards and audition-preview lanes end to end under jsdom
+- [x] 01-04-PLAN.md — Chat Wheel starter to VPK to YAML round trip against the real bundled converter, plus its rejection paths
+- [x] 01-05-PLAN.md — Thread `engineDefault` beside `gameDefault` end to end and let the value-state badge report what the game will do
+- [x] 01-06-PLAN.md — Scaffold the in-game verification record (41 rows, verdicts blank) and the guard that makes its completion rule executable
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -160,7 +160,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phase 6 declar
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Verified Against The Game | 0/TBD | Not started | - |
+| 1. Verified Against The Game | 4/7 | In Progress|  |
 | 2. A Supported Fork Release | 0/TBD | Not started | - |
 | 3. Foundry Completes Its Build Contract | 0/TBD | Not started | - |
 | 4. Locker And Foundry As One Object | 0/TBD | Not started | - |
