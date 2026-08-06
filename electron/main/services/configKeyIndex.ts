@@ -29,6 +29,9 @@ export interface ConfigKeyDefinition {
     surfaces: readonly ConfigKeySurface[];
     /** Stock value where Grimoire knows one; null means the engine default. */
     gameDefault: string | null;
+    /** What the console reports the engine itself uses; null when no reading
+     *  exists yet. */
+    engineDefault: string | null;
 }
 
 const humanize = (key: string) => key.replace(/[_.]+/g, ' ');
@@ -52,6 +55,7 @@ const userDefinitions: ConfigKeyDefinition[] = [
         description: 'A Game Configuration HUD control.',
         surfaces: ['game-configuration'] as const,
         gameDefault: control.gameDefault === null ? null : String(control.gameDefault),
+        engineDefault: control.engineDefault === null ? null : String(control.engineDefault),
     })),
     ...ADVANCED_GAMEINFO_CONVARS.map((control) => ({
         key: control.key,
@@ -64,6 +68,7 @@ const userDefinitions: ConfigKeyDefinition[] = [
         description: 'A Game Configuration advanced control.',
         surfaces: ['game-configuration'] as const,
         gameDefault: control.gameDefault === null ? null : String(control.gameDefault),
+        engineDefault: control.engineDefault === null ? null : String(control.engineDefault),
     })),
 ];
 
@@ -87,6 +92,7 @@ for (const [key, values] of presetValues) {
         description: 'A value managed by a performance preset.',
         surfaces: ['performance-preset'],
         gameDefault: null,
+        engineDefault: null,
     });
 }
 

@@ -144,6 +144,9 @@ export interface PerformanceConvarState {
     presetValue: string | null;
     /** The engine's stock value, or null when Grimoire does not know it. */
     gameDefault: string | null;
+    /** What the console reports the engine itself uses, or null when no
+     *  reading has been taken for this key yet. */
+    engineDefault: string | null;
     /** Value Deadlock will use after file precedence is resolved. */
     resolvedValue: string | null;
     /** The winning source. autoexec.cfg runs after gameinfo.gi. */
@@ -168,6 +171,9 @@ export interface ConfigKeyDefinition {
     description: string;
     surfaces: readonly ('performance-preset' | 'game-configuration')[];
     gameDefault: string | null;
+    /** What the console reports the engine itself uses, or null when no
+     *  reading has been taken for this key yet. */
+    engineDefault: string | null;
 }
 
 /** A gameplay/visibility convar a preset's author set, which Grimoire holds

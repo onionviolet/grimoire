@@ -23,6 +23,7 @@ import {
     clearPerformanceConvars,
 } from './performanceConfig';
 import { getPreset } from './performanceConfigData';
+import { CONFIG_KEY_BY_NAME } from './configKeyIndex';
 
 const STOCK = readFileSync(join(__dirname, '__fixtures__/stock-gameinfo.gi'), 'utf-8');
 const STOCK_CRLF = STOCK.replace(/\r?\n/g, '\r\n');
@@ -679,6 +680,83 @@ describe('resolved ConVar status', () => {
             resolvedFrom: 'autoexec.cfg',
             autoexec: { value: '1', line: 1, managed: false },
         });
+    });
+});
+
+// engineDefault is what a console reading reports, distinct from gameDefault
+// (what stock gameinfo.gi writes). The catalogue ships every entry null until
+// a reading exists, so these cases stage a reading by mutating the live
+// CONFIG_KEY_BY_NAME definition rather than waiting on real console data.
+describe('engine default', () => {
+    const ENUM_KEY = 'citadel_hud_objective_health_enabled'; // numeric, gameDefault: null
+    const HUD_KEY = 'citadel_unit_status_use_new'; // boolean, gameDefault: null
+
+    const setEngineDefault = (key: string, value: string | null) => {
+        const definition = CONFIG_KEY_BY_NAME.get(key);
+        if (!definition) throw new Error(`unknown key ${key}`);
+        (definition as { engineDefault: string | null }).engineDefault = value;
+    };
+
+    afterEach(() => {
+        // Reset every key this describe block might have mutated so no other
+        // test in the file observes a staged reading.
+        setEngineDefault(ENUM_KEY, null);
+        setEngineDefault(HUD_KEY, null);
+    });
+
+    /** Insert a raw ConVars line directly, without going through a preset or
+     *  either writer, so the test controls the exact on-disk spelling. */
+    const writeConvarLine = (key: string, rawValue: string) =>
+        write(STOCK.replace(/(\n(\s*)ConVars\s*\n\s*\{)/, `$1\n$2\t${key} ${rawValue}`));
+
+    it('a file value equal to the engine default reports the game-default origin', () => {
+        setEngineDefault(ENUM_KEY, '2');
+        writeConvarLine(ENUM_KEY, '2');
+        const state = getPerformanceConfigStatus(gameRoot).convarStates![ENUM_KEY];
+        expect(state.engineDefault).toBe('2');
+        expect(state.origin).toBe('game-default');
+    });
+
+    it('a file value differing from both defaults still reports the user-override origin', () => {
+        setEngineDefault(ENUM_KEY, '2');
+        writeConvarLine(ENUM_KEY, '1');
+        const state = getPerformanceConfigStatus(gameRoot).convarStates![ENUM_KEY];
+        expect(state.engineDefault).toBe('2');
+        expect(state.origin).toBe('user-override');
+    });
+
+    it('an unset key reports the engine default as its resolved value and keeps the game-default source', () => {
+        setEngineDefault(ENUM_KEY, '2');
+        const state = getPerformanceConfigStatus(gameRoot).convarStates![ENUM_KEY];
+        expect(state.value).toBeNull();
+        expect(state.engineDefault).toBe('2');
+        expect(state.resolvedValue).toBe('2');
+        expect(state.resolvedFrom).toBe('game-default');
+    });
+
+    it('a quoting-only or 1-versus-true spelling difference still reports the game-default origin', () => {
+        setEngineDefault(HUD_KEY, 'true');
+        writeConvarLine(HUD_KEY, '"1"');
+        const state = getPerformanceConfigStatus(gameRoot).convarStates![HUD_KEY];
+        expect(state.engineDefault).toBe('true');
+        expect(state.origin).toBe('game-default');
+    });
+
+    it('a numeric key with an out-of-range engine default carries it verbatim and still reports out of range', () => {
+        // Declared range for ENUM_KEY is 0-2; 5 is outside it. The reading is
+        // recorded as-is, not clamped into range.
+        setEngineDefault(ENUM_KEY, '5');
+        writeConvarLine(ENUM_KEY, '5');
+        const state = getPerformanceConfigStatus(gameRoot).convarStates![ENUM_KEY];
+        expect(state.engineDefault).toBe('5');
+        expect(state.outOfRange).toBe(true);
+    });
+
+    it('two consecutive status reads against an unchanged game root return deeply equal convarStates', () => {
+        setEngineDefault(ENUM_KEY, '2');
+        const first = getPerformanceConfigStatus(gameRoot).convarStates;
+        const second = getPerformanceConfigStatus(gameRoot).convarStates;
+        expect(second).toEqual(first);
     });
 });
 

@@ -1459,6 +1459,7 @@
       },
       "valueStateHint": {
         "gameDefault": "gameinfo.gi has no line for this, so the game's own value applies.",
+        "engineDefault": "The engine's own default for this setting is {{value}}.",
         "managedPreset": "Set by the applied performance preset at its bundled value.",
         "userOverride": "You changed this away from the preset or the game default.",
         "unsupported": "gameinfo.gi holds a value Grimoire cannot interpret. Reset or edit the file to continue.",
