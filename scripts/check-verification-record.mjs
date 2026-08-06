@@ -17,6 +17,13 @@
 // stated reason (D-10), and a verdict word outside the fixed vocabulary is
 // rejected so a half-typed note cannot read as a verdict.
 //
+// Amendment 2026-08-06 (D-19..D-25): every row also carries a Tier, `app` or
+// `engine`. A fourth verdict, `deferred`, is legal only on an `engine` row --
+// it means the project consciously accepted the engine half untested for
+// now, which is a different claim than `blocked` (a check that could not run
+// and someone still owes). `deferred` on an `app` row is an error, because an
+// app row has a runner (`scripts/verify-in-app.mjs`) that can settle it.
+//
 // Run with: node scripts/check-verification-record.mjs [path] [--strict]
 
 import { readFileSync } from 'node:fs';
@@ -28,10 +35,15 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 // The two row schemas the record uses, keyed off their header row. A table's
 // schema is read from its own header, not assumed from position, so column
 // order within a schema does not matter as long as the header names match.
-const CHECK_FIELDS = ['ID', 'Check', 'Fixture', 'Steps', 'Pass looks like', 'Verdict', 'Evidence', 'Root cause'];
-const CONVAR_FIELDS = ['ID', 'ConVar key', 'How to read', 'Reading', 'Verdict', 'Notes'];
+const CHECK_FIELDS = ['ID', 'Tier', 'Check', 'Fixture', 'Steps', 'Pass looks like', 'Verdict', 'Evidence', 'Root cause'];
+const CONVAR_FIELDS = ['ID', 'Tier', 'ConVar key', 'How to read', 'Reading', 'Verdict', 'Notes'];
 
-const VERDICT_WORDS = new Set(['pass', 'fail', 'blocked']);
+// `deferred` was added alongside `Tier` (amendment 2026-08-06, D-19..D-25): it
+// differs from `blocked` in that it is a *conscious* acceptance of an
+// untested engine-only half, not an unavailable precondition someone still
+// owes. It is only legal on an `engine`-tier row -- see Rule 9 below.
+const VERDICT_WORDS = new Set(['pass', 'fail', 'blocked', 'deferred']);
+const TIER_WORDS = new Set(['app', 'engine']);
 
 // The full expected ID inventory, held here so a row silently deleted from
 // the doc is caught rather than just quietly missing.
@@ -174,6 +186,14 @@ export function checkVerificationRecord(text, options = {}) {
   for (const row of rows) {
     const id = row.ID;
     const verdict = row.Verdict ?? '';
+    const tier = row.Tier ?? '';
+
+    // Rule 9: tier vocabulary. Every row must declare exactly `app` or
+    // `engine` -- an unknown or blank Tier is rejected outright, because
+    // Rule 10 below cannot reason about a row whose tier it does not know.
+    if (!TIER_WORDS.has(tier)) {
+      problems.push({ code: 'unknown-tier', id, message: `${id}: unrecognised Tier "${tier}"` });
+    }
 
     // Rule 2: scaffold completeness (D-09). These are what the plan fills
     // in; only the verdict is the human's.
@@ -223,6 +243,25 @@ export function checkVerificationRecord(text, options = {}) {
     // a reason is not.
     if (verdict === 'blocked' && !rootCause) {
       problems.push({ code: 'blocked-missing-reason', id, message: `${id}: blocked verdict has no stated reason` });
+    }
+
+    // Rule 10: `deferred` (D-22) is legal only on an `engine`-tier row -- an
+    // `app` row has a runner that can settle it, so `deferred` there is an
+    // error rather than an honest gap. It also requires a stated reason in
+    // the same cell `blocked` uses, same as Rule 6, because "the project
+    // consciously accepted this gap" is a claim that needs the reason on
+    // record, not assumed.
+    if (verdict === 'deferred') {
+      if (tier !== 'engine') {
+        problems.push({
+          code: 'deferred-on-app-row',
+          id,
+          message: `${id}: deferred is only legal on an engine-tier row (this row is Tier "${tier}")`,
+        });
+      }
+      if (!rootCause) {
+        problems.push({ code: 'deferred-missing-reason', id, message: `${id}: deferred verdict has no stated reason` });
+      }
     }
 
     // Rule 7: reading present. A recorded pass with no number recorded

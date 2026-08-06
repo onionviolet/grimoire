@@ -10,6 +10,7 @@ import { checkVerificationRecord, parseVerificationRecord } from './check-verifi
 
 interface CheckRowFields {
   id: string;
+  Tier: string;
   Check: string;
   Fixture: string;
   Steps: string;
@@ -21,6 +22,7 @@ interface CheckRowFields {
 
 interface ConvarRowFields {
   id: string;
+  Tier: string;
   'ConVar key': string;
   'How to read': string;
   Reading: string;
@@ -28,9 +30,15 @@ interface ConvarRowFields {
   Notes: string;
 }
 
+// Every fixture row defaults to Tier 'app' (check rows) since that is the
+// vocabulary's non-deferred-eligible case and matches most of the doc's real
+// rows; convar rows default to 'engine' since every real CV row is engine
+// tier. Individual tests override Tier where the case under test needs the
+// other value.
 function makeCheckRow(id: string, overrides: Partial<CheckRowFields> = {}): CheckRowFields {
   return {
     id,
+    Tier: 'app',
     Check: `${id} check`,
     Fixture: `${id} fixture`,
     Steps: `${id} steps`,
@@ -45,6 +53,7 @@ function makeCheckRow(id: string, overrides: Partial<CheckRowFields> = {}): Chec
 function makeConvarRow(id: string, overrides: Partial<ConvarRowFields> = {}): ConvarRowFields {
   return {
     id,
+    Tier: 'engine',
     'ConVar key': `${id}_key`,
     'How to read': `${id} how to read`,
     Reading: `${id} reading`,
@@ -72,22 +81,25 @@ function defaultConvarRows(): ConvarRowFields[] {
 }
 
 function renderCheckTable(rows: CheckRowFields[]): string {
-  const header = '| ID | Check | Fixture | Steps | Pass looks like | Verdict | Evidence | Root cause |';
-  const sep = '| --- | --- | --- | --- | --- | --- | --- | --- |';
+  const header = '| ID | Tier | Check | Fixture | Steps | Pass looks like | Verdict | Evidence | Root cause |';
+  const sep = '| --- | --- | --- | --- | --- | --- | --- | --- | --- |';
   const body = rows
     .map(
       (r) =>
-        `| ${r.id} | ${r.Check} | ${r.Fixture} | ${r.Steps} | ${r['Pass looks like']} | ${r.Verdict} | ${r.Evidence} | ${r['Root cause']} |`,
+        `| ${r.id} | ${r.Tier} | ${r.Check} | ${r.Fixture} | ${r.Steps} | ${r['Pass looks like']} | ${r.Verdict} | ${r.Evidence} | ${r['Root cause']} |`,
     )
     .join('\n');
   return [header, sep, body].join('\n');
 }
 
 function renderConvarTable(rows: ConvarRowFields[]): string {
-  const header = '| ID | ConVar key | How to read | Reading | Verdict | Notes |';
-  const sep = '| --- | --- | --- | --- | --- | --- |';
+  const header = '| ID | Tier | ConVar key | How to read | Reading | Verdict | Notes |';
+  const sep = '| --- | --- | --- | --- | --- | --- | --- |';
   const body = rows
-    .map((r) => `| ${r.id} | ${r['ConVar key']} | ${r['How to read']} | ${r.Reading} | ${r.Verdict} | ${r.Notes} |`)
+    .map(
+      (r) =>
+        `| ${r.id} | ${r.Tier} | ${r['ConVar key']} | ${r['How to read']} | ${r.Reading} | ${r.Verdict} | ${r.Notes} |`,
+    )
     .join('\n');
   return [header, sep, body].join('\n');
 }
@@ -224,6 +236,71 @@ describe('checkVerificationRecord', () => {
       result.problems.some(
         (p: { code: string; id: string }) => p.code === 'convar-pass-missing-reading' && p.id === 'CV-01',
       ),
+    ).toBe(true);
+  });
+
+  it('passes a valid app-tier row', () => {
+    const checkRows = defaultCheckRows();
+    checkRows[0] = makeCheckRow('IG-01', { Tier: 'app', Verdict: 'pass' });
+    const text = buildRecord({ checkRows });
+    expect(checkVerificationRecord(text, { strict: true }).ok).toBe(true);
+  });
+
+  it('passes a valid engine-tier row', () => {
+    const checkRows = defaultCheckRows();
+    checkRows[0] = makeCheckRow('IG-01', { Tier: 'engine', Verdict: 'pass' });
+    const text = buildRecord({ checkRows });
+    expect(checkVerificationRecord(text, { strict: true }).ok).toBe(true);
+  });
+
+  it('lets deferred on an engine row pass strict', () => {
+    const checkRows = defaultCheckRows();
+    checkRows[0] = makeCheckRow('IG-01', {
+      Tier: 'engine',
+      Verdict: 'deferred',
+      'Root cause': 'only a running Deadlock console can print this value',
+    });
+    const text = buildRecord({ checkRows });
+    const result = checkVerificationRecord(text, { strict: true });
+    expect(result.ok).toBe(true);
+  });
+
+  it('rejects deferred on an app row', () => {
+    const checkRows = defaultCheckRows();
+    checkRows[0] = makeCheckRow('IG-01', {
+      Tier: 'app',
+      Verdict: 'deferred',
+      'Root cause': 'trying to defer an app row',
+    });
+    const text = buildRecord({ checkRows });
+    const result = checkVerificationRecord(text);
+    expect(result.ok).toBe(false);
+    expect(
+      result.problems.some((p: { code: string; id: string }) => p.code === 'deferred-on-app-row' && p.id === 'IG-01'),
+    ).toBe(true);
+  });
+
+  it('rejects deferred with no reason', () => {
+    const checkRows = defaultCheckRows();
+    checkRows[0] = makeCheckRow('IG-01', { Tier: 'engine', Verdict: 'deferred', 'Root cause': '' });
+    const text = buildRecord({ checkRows });
+    const result = checkVerificationRecord(text);
+    expect(result.ok).toBe(false);
+    expect(
+      result.problems.some(
+        (p: { code: string; id: string }) => p.code === 'deferred-missing-reason' && p.id === 'IG-01',
+      ),
+    ).toBe(true);
+  });
+
+  it('rejects an unknown Tier value', () => {
+    const checkRows = defaultCheckRows();
+    checkRows[0] = makeCheckRow('IG-01', { Tier: 'unicorn' });
+    const text = buildRecord({ checkRows });
+    const result = checkVerificationRecord(text);
+    expect(result.ok).toBe(false);
+    expect(
+      result.problems.some((p: { code: string; id: string }) => p.code === 'unknown-tier' && p.id === 'IG-01'),
     ).toBe(true);
   });
 
