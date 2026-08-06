@@ -100,6 +100,25 @@ first-run and migration work want. Delete the slot directory to re-seed.
 The slots isolate userData, **not the game install**. Two slots toggling mods
 are writing to the same addons directory.
 
+**Measuring anything that renders needs `GRIMOIRE_DEV_NO_BACKGROUNDING=1`.**
+Chromium suspends `requestAnimationFrame` and throttles timers to about 1Hz for
+a window it considers hidden, and on Windows "hidden" includes a window merely
+covered by other windows. On an unattended machine that means zero frames, so a
+frame-time or animation check silently measures nothing. The trap is that
+`shot` keeps working the whole time: `Page.captureScreenshot` forces a capture
+regardless, so a screenshot shows a correctly rendered scene while the renderer
+is producing no frames at all. A screenshot cannot tell you the renderer is
+running. Check `document.visibilityState` and confirm rAF actually ticks before
+trusting any timing number.
+
+```bash
+GRIMOIRE_DEV_SLOT=2 GRIMOIRE_DEV_NO_BACKGROUNDING=1 pnpm dev
+```
+
+Env-gated for the same reason the CDP port is, and never set in a packaged
+build. It changes only whether Chromium keeps scheduling work for an
+unfocused window, not what gets rendered.
+
 ```bash
 node scripts/dev-driver.mjs route foundry
 ```

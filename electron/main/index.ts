@@ -95,6 +95,25 @@ if (devCdpPort) {
     app.commandLine.appendSwitch('remote-allow-origins', 'http://127.0.0.1');
 }
 
+// Chromium suspends requestAnimationFrame and throttles timers to roughly 1Hz
+// for a window it considers hidden, and on Windows "hidden" includes a window
+// merely covered by other windows. That makes any dev-driver measurement of
+// animation or per-frame cost silently read zero on an unattended machine,
+// while Page.captureScreenshot still returns a perfectly good picture of a
+// rendered scene. A screenshot therefore cannot tell you the renderer is
+// running, which is how a measurement gate ends up green having measured
+// nothing.
+//
+// Opt-in and env-gated for the same reason the debugging port above is: it
+// changes how the browser schedules work, so it must never be the default and
+// never reach a packaged build. It does not change what is rendered, only
+// whether Chromium keeps rendering while the window is not on top.
+if (process.env.GRIMOIRE_DEV_NO_BACKGROUNDING === '1') {
+    app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
+    app.commandLine.appendSwitch('disable-renderer-backgrounding');
+    app.commandLine.appendSwitch('disable-background-timer-throttling');
+}
+
 // Import IPC handlers
 import './ipc/settings';
 import './ipc/mods';
