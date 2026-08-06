@@ -1,0 +1,26 @@
+{
+  "source_path": "C:/Users/wayba/dev/grimoire/docs/social-architecture.md",
+  "type": "SPEC",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "Grimoire Social: Architecture & Scope",
+  "summary": "Architecture and scope for grimoire-social: Steam OpenID auth, profile publishing, discovery feed, likes, and Cloudflare Workers/D1 data model.",
+  "scope": [
+    "grimoire-social",
+    "Cloudflare Workers",
+    "Hono router",
+    "D1 SQLite",
+    "KV sessions",
+    "Steam OpenID",
+    "portable mod profiles",
+    "Discover tab",
+    "likes",
+    "reports",
+    "rate limiting",
+    "safeStorage session token"
+  ],
+  "cross_refs": ["docs/profile-spec.md"],
+  "locked": false,
+  "precedence": 1,
+  "notes": "MANIFEST_TYPE=SPEC applied as authoritative. Content agrees: API route surface, SQL data model, process boundaries, non-functional goals. Doc header reads 'Status: Draft (planning)' but that is a doc-level status, not an ADR status; locked remains false."
+}

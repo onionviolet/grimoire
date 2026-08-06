@@ -1,0 +1,13 @@
+{
+  "source_path": "C:/Users/wayba/dev/grimoire/docs/3d-preview-effects-feasibility.md",
+  "type": "DOC",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "Effects Feasibility Report: Particle FX for the Locker 3D Hero Preview",
+  "summary": "Feasibility report on rendering hero particle FX in the Locker 3D preview via three.quarks, flipbooks, and pre-baked WebM.",
+  "scope": ["Locker 3D hero preview", "particle FX", "three.js / R3F", "three.quarks", "renderer classes", "vpcf_c decoding", "control points", "child systems"],
+  "cross_refs": ["fx_inventory.json", "vpkmerge-core/examples/particle_fx_inventory.rs", "vpkmerge/target/release/examples/kv3dump.exe", "pak01_dir.vpk"],
+  "locked": false,
+  "precedence": 3,
+  "notes": ""
+}

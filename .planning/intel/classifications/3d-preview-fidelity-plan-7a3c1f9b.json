@@ -1,0 +1,13 @@
+{
+  "source_path": "C:/Users/wayba/dev/grimoire/docs/3d-preview-fidelity-plan.md",
+  "type": "PRD",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "3D preview fidelity: feasibility + phased plan",
+  "summary": "Phased plan to make Locker 3D hero previews match in-game fidelity across rig, materials/lighting, NPR, cloth, retargeting, and effects.",
+  "scope": ["Locker 3D hero preview", "glb exporter (morphic)", "Source 2 material parity", "NPR cel/rim/tint", "cloth/jiggle simulation", "animation retargeting", "ambient FX and ability casts", "Three.js / react-three-fiber renderer", "IBL cubemap"],
+  "cross_refs": [],
+  "locked": false,
+  "precedence": 2,
+  "notes": ""
+}

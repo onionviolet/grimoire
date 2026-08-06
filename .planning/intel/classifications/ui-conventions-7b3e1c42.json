@@ -1,0 +1,40 @@
+{
+  "source_path": "C:/Users/wayba/dev/grimoire/docs/ui-conventions.md",
+  "type": "ADR",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "UI conventions",
+  "summary": "House rules for Grimoire renderer UI: design tokens over raw values, shared primitives over ad-hoc markup, radius/focus scale, i18n and no em-dashes.",
+  "scope": [
+    "design tokens",
+    "src/components/common",
+    "Button",
+    "IconButton",
+    "form controls",
+    "PageLayout",
+    "Modal",
+    "Menu",
+    "toast store",
+    "Tag",
+    "Badge",
+    "Skeleton",
+    "radius scale",
+    "focus rings",
+    "z-index ladder",
+    "i18n keys"
+  ],
+  "cross_refs": [
+    "src/components/common/ui.tsx",
+    "src/components/common/forms.tsx",
+    "src/components/common/PageComponents.tsx",
+    "src/components/common/Modal.tsx",
+    "src/components/common/menu.tsx",
+    "src/components/common/ToastStack.tsx",
+    "src/components/common/Skeleton.tsx",
+    "src/index.css",
+    "src/locales/en/translation.json"
+  ],
+  "locked": false,
+  "precedence": 0,
+  "notes": "Type set by MANIFEST_TYPE=ADR (manifest authoritative). Document has no status field and no Context/Decision/Consequences structure, so locked stays false. Precedence 0 from MANIFEST_PRECEDENCE."
+}

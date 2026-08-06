@@ -1,0 +1,32 @@
+{
+  "source_path": "C:/Users/wayba/dev/grimoire/docs/hero-pose-locker.md",
+  "type": "SPEC",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "Live 3D hero poses in the Locker",
+  "summary": "Technical spec for the Locker 2D/3D toggle: vpkmerge --pose static glb export, caching, IPC surface, and three.js viewer.",
+  "scope": [
+    "Locker hero view",
+    "HeroPoseViewer",
+    "heroPoseModels service",
+    "grimoire-hero: protocol",
+    "vpkmerge --pose",
+    "hero model codename coverage"
+  ],
+  "cross_refs": [
+    "src/pages/LockerHero.tsx",
+    "electron/main/services/soulContainerModels.ts",
+    "electron/main/services/heroPoseModels.ts",
+    "electron/main/index.ts",
+    "electron/main/ipc/portraits.ts",
+    "electron/preload/index.ts",
+    "src/lib/api.ts",
+    "src/types/electron.d.ts",
+    "src/types/portrait.ts",
+    "src/components/locker/HeroPoseViewer.tsx",
+    "scripts/fetch-vpkmerge.mjs"
+  ],
+  "locked": false,
+  "precedence": 1,
+  "notes": ""
+}

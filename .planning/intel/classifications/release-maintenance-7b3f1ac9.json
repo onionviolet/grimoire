@@ -1,0 +1,13 @@
+{
+  "source_path": "C:/Users/wayba/dev/grimoire/docs/release-maintenance.md",
+  "type": "ADR",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "Release maintenance and artifact retention",
+  "summary": "Operator checklist and retention policy for cutting fork releases, packaging Windows artifacts, and preserving installers for rollback.",
+  "scope": ["release process", "artifact retention", "GitHub Releases", "APT repository", "Windows packaging", "vpkmerge", "release workflow"],
+  "cross_refs": ["package.json", "CHANGELOG.md", ".github/workflows/release.yml"],
+  "locked": false,
+  "precedence": 0,
+  "notes": "Type set by MANIFEST_TYPE=ADR (override). Content signals are runbook/checklist prose with no Status field, so locked=false."
+}

@@ -1,0 +1,29 @@
+{
+  "source_path": "C:/Users/wayba/dev/grimoire/docs/localization.md",
+  "type": "SPEC",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "Localization (i18n)",
+  "summary": "Defines Grimoire's i18next localization pipeline: catalog format, Weblate component settings, runtime catalog download, manifest generation, and developer/translator rules.",
+  "scope": [
+    "i18next",
+    "react-i18next",
+    "src/locales/<lang>/translation.json",
+    "src/locales/manifest.json",
+    "src/i18n.ts",
+    "Hosted Weblate component",
+    "runtime locale download and ETag refresh",
+    "pnpm i18n:check",
+    "pnpm i18n:manifest",
+    "AppSettings.language"
+  ],
+  "cross_refs": [
+    "src/locales/en/translation.json",
+    "src/locales/manifest.json",
+    "src/i18n.ts",
+    "scripts/gen-locale-manifest.mjs"
+  ],
+  "locked": false,
+  "precedence": 1,
+  "notes": ""
+}

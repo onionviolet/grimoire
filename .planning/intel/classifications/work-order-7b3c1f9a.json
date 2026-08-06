@@ -1,0 +1,27 @@
+{
+  "source_path": "C:/Users/wayba/dev/grimoire/docs/work-order.md",
+  "type": "PRD",
+  "confidence": "medium",
+  "manifest_override": true,
+  "title": "Work order",
+  "summary": "Ordered execution plan for remaining Grimoire work: serial steps 0-5, three waves, gates, and parked human-gated tasks.",
+  "scope": [
+    "Foundry source actions",
+    "Foundry combined output",
+    "Merge review UI",
+    "Performance ConVar controls",
+    "3D rigged spine spike",
+    "Social phase 1.5",
+    "VFX recolor roster",
+    "release integrity smoke test",
+    "wave gates"
+  ],
+  "cross_refs": [
+    "./remaining-work-phases.md",
+    "./spec-audit-prompt.md",
+    "./audit-2026-07-28-verdicts.md"
+  ],
+  "locked": false,
+  "precedence": 2,
+  "notes": "Type taken from MANIFEST_TYPE (PRD), authoritative. Content is a sequencing/work-order plan (steps, waves, gates) rather than user stories or acceptance criteria; no ADR status field or decision/consequences sections. Heuristic alone would have read closer to DOC."
+}

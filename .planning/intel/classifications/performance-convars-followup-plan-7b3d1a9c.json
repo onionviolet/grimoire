@@ -1,0 +1,25 @@
+{
+  "source_path": "C:/Users/wayba/dev/grimoire/docs/performance-convars-followup-plan.md",
+  "type": "PRD",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "Performance ConVar follow-up plan",
+  "summary": "Proposed follow-up product and safety plan for bounded HUD/minimap ConVar controls in the Performance settings card.",
+  "scope": [
+    "Performance settings card",
+    "HUD/minimap ConVars",
+    "gameinfo.gi",
+    "intent profiles",
+    "snapshots and rollback",
+    "compatibility manifest"
+  ],
+  "cross_refs": [
+    "electron/main/services/performanceConfig.ts",
+    "electron/main/services/performanceConfigData.ts",
+    "src/components/performance/PerformanceConfigCard.tsx",
+    "docs/performance-config-integration.md"
+  ],
+  "locked": false,
+  "precedence": 2,
+  "notes": "MANIFEST_TYPE=PRD authoritative. Content matches: goals, guardrails, phased proposals, open review questions. Status line reads 'proposed', not an accepted ADR."
+}

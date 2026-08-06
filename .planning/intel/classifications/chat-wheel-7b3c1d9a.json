@@ -1,0 +1,13 @@
+{
+  "source_path": "C:/Users/wayba/dev/grimoire/docs/chat-wheel.md",
+  "type": "SPEC",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "Chat Wheel",
+  "summary": "How Grimoire's Chat Wheel page edits ChatLane YAML and converts it to a Deadlock add-on VPK via the bundled CLI.",
+  "scope": ["Chat Wheel page", "ChatLane YAML", "chatlane.yml", "ChatLane converter CLI", "Deadlock add-on VPK", "managed mod flow", "Advanced YAML editor", "radial preview"],
+  "cross_refs": ["https://github.com/onionviolet/chatlane-grimoire", "https://github.com/RedMser/ChatLane"],
+  "locked": false,
+  "precedence": 1,
+  "notes": ""
+}

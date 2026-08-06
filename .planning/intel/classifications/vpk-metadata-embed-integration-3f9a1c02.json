@@ -1,0 +1,13 @@
+{
+  "source_path": "C:/Users/wayba/dev/grimoire/docs/vpk-metadata-embed-integration.md",
+  "type": "SPEC",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "VPK Imprinting: Grimoire Integration Spec",
+  "summary": "How the vpk-modinfo embed format is wired into Grimoire: canonical identity, service ownership, unknown-mod consult order, in-place imprint mechanics.",
+  "scope": ["VPK imprinting", "addoninfo.txt", "modinfo.json", "canonical identity sha256", "vpkIdentity.ts", "modinfoFormat.ts", "vpkmerge", "unknownModDetection.ts", "merged mod sources", "locker selections"],
+  "cross_refs": ["docs/vpk-modinfo-spec.md"],
+  "locked": false,
+  "precedence": 1,
+  "notes": ""
+}

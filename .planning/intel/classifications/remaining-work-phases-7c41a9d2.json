@@ -1,0 +1,13 @@
+{
+  "source_path": "C:/Users/wayba/dev/grimoire/docs/remaining-work-phases.md",
+  "type": "PRD",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "Remaining work, phased",
+  "summary": "Phased backlog of everything the docs promise but the code has not shipped, with dependencies and exit gates per phase.",
+  "scope": ["Foundry", "Locker", "combined VPK output", "release integrity", "spec audit", "ability VFX recolor", "3D preview"],
+  "cross_refs": ["./spec-audit-prompt.md", "./feature-status.md", "./ability-vfx-recolor.md", "./3d-preview-fidelity-plan.md", "./locker-hero-card-apply.md", "./foundry-handoff.md"],
+  "locked": false,
+  "precedence": 2,
+  "notes": "Type taken from MANIFEST_TYPE (PRD); heuristic classification skipped. Content is a phased gap/backlog list with exit gates, consistent with requirements-style material."
+}

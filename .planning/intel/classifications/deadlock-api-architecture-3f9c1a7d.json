@@ -1,0 +1,26 @@
+{
+  "source_path": "C:/Users/wayba/dev/grimoire/docs/deadlock-api-architecture.md",
+  "type": "SPEC",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "Deadlock Stats API & Database Architecture",
+  "summary": "Reference for the player statistics system: external API integration, stats.db SQLite schema, and data flow across main process and React frontend.",
+  "scope": [
+    "Deadlock API (api.deadlock-api.com)",
+    "Steam API profile resolution",
+    "stats.db SQLite schema",
+    "players",
+    "mmr_snapshots",
+    "match_history",
+    "hero_stats_snapshots",
+    "aggregated_stats",
+    "stats.ts API client",
+    "statsDatabase.ts",
+    "statsStore.ts",
+    "Stats.tsx"
+  ],
+  "cross_refs": [],
+  "locked": false,
+  "precedence": 1,
+  "notes": ""
+}

@@ -1,0 +1,13 @@
+{
+  "source_path": "C:/Users/wayba/dev/grimoire/docs/gamebanana_categories_reference.md",
+  "type": "DOC",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "GameBanana Categories Reference for Deadlock",
+  "summary": "Reference listing of GameBanana category IDs, types, and item counts for Deadlock (game ID 20948).",
+  "scope": ["GameBanana categories", "Deadlock game ID 20948", "ModCategory", "SoundCategory", "ToolCategory", "TutorialCategory", "category IDs"],
+  "cross_refs": [],
+  "locked": false,
+  "precedence": 3,
+  "notes": ""
+}

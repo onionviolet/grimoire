@@ -1,0 +1,26 @@
+{
+  "source_path": "C:/Users/wayba/dev/grimoire/docs/portrait-shelf-plan.md",
+  "type": "PRD",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "The portrait shelf: give Cards what Sounds just got",
+  "summary": "Plan to add installed-content ownership readout, provenance badges, and unified portrait randomization to the Locker hero page's Cards section.",
+  "scope": [
+    "Locker Cards section",
+    "HeroCardPicker",
+    "portraitInventory.ts",
+    "hero portrait art",
+    "foundryInspectAssetSources",
+    "foundry shuffle pools",
+    "VARIANT_LABEL variant labels"
+  ],
+  "cross_refs": [
+    "./sound-locker-plan.md",
+    "./locker-foundry-parity-plan.md",
+    "./chat-wheel-radial-and-portraits-tab-plan.md",
+    "./portrait-shelf-prompt.md"
+  ],
+  "locked": false,
+  "precedence": 2,
+  "notes": ""
+}

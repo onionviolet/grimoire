@@ -1,0 +1,13 @@
+{
+  "source_path": "C:/Users/wayba/dev/grimoire/docs/rigged-preview-spike.md",
+  "type": "DOC",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "Rigged hero preview: measurement spike",
+  "summary": "Spike report measuring the existing rigged hero preview export path end to end across three pilot heroes.",
+  "scope": ["rigged hero preview", "heroPoseModels.ts", "HeroPoseViewer.tsx", "loadGltfPreview.ts", "vpkmerge", "GLB export", "chooseRiggedClip", "MODEL_CODENAME_OVERRIDES", "NPR outline layer"],
+  "cross_refs": ["docs/remaining-work-phases.md", "electron/main/services/heroPoseModels.ts", "src/components/locker/HeroPoseViewer.tsx", "src/lib/loadGltfPreview.ts", "electron/main/services/heroPoseRiggedClip.test.ts"],
+  "locked": false,
+  "precedence": 3,
+  "notes": ""
+}

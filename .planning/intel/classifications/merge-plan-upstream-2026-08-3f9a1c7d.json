@@ -1,0 +1,13 @@
+{
+  "source_path": "C:/Users/wayba/dev/grimoire/docs/merge-plan-upstream-2026-08.md",
+  "type": "PRD",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "Merge plan: upstream catch-up + branch consolidation (Aug 2026)",
+  "summary": "Ops plan to merge 10 upstream commits into main, fold one unmerged branch in, and delete eleven fully merged branches.",
+  "scope": ["upstream merge", "branch consolidation", "main branch", "structural-refactor-7", "dev-slot-seeding", "refs:check gate"],
+  "cross_refs": ["CLAUDE.md"],
+  "locked": false,
+  "precedence": 2,
+  "notes": "Type taken from MANIFEST_TYPE (PRD). Content signals alone read as an operational runbook (DOC) with phased steps and STOP markers, not user stories or acceptance criteria."
+}

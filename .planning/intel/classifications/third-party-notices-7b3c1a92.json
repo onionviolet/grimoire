@@ -1,0 +1,13 @@
+{
+  "source_path": "C:/Users/wayba/dev/grimoire/docs/third-party-notices.md",
+  "type": "ADR",
+  "confidence": "medium",
+  "manifest_override": true,
+  "title": "Third-party notices",
+  "summary": "Attribution and licensing notices for upstream Grimoire/vpkmerge, ffmpeg-static/FFmpeg, and ChatLane chat wheel icons.",
+  "scope": ["Grimoire upstream fork attribution", "vpkmerge", "ffmpeg-static", "FFmpeg", "ChatLane chat wheel icons", "Ko-fi and Discord links"],
+  "cross_refs": ["scripts/fetch-vpkmerge.mjs", "package.json", "resources/vpkmerge", "resources/chatlane", "src/assets/chatlane-icons/*.svg"],
+  "locked": false,
+  "precedence": 0,
+  "notes": "Type ADR taken from MANIFEST_TYPE (authoritative). Content is prose licensing/attribution notices with no Status field and no Context/Decision/Consequences sections, so locked is false; it does carry binding constraints (retain notices, keep Ko-fi/Discord labels explicit about upstream ownership)."
+}

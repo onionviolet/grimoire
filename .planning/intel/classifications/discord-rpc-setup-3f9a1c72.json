@@ -1,0 +1,13 @@
+{
+  "source_path": "C:/Users/wayba/dev/grimoire/docs/discord-rpc-setup.md",
+  "type": "SPEC",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "Discord Rich Presence setup",
+  "summary": "Setup and behavior of Grimoire's opt-in Discord Rich Presence, covering IPC transport, code layout, portal art assets, and rate limits.",
+  "scope": ["Discord Rich Presence", "discordRpc.ts", "ipc/discord.ts", "DiscordPresence.tsx", "settings.discordRpcEnabled", "@xhayper/discord-rpc", "DISCORD_CLIENT_ID", "grimoire_logo art asset"],
+  "cross_refs": [],
+  "locked": false,
+  "precedence": 1,
+  "notes": "Type taken from MANIFEST_TYPE (SPEC); content reads as a setup/reference doc with implementation contracts (IPC socket paths, rate limit 5 updates/20s, asset keys)."
+}

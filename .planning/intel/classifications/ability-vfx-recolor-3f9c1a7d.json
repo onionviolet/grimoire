@@ -1,0 +1,13 @@
+{
+  "source_path": "C:/Users/wayba/dev/grimoire/docs/ability-vfx-recolor.md",
+  "type": "ADR",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "Ability VFX layer + recolor",
+  "summary": "Hero ability VFX extraction as a standalone addon plus in-place KV3 scalar patch recoloring with hue, saturation, and brightness scales.",
+  "scope": ["ability VFX", "particle recolor", "vpkmerge", "detectVfxLayer", "extractVfxLayer", "HeroColorPicker", "heroColors service", "KV3 patching", "hero dragon material"],
+  "cross_refs": ["per-ability-sound-map.md"],
+  "locked": false,
+  "precedence": 0,
+  "notes": "Type set by MANIFEST_TYPE=ADR. Status line reads 'shipped', not 'Accepted', so locked left false per rule; the decision is nonetheless described as implemented. Key locked-style decision: recolor must be an in-place scalar patch, never a KV3 re-encode."
+}

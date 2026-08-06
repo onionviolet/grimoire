@@ -1,0 +1,13 @@
+{
+  "source_path": "C:/Users/wayba/dev/grimoire/docs/vpk-modinfo-spec.md",
+  "type": "SPEC",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "vpk-modinfo v1: Embedded VPK Identity Metadata",
+  "summary": "Format spec for embedding mod identity metadata in VPK files via addoninfo.txt and modinfo.json entries.",
+  "scope": ["vpk-modinfo", "VPK", "addoninfo.txt", "modinfo.json", "KeyValues1", "GameBanana ids", "merge reconstruction", "original whole-file identity"],
+  "cross_refs": [],
+  "locked": false,
+  "precedence": 1,
+  "notes": ""
+}

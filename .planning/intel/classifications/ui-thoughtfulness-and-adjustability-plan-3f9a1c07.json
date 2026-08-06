@@ -1,0 +1,13 @@
+{
+  "source_path": "C:/Users/wayba/dev/grimoire/docs/ui-thoughtfulness-and-adjustability-plan.md",
+  "type": "PRD",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "UI thoughtfulness and adjustability pass",
+  "summary": "Implementation brief for a UI quality pass making existing controls clearer and adjustable, starting with Locker, Foundry, and Conflicts search.",
+  "scope": ["Locker", "Foundry", "Conflicts", "Installed", "Browse", "Profiles", "Stats", "search and filtering", "conflict search"],
+  "cross_refs": ["docs/locker-consistency-pass.md"],
+  "locked": false,
+  "precedence": 2,
+  "notes": ""
+}

@@ -1,0 +1,13 @@
+{
+  "source_path": "C:/Users/wayba/dev/grimoire/docs/social-architecture-decisions.md",
+  "type": "ADR",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "Grimoire Social: Architecture Decision Records",
+  "summary": "Log of accepted architecture decisions for Grimoire Social: Steam OpenID identity, like-only voting, Cloudflare Workers/D1/KV stack, Durable Object rate limiting.",
+  "scope": ["Grimoire Social", "Steam OpenID identity", "voting model", "Cloudflare Workers", "D1", "KV", "Durable Objects", "Hono", "rate limiting"],
+  "cross_refs": ["social-architecture.md"],
+  "locked": true,
+  "precedence": 0,
+  "notes": ""
+}

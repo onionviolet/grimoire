@@ -1,0 +1,13 @@
+{
+  "source_path": "C:/Users/wayba/dev/grimoire/docs/upstream-boundary-map.md",
+  "type": "ADR",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "Upstream boundary map",
+  "summary": "Maps which src/ and electron/ files are fork-only versus shared-and-modified against Slush97/grimoire upstream, with churn totals guiding where changes should land.",
+  "scope": ["fork-only files", "shared-and-modified files", "upstream merge cost", "churn vs upstream", "src/", "electron/", "Settings.tsx", "performanceConfigData.ts", "translation.json"],
+  "cross_refs": [],
+  "locked": false,
+  "precedence": 0,
+  "notes": "Type set by MANIFEST_TYPE=ADR. Document has no status field and no Context/Decision/Consequences structure; locked=false since no Accepted status."
+}

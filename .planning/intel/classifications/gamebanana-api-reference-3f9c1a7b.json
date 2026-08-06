@@ -1,0 +1,13 @@
+{
+  "source_path": "C:/Users/wayba/dev/grimoire/docs/gamebanana_api_reference.md",
+  "type": "DOC",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "GameBanana API Reference for Deadlock",
+  "summary": "Reference notes on GameBanana's Core and REST v11 APIs for Deadlock: item types, endpoints, parameters, and implementation caveats.",
+  "scope": ["GameBanana API", "REST API v11", "Core API", "Deadlock game ID 20948", "Subfeed endpoint", "Search endpoint", "item types", "category discovery", "schemas"],
+  "cross_refs": [],
+  "locked": false,
+  "precedence": 3,
+  "notes": "Type taken from MANIFEST_TYPE=DOC. Content contains endpoint tables (SPEC-like signals) but describes an external third-party API, consistent with reference documentation."
+}

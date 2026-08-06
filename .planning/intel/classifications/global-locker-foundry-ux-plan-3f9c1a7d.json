@@ -1,0 +1,31 @@
+{
+  "source_path": "C:/Users/wayba/dev/grimoire/docs/global-locker-foundry-ux-plan.md",
+  "type": "PRD",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "Plan: coherent Global inventory, sound taxonomy, and portrait/source UX",
+  "summary": "Decision-gated UX plan for unifying Global mod inventory, fixing sound category taxonomy, and clarifying the Locker/Foundry portrait journey.",
+  "scope": [
+    "Global inventory",
+    "Locker",
+    "Foundry",
+    "sound categorisation",
+    "globalType buckets",
+    "portraits",
+    "Visuals/Sounds tabs",
+    "mod naming"
+  ],
+  "cross_refs": [
+    "CLAUDE.md",
+    "CHANGELOG.md",
+    "docs/codex-request-audit-2026-07-29.md",
+    "docs/locker-consistency-pass.md",
+    "docs/ui-thoughtfulness-and-adjustability-plan.md",
+    "docs/portrait-shelf-plan.md",
+    "upstream-boundary-map.md",
+    "docs/feature-status.md"
+  ],
+  "locked": false,
+  "precedence": 2,
+  "notes": ""
+}

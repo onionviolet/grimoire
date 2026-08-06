@@ -1,0 +1,13 @@
+{
+  "source_path": "C:/Users/wayba/dev/grimoire/docs/fork-maintenance.md",
+  "type": "ADR",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "Fork maintenance policy",
+  "summary": "Policy for the independent product fork: upstream intake, attribution requirements, branch hygiene, releases, and the vpkmerge engine dependency.",
+  "scope": ["fork maintenance", "upstream intake", "attribution", "Ko-fi donation copy", "branch hygiene", "releases", "vpkmerge engine", "scripts/fetch-vpkmerge.mjs", "src/locales/en/translation.json"],
+  "cross_refs": ["./third-party-notices.md", "release-maintenance.md"],
+  "locked": false,
+  "precedence": 0,
+  "notes": "Type taken from MANIFEST_TYPE (ADR); heuristic classification skipped. No Status field in source, so locked=false per rule (only 'Accepted' counts). Content is normative policy prose without Context/Decision/Consequences sections."
+}

@@ -1,0 +1,13 @@
+{
+  "source_path": "C:/Users/wayba/dev/grimoire/docs/locker-foundry-parity-plan.md",
+  "type": "PRD",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "Locker and Foundry: parity plan",
+  "summary": "Sequential lane plan closing the quality gap between the Locker and Foundry hero surfaces, sharing preview and review capabilities.",
+  "scope": ["Locker", "Foundry", "HeroWorkshop", "LockerHero", "HeroPoseViewer", "FoundryHeroGrid", "shared hero frame", "tray preview", "VPK entry path ownership"],
+  "cross_refs": ["./feature-status.md", "./foundry-changes-parallel-plan.md"],
+  "locked": false,
+  "precedence": 2,
+  "notes": ""
+}

@@ -1,0 +1,34 @@
+{
+  "source_path": "C:/Users/wayba/dev/grimoire/docs/portrait-alias-sweep-plan.md",
+  "type": "PRD",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "Portrait alias sweep (issue #4, items 4 and 7)",
+  "summary": "Plan of record for sweeping hero portrait alias/codename mismatches to root-cause issue #4, split into three legs.",
+  "scope": [
+    "portrait alias table",
+    "heroPortraitIdentity.ts",
+    "resolvePortraitHero",
+    "portraitCodenamesForHero",
+    "displayNameForHeroCodename",
+    "portraitFamilyKey",
+    "indexed portrait catalog",
+    "Foundry IPC / CatalogDiagnostics",
+    "scripts/dev-driver.mjs",
+    "heroFilterOptions.ts"
+  ],
+  "cross_refs": [
+    "https://github.com/onionviolet/grimoire/issues/4",
+    "src/lib/heroPortraitIdentity.ts",
+    "src/lib/heroPortraitIdentity.test.ts",
+    "src/components/foundry/LibraryBrowse.tsx",
+    "src/components/common/HeroSelect.tsx",
+    "electron/main/services/autoexec.ts",
+    "src/types/electron.ts",
+    "src/components/foundry/heroFilterOptions.ts",
+    "scripts/dev-driver.mjs"
+  ],
+  "locked": false,
+  "precedence": 2,
+  "notes": "Type taken from MANIFEST_TYPE (PRD), authoritative. Content is an investigation/work plan with verdict table and legs A/B/C plus concurrency constraints; without the manifest it would read closer to DOC."
+}

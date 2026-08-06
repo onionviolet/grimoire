@@ -1,0 +1,13 @@
+{
+  "source_path": "C:/Users/wayba/dev/grimoire/docs/locker-deep-dive.md",
+  "type": "PRD",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "Locker deep dive: make the model the stage, playable abilities, and honest failure states",
+  "summary": "Umbrella design direction for the Locker: 3D model panel as primary stage, ability VFX and sound previews, and honest failure states.",
+  "scope": ["Locker", "3D model panel", "HeroPoseViewer", "ability VFX preview", "skin cards", "pose failure states", "hero backdrops"],
+  "cross_refs": ["docs/ability-vfx-recolor.md"],
+  "locked": false,
+  "precedence": 2,
+  "notes": ""
+}

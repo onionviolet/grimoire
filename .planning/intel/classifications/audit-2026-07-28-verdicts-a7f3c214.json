@@ -1,0 +1,13 @@
+{
+  "source_path": "C:/Users/wayba/dev/grimoire/docs/audit-2026-07-28-verdicts.md",
+  "type": "DOC",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "Spec audit verdicts, 2026-07-28",
+  "summary": "Read-only audit verdicts per wave item (SHIPPED/PARTIAL/MISSING/PREMISE FALSE) against the working tree at v1.25.171, with gate results and scope changes.",
+  "scope": ["Foundry source actions", "merge review UI", "Foundry combined output", "performance ConVars", "3D rigged spine spike", "social phase 1.5", "wave sequencing", "test/typecheck/lint gates"],
+  "cross_refs": ["./spec-audit-prompt.md", "./work-order.md"],
+  "locked": false,
+  "precedence": 2,
+  "notes": ""
+}

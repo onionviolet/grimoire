@@ -1,0 +1,25 @@
+{
+  "source_path": "C:/Users/wayba/dev/grimoire/docs/sound-locker-plan.md",
+  "type": "PRD",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "The Sound Locker",
+  "summary": "Plan for a Sound Locker inventory surface listing installed sound mods per hero and globally, with audition, enable/disable, and ownership awareness.",
+  "scope": [
+    "Sound Locker",
+    "HeroSoundPicker",
+    "sound inventory model",
+    "src/lib/soundInventory.ts",
+    "global sound mods",
+    "VPK entry paths",
+    "Locker hero page",
+    "Foundry sound-conflict inspector"
+  ],
+  "cross_refs": [
+    "./locker-foundry-parity-plan.md",
+    "./chat-wheel-radial-and-portraits-tab-plan.md"
+  ],
+  "locked": false,
+  "precedence": 2,
+  "notes": ""
+}

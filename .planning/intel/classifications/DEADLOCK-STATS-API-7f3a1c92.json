@@ -1,0 +1,13 @@
+{
+  "source_path": "C:/Users/wayba/dev/grimoire/docs/DEADLOCK_STATS_API.md",
+  "type": "DOC",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "Deadlock API Complete Reference",
+  "summary": "Reference for the deadlock-api.com HTTP API: authentication, rate limits, and endpoints for players, MMR, and related stats.",
+  "scope": ["deadlock-api.com", "authentication", "rate limits", "player endpoints", "MMR endpoints", "match history", "hero stats", "Steam profiles"],
+  "cross_refs": [],
+  "locked": false,
+  "precedence": 3,
+  "notes": "Manifest declared DOC; content signals (endpoint tables, rate limits) would otherwise read as SPEC. Manifest treated as authoritative."
+}

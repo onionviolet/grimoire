@@ -1,0 +1,13 @@
+{
+  "source_path": "C:/Users/wayba/dev/grimoire/docs/agent-ui-lab-plan.md",
+  "type": "PRD",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "Agent UI Lab plan",
+  "summary": "Plan for an opt-in, loopback-only Agent UI Lab in the Electron app letting a local agent inspect and operate Grimoire's real UI.",
+  "scope": ["Agent UI Lab", "Electron renderer UI", "dev-driver.mjs", "user-facing toggle", "input synthesis", "viewport resizing", "accessible-name extraction"],
+  "cross_refs": ["scripts/dev-driver.mjs", "electron/main/index.ts"],
+  "locked": false,
+  "precedence": 2,
+  "notes": ""
+}

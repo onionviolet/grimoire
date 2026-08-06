@@ -1,0 +1,18 @@
+{
+  "source_path": "C:/Users/wayba/dev/grimoire/docs/fork-divergence-policy.md",
+  "type": "ADR",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "Fork divergence policy",
+  "summary": "Policy governing how the fork decides what to build, what to absorb from upstream Slush97/grimoire, and what to contribute back.",
+  "scope": ["fork divergence", "upstream absorption", "merge cost model", "Settings.tsx ownership", "Locker", "Foundry", "performance config", "QoL lock", "delivery workflow"],
+  "cross_refs": [
+    "docs/locker-consistency-pass.md",
+    "docs/performance-config-integration.md",
+    "docs/ui-conventions.md",
+    "docs/upstream-absorption-1.26.md"
+  ],
+  "locked": false,
+  "precedence": 0,
+  "notes": "Manifest declared ADR; treated as authoritative. Document has no Status field and no Context/Decision/Consequences structure, so locked=false per the Accepted-only rule. Content is a set of seven numbered standing rules with rationale."
+}

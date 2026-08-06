@@ -1,0 +1,13 @@
+{
+  "source_path": "C:/Users/wayba/dev/grimoire/docs/feature-status.md",
+  "type": "PRD",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "Feature status",
+  "summary": "Implementation inventory of shipped, experimental, and dev-only Grimoire features as of 2026-07-30, verified against the working tree.",
+  "scope": ["Locker global sound categorisation", "Foundry hero workshop", "Foundry Sound Workbench", "Foundry texture and item replacement", "combined Foundry output", "Chat Wheel YAML workflow", "Discover mod availability", "rigged hero preview", "performance ConVar provenance"],
+  "cross_refs": ["./spec-audit-prompt.md", "./rigged-preview-spike.md"],
+  "locked": false,
+  "precedence": 1,
+  "notes": "Type taken from MANIFEST_TYPE (PRD). Content is a status inventory (DOC-shaped) rather than user stories or acceptance criteria; manifest is authoritative."
+}

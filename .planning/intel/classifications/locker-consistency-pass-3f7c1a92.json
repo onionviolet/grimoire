@@ -1,0 +1,13 @@
+{
+  "source_path": "C:/Users/wayba/dev/grimoire/docs/locker-consistency-pass.md",
+  "type": "PRD",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "UI quality, consistency, and convenience pass",
+  "summary": "Implementation brief fixing the Locker Global sounds shell defect and extracting repeated UI patterns into shared, consistent surfaces.",
+  "scope": ["Locker", "GlobalLockerView", "SoundLocker", "GlobalSoundShelf", "HeroSoundShelf", "tablist accessibility", "PageHeader"],
+  "cross_refs": ["ui-thoughtfulness-and-adjustability-plan.md"],
+  "locked": false,
+  "precedence": 2,
+  "notes": ""
+}

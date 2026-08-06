@@ -1,0 +1,23 @@
+{
+  "source_path": "C:/Users/wayba/dev/grimoire/docs/foundry-changes-parallel-plan.md",
+  "type": "PRD",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "Foundry changes: parallel work plan",
+  "summary": "Parallel work lanes for Foundry follow-up: VPK identity validation, scoped source blocking, grouped pool view, alternatives gallery, portrait editor, sound tool surfacing.",
+  "scope": [
+    "Foundry",
+    "VPK identity validation",
+    "AssetSourcesPanel",
+    "MyChanges pool view",
+    "alternatives gallery",
+    "portrait editor",
+    "sound browser"
+  ],
+  "cross_refs": [
+    "./feature-status.md"
+  ],
+  "locked": false,
+  "precedence": 2,
+  "notes": ""
+}

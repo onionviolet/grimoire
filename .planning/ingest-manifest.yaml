@@ -1,0 +1,170 @@
+# GSD ingest manifest for /gsd-ingest-docs --mode new
+# Precedence: lower number wins. Default tiers ADR=0, SPEC=1, PRD=2, DOC=3.
+# A few docs carry an explicit bump where they act as the delivery contract
+# or ground truth for their tier.
+
+docs:
+  # ---------------------------------------------------------------- ADR (10)
+  # Load-bearing decisions and policy. Locked in PROJECT.md <decisions>.
+  - path: docs/social-architecture-decisions.md
+    type: ADR
+    precedence: 0
+  - path: docs/fork-divergence-policy.md
+    type: ADR
+    precedence: 0
+  - path: docs/fork-maintenance.md
+    type: ADR
+    precedence: 0
+  - path: docs/locker-global-mods.md
+    type: ADR
+    precedence: 0
+  - path: docs/performance-config-integration.md
+    type: ADR
+    precedence: 0
+  - path: docs/ability-vfx-recolor.md
+    type: ADR
+    precedence: 0
+  - path: docs/ui-conventions.md
+    type: ADR
+    precedence: 0
+  - path: docs/upstream-boundary-map.md
+    type: ADR
+    precedence: 0
+  - path: docs/release-maintenance.md
+    type: ADR
+    precedence: 0
+  - path: docs/third-party-notices.md
+    type: ADR
+    precedence: 0
+
+  # --------------------------------------------------------------- SPEC (14)
+  # Formal formats, shipped-feature contracts, architecture of record.
+  - path: docs/profile-spec.md
+    type: SPEC
+    precedence: 1
+  - path: docs/vpk-modinfo-spec.md
+    type: SPEC
+    precedence: 1
+  - path: docs/vpk-metadata-embed-integration.md
+    type: SPEC
+    precedence: 1
+  - path: docs/deadworks-servers.md
+    type: SPEC
+    precedence: 1
+  - path: docs/locker-hero-card-apply.md
+    type: SPEC
+    precedence: 1
+  - path: docs/chat-wheel.md
+    type: SPEC
+    precedence: 1
+  - path: docs/hero-pose-locker.md
+    type: SPEC
+    precedence: 1
+  - path: docs/localization.md
+    type: SPEC
+    precedence: 1
+  - path: docs/multi-folder-addon-overflow.md
+    type: SPEC
+    precedence: 1
+  - path: docs/apt-repo.md
+    type: SPEC
+    precedence: 1
+  - path: docs/discord-rpc-setup.md
+    type: SPEC
+    precedence: 1
+  - path: docs/social-architecture.md
+    type: SPEC
+    precedence: 1
+  - path: docs/deadlock-api-architecture.md
+    type: SPEC
+    precedence: 1
+  - path: docs/design-overhaul-brief.md
+    type: SPEC
+    precedence: 1
+
+  # ---------------------------------------------------------------- PRD (20)
+  # What to build next. feature-status is the delivery contract several
+  # other plans say "read first", so it outranks its tier.
+  - path: docs/feature-status.md
+    type: PRD
+    precedence: 1
+  - path: docs/remaining-work-phases.md
+    type: PRD
+    precedence: 2
+  - path: docs/work-order.md
+    type: PRD
+    precedence: 2
+  - path: docs/locker-deep-dive.md
+    type: PRD
+    precedence: 2
+  - path: docs/locker-foundry-parity-plan.md
+    type: PRD
+    precedence: 2
+  - path: docs/foundry-tab-design.md
+    type: PRD
+    precedence: 2
+  - path: docs/foundry-handoff.md
+    type: PRD
+    precedence: 2
+  - path: docs/foundry-changes-parallel-plan.md
+    type: PRD
+    precedence: 2
+  - path: docs/sound-locker-plan.md
+    type: PRD
+    precedence: 2
+  - path: docs/portrait-shelf-plan.md
+    type: PRD
+    precedence: 2
+  - path: docs/global-locker-foundry-ux-plan.md
+    type: PRD
+    precedence: 2
+  - path: docs/vpk-composition-roadmap.md
+    type: PRD
+    precedence: 2
+  - path: docs/3d-preview-fidelity-plan.md
+    type: PRD
+    precedence: 2
+  - path: docs/ui-thoughtfulness-and-adjustability-plan.md
+    type: PRD
+    precedence: 2
+  - path: docs/locker-consistency-pass.md
+    type: PRD
+    precedence: 2
+  - path: docs/performance-convars-followup-plan.md
+    type: PRD
+    precedence: 2
+  - path: docs/chat-wheel-option-catalog-plan.md
+    type: PRD
+    precedence: 2
+  - path: docs/agent-ui-lab-plan.md
+    type: PRD
+    precedence: 2
+  - path: docs/portrait-alias-sweep-plan.md
+    type: PRD
+    precedence: 2
+  - path: docs/merge-plan-upstream-2026-08.md
+    type: PRD
+    precedence: 2
+
+  # ----------------------------------------------------------------- DOC (6)
+  # External API contracts (constraints) and measured feasibility results.
+  # audit verdicts are ground truth on what is actually built, so they
+  # outrank the rest of the tier.
+  - path: docs/audit-2026-07-28-verdicts.md
+    type: DOC
+    precedence: 2
+  - path: docs/gamebanana_api_reference.md
+    type: DOC
+    precedence: 3
+  - path: docs/gamebanana_categories_reference.md
+    type: DOC
+    precedence: 3
+  - path: docs/DEADLOCK_STATS_API.md
+    type: DOC
+    precedence: 3
+  - path: docs/rigged-preview-spike.md
+    type: DOC
+    precedence: 3
+  - path: docs/3d-preview-effects-feasibility.md
+    type: DOC
+    precedence: 3

@@ -1,0 +1,13 @@
+{
+  "source_path": "C:/Users/wayba/dev/grimoire/docs/performance-config-integration.md",
+  "type": "ADR",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "Performance config integration",
+  "summary": "Decision to curate a small set of pinned upstream gameinfo.gi performance configs instead of building a generic GameBanana config ingester.",
+  "scope": ["gameinfo.gi performance configs", "performanceConfig.ts", "performanceConfigData.ts", "Sqooky/OptimizationLock", "dacooderr/OptiLock", "preset UI", "video.txt", "FileSystem/SearchPaths"],
+  "cross_refs": ["deadworks-servers.md", "gamebanana_api_reference.md"],
+  "locked": false,
+  "precedence": 0,
+  "notes": "Type taken from MANIFEST_TYPE (ADR); content supports it (TL;DR decision, trade-off evidence, 'What shipped'). No literal 'Status: Accepted' field, so locked=false per the Accepted-only rule, though the status line reads 'six selectable presets shipped'."
+}

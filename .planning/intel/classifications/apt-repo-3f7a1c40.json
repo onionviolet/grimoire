@@ -1,0 +1,13 @@
+{
+  "source_path": "C:/Users/wayba/dev/grimoire/docs/apt-repo.md",
+  "type": "SPEC",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "APT repository (Debian / Ubuntu)",
+  "summary": "Describes Grimoire's GPG-signed, latest-only APT repository on Cloudflare R2, its release-time publishing job, one-time setup, and user install instructions.",
+  "scope": ["APT repository", "Cloudflare R2 bucket grimoire-apt", "grimoire-apt Worker", "apt.grimoiremods.com", "reprepro publishing", "GPG signing key", "GitHub Actions release workflow", "electron-updater install source detection", "Debian/Ubuntu .deb distribution"],
+  "cross_refs": ["electron/main/services/updater.ts", ".github/workflows/release.yml", "../../grimoire-apt/README.md"],
+  "locked": false,
+  "precedence": 1,
+  "notes": ""
+}

@@ -1,0 +1,13 @@
+{
+  "source_path": "C:/Users/wayba/dev/grimoire/docs/profile-spec.md",
+  "type": "SPEC",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "Mod Profile Format Spec",
+  "summary": "Portable JSON format for sharing mod loadouts: schema fields, versioning rules, share codes, and namespaced manager extensions.",
+  "scope": ["mod-profile format", "schemaVersion 1.1", ".modprofile.json", "mp1: share codes", "GameBanana mod references", "grimoire extensions", "crosshair", "autoexecCommands"],
+  "cross_refs": ["https://github.com/Slush97/grimoire"],
+  "locked": false,
+  "precedence": 1,
+  "notes": ""
+}

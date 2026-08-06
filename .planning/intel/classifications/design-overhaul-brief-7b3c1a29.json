@@ -1,0 +1,13 @@
+{
+  "source_path": "C:/Users/wayba/dev/grimoire/docs/design-overhaul-brief.md",
+  "type": "SPEC",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "Deadlock Mod Manager - UI Overhaul Brief",
+  "summary": "UI overhaul brief defining theme tokens, fonts, and per-tab redesign recommendations for Settings, Crosshair Designer, Autoexec Commands, and Profiles.",
+  "scope": ["theme tokens", "fonts", "Settings tab", "Crosshair Designer tab", "Autoexec Commands tab", "Profiles tab"],
+  "cross_refs": ["docs/locker-consistency-pass.md"],
+  "locked": false,
+  "precedence": 1,
+  "notes": ""
+}

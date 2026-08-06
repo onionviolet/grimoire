@@ -1,0 +1,13 @@
+{
+  "source_path": "C:/Users/wayba/dev/grimoire/docs/multi-folder-addon-overflow.md",
+  "type": "SPEC",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "Multi-folder addon overflow",
+  "summary": "Design for lifting the 99-mod ceiling by overflowing enabled mods into sibling citadel/addonsN folders with their own pakNN namespaces and gameinfo search paths.",
+  "scope": ["citadel/addons overflow folders", "pakNN slot naming", "gameinfo.gi SearchPaths", "mod metadata keying", "load-order model", "citadel/grimoire priority root"],
+  "cross_refs": ["lockerVpk.ts"],
+  "locked": false,
+  "precedence": 1,
+  "notes": ""
+}

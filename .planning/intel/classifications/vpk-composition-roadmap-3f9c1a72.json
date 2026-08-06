@@ -1,0 +1,13 @@
+{
+  "source_path": "C:/Users/wayba/dev/grimoire/docs/vpk-composition-roadmap.md",
+  "type": "PRD",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "VPK composition roadmap",
+  "summary": "Roadmap evolving Grimoire's reversible VPK merge into a safe, additive mod-composition workflow with analysis, review UI, recipes, path policy, and composition UX.",
+  "scope": ["VPK merge", "analyze-merge IPC endpoint", "merge recipe schema", "prefix/path policy", "composition UX", "portable profiles", "MergedModInfo", "vpk-modinfo"],
+  "cross_refs": [],
+  "locked": false,
+  "precedence": 2,
+  "notes": "Type taken from MANIFEST_TYPE (PRD). Content is goal/milestone/invariant oriented with some SPEC-like compatibility matrix detail."
+}

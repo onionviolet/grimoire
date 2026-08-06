@@ -1,0 +1,34 @@
+{
+  "source_path": "C:/Users/wayba/dev/grimoire/docs/deadworks-servers.md",
+  "type": "SPEC",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "Deadworks server browser",
+  "summary": "Technical spec for the Deadworks community server browser: relay endpoints, content provisioning, gameinfo.gi SearchPaths integration, and security constraints.",
+  "scope": [
+    "Deadworks server browser",
+    "Servers tab",
+    "experimentalDeadworksServers setting",
+    "grimoire-relay",
+    "deadworksServers.ts",
+    "ipc/servers.ts",
+    "gameinfo.gi SearchPaths",
+    "deadworks_addons/vpks content path",
+    "A2S ping",
+    "vpk.bz2 content manifest",
+    "steam://connect join flow"
+  ],
+  "cross_refs": [
+    "grimoire-relay/src/shared/schemas.ts",
+    "src/types/deadworks.ts",
+    "electron/main/services/deadworksServers.ts",
+    "electron/main/ipc/servers.ts",
+    "system.ts",
+    "deadlock.ts",
+    "Servers.tsx",
+    "api.ts"
+  ],
+  "locked": false,
+  "precedence": 1,
+  "notes": ""
+}

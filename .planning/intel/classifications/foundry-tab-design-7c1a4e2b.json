@@ -1,0 +1,13 @@
+{
+  "source_path": "C:/Users/wayba/dev/grimoire/docs/foundry-tab-design.md",
+  "type": "PRD",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "Foundry tab (design / vision)",
+  "summary": "Vision for a Foundry tab: an in-app asset workshop to browse game assets, swap sounds/textures/item art, and create mods.",
+  "scope": ["Foundry tab", "asset catalog", "sound swap", "texture swap", "item art swap", "vpkmerge-core", "build tray", "mod list integration", "VFX recolor", "material restyle"],
+  "cross_refs": ["./feature-status.md"],
+  "locked": false,
+  "precedence": 2,
+  "notes": ""
+}

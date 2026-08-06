@@ -1,0 +1,13 @@
+{
+  "source_path": "C:/Users/wayba/dev/grimoire/docs/chat-wheel-option-catalog-plan.md",
+  "type": "PRD",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "Plan: expose the base-game Chat Wheel option catalogue",
+  "summary": "Plan to surface base-game Chat Wheel command catalogue with override editors for chat-wheel and ping-wheel availability, preserving unknown YAML entries.",
+  "scope": ["Chat Wheel editor", "base command catalogue", "override_bindable", "override_ping_wheel_bindable", "ChatWheelModel", "Advanced YAML", "BaseCommandCatalog panel", "ChatLane CLI"],
+  "cross_refs": ["src/lib/chatWheelCommands.ts", "src/components/chatwheel/BaseCommandCatalog.tsx", "chatWheelModel.test.ts"],
+  "locked": false,
+  "precedence": 2,
+  "notes": "Type taken from MANIFEST_TYPE. Doc contains goal, contract/decisions, non-goals, and exit criteria, consistent with PRD."
+}

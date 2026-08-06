@@ -1,0 +1,43 @@
+{
+  "source_path": "C:/Users/wayba/dev/grimoire/docs/foundry-handoff.md",
+  "type": "PRD",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "Foundry handoff (next agent)",
+  "summary": "Current state of the Grimoire Foundry tab and the remaining work: drag-and-drop texture and item icon replacement.",
+  "scope": [
+    "Foundry tab",
+    "vpkmerge engine",
+    "sound swap",
+    "sound annotations",
+    "texture browse",
+    "item icons",
+    "drag-and-drop replace",
+    "RecolorTool",
+    "HeroWorkshop"
+  ],
+  "cross_refs": [
+    "./foundry-tab-design.md",
+    "scripts/fetch-vpkmerge.mjs",
+    "src/pages/Foundry.tsx",
+    "src/components/foundry/LibraryBrowse.tsx",
+    "src/components/foundry/SoundBrowse.tsx",
+    "src/components/foundry/TextureBrowse.tsx",
+    "src/components/foundry/RecolorTool.tsx",
+    "src/components/foundry/SoundImportEditor.tsx",
+    "src/components/foundry/TextureGrid.tsx",
+    "src/components/foundry/TextureCard.tsx",
+    "src/components/foundry/TextureLightbox.tsx",
+    "src/components/foundry/useClipPlayer.ts",
+    "electron/main/services/foundryCatalog.ts",
+    "electron/main/ipc/foundry.ts",
+    "electron/main/ipc/mods.ts",
+    "electron/main/services/customHeroCards.ts",
+    "src/lib/api.ts",
+    "src/types/foundry.ts",
+    "vpkmerge-core/src/icon.rs"
+  ],
+  "locked": false,
+  "precedence": 2,
+  "notes": "Type set by MANIFEST_TYPE (PRD); heuristic classification skipped. Content reads as a status handoff with a scoped 'Ask 3' work item."
+}

@@ -1,0 +1,30 @@
+{
+  "source_path": "C:/Users/wayba/dev/grimoire/docs/locker-hero-card-apply.md",
+  "type": "SPEC",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "Locker Hero Card: APPLY pipeline design",
+  "summary": "Design of record for applying a single hero card via one consolidated Locker cosmetics VPK, with swap, revert, and custom uploads.",
+  "scope": [
+    "Locker Hero Card picker",
+    "Locker cosmetics VPK",
+    "heroCards service",
+    "customHeroCards service",
+    "panorama card art",
+    "apply/swap/revert pipeline",
+    "LockerCardSelection"
+  ],
+  "cross_refs": [
+    "project_global_mod_type_signals.md",
+    "services/heroCards.ts",
+    "services/customHeroCards.ts",
+    "ipc/portraits.ts",
+    "lib/api.ts",
+    "components/locker/HeroCardPicker.tsx",
+    "components/LockerOverridesModal.tsx",
+    "stores/appStore.ts"
+  ],
+  "locked": false,
+  "precedence": 1,
+  "notes": ""
+}
