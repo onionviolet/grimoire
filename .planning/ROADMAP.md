@@ -27,18 +27,19 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 ### Phase 1: Verified Against The Game
 
-**Goal**: Every path that has only ever been proven by a unit test is proven against a running Deadlock build, and the lanes that shipped without any rendering check get one
+**Goal**: Every path that has only ever been proven by a unit test is proven against the running app, driven end to end over CDP, and the lanes that shipped without any rendering check get one
 **Depends on**: Nothing (first phase)
 **Requirements**: REQ-ingame-verification-sweep, REQ-renderer-test-harness, REQ-rigged-preview-release-gate, REQ-performance-convar-safer-experimentation
 **Success Criteria** (what must be TRUE):
 
-  1. A VPK forged from one staged sound edit and one staged texture edit mounts in Deadlock, and the user hears the sound and sees the texture; cancelling the native save dialog instead leaves the mod library and the staged edits exactly as they were
-  2. A merged VPK built from a reviewed source order mounts, and the mod the review named as winner is the one the engine loads
-  3. Auditioning an installed VPK's clip from the sources panel matches what the engine plays, verified across a downloaded third-party mod, a forged mod, a disabled mod, and a multi-clip pool
-  4. Seven (`gigawatt_prisoner`) renders on the rigged preview with a measured frame rate on record, and the ship, gate, or per-hero recommendation is written down and applied to the release flag
-  5. Every ConVar in the performance card shows a game default read off a running build, and the pool cards, alternatives gallery, portrait editor, seeded sound editor, and Chat Wheel VPK round trip each have a check that actually renders or exercises them
+  1. A VPK forged from one staged sound edit and one staged texture edit holds both entry paths with bytes matching their staged sources; cancelling the native save dialog instead leaves the mod library and the staged edits exactly as they were
+  2. A merged VPK built from a reviewed source order carries, at the contested entry, the bytes of the mod the review named as winner
+  3. An installed VPK's audition clip is byte-identical to the entry it claims to play, across a downloaded third-party mod, a forged mod, a disabled mod, and a multi-clip pool, in all three scopes (hero, voice, global)
+  4. Seven (`gigawatt_prisoner`) renders on the rigged preview with a frame rate measured by the driver on record, naming the machine it came from, and the ship, gate, or per-hero recommendation is written down and applied to the release flag
+  5. The pool cards, alternatives gallery, portrait editor, seeded sound editor, and Chat Wheel VPK round trip each have a check that actually renders or exercises them
+  6. `node scripts/check-verification-record.mjs --strict` exits 0 with no game session: 23 app-tier rows settled by `pnpm verify:in-app`, and 18 engine-tier rows (the 16 ConVar readings plus the two portrait-variant rows) carrying a `deferred` verdict with a per-row reason
 
-**Plans**: 4/7 plans executed
+**Plans**: 6/8 plans executed
 
 Plans:
 **Wave 1**
@@ -50,13 +51,14 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 01-02-PLAN.md — Render the alternatives gallery and the sound trim/gain badge lanes at interaction depth
-- [ ] 01-03-PLAN.md — Render the seeded SoundImportEditor and the portrait editor through stubbed canvas and Web Audio
-- [ ] 01-07-PLAN.md — Measure Seven on the rigged preview, record the recommendation, and apply it to `RELEASE_RENDER_FLAGS.rigged`
+- [x] 01-02-PLAN.md — Render the alternatives gallery and the sound trim/gain badge lanes at interaction depth
+- [x] 01-03-PLAN.md — Render the seeded SoundImportEditor and the portrait editor through stubbed canvas and Web Audio
+- [ ] 01-08-PLAN.md — Tier the verification record, build the CDP runner that settles its 23 app-tier rows, and defer the 18 engine-tier rows with reasons
+- [ ] 01-07-PLAN.md — Measure Seven on the rigged preview over CDP, record the recommendation, and apply it to `RELEASE_RENDER_FLAGS.rigged`
 
-**Waves**: 1 = {01-01, 01-04, 01-05, 01-06}; 2 = {01-02, 01-03, 01-07}
+**Waves**: 1 = {01-01, 01-04, 01-05, 01-06}; 2 = {01-02, 01-03, 01-08}; 3 = {01-07}
 
-**Notes**: This is the phase the docs themselves rank first: "four waves have landed with a green repository gate and zero in-game validation. That is the real risk on this board, and no amount of further code reduces it." If any check here fails, that failure outranks everything below it. Two items are human-gated and cannot be automated: the in-game sweep and the fps reading. The renderer test work is the enabling half: Vitest runs in a node environment with no DOM today, so deciding how these components get rendered at all is part of the phase, not an afterthought.
+**Notes**: This is the phase the docs themselves rank first: "four waves have landed with a green repository gate and zero in-game validation. That is the real risk on this board, and no amount of further code reduces it." If any check here fails, that failure outranks everything below it. **Amended 2026-08-06:** the claim that the sweep and the fps reading are human-gated held for the sweep's engine half only. `scripts/dev-driver.mjs` reaches the live renderer over CDP and the renderer exposes 266 `electronAPI` methods, so 23 of the 41 rows are settled by a script and the fps reading is a rAF sampler rather than a person watching DevTools. What stays genuinely human-gated is 18 rows: the 16 ConVar readings, which only a running developer console prints, and the two portrait-variant rows, which ask what the game's HUD and minimap actually draw. Those are deferred with reasons rather than blocking. The gap this accepts is stated rather than hidden: an app-tier pass proves Grimoire wrote the intended bytes to the intended path, not that the engine loads them. The renderer test work is the enabling half: Vitest runs in a node environment with no DOM today, so deciding how these components get rendered at all is part of the phase, not an afterthought.
 
 ### Phase 2: A Supported Fork Release
 
@@ -160,7 +162,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phase 6 declar
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Verified Against The Game | 4/7 | In Progress|  |
+| 1. Verified Against The Game | 6/8 | In Progress|  |
 | 2. A Supported Fork Release | 0/TBD | Not started | - |
 | 3. Foundry Completes Its Build Contract | 0/TBD | Not started | - |
 | 4. Locker And Foundry As One Object | 0/TBD | Not started | - |
