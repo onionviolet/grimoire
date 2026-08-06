@@ -38,7 +38,18 @@ Decimal phases appear between their surrounding integers in numeric order.
   4. Seven (`gigawatt_prisoner`) renders on the rigged preview with a measured frame rate on record, and the ship, gate, or per-hero recommendation is written down and applied to the release flag
   5. Every ConVar in the performance card shows a game default read off a running build, and the pool cards, alternatives gallery, portrait editor, seeded sound editor, and Chat Wheel VPK round trip each have a check that actually renders or exercises them
 
-**Plans**: TBD
+**Plans**: 7 plans
+
+Plans:
+- [ ] 01-01-PLAN.md — Render harness tracer: pin jsdom behind a package-legitimacy gate, then drive the pool-cards and audition-preview lanes end to end under jsdom
+- [ ] 01-02-PLAN.md — Render the alternatives gallery and the sound trim/gain badge lanes at interaction depth
+- [ ] 01-03-PLAN.md — Render the seeded SoundImportEditor and the portrait editor through stubbed canvas and Web Audio
+- [ ] 01-04-PLAN.md — Chat Wheel starter to VPK to YAML round trip against the real bundled converter, plus its rejection paths
+- [ ] 01-05-PLAN.md — Thread `engineDefault` beside `gameDefault` end to end and let the value-state badge report what the game will do
+- [ ] 01-06-PLAN.md — Scaffold the in-game verification record (41 rows, verdicts blank) and the guard that makes its completion rule executable
+- [ ] 01-07-PLAN.md — Measure Seven on the rigged preview, record the recommendation, and apply it to `RELEASE_RENDER_FLAGS.rigged`
+
+**Waves**: 1 = {01-01, 01-04, 01-05, 01-06}; 2 = {01-02, 01-03, 01-07}
 
 **Notes**: This is the phase the docs themselves rank first: "four waves have landed with a green repository gate and zero in-game validation. That is the real risk on this board, and no amount of further code reduces it." If any check here fails, that failure outranks everything below it. Two items are human-gated and cannot be automated: the in-game sweep and the fps reading. The renderer test work is the enabling half: Vitest runs in a node environment with no DOM today, so deciding how these components get rendered at all is part of the phase, not an afterthought.
 
