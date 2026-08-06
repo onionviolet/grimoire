@@ -115,8 +115,13 @@ const RELEASE_RENDER_FLAGS = {
   celV2: USE_CEL_V2,
   cloth: USE_CLOTH,
   // Rigged is its own switch so the animated path can be measured without the
-  // WIP cloth sim riding along. Off in released builds, like cloth.
-  rigged: false,
+  // WIP cloth sim riding along. Measured on Seven (gigawatt_prisoner), the
+  // worst case on every axis: RP-03 in docs/ingame-verification-record.md
+  // recorded a 0.00 ms wall-clock median delta (both runs pinned to the
+  // 120 Hz vsync ceiling) and a +0.12 ms GPU timer delta, both well inside
+  // the "within about 1 ms of static" ship band. Recommendation: ship. See
+  // docs/rigged-preview-spike.md section 9 for the full history.
+  rigged: true,
   bloom: USE_BLOOM,
   nprDebug: false,
   matDebug: false,
@@ -1009,9 +1014,11 @@ export default function HeroPoseViewer({
 
     (async () => {
       try {
-        // --- Attempt 1: rigged (animated, skinned) glb. Gated OFF for now: the
-        //     idle anim is WIP and too many heroes fall back to A-pose, so the
-        //     static --pose menu pose (Attempt 2) is the default. ---
+        // --- Attempt 1: rigged (animated, skinned) glb. Shipped by default as
+        //     of RP-03 (docs/ingame-verification-record.md): the measured
+        //     frame-time delta on Seven, the worst case on every axis, landed
+        //     within the ship band. Falls through to the static --pose menu
+        //     pose (Attempt 2) on any export, load, or clip failure. ---
         if (features.riggedPreviewEnabled) {
           try {
             let rig = await getRiggedHeroPose(heroName, skinSources);
