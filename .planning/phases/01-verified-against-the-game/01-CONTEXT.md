@@ -55,6 +55,18 @@ Not in scope: new user-facing capability of any kind. Where a decision would req
 - **D-17:** The decision resolves to `RELEASE_RENDER_FLAGS.rigged` true or false, plus the written recommendation. No per-hero mechanism and no user-facing setting are built. If the measurement argues for per-hero, that is a recorded finding and its own phase.
 - **D-18:** The spike's step 3 (roster-wide `model clips --json` sweep, no export) runs only if the fps reading argues for shipping. If the number says gate, the sweep is skipped.
 
+### Amendment 2026-08-06: verify in the app, not in the game
+
+D-09 and D-10 were written on the belief that the sweep needs a Deadlock session. That belief was wrong about most of it and is corrected here rather than edited above, so the record of what changed survives.
+
+- **D-19:** Every row of the verification record carries a Tier. `app` means the running app can settle it over CDP; `engine` means only a running Deadlock can. The split is 23 app rows (IG-01..20, RP-01..03) and 18 engine rows (IG-21, IG-22, CV-01..16). Verified 2026-08-06 against a slot-3 dev build: the renderer exposes 266 `window.electronAPI` methods, including `foundry.forge`, `foundry.forgeInstall`, `foundry.auditionSourceClip`, `mergeMods`, `analyzeMerge`, `enableMod`, and `disableMod`.
+- **D-20:** An app-tier check asserts bytes and app state, not perception. The forged VPK holds the expected entry path with the expected bytes; `getMods()` holds the expected entries; the pool picker returned more than one distinct clip. Where the old row said "hear the sound", the new row compares the bytes the audition played against the bytes at that entry inside the VPK. For IG-06 this is a stronger check than the one it replaces.
+- **D-21:** D-09's "no agent can run Deadlock" stands and is the whole reason for the `engine` tier. Its second clause, that no headless process can produce an fps number, does not: a rAF sampler driven over CDP produces exactly that. RP-03 stops being a human checkpoint. 01-07 is amended accordingly.
+- **D-22:** A fourth verdict, `deferred`, is added and is legal only on an engine row. It differs from `blocked`: `blocked` means the check could not run and someone still owes it, `deferred` means the project has consciously accepted the engine half untested for now. It requires a per-row reason. `deferred` on an app row is an error, because an app row has a runner that can settle it. — **Reversibility:** reversible — the guard rule is a dozen lines and the record is a document.
+- **D-23:** D-10 is superseded. The phase is done when `--strict` exits 0, which it can now reach without a game session: every app row settled by the runner, every engine row carrying a reasoned `deferred`. What this does not do is prove the engine loads what Grimoire wrote, and the record says so in its own preamble rather than leaving the reader to infer it.
+- **D-24:** The runner is not wired into CI. `ci.yml` runs on `ubuntu-latest` with no GPU, no Electron display, and no game install, so adding it there would produce a red gate nobody can fix.
+- **D-25:** `engineDefault` in `performanceUserControls.ts` stays `null` while CV-01..16 are deferred. That is now a stated state with a reason on record, not an unfinished one.
+
 ### Claude's Discretion
 
 - Whether the six render tests share a fixture module or keep the codebase's existing inline-factory convention (`TESTING.md` documents inline factories with no shared `fixtures/` directory).
