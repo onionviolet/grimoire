@@ -41,12 +41,17 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 7 plans
 
 Plans:
+**Wave 1**
+
 - [ ] 01-01-PLAN.md — Render harness tracer: pin jsdom behind a package-legitimacy gate, then drive the pool-cards and audition-preview lanes end to end under jsdom
-- [ ] 01-02-PLAN.md — Render the alternatives gallery and the sound trim/gain badge lanes at interaction depth
-- [ ] 01-03-PLAN.md — Render the seeded SoundImportEditor and the portrait editor through stubbed canvas and Web Audio
 - [ ] 01-04-PLAN.md — Chat Wheel starter to VPK to YAML round trip against the real bundled converter, plus its rejection paths
 - [ ] 01-05-PLAN.md — Thread `engineDefault` beside `gameDefault` end to end and let the value-state badge report what the game will do
 - [ ] 01-06-PLAN.md — Scaffold the in-game verification record (41 rows, verdicts blank) and the guard that makes its completion rule executable
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 01-02-PLAN.md — Render the alternatives gallery and the sound trim/gain badge lanes at interaction depth
+- [ ] 01-03-PLAN.md — Render the seeded SoundImportEditor and the portrait editor through stubbed canvas and Web Audio
 - [ ] 01-07-PLAN.md — Measure Seven on the rigged preview, record the recommendation, and apply it to `RELEASE_RENDER_FLAGS.rigged`
 
 **Waves**: 1 = {01-01, 01-04, 01-05, 01-06}; 2 = {01-02, 01-03, 01-07}
@@ -129,15 +134,18 @@ Plans:
 **Notes**: Fix the vocabulary in `src/locales/en/translation.json` before touching more components, because copy drift is cheaper to correct at the catalog than at 30 call sites. Legs B and C of the alias sweep drive the working tree over CDP, so they need a committed or stashed tree and a dev slot nobody else is attached to.
 
 ### Phase 6: Community Tools Land Inside Grimoire
+
 **Goal**: A community web tool that builds a mod inside the in-app browser hands its output to Grimoire instead of the system Downloads folder, and the destination list becomes a checked catalog rather than a hardcoded array that rots
 **Depends on**: Nothing (independent of the Phase 2 to 5 chain; can be pulled forward)
 **Requirements**: REQ-browser-tool-catalog, REQ-browser-produced-file-handoff, REQ-browser-navigation-gaps
 **Success Criteria** (what must be TRUE):
+
   1. Pimp My Hideout is reachable from the browser's destination list, and every other entry in that list has been loaded once and either kept, corrected, or removed, with the result recorded
   2. Clicking `Build VPK` on Pimp My Hideout inside Grimoire's browser produces a file Grimoire can act on without the user leaving the app or opening a file manager
   3. Before that file is written anywhere, the user is told what it is and where it will go, and a file that is not a VPK Grimoire can identify is refused with a stated reason
   4. The webview is no less hardened after the download path changes than before: the guest still has no preload, no Node, its own partition, and an http(s)-only `src`
   5. A destination declares what kind of thing it is, so a handoff keys off that kind rather than a hardcoded URL match
+
 **Plans**: TBD
 **UI hint**: yes
 
