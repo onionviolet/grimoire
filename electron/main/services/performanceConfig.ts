@@ -1255,10 +1255,17 @@ function computeConvarStates(
         const value = values.get(key) ?? null;
         const presetValue = presetValues.get(key) ?? null;
         const gameDefault = control.gameDefault;
+        const engineDefault = control.engineDefault;
         const matchesPreset = value !== null && presetValue !== null && normalizeConvarValue(value) === normalizeConvarValue(presetValue);
         const numeric = ADVANCED_BY_KEY.get(key);
         const outOfRange = numeric && value !== null && (!Number.isFinite(Number(value)) || Number(value) < numeric.min || Number(value) > numeric.max);
-        const origin: PerformanceConvarOrigin = value === null || (gameDefault !== null && normalizeConvarValue(value) === normalizeConvarValue(gameDefault))
+        // A file value matches "the game's own default" when it equals either
+        // known default; gameDefault wins when both are known since it is
+        // what stock gameinfo.gi itself writes. Comparisons run through
+        // normalizeConvarValue so quoting and 1-vs-true spelling don't matter.
+        const matchesGameDefault = value !== null && gameDefault !== null && normalizeConvarValue(value) === normalizeConvarValue(gameDefault);
+        const matchesEngineDefault = value !== null && gameDefault === null && engineDefault !== null && normalizeConvarValue(value) === normalizeConvarValue(engineDefault);
+        const origin: PerformanceConvarOrigin = value === null || matchesGameDefault || matchesEngineDefault
             ? 'game-default'
             : matchesPreset ? 'managed-preset'
             : outOfRange ? 'unsupported'
@@ -1269,7 +1276,8 @@ function computeConvarStates(
             value,
             presetValue,
             gameDefault,
-            resolvedValue: autoexec?.value ?? value ?? gameDefault,
+            engineDefault,
+            resolvedValue: autoexec?.value ?? value ?? gameDefault ?? engineDefault,
             resolvedFrom: autoexec ? 'autoexec.cfg' : value === null ? 'game-default' : 'gameinfo.gi',
             ...(autoexec ? { autoexec } : {}),
             ...(outOfRange ? { outOfRange: true } : {}),
