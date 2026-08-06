@@ -35,12 +35,31 @@ try {
 
 /**
  * Every temp directory buildChatWheelVpk/readChatWheelVpk create is prefixed
- * 'grimoire-chatwheel-' (see chatWheel.ts's own mkdtemp calls). Comparing this
- * listing before and after a call proves cleanup ran without needing the
- * internal directory path, which the service never returns on failure.
+ * 'grimoire-chatwheel-' (see chatWheel.ts's own mkdtemp calls). Listing them
+ * proves cleanup ran without needing the internal directory path, which the
+ * service never returns on failure.
  */
 function chatWheelTempDirs(): string[] {
     return readdirSync(tmpdir()).filter((entry) => entry.startsWith('grimoire-chatwheel-'));
+}
+
+/**
+ * Returns only the directories that appeared since `before`.
+ *
+ * Do NOT compare the two listings for equality. tmpdir() is a process-wide,
+ * machine-wide namespace and this prefix is not exclusive to this file:
+ * chatWheel.test.ts stubs the converter but not fs, so its calls to the same
+ * service create and remove 'grimoire-chatwheel-' directories too, from a
+ * different vitest worker. An equality assertion therefore fails whenever a
+ * sibling worker happens to delete one of its own directories mid-test, which
+ * has nothing to do with the behavior under test.
+ *
+ * A directory that is present after but absent before is the only signal that
+ * belongs to this call, so that is what these tests assert on.
+ */
+function chatWheelTempDirsCreatedSince(before: string[]): string[] {
+    const seen = new Set(before);
+    return chatWheelTempDirs().filter((entry) => !seen.has(entry));
 }
 
 describe.skipIf(!binaryAvailable)('Chat Wheel VPK round trip (real ChatLane.exe)', () => {
@@ -87,7 +106,7 @@ describe.skipIf(!binaryAvailable)('Chat Wheel VPK round trip (real ChatLane.exe)
 
         await expect(buildChatWheelVpk('   \n\t  ')).rejects.toThrow('Chat Wheel YAML cannot be empty.');
 
-        expect(chatWheelTempDirs()).toEqual(before);
+        expect(chatWheelTempDirsCreatedSince(before)).toEqual([]);
     });
 
     // The starter's required top-level `name` key is dropped here. This is
@@ -102,6 +121,6 @@ describe.skipIf(!binaryAvailable)('Chat Wheel VPK round trip (real ChatLane.exe)
 
         await expect(buildChatWheelVpk(missingNameField)).rejects.toThrow(/NullReferenceException/);
 
-        expect(chatWheelTempDirs()).toEqual(before);
+        expect(chatWheelTempDirsCreatedSince(before)).toEqual([]);
     });
 });

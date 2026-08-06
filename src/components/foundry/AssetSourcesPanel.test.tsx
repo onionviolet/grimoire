@@ -4,7 +4,7 @@ import '../../i18n';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { MemoryRouter } from 'react-router-dom';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import AssetSourcesPanel from './AssetSourcesPanel';
 import type { FoundryAssetSourcesInspection } from '../../types/foundry';
 
@@ -59,11 +59,19 @@ describe('AssetSourcesPanel audition-preview lane', () => {
   let root: Root;
   let inspectAssetSources: ReturnType<typeof vi.fn>;
   let auditionSourceClip: ReturnType<typeof vi.fn>;
+  let play: MockInstance<() => Promise<void>>;
 
   beforeEach(() => {
     host = document.createElement('div');
     document.body.append(host);
     root = createRoot(host);
+    // jsdom ships no media stack, so HTMLMediaElement.prototype.play is a
+    // not-implemented stub that reports through the virtual console. The
+    // component awaits it inside a try/catch, so an unstubbed play() does not
+    // fail the test: it just prints a stray "Not implemented" error and leaves
+    // the audition path silently unasserted. Stubbing it both quiets that and
+    // turns playback into something a test can actually assert on.
+    play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined);
     inspectAssetSources = vi.fn().mockResolvedValue(inspection);
     auditionSourceClip = vi.fn();
     window.electronAPI = {
@@ -114,6 +122,10 @@ describe('AssetSourcesPanel audition-preview lane', () => {
 
     expect(auditionSourceClip).toHaveBeenCalledTimes(1);
     expect(auditionSourceClip).toHaveBeenCalledWith('sound-mod-a', ENTRY_PATH);
+    // Resolving a clip URL is not the same as playing it. Assert the component
+    // actually reached playback, so a regression that drops the audio.play()
+    // call cannot hide behind the icon swap below.
+    expect(play).toHaveBeenCalledTimes(1);
     // The play/stop label swaps once the clip URL resolves.
     expect(auditionButton!.querySelector('svg.lucide-pause')).not.toBeNull();
   });
@@ -131,6 +143,9 @@ describe('AssetSourcesPanel audition-preview lane', () => {
     });
 
     expect(auditionSourceClip).toHaveBeenCalledWith('sound-mod-b', ENTRY_PATH);
+    // A null clip URL must short-circuit before playback, not merely leave the
+    // icon alone.
+    expect(play).not.toHaveBeenCalled();
     expect(auditionButton!.querySelector('svg.lucide-pause')).toBeNull();
     expect(auditionButton!.querySelector('svg.lucide-play')).not.toBeNull();
   });
