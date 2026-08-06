@@ -157,6 +157,15 @@ None - no external service configuration required.
 - `jsdom` is now an explicit devDependency; no further pinning work needed
 - No blockers for 01-02/01-03
 
+## Self-Check: PASSED
+
+- FOUND: `src/components/foundry/ChangePools.test.tsx`
+- FOUND: `src/components/foundry/AssetSourcesPanel.test.tsx`
+- FOUND: `.planning/phases/01-verified-against-the-game/01-01-SUMMARY.md`
+- FOUND commit: `4de8ba9`
+- FOUND commit: `233c6a3`
+- FOUND commit: `02055f4`
+
 ---
 *Phase: 01-verified-against-the-game*
 *Completed: 2026-08-06*
