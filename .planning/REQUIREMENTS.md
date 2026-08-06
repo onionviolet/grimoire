@@ -79,6 +79,12 @@ Shipped work, confirmed against the working tree at v1.26.20 on 2026-08-05. **Th
 - [ ] **REQ-portrait-alias-sweep**: The one remaining path to a root cause on issue #4 ("Abrams Portraits resolves to no families"), written while the defect is not reproducing. The three-way test holds two facts side by side per hero: what `resolvePortraitHero` and `portraitCodenamesForHero` return, and which codenames the loaded catalog actually contains. Verdicts: in-catalog and unresolved is an alias miss; not-in-catalog and resolved means the empty state is honest; resolved with zero families means `portraitFamilyKey` is wrong; neither means the hero is absent from this build. Leg A (alias-table self-consistency) is safe to run alongside other work; Legs B and C need a committed working tree because the dev-driver drives the working tree.
 - [ ] **REQ-ui-consequence-and-vocabulary**: Lanes 9 and 10 of the consistency pass, the two still open. Undo for reversible bulk actions using the state the store already holds and the toast stack that already exists; every disabled control states its blocker (extended past Locker and Foundry to Profiles apply, Conflicts resolve, and the Foundry forge and install path); pending work preserves the prior answer instead of blanking it; provenance is one phrase and one target (`/?focusMod=<id>`) everywhere. Then one term each for enabled/disabled, installed/staged/forged, and active/selected/applied, one empty-state shape (what is missing, why, next action), and one error shape distinguishing "not indexed", "loading", and "failed" rather than collapsing all three into "nothing found". Fix the vocabulary at the catalog before touching call sites.
 
+### Companion browser
+
+- [ ] **REQ-browser-tool-catalog**: The in-app browser's destinations become a maintained catalog rather than the nine-entry `SHORTCUTS` array hardcoded at the top of `src/pages/Browser.tsx`. Pimp My Hideout (`https://xkitkatcat.github.io/pimpmyhideout/`) is in it. Every existing entry is loaded once and either kept, corrected, or removed with the result recorded, because a bookmark list rots silently and nothing in the app notices: `deadlocked.wiki` in particular needs checking against `deadlock.wiki`, which is the domain search results return. Each entry declares what kind of destination it is (mod host, reference, tool that produces a file, community feed) so the UI can group them and so a handoff keys off the kind rather than a URL match. The existing `nsfw` flag and its tie to `browseNsfwContentMode` are part of the entry shape, not a special case bolted on. Whether crosshair generators belong at all is open, because Grimoire ships its own Crosshair Designer and a second answer to the same question is a UX cost, not a feature.
+- [ ] **REQ-browser-produced-file-handoff**: A file a community tool builds inside the in-app browser reaches Grimoire instead of the system browser's Downloads folder. Today `guest.session.on('will-download')` in `electron/main/index.ts` calls `event.preventDefault()` and hands the URL to `shell.openExternal`, so the VPK that Pimp My Hideout's `Build VPK` button produces leaves the app and the user re-finds it by hand. Two constraints bound the fix. First, the webview hardening in `will-attach-webview` does not weaken: the guest keeps no preload, no Node integration, `sandbox` and `contextIsolation` on, its own `persist:grimoire-browser` partition, and an http(s)-only `src`. Second, the user is told what will be written and where before it is written, matching the pre-write disclosure the Foundry tray already gives, and a file that is not a VPK Grimoire can identify via `checkVpkFile` is refused with a stated reason rather than accepted and dealt with later. The genuinely unsolved part is that this tool builds its VPK client-side, so there is no URL to hand off and the bytes exist only inside an unprivileged guest.
+- [ ] **REQ-browser-navigation-gaps**: The controls a user assumes a browser has and this one does not. `src/pages/Browser.tsx` has back, forward, reload/stop, home, an address bar, and open-externally, and nothing else: no find-in-page, no zoom, no history beyond the guest's own stack, and a `HOME_URL` hardcoded to `SHORTCUTS[0]` rather than chosen. Deliberately bounded, and the existing file comment states the boundary to hold: no tabs, no extensions, not a general-purpose browser. This requirement exists so those gaps are a recorded decision rather than an oversight, and it is the first thing to cut if the phase runs long.
+
 ---
 
 ## v2 Requirements
@@ -162,10 +168,13 @@ Variant 3's declared sequencing hazard has partly resolved itself: `HeroDetailFr
 | REQ-portrait-journey-consolidation-gated | Phase 5 | Pending |
 | REQ-portrait-alias-sweep | Phase 5 | Pending |
 | REQ-ui-consequence-and-vocabulary | Phase 5 | Pending |
+| REQ-browser-tool-catalog | Phase 6 | Pending |
+| REQ-browser-produced-file-handoff | Phase 6 | Pending |
+| REQ-browser-navigation-gaps | Phase 6 | Pending |
 
 **Coverage:**
-- v1 requirements: 19 total
-- Mapped to phases: 19
+- v1 requirements: 22 total
+- Mapped to phases: 22
 - Unmapped: 0 ✓
 - Delivered (not phased): 27 entries
 - Deferred to v2: 5
