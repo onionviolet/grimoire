@@ -112,9 +112,9 @@ function buildInspection(
 describe('FoundryPoolList pool cards lane', () => {
   let host: HTMLDivElement;
   let root: Root;
-  let onToggleShuffleKey: ReturnType<typeof vi.fn>;
-  let onToggleMod: ReturnType<typeof vi.fn>;
-  let onOpenInInstalled: ReturnType<typeof vi.fn>;
+  let onToggleShuffleKey: ReturnType<typeof vi.fn<(key: string) => void>>;
+  let onToggleMod: ReturnType<typeof vi.fn<(modId: string) => void>>;
+  let onOpenInInstalled: ReturnType<typeof vi.fn<(modId: string) => void>>;
   let inspectAssetSources: ReturnType<typeof vi.fn>;
 
   const mods: Mod[] = [portraitA, portraitB];
@@ -124,9 +124,9 @@ describe('FoundryPoolList pool cards lane', () => {
     host = document.createElement('div');
     document.body.append(host);
     root = createRoot(host);
-    onToggleShuffleKey = vi.fn();
-    onToggleMod = vi.fn();
-    onOpenInInstalled = vi.fn();
+    onToggleShuffleKey = vi.fn<(key: string) => void>();
+    onToggleMod = vi.fn<(modId: string) => void>();
+    onOpenInInstalled = vi.fn<(modId: string) => void>();
     inspectAssetSources = vi.fn().mockResolvedValue(buildInspection());
     window.electronAPI = {
       foundry: {
