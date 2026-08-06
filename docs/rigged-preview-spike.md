@@ -381,6 +381,15 @@ its own cache dir rather than serving the vanilla model.
 **Ship it gated, behind its own dev-only flag for now. Do not enable it by
 default in this wave.**
 
+Update, 2026-08-06: this recommendation is superseded. Next step 2 below (the
+fps measurement) has run: RP-03 in `docs/ingame-verification-record.md`
+measured Seven's frame-time delta at 0.00 ms wall clock and +0.12 ms on the
+GPU timer, both well inside the ship band. The decision resolved to ship, and
+`RELEASE_RENDER_FLAGS.rigged` in `src/components/locker/HeroPoseViewer.tsx`
+is now `true`. The reasoning below (evidence for and against defaulting on)
+is left as-is as the historical record that led here; it is no longer the
+live recommendation.
+
 Evidence for shipping eventually:
 
 - The export path is correct and complete. Three for three pilots, including one
@@ -417,10 +426,21 @@ Evidence for not defaulting it on yet:
 Concrete next steps, in order:
 
 1. Decouple `riggedPreviewEnabled` from `clothPreviewEnabled` in
-   `heroPoseRenderFeatures.ts` and give rigged its own flag.
+   `heroPoseRenderFeatures.ts` and give rigged its own flag. RESOLVED: shipped
+   in phase 01-verified-against-the-game, plan 01-07. `riggedPreviewEnabled`
+   now combines `USE_RIGGED_PREVIEW`, the per-flag `flags.rigged`, and
+   `clothPreviewEnabled` independently.
 2. A human runs section 8 checks 1, 2, and 3 on Seven. Check 3 is the gate.
+   RESOLVED: check 3 ran. RP-03 in `docs/ingame-verification-record.md`
+   recorded a 0.00 ms wall-clock delta and a +0.12 ms GPU timer delta, both
+   inside the ship band. Outcome: ship. `RELEASE_RENDER_FLAGS.rigged` is now
+   `true`. (Checks 1 and 2, RP-01 and RP-02, are separate rows and were not
+   measured in this pass; see the record for their current status.)
 3. If frame time is within about 1 ms, sweep `model clips --json` across the full
-   roster and record which heroes yield no animated clip.
+   roster and record which heroes yield no animated clip. PENDING plan 01-07
+   Task 3: the reading argued for shipping, so the sweep runs next; its result
+   lands in `docs/ingame-verification-record.md` beside the RP-03
+   recommendation.
 4. Only then consider defaulting it on, and consider whether the static GLB can
    be skipped once a hero's rigged export is known good, to recover the cache
    cost.

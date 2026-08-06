@@ -81,7 +81,152 @@ measured axis in the spike.
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | RP-01 | Does the whole model animate together, including the separate gun and headgear meshes? (`docs/rigged-preview-spike.md` section 8 check 1) | Seven (gigawatt_prisoner), rigged preview enabled per section 8's setup (temporarily set `USE_RIGGED_PREVIEW = true` in `heroPoseRenderFeatures.ts`, or tick Cloth in the dev Leva panel). | 1. Run `pnpm dev` and open Seven's Locker hero page. 2. Enable the rigged preview per section 8's setup instructions. 3. Watch the idle animation play. 4. Confirm every separate mesh, including the gun and headgear, moves together with the body. | The entire model animates together, including the separate gun and headgear meshes, exactly as section 8 check 1 describes for a PASS. | | | |
 | RP-02 | Does the NPR outline or rim swim or detach while orbiting during the idle? (`docs/rigged-preview-spike.md` section 8 check 2) | Seven (gigawatt_prisoner), rigged preview enabled, same setup as RP-01. | 1. With the rigged preview running on Seven, orbit the camera around the model while the idle plays. 2. Watch the silhouette edge and the rim highlight along the shoulders and head. | The rim stays locked to the silhouette as limbs move, with no lag, floating, or bind-pose ghosting, exactly as section 8 check 2 describes for a PASS. | | | |
-| RP-03 | Frame budget: the gate. (`docs/rigged-preview-spike.md` section 8 check 3) | Seven (gigawatt_prisoner), the worst case on every measured axis per the spike. | 1. Set cloth off and rigged on for Seven's preview (the decoupled flag in `heroPoseRenderFeatures.ts`). 2. Open DevTools' Performance panel, or add a stats overlay. 3. Record 10 seconds with the static preview (rigged off), at the same hero and the same window size. 4. Record 10 seconds with the rigged preview on, at the same hero and the same window size. 5. Read the median frame time of each run, not the average. 6. Compute the delta between the two medians. 7. Note the device pixel ratio the canvas settled on for the run. | State the reading against all three bands, verbatim: within about 1 ms of static is ship-viable; 1 to 3 ms worse is investigate; more than 3 ms worse, or a drop below 30 fps on mid-range hardware, is a fail. A measured delta landing exactly on a band edge is recorded in the more conservative band; that is the rule, so the reading cannot be argued either way after the fact. If Seven cannot be measured at all, the verdict is blocked with the reason, and the release flag (`RELEASE_RENDER_FLAGS.rigged` in `src/components/locker/HeroPoseViewer.tsx`) is left at its current value rather than moved on absent evidence. | | | |
+| RP-03 | Frame budget: the gate. (`docs/rigged-preview-spike.md` section 8 check 3) | Seven (gigawatt_prisoner), the worst case on every measured axis per the spike. | 1. Set cloth off and rigged on for Seven's preview (the decoupled flag in `heroPoseRenderFeatures.ts`). 2. Open DevTools' Performance panel, or add a stats overlay. 3. Record 10 seconds with the static preview (rigged off), at the same hero and the same window size. 4. Record 10 seconds with the rigged preview on, at the same hero and the same window size. 5. Read the median frame time of each run, not the average. 6. Compute the delta between the two medians. 7. Note the device pixel ratio the canvas settled on for the run. | State the reading against all three bands, verbatim: within about 1 ms of static is ship-viable; 1 to 3 ms worse is investigate; more than 3 ms worse, or a drop below 30 fps on mid-range hardware, is a fail. A measured delta landing exactly on a band edge is recorded in the more conservative band; that is the rule, so the reading cannot be argued either way after the fact. If Seven cannot be measured at all, the verdict is blocked with the reason, and the release flag (`RELEASE_RENDER_FLAGS.rigged` in `src/components/locker/HeroPoseViewer.tsx`) is left at its current value rather than moved on absent evidence. | pass | Static median 8.30 ms, rigged median 8.30 ms, wall-clock delta 0.00 ms (both pinned to the 120 Hz vsync ceiling); GPU timer median static 1.67 ms, rigged 1.79 ms, delta +0.12 ms; dpr 1.2384; both deltas well inside the "within about 1 ms of static" ship band. Full reading, all measurement conditions, and the roster clip sweep are in the "RP-03 measurement and recommendation" section below Table 2. | |
+
+Note on taking this reading, for whoever runs or re-runs it: confirm
+`document.visibilityState === 'visible'` and that `requestAnimationFrame` is
+actually ticking before trusting any timing number. Chromium suspends rAF and
+throttles timers to about 1 Hz for a window it considers hidden, and on
+Windows that includes a window merely covered by other windows, so a sampler
+run in that state silently reports whatever its initial value was.
+`Page.captureScreenshot` (the driver's `shot` command) still returns a
+correctly rendered picture in that state, because it forces a capture
+regardless of scheduling, so a screenshot is NOT evidence that frames are
+being produced. Run with `GRIMOIRE_DEV_NO_BACKGROUNDING=1` (see `CLAUDE.md`
+and `electron/main/index.ts`) and keep the window unobstructed, or the number
+measures nothing.
+
+### RP-03 measurement and recommendation
+
+Taken on Seven (hero id 33322), the vanilla rig (0 installed skin mods on the
+measuring machine; the fixture names `gigawatt_prisoner`, the body-model
+codename, not an installed skin), cloth off, rigged toggled via the decoupled
+`grimoire.preview.rigged` dev flag. Canvas: 587x682 backing, 474x551 CSS, the
+floating preview panel.
+
+| Metric | Static (rigged off) | Rigged (rigged on) | Delta |
+| --- | --- | --- | --- |
+| Median frame time, wall clock | 8.30 ms | 8.30 ms | 0.00 ms |
+| Median frame time, GPU timer (EXT_disjoint_timer_query_webgl2) | 1.67 ms | 1.79 ms | +0.12 ms |
+| p95 frame time, GPU timer | 2.46 ms | 2.11 ms | -0.35 ms |
+| Max frame time, GPU timer | 3.82 ms | 2.89 ms | -0.93 ms |
+| Draw calls per frame | 30 | 30 | 0 |
+| Sustained frame rate | about 120 fps | about 120 fps | n/a |
+
+Device pixel ratio the canvas settled on: 1.2384 (window `devicePixelRatio`
+reported 1.24).
+
+Display refresh was 120 Hz, so the vsync ceiling is 8.33 ms. That is why both
+wall-clock medians land at exactly 8.30 ms, and why the GPU timer figures,
+not the wall-clock ones, carry the frame-budget argument here.
+
+**Band: within about 1 ms of static, ship-viable, per spike section 8 check
+3.** Both the 0.00 ms wall-clock delta and the +0.12 ms GPU delta sit well
+inside that band, not on an edge, so the band-edge tie rule does not apply.
+
+**Decision: ship.** `RELEASE_RENDER_FLAGS.rigged` in
+`src/components/locker/HeroPoseViewer.tsx` is now `true`.
+
+Measurement conditions, recorded because they are real limitations of this
+reading and matter to anyone re-measuring later:
+
+1. The subject was the vanilla Seven rig, not the `gigawatt_prisoner` skin
+   the Fixture column names. Seven had 0 installed skin mods on the
+   measuring machine.
+2. The canvas was the floating preview panel at 474x551 CSS, not a
+   full-size preview. GPU cost scales with pixel count, so the absolute
+   figures are size-specific. The delta is still a fair comparison because
+   both runs used the identical canvas.
+3. Display was 120 Hz, so the vsync ceiling is 8.33 ms, which is why the
+   wall-clock medians are both exactly 8.30 ms and why the GPU timer figures
+   are the ones that carry the frame-budget argument.
+4. Measured with `GRIMOIRE_DEV_NO_BACKGROUNDING=1` (see `CLAUDE.md`, commit
+   42d39b3) on a window that was not on top. The GPU work is genuine; the
+   presentation path differs from normal use.
+5. One run per condition: 240 frames for the GPU pass, about 1200 frames
+   for the wall-clock pass. No repeat-run variance sampling.
+6. The rigged path was confirmed to actually engage rather than silently
+   falling back to the static pose: with the turntable spin paused, three
+   consecutive static frames were byte-identical while three consecutive
+   rigged frames all differed.
+
+### Roster-wide clip sweep
+
+Per D-18 the roster sweep runs only if RP-03 argues for shipping. RP-03
+passed, so the sweep ran: read-only `model clips --json`, once per hero,
+against `D:\Steam\steamapps\common\Deadlock\game\citadel\pak01_dir.vpk`, using
+the bundled `resources/vpkmerge/vpkmerge-windows-x86_64.exe` and the same
+selector logic `modelSelectorsForHero` in
+`electron/main/services/heroPoseModels.ts` uses (an explicit `--entry` for the
+nine `MODEL_ENTRY_OVERRIDES` heroes, `--hero <codename>` otherwise). Nothing
+was exported. Ranking replicates `riggedClipScore` / `chooseRiggedClip`
+exactly, including the tie-break chain: score, then looping, then duration,
+then `name.localeCompare`.
+
+Five roster rows in `src/lib/heroCodenames.ts` (Fathom, Kali, Tokamak,
+Trapper, Wrecker) carry no `panorama` and no `bodyModel` codename. They ship
+sound assets only and are not on the selectable Locker roster, so they have
+no model to address and are excluded from this sweep rather than reported as
+a clipless finding.
+
+**Every one of the 38 addressable heroes yielded an animated clip. No hero
+fell into the "no animated clip" case this sweep exists to catch**, so the
+static-pose fallback path (already correct per spike section 7) is not
+exercised by any hero on the strength of this sweep.
+
+| Hero | Codename/entry addressed | Clips (total) | First-ranked clip | Tie-break |
+| --- | --- | --- | --- | --- |
+| Abrams | `models/heroes_wip/abrams/abrams.vmdl_c` (--entry) | 300 | `primary_stand_idle` | none (unique top score) |
+| Apollo | `fencer` (--hero) | 6 | `respawn_countdown_idle` | none (unique top score) |
+| Bebop | `bebop` (--hero) | 444 | `primary_ooc_stand_idle` | alphabetical: 2 clips tied on score, looping, and duration; `name.localeCompare` chose `primary_ooc_stand_idle` |
+| Billy | `punkgoat` (--hero) | 5 | `primary_idle` | none (unique top score) |
+| Calico | `nano` (--hero) | 323 | `primary_stand_idle` | none (unique top score) |
+| Celeste | `unicorn` (--hero) | 7 | `respawn_countdown_idle` | none (unique top score) |
+| Doorman | `doorman` (--hero) | 168 | `primary_ooc_stand_idle` | alphabetical: 2 clips tied on score, looping, and duration; `name.localeCompare` chose `primary_ooc_stand_idle` |
+| Drifter | `drifter` (--hero) | 5 | `primary_stand_idle` | none (unique top score) |
+| Dynamo | `dynamo` (--hero) | 210 | `primary_stand_idle` | none (unique top score) |
+| Graves | `necro` (--hero) | 7 | `respawn_countdown_idle` | none (unique top score) |
+| Grey Talon | `archer` (--hero) | 304 | `primary_stand_idle` | none (unique top score) |
+| Haze | `haze` (--hero) | 247 | `primary_stand_idle` | none (unique top score) |
+| Holliday | `astro` (--hero) | 260 | `primary_stand_idle` | none (unique top score), matches spike section 2's pilot result |
+| Infernus | `models/heroes_wip/inferno/inferno.vmdl_c` (--entry) | 3 | `respawn_countdown_idle` | none (unique top score) |
+| Ivy | `models/heroes_wip/ivy/ivy.vmdl_c` (--entry) | 254 | `primary_stand_idle` | none (unique top score) |
+| Kelvin | `kelvin` (--hero) | 264 | `primary_stand_idle` | none (unique top score) |
+| Lady Geist | `models/heroes_wip/geist/geist.vmdl_c` (--entry) | 257 | `primary_stand_idle` | none (unique top score) |
+| Lash | `lash` (--hero) | 315 | `primary_stand_fire_idle` | alphabetical: 2 clips tied on score, looping, and duration; `name.localeCompare` chose `primary_stand_fire_idle` |
+| McGinnis | `models/heroes_wip/mcginnis/mcginnis.vmdl_c` (--entry) | 26 | `primary_stand_idle` | none (unique top score) |
+| Mina | `vampirebat` (--hero) | 5 | `respawn_countdown_idle` | none (unique top score) |
+| Mirage | `mirage` (--hero) | 197 | `primary_ooc_stand_idle` | alphabetical: 2 clips tied on score, looping, and duration; `name.localeCompare` chose `primary_ooc_stand_idle` |
+| Mo & Krill | `digger` (--hero) | 201 | `primary_stand_idle` | none (unique top score) |
+| Paige | `bookworm` (--hero) | 4 | `out_of_combat_stand_idle` | none (unique top score), matches spike section 2's pilot result |
+| Paradox | `chrono` (--hero) | 383 | `primary_stand_idle` | none (unique top score) |
+| Pocket | `models/heroes_wip/pocket/pocket.vmdl_c` (--entry) | 261 | `primary_stand_idle` | none (unique top score) |
+| Rem | `models/heroes_wip/familiar/familiar_wip.vmdl_c` (--entry) | 7 | `respawn_countdown_idle` | none (unique top score) |
+| Seven | `gigawatt_prisoner` (--hero) | 230 | `primary_stand_idle` | none (unique top score), matches spike section 2's pilot result and RP-03's fixture above |
+| Shiv | `shiv` (--hero) | 205 | `primary_stand_idle` | alphabetical: 2 clips tied on score, looping, and duration; `name.localeCompare` chose `primary_stand_idle` |
+| Silver | `werewolf` (--hero) | 16 | `item_stand_idle` | none (unique top score) |
+| Sinclair | `magician` (--hero) | 169 | `primary_stand_idle` | none (unique top score) |
+| Venator | `priest` (--hero) | 243 | `primary_stand_idle` | none (unique top score) |
+| Victor | `frank` (--hero) | 193 | `primary_stand_fire_idle` | alphabetical: 2 clips tied on score, looping, and duration; `name.localeCompare` chose `primary_stand_fire_idle` |
+| Vindicta | `hornet` (--hero) | 276 | `primary_stand_idle` | alphabetical: 2 clips tied on score, looping, and duration; `name.localeCompare` chose `primary_stand_idle` |
+| Viscous | `models/heroes_staging/viscous/viscous.vmdl_c` (--entry) | 308 | `primary_stand_idle` | none (unique top score) |
+| Vyper | `viper` (--hero) | 247 | `primary_stand_idle` | none (unique top score) |
+| Warden | `warden` (--hero) | 213 | `primary_stand_idle` | none (unique top score) |
+| Wraith | `models/heroes_wip/wraith/wraith.vmdl_c` (--entry) | 231 | `primary_stand_idle` | none (unique top score) |
+| Yamato | `yamato` (--hero) | 350 | `primary_stand_idle` | none (unique top score) |
+
+Excluded (no addressable model codename, sound assets only): Fathom, Kali,
+Tokamak, Trapper, Wrecker.
+
+Seven, sitting a row above in this same sweep, addressed the identical
+`gigawatt_prisoner` codename and returned the identical
+`primary_stand_idle` choice RP-03's fixture and spike section 2 both used,
+so the sweep and the frame-budget reading agree on which clip Seven's rigged
+preview actually plays.
+
+No change was made to `chooseRiggedClip`, `riggedClipScore`, or the fallback
+path on the strength of this sweep; every hero already animates, so nothing
+here argues for a behavior change.
 
 ## Table 3: ConVar readings (REQ-performance-convar-safer-experimentation)
 

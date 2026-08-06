@@ -1,12 +1,14 @@
-// Rigged (animated, skinned) preview is gated off in released builds: the
-// static `--pose` menu pose stays the default until a human has measured the
-// animated path's frame cost on the worst-case hero. See
-// docs/rigged-preview-spike.md. Cloth remains off too.
+// Rigged (animated, skinned) preview shipped in released builds as of RP-03
+// in docs/ingame-verification-record.md: the measured frame-time delta on
+// Seven, the worst case on every axis, landed within the ship band (see
+// docs/rigged-preview-spike.md section 9). RELEASE_RENDER_FLAGS.rigged in
+// HeroPoseViewer.tsx carries that decision.
 //
-// The "too many heroes fall back to a default A-pose" half of this note was
-// measured and found stale: all three spike pilots select a real looping idle
-// and every primitive carries JOINTS_0. What is still missing is an fps number,
-// which is why the flag stays false rather than becoming a default.
+// This module constant is a separate manual override for auditioning rigged
+// alone in dev without going through the release flag or the Leva Cloth
+// checkbox. It stays false because the release flag already turns rigged on;
+// flip it locally only when testing a build where RELEASE_RENDER_FLAGS.rigged
+// is temporarily false.
 const USE_RIGGED_PREVIEW: boolean = false;
 
 export interface HeroPoseDevFlags {
