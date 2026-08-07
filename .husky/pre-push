@@ -14,3 +14,9 @@ pnpm encoding:check
 # push is the moment GitHub gets to act on it. Upstream's own "(#326)" squash
 # subjects are exempt: they are already reachable from upstream/main.
 pnpm refs:check
+
+# This is where the repo keeps its cheap invariant gates. Protects a workflow
+# file (.github/workflows/release.yml) that only changes locally before it is
+# pushed: catching a loosened engine pin here is earlier than catching it in
+# an actual release run.
+pnpm engine-pin:check
