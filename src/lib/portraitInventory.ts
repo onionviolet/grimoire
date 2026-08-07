@@ -1,5 +1,6 @@
 import type { Mod } from '../types/mod';
 import { canonicalHeroName } from './lockerUtils';
+import { overlappingRecordedClaims, type RecordedClaimOverlap } from './recordedClaims';
 
 /** The installed portrait read model. Exact VPK entries are claims; a hero name
  * and a variant are only ways to file and label those claims. */
@@ -115,17 +116,10 @@ function compareEntries(a: PortraitInventoryEntry, b: PortraitInventoryEntry) {
   return Number(b.enabled) - Number(a.enabled) || a.priority - b.priority || a.name.localeCompare(b.name);
 }
 
-export interface PortraitClaimOverlap { path: string; entryKeys: string[]; }
+export type PortraitClaimOverlap = RecordedClaimOverlap;
 
-/** Only recorded paths and enabled mods participate, so this can under-report only. */
+/** Only recorded paths and enabled mods participate, so this can under-report
+ *  only. The rule is shared with the sound shelf: see `recordedClaims.ts`. */
 export function overlappingClaims(entries: readonly PortraitInventoryEntry[]): PortraitClaimOverlap[] {
-  const claims = new Map<string, string[]>();
-  for (const entry of entries) {
-    if (!entry.enabled) continue;
-    for (const path of new Set(entry.paths)) claims.set(path, [...(claims.get(path) ?? []), entry.key]);
-  }
-  return [...claims.entries()]
-    .filter(([, keys]) => keys.length > 1)
-    .map(([path, entryKeys]) => ({ path, entryKeys }))
-    .sort((a, b) => a.path.localeCompare(b.path));
+  return overlappingRecordedClaims(entries);
 }

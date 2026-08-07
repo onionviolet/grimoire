@@ -6,10 +6,10 @@ import { useAppStore } from '../../stores/appStore';
 import { showToast } from '../../stores/toastStore';
 import {
   foundryCheckAudioPaths,
-  foundryInspectAssetSources,
   foundrySoundAnnotationKey,
   foundrySwapSound,
 } from '../../lib/api';
+import { inspectAssetClaims } from '../../lib/inspectedAssetClaims';
 import { SoundImportEditor, type SoundImportEdits } from './SoundImportEditor';
 import {
   describeSoundTuning,
@@ -82,7 +82,7 @@ export function SoundChangeDetails({
     setInspecting(true);
     setInspectError(null);
     try {
-      setInspection(await foundryInspectAssetSources(writeSet));
+      setInspection(await inspectAssetClaims(writeSet));
     } catch (cause) {
       setInspection(null);
       setInspectError(cause instanceof Error ? cause.message : String(cause));
@@ -135,7 +135,7 @@ export function SoundChangeDetails({
         );
         return;
       }
-      const preflight = await foundryInspectAssetSources(writeSet);
+      const preflight = await inspectAssetClaims(writeSet);
       if (preflight.unreadableMods.length) {
         showToast(
           t('foundry.myChanges.reforgeUnreadable', {

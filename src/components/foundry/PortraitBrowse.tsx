@@ -31,9 +31,11 @@ import { portraitFamiliesForHero } from './portraitFamilyLookup';
 interface PortraitBrowseProps {
   /** codename -> display name, resolved once by the Foundry shell. */
   heroNames: Map<string, string>;
-  /** Pin the list to one hero (the workshop passes its codename); the hero
+  /** Pin the list to one hero (the workshop passes its codename), or `null` for
+   *  the unscoped catalog. Required, never optional: see the note on
+   *  `LibraryBrowse`'s `hero` prop (structural cause S3). When pinned, the hero
    *  dropdown is hidden because the scope is not the user's to change there. */
-  hero?: string;
+  hero: string | null;
   /** Hand a staged family to the shared build tray. Absent means browse-only. */
   onStage?: (edit: VisualStagedEdit) => void;
   /** Open straight onto this family (`/foundry?...&family=<key>`), the Locker's

@@ -1,6 +1,16 @@
 import type { AbilitySlot, Mod } from '../types/mod';
 import { canonicalHeroName, getEffectiveGlobalType } from './lockerUtils';
-import { buildAssetClaimsIndex } from './assetClaims';
+import { overlappingRecordedClaims, type RecordedClaimOverlap } from './recordedClaims';
+import {
+    CATEGORY_ORDER,
+    categoryRank,
+    classifyDownloadCategory,
+    classifySound,
+    type SoundCategory,
+} from './soundVocabulary';
+
+export { CATEGORY_ORDER };
+export type { SoundCategory };
 
 /**
  * The sound inventory: what sound content you already have, folded out of the
@@ -19,31 +29,13 @@ import { buildAssetClaimsIndex } from './assetClaims';
  * hero name, or a classification count is never an ownership signal.
  */
 
-/** What kind of sound an entry changes. A single mod can cover several. */
-export type SoundCategory =
-    | 'ability'
-    | 'voice'
-    | 'weapon'
-    | 'movement'
-    | 'music'
-    | 'announcer'
-    | 'ui'
-    | 'ambience'
-    | 'npc'
-    | 'item'
-    | 'melee'
-    /**
-     * Nothing could be read from this mod's evidence.
-     *
-     * Replaces the old `shared` and `other` buckets, which were two different
-     * ways of saying the same thing while sounding like content types. `shared`
-     * in particular was an implementation leak: it meant "the path contained the
-     * word shared", which is true of every player melee sound in the game.
-     *
-     * This is a work queue, not a shelf: an entry here is a classification the
-     * app owes the user, and it should be possible to act on it.
-     */
-    | 'unclassified';
+/**
+ * `SoundCategory` and `CATEGORY_ORDER` are re-exported above from
+ * `soundVocabulary.ts`, which owns the terms, the classification rules, and the
+ * English labels for the whole app (S2). They used to be defined here, which is
+ * how the Locker and Foundry's base-game catalog came to describe one domain
+ * with two word lists and neither of them containing `Melee`.
+ */
 
 /** Where an entry belongs: a hero's shelf, or the Global shelf. */
 export type SoundScope = 'hero' | 'global';
@@ -113,205 +105,20 @@ export interface SoundInventory {
     all: SoundInventoryEntry[];
 }
 
-/** Display order for categories, most reached-for first. */
-export const CATEGORY_ORDER: readonly SoundCategory[] = [
-    'ability',
-    'voice',
-    'weapon',
-    'movement',
-    'announcer',
-    'music',
-    'ui',
-    'ambience',
-    'npc',
-    'item',
-    'melee',
-    // Always last: it is the queue of things the app could not read, and it
-    // should never sit above a category that says something.
-    'unclassified',
-];
-
-const CATEGORY_RANK = new Map(CATEGORY_ORDER.map((category, index) => [category, index]));
-
 const canonicalPath = (path: string): string =>
     path.replace(/\\/g, '/').replace(/^\/+/, '').toLowerCase();
 
 /**
- * Where the game itself puts each kind of sound.
+ * Category of a single recorded clip path or soundevent name.
  *
- * These run before any word-matching, because the tree is real evidence and a
- * word in a filename is a hint. Two cases in the installed corpus prove why the
- * order matters:
- *
- *  - `sounds/music/menu/shop/bau_01.vsnd_c` is a music pack. Word-matching sees
- *    `menu` and `shop` and files it under Interface or Items.
- *  - `sounds/player/melee/shared/charged_melee_full.vsnd_c` is melee. Word
- *    matching saw `shared` and invented a whole category for it, which is the
- *    entire "Shared / Shared melee" defect.
- *
- * `sounds/mods/...` is not user mods: `mods` is the game's own word for item
- * modifiers, so `sounds/mods/tech/refresher/refresher_cast.vsnd_c` is the
- * Refresher item. That one rule is what moves six mods off the Announcer shelf.
+ * The rules (path tree first, then word-matching, with a reviewed override
+ * table above both) live in `soundVocabulary.ts`, shared with Foundry's
+ * base-game catalog. They return the reason alongside the verdict; this wrapper
+ * drops it for the callers that only need to file a mod on a shelf. A surface
+ * that wants to explain a classification should call `classifySound` itself.
  */
-const PATH_RULES: ReadonlyArray<readonly [RegExp, SoundCategory, string]> = [
-    [/(^|\/)sounds\/vo\//, 'voice', 'sounds/vo/'],
-    [/(^|\/)soundevents\/vo[/.]/, 'voice', 'soundevents/vo'],
-    [/(^|\/)sounds\/player\/melee\//, 'melee', 'sounds/player/melee/'],
-    // Item modifiers, both the clips and the soundevent manifests beside them.
-    [/(^|\/)sounds\/mods\//, 'item', 'sounds/mods/'],
-    [/(^|\/)soundevents\/mods[/.]/, 'item', 'soundevents/mods'],
-    [/(^|\/)sounds\/items?\//, 'item', 'sounds/item/'],
-    [/(^|\/)sounds\/npc\//, 'npc', 'sounds/npc/'],
-    [/(^|\/)soundevents\/npc[/.]/, 'npc', 'soundevents/npc'],
-    [/(^|\/)sounds\/music\//, 'music', 'sounds/music/'],
-    [/(^|\/)soundevents\/music[/.]/, 'music', 'soundevents/music'],
-    [/(^|\/)sounds\/ui\//, 'ui', 'sounds/ui/'],
-    [/(^|\/)soundevents\/ui[/.]/, 'ui', 'soundevents/ui'],
-    [/(^|\/)sounds\/announcer\//, 'announcer', 'sounds/announcer/'],
-    [/(^|\/)sounds\/abilities\//, 'ability', 'sounds/abilities/'],
-    [/(^|\/)sounds\/weapons?\//, 'weapon', 'sounds/weapon/'],
-    [/(^|\/)sounds\/ambient\//, 'ambience', 'sounds/ambient/'],
-];
-
-/** Word hints, in the order they are tried. Each carries the word it matched on
- *  so a row can say which one, rather than "we guessed". */
-const WORD_RULES: ReadonlyArray<readonly [RegExp, SoundCategory]> = [
-    [/(^|[/.])vo([/.]|$)|voice|_vo_/, 'voice'],
-    // Melee before weapon: a charged melee is not a gun, and before the old
-    // shared/generic rule, which used to swallow the whole player melee tree.
-    [/melee|punch|parry|swing|riposte/, 'melee'],
-    [/weapon|\bgun\b|shoot|reload|bullet|muzzle/, 'weapon'],
-    [/footstep|footsteps|movement|dash|jump|land(ing)?\b|slide/, 'movement'],
-    [/abilit(y|ies)|\bcast\b|\bult\b|ultimate/, 'ability'],
-    [/announcer/, 'announcer'],
-    [/music|stinger|killstreak/, 'music'],
-    [/(^|[/.])ui([/.]|$)|panorama|menu|hud/, 'ui'],
-    [/ambience|ambient/, 'ambience'],
-    // Deadlock's neutral camps and lane creeps, by the names the files use.
-    [/npc|creep|neutral|trooper|sinner|breed|vault|guardian|walker|patron|midboss/, 'npc'],
-    [/item|pickup|shop/, 'item'],
-];
-
-/**
- * Reviewed exceptions, keyed on evidence the rules genuinely cannot read.
- *
- * Deliberately empty right now: every case in the installed corpus is handled
- * by a rule, and an override table that starts full is a rule set that gave up
- * early. It exists so the next unreadable case has an honest home instead of
- * becoming a special case bolted into `classifySoundToken`, where it would look
- * like a general rule and quietly mis-file everything that resembles it.
- *
- * Two conditions for adding an entry: the key must be an exact normalized entry
- * path or soundevent name (never a download title, which the author controls),
- * and the reason must be written down. If two entries want the same reason, that
- * is a rule, not an override.
- */
-const CLASSIFICATION_OVERRIDES: ReadonlyMap<string, { category: SoundCategory; reason: string }> =
-    new Map<string, { category: SoundCategory; reason: string }>();
-
-/**
- * Why a token landed in its category.
- *
- * A category on its own is an assertion. The reason is what makes it checkable:
- * a row in the Needs-classification queue can say what it read and failed to
- * read, and a mis-file can be traced to the rule that made it rather than to
- * "the classifier". The four kinds are the four tiers below, strongest first.
- */
-export type SoundClassificationReason =
-    | { kind: 'override'; note: string }
-    /** A path-segment rule matched. `evidence` is the segment, e.g. `sounds/mods/`. */
-    | { kind: 'path'; evidence: string }
-    /** A word in the name matched. Weaker: a hint, not the game's own filing. */
-    | { kind: 'word'; evidence: string }
-    /** Nothing in the token read as anything. */
-    | { kind: 'unreadable' };
-
-export interface SoundClassification {
-    category: SoundCategory;
-    reason: SoundClassificationReason;
-}
-
-/**
- * Category of a single recorded clip path or soundevent name, with the reason.
- *
- * Three tiers, in this order: a reviewed override, where the file lives, then
- * what it is called. A token that reads as nothing concrete returns
- * `unclassified` rather than a vague bucket, because "we could not tell" is a
- * fact worth showing and a wrong category files a mod under a heading it has
- * nothing to do with.
- *
- * This is the one classification entry point (S2). Both surfaces come through
- * here: the Locker folds it over a mod's recorded entries, and the Foundry
- * catalog's own grouping is mapped onto this vocabulary rather than kept as a
- * third one (see `soundCategoryFromCatalog`).
- */
-export function classifySound(token: string): SoundClassification {
-    const value = token.replace(/\\/g, '/').toLowerCase();
-    const override = CLASSIFICATION_OVERRIDES.get(value);
-    if (override) {
-        return { category: override.category, reason: { kind: 'override', note: override.reason } };
-    }
-    for (const [pattern, category, segment] of PATH_RULES) {
-        if (pattern.test(value)) return { category, reason: { kind: 'path', evidence: segment } };
-    }
-    for (const [pattern, category] of WORD_RULES) {
-        const hit = pattern.exec(value);
-        if (hit) return { category, reason: { kind: 'word', evidence: hit[0] } };
-    }
-    return { category: 'unclassified', reason: { kind: 'unreadable' } };
-}
-
-/** Category only, for the callers that classify in bulk and never show a reason. */
 export function classifySoundToken(token: string): SoundCategory {
     return classifySound(token).category;
-}
-
-/** The catalog's own coarse families, mapped onto this vocabulary. `gameplay`
- *  has no equivalent here on purpose: it is a bag holding weapon, ability,
- *  movement and melee, so it is only ever a fallback for a sound whose paths
- *  said nothing. */
-const CATALOG_FAMILIES: Readonly<Record<string, SoundCategory>> = {
-    ui: 'ui',
-    music: 'music',
-    ambience: 'ambience',
-    npc: 'npc',
-    item: 'item',
-    voice: 'voice',
-    gameplay: 'unclassified',
-    other: 'unclassified',
-};
-
-/**
- * A base-game catalog sound, in the Locker's vocabulary.
- *
- * The catalog groups by the *source file* an event lives in, which is a
- * different axis from the Locker's, and it has no Melee family at all: every
- * melee sound in the game lands in its `gameplay` bag. Reading the clip paths
- * first is what gives the base-game surface the same Melee group the Locker
- * has, so a user who learns "Melee" in one surface finds it in the other
- * (#5 DoD 10) without either surface owning a second vocabulary.
- *
- * The catalog family is the fallback, in the same position a GameBanana
- * category holds on the installed side: a filing decision, not a read of
- * content.
- */
-export function soundCategoryFromCatalog(sound: {
-    category: string;
-    source?: string;
-    vsnd?: readonly string[];
-}): SoundClassification {
-    for (const path of sound.vsnd ?? []) {
-        const read = classifySound(path);
-        if (read.category !== 'unclassified') return read;
-    }
-    if (sound.source) {
-        const read = classifySound(`sounds/${sound.source}/`);
-        if (read.category !== 'unclassified') return read;
-    }
-    const family = CATALOG_FAMILIES[sound.category] ?? 'unclassified';
-    return family === 'unclassified'
-        ? { category: 'unclassified', reason: { kind: 'unreadable' } }
-        : { category: family, reason: { kind: 'word', evidence: sound.category } };
 }
 
 /**
@@ -323,7 +130,7 @@ export function soundCategoryFromCatalog(sound: {
 function sortCategories(categories: Iterable<SoundCategory>): SoundCategory[] {
     const unique = new Set(categories);
     if (unique.size > 1) unique.delete('unclassified');
-    return [...unique].sort((a, b) => (CATEGORY_RANK.get(a) ?? 99) - (CATEGORY_RANK.get(b) ?? 99));
+    return [...unique].sort((a, b) => categoryRank(a) - categoryRank(b));
 }
 
 /**
@@ -394,20 +201,10 @@ function globalCategory(mod: Mod): SoundCategory {
     const globalType = getEffectiveGlobalType(mod);
     if (globalType === 'announcer') return 'announcer';
     if (globalType === 'killstreak-music') return 'music';
-    const category = mod.categoryName?.trim().toLowerCase() ?? '';
-    if (category.includes('music')) return 'music';
-    if (category.includes('announcer')) return 'announcer';
-    if (category === 'ui' || category === 'ui sounds') return 'ui';
-    if (category.includes('ambience') || category.includes('ambient')) return 'ambience';
-    if (category.includes('npc') || category.includes('creep')) return 'npc';
-    if (category.includes('item')) return 'item';
-    if (category.includes('melee')) return 'melee';
-    // A kill sound in this game is a creep/trooper kill: NPC content, not a
-    // nameless bucket. Weak evidence though, so any real path beats it.
-    if (category.includes('killsound')) return 'npc';
-    // `shared` and `generic` used to become a category of their own here. They
-    // describe how the author labelled a download, not what it changes.
-    return 'unclassified';
+    // The download's own category name, read through the shared vocabulary's
+    // weakest tier. It is the last resort on purpose: an author's label says how
+    // an upload was filed, not what it changes.
+    return classifyDownloadCategory(mod.categoryName).category;
 }
 
 interface HeroDraft {
@@ -643,7 +440,7 @@ export function entriesInCategory(
  *  can still contain one that is not, and that entry needs a section to sit in. */
 export function categoriesPresent(list: readonly SoundInventoryEntry[]): SoundCategory[] {
     return [...new Set(list.flatMap((entry) => entry.categories))].sort(
-        (a, b) => (CATEGORY_RANK.get(a) ?? 99) - (CATEGORY_RANK.get(b) ?? 99)
+        (a, b) => categoryRank(a) - categoryRank(b)
     );
 }
 
@@ -658,40 +455,16 @@ export function countEnabledMods(list: readonly SoundInventoryEntry[]): number {
 }
 
 /** One path claimed by more than one enabled entry, with its claimants. */
-export interface SoundClaimOverlap {
-    path: string;
-    /** Enabled entry keys claiming the path, winner first: the load order the
-     *  claims index resolves, so the reader can see who currently wins. */
-    entryKeys: string[];
-}
+export type SoundClaimOverlap = RecordedClaimOverlap;
 
 /**
  * Paths that more than one ENABLED entry records writing.
  *
- * This is the cheap, local half of the "only one mod should own an event" rule:
- * it uses only what the entries already recorded, so it can never report an
- * overlap between two mods whose write sets are unknown. The authoritative
- * answer, including unrecorded VPKs, still comes from
- * `foundryInspectAssetSources` when a row is expanded. Reporting less here than
- * the inspector would is the intended failure direction: a missed warning sends
- * the user to the inspector, an invented one sends them chasing nothing.
+ * The rule itself lives in `recordedClaims.ts` and is shared with the portrait
+ * card picker, which asked the identical question of a different entry shape.
+ * The authoritative answer, including VPKs that recorded nothing, still comes
+ * from the inspected asset-claims index when a row is expanded.
  */
 export function overlappingClaims(list: readonly SoundInventoryEntry[]): SoundClaimOverlap[] {
-    // Projection of the shared claims index, not a second derivation of it: the
-    // question "who claims this path" has one implementation, and this surface
-    // only differs in the evidence it can offer (recorded entries, never a VPK
-    // read) and in reporting entry keys rather than mod ids.
-    const claims = buildAssetClaimsIndex(
-        [],
-        list.map((entry) => ({
-            id: entry.key,
-            enabled: entry.enabled,
-            priority: entry.priority,
-            entries: entry.paths,
-        }))
-    );
-    return claims.contested.map((path) => ({
-        path,
-        entryKeys: claims.byPath.get(path)?.enabledClaimants ?? [],
-    }));
+    return overlappingRecordedClaims(list);
 }

@@ -8,7 +8,7 @@ import {
   particleCodenameForHero,
   translateHeroCodename,
 } from './heroCodenames';
-import { portraitHeroDefinitions } from './heroPortraitIdentity';
+import { allHeroIdentities } from './heroIdentity';
 import { HERO_SOUND_CODENAMES } from '../../electron/main/services/heroSoundCodenames';
 import { HERO_ABILITY_SLOTS } from '../../electron/main/services/heroAbilitySlots';
 
@@ -38,15 +38,20 @@ describe('the hero codename join', () => {
   });
 
   it('agrees with the panorama identity map in both directions', () => {
+    // The alias data itself now lives in heroIdentity.ts (S5); read the roster
+    // from there rather than from a table heroPortraitIdentity.ts no longer owns.
+    // Unreleased heroes own no panorama folder (empty panoramaCodenames) and are
+    // out of scope here, same as the old portrait-only table never listed them.
+    const withPanorama = allHeroIdentities().filter((hero) => hero.panoramaCodenames.length > 0);
     const panoramaByHero = new Map(
-      portraitHeroDefinitions.map((hero) => [hero.displayName, hero.panoramaCodenames[0]]),
+      withPanorama.map((hero) => [hero.displayName, hero.panoramaCodenames[0]]),
     );
     for (const [displayName, panorama] of panoramaByHero) {
       expect(heroCodenames(displayName)?.panorama).toBe(panorama);
     }
     // And nothing in the join claims a panorama codename the identity map does
     // not own, which would mean two answers to "where is this hero's card art".
-    const known = new Set(portraitHeroDefinitions.flatMap((hero) => hero.panoramaCodenames));
+    const known = new Set(withPanorama.flatMap((hero) => hero.panoramaCodenames));
     for (const hero of HERO_CODENAMES) {
       if (hero.panorama) expect(known).toContain(hero.panorama);
     }

@@ -16,7 +16,8 @@ import {
   Minus,
   Wand2,
 } from 'lucide-react';
-import { foundryAuditionSourceClip, foundryInspectAssetSources } from '../../lib/api';
+import { foundryAuditionSourceClip } from '../../lib/api';
+import { useAssetClaims } from '../../lib/useAssetClaims';
 import { computeSourceGating } from './sourceGating';
 import { useAppStore } from '../../stores/appStore';
 import { showToast } from '../../stores/toastStore';
@@ -88,34 +89,24 @@ export default function AssetSourcesPanel({
   onTogglePoolTarget,
   poolTargetForEntry,
 }: AssetSourcesPanelProps) {
+  void onRefreshInspection;
   const { t } = useTranslation();
   const navigate = useNavigate();
   const toggleMod = useAppStore((state) => state.toggleMod);
-  const [result, setResult] = useState<FoundryAssetSourcesInspection | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [busyModId, setBusyModId] = useState<string | null>(null);
   const [playing, setPlaying] = useState<string | null>(null);
   const [showWhy, setShowWhy] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  const inspect = useCallback(async () => {
-    if (onRefreshInspection) {
-      onRefreshInspection();
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    try {
-      setResult(await foundryInspectAssetSources(paths));
-    } catch (cause) {
-      setResult(null);
-      setError(cause instanceof Error ? cause.message : String(cause));
-    } finally {
-      setLoading(false);
-    }
-  }, [paths, onRefreshInspection]);
-
+  // Inspection stays on demand (`enabled: false`): reading VPK directories for
+  // every card in a catalog grid is the cost this panel exists to avoid. What
+  // is no longer on demand is a set already answered, because the shared index
+  // has it: re-opening a card you inspected a moment ago renders immediately
+  // instead of scanning again. A mod-state change invalidates that, so an
+  // instant answer is never a stale one.
+  const { index, loading, error, refresh } = useAssetClaims(paths, false);
+  const result: FoundryAssetSourcesInspection | null = index?.raw ?? null;
+  const inspect = refresh;
   const displayedResult = inspection === undefined ? result : inspection;
   const displayedLoading = inspectionLoading ?? loading;
   const displayedError = inspectionError ?? error;
@@ -174,13 +165,23 @@ export default function AssetSourcesPanel({
     }
   }, [toggleMod, inspect, t]);
 
-  const winnerNames = useMemo(() => {
-    if (!displayedResult) return [];
-    return Object.entries(displayedResult.winners).map(([path, modId]) => ({
-      path,
-      name: modId ? displayedResult.sources.find((source) => source.modId === modId)?.modName ?? modId : null,
-    }));
-  }, [displayedResult]);
+  // Projected off the index, not derived here. The same lookup used to be
+  // written out again in the Locker's sound row, which is how two surfaces got
+  // to disagree about who owns a path (S4).
+  const winnerNames = useMemo(
+    () =>
+      index
+        ? Object.keys(index.raw.winners).map((path) => ({ path, name: index.winnerNameFor(path) }))
+        : displayedResult
+          ? Object.entries(displayedResult.winners).map(([path, modId]) => ({
+              path,
+              name: modId
+                ? displayedResult.sources.find((source) => source.modId === modId)?.modName ?? modId
+                : null,
+            }))
+          : [],
+    [index, displayedResult],
+  );
 
   return (
     <div className="mt-1 border-t border-border/60 pt-1.5">

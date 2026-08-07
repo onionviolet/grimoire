@@ -24,59 +24,78 @@ import { foundryGlobalSounds, foundrySoundAnnotations, foundrySoundAnnotationKey
 import { showToast } from '../../stores/toastStore';
 import { describeSound, primaryClipName } from '../../lib/soundDescribe';
 import { isAnnotated, matchSoundWithAnnotation } from '../../lib/soundAnnotationSearch';
-import type { GlobalSound, SoundAnnotation } from '../../types/foundry';
-import { soundCategoryFromCatalog, type SoundCategory } from '../../lib/soundInventory';
-import { globalSoundSectionLabel } from '../../lib/globalSoundSections';
+import { refineCatalogTerm, soundTermLabel, type SoundTerm } from '../../lib/soundVocabulary';
+import type { GlobalSound, GlobalSoundCategory, SoundAnnotation } from '../../types/foundry';
 import type { FoundryStagedSoundEdit } from './soundStagedEdit';
 
-// One vocabulary across surfaces, now literally: these are the Locker's own
-// SoundCategory values, labelled from the Locker's own keys. A user who learns
-// "Items" or "Melee" on the Global shelf finds the same word here.
-//
-// The catalog engine still groups the base game's ~1100 sounds its own way
-// (`gameplay` is a bag holding weapon, ability, movement and melee, `other` is
-// a shrug). soundCategoryFromCatalog reads the clip paths first and only falls
-// back to those families, which is what finally gives this surface the Melee
-// group it could not have while the engine's grouping was the axis.
-//
+/**
+ * The rail terms, in the one shared vocabulary (S2).
+ *
+ * The catalog engine hands back its own coarse grouping, derived from each
+ * event's source file. `other` becomes `catalogOther`, which the vocabulary
+ * keeps deliberately distinct from the Locker's `unclassified`: one is the base
+ * game's own residue, the other is a work queue of things Grimoire owes the
+ * user an answer about, and conflating them would put a to-do list next to
+ * 1100 shipped events nobody has to fix.
+ *
+ * `melee` is not a term the engine returns. It is derived here from the clip
+ * paths a `gameplay` row already carries, using the same path rules that
+ * classify an installed mod: `sounds/player/melee/` is melee whoever is asking.
+ * That is the whole "Melee exists in no vocabulary" defect, fixed by reading
+ * evidence the catalog was already shipping rather than by waiting on the
+ * catalog engine to grow a group.
+ */
+type RailTerm = SoundTerm;
+
+const CATALOG_TERM: Readonly<Record<GlobalSoundCategory, RailTerm>> = {
+    ui: 'ui',
+    music: 'music',
+    item: 'item',
+    gameplay: 'gameplay',
+    npc: 'npc',
+    ambience: 'ambience',
+    voice: 'voice',
+    other: 'catalogOther',
+};
+
 // Display order: what a modder reaches for first (UI clicks, music) leads, then
-// the world layers, then the work queue.
-const CATEGORY_ORDER: SoundCategory[] = [
+// the world layers, then the odds-and-ends bucket. Melee sits beside Gameplay,
+// which is the group it is split out of.
+const CATEGORY_ORDER: RailTerm[] = [
     'ui',
     'music',
     'item',
+    'gameplay',
     'melee',
-    'weapon',
-    'ability',
-    'movement',
     'npc',
     'ambience',
     'voice',
-    'announcer',
-    'unclassified',
+    'catalogOther',
 ];
 
-const CATEGORY_ICON: Record<SoundCategory, typeof AudioLines> = {
+const CATEGORY_ICON: Partial<Record<RailTerm, typeof AudioLines>> = {
     ui: MousePointerClick,
     music: Music,
     item: ShoppingBag,
+    gameplay: Swords,
     melee: Swords,
-    weapon: Swords,
-    ability: Swords,
-    movement: Swords,
     npc: Skull,
     ambience: Trees,
     voice: MessageSquare,
-    announcer: MessageSquare,
-    unclassified: AudioLines,
+    catalogOther: AudioLines,
 };
+
+/** The rail term for one catalog row, refined from its clip paths. */
+function railTermFor(sound: GlobalSound): RailTerm {
+    return refineCatalogTerm(CATALOG_TERM[sound.category] ?? 'catalogOther', sound.vsnd).term;
+}
 
 // The whole index is ~1100 rows, small enough to fetch once and filter in the
 // renderer (no per-keystroke round trip to the engine).
 const NO_SOUNDS: GlobalSound[] = [];
 
 interface Section {
-    category: SoundCategory;
+    category: RailTerm;
     total: number;
     /** Rows grouped by their source file (`ui`, `npc/troopers`), so a section
      *  spanning several files stays legible. */
@@ -94,19 +113,17 @@ interface Section {
  * hero to resolve it from), so the built mod lands in the Locker's global Sounds
  * bucket rather than under a hero.
  */
-export default function GlobalSoundBrowse({
-    initialCategory = 'all',
-    onStage,
-}: {
-    initialCategory?: SoundCategory | 'all';
+export default function GlobalSoundBrowse({ initialCategory = 'all', onStage }: {
+    /** Explicitly null: global sounds never inherit a hero scope. */
+    hero: null;
+    initialCategory?: RailTerm | 'all';
     onStage?: (edit: FoundryStagedSoundEdit) => void;
 }) {
     const { t } = useTranslation();
     const [search, setSearch] = useState('');
-    const [category, setCategory] = useState<SoundCategory | 'all'>(initialCategory);
+    const [category, setCategory] = useState<RailTerm | 'all'>(initialCategory);
     const [annotationsVisible, setAnnotationsVisible] = useState(false);
     const [annotatedOnly, setAnnotatedOnly] = useState(false);
-    const [selectedRow, setSelectedRow] = useState<string | null>(null);
     const [data, setData] = useState<{ sounds: GlobalSound[]; error: string | null } | null>(null);
     const [annotations, setAnnotations] = useState<Record<string, SoundAnnotation>>({});
     const importRef = useRef<HTMLInputElement | null>(null);
@@ -174,28 +191,15 @@ export default function GlobalSoundBrowse({
     const sounds = data?.sounds ?? NO_SOUNDS;
 
     const player = useClipPlayer();
-    // Classify once for the whole catalog, not per filter keystroke: the row's
-    // category is a property of the sound, and recomputing it inside the filter
-    // would make typing O(1100 x rules).
-    const classified = useMemo(() => {
-        const map = new Map<string, SoundCategory>();
-        for (const sound of sounds) {
-            map.set(rowKey(sound), soundCategoryFromCatalog(sound).category);
-        }
-        return map;
-    }, [sounds]);
-    const sections = useMemo(
-        () => groupSounds(sounds, classified, search, category, annotations, annotatedOnly),
-        [sounds, classified, search, category, annotations, annotatedOnly]
-    );
+    const sections = useMemo(() => groupSounds(sounds, search, category, annotations, annotatedOnly), [sounds, search, category, annotations, annotatedOnly]);
     const totalShown = sections.reduce((n, s) => n + s.total, 0);
 
     // Only offer the categories the installed pak actually carries, so a game
     // update that drops a tree doesn't leave a dead filter chip behind.
     const present = useMemo(() => {
-        const seen = new Set(classified.values());
+        const seen = new Set(sounds.map(railTermFor));
         return CATEGORY_ORDER.filter((c) => seen.has(c));
-    }, [classified]);
+    }, [sounds]);
 
     return (
         <>
@@ -207,7 +211,7 @@ export default function GlobalSoundBrowse({
                     />
                     <input
                         value={search}
-                        onChange={(e) => { setSearch(e.target.value); setSelectedRow(null); }}
+                        onChange={(e) => setSearch(e.target.value)}
                         placeholder={t(
                             'foundry.globalSound.searchPlaceholder',
                             'Search UI, music, ambience, NPC and item sounds...'
@@ -216,9 +220,9 @@ export default function GlobalSoundBrowse({
                     />
                 </div>
                 <div className="flex items-center gap-1.5">
-                    <button type="button" aria-pressed={annotationsVisible} onClick={() => { setAnnotationsVisible((value) => !value); setAnnotatedOnly(false); setSelectedRow(null); }} className={`flex items-center gap-1.5 rounded-sm border px-2 py-1.5 text-xs ${annotationsVisible ? 'border-accent bg-accent/15 text-accent' : 'border-border text-text-secondary'}`}><Pencil size={13} />Annotate</button>
+                    <button type="button" aria-pressed={annotationsVisible} onClick={() => { setAnnotationsVisible((value) => !value); setAnnotatedOnly(false); }} className={`flex items-center gap-1.5 rounded-sm border px-2 py-1.5 text-xs ${annotationsVisible ? 'border-accent bg-accent/15 text-accent' : 'border-border text-text-secondary'}`}><Pencil size={13} />Annotate</button>
                     {annotationsVisible && <>
-                        <button type="button" aria-pressed={annotatedOnly} onClick={() => { setAnnotatedOnly((value) => !value); setSelectedRow(null); }} className={`rounded-sm border px-2 py-1.5 text-xs ${annotatedOnly ? 'border-accent bg-accent/15 text-accent' : 'border-border text-text-secondary'}`}>Annotated only</button>
+                        <button type="button" aria-pressed={annotatedOnly} onClick={() => setAnnotatedOnly((value) => !value)} className={`rounded-sm border px-2 py-1.5 text-xs ${annotatedOnly ? 'border-accent bg-accent/15 text-accent' : 'border-border text-text-secondary'}`}>Annotated only</button>
                         <button type="button" onClick={exportAnnotations} className="flex items-center gap-1.5 rounded-sm border border-border px-2 py-1.5 text-xs text-text-secondary hover:text-text-primary" title="Export your sound names and notes"><Download size={13} />Export notes</button>
                         <button type="button" onClick={() => importRef.current?.click()} className="flex items-center gap-1.5 rounded-sm border border-border px-2 py-1.5 text-xs text-text-secondary hover:text-text-primary" title="Import sound names and notes"><Upload size={13} />Import notes</button>
                         <input ref={importRef} type="file" accept="application/json,.json" className="hidden" onChange={(event) => { void importAnnotations(event.target.files?.[0]); event.target.value = ''; }} />
@@ -230,16 +234,16 @@ export default function GlobalSoundBrowse({
                 <div className="flex flex-wrap gap-1.5">
                     <FilterChip
                         active={category === 'all'}
-                        onClick={() => { setCategory('all'); setSelectedRow(null); }}
+                        onClick={() => setCategory('all')}
                         label={t('foundry.globalSound.category.all', 'All')}
                     />
                     {present.map((c) => (
                         <FilterChip
                             key={c}
                             active={category === c}
-                            onClick={() => { setCategory(c); setSelectedRow(null); }}
+                            onClick={() => setCategory(c)}
                             icon={CATEGORY_ICON[c]}
-                            label={globalSoundSectionLabel(t, c)}
+                            label={t(`foundry.globalSound.category.${c}`, soundTermLabel(c))}
                         />
                     ))}
                 </div>
@@ -285,7 +289,7 @@ export default function GlobalSoundBrowse({
                         {t('foundry.globalSound.count', '{{count}} sounds', { count: totalShown })}
                     </p>
                     {sections.map((section) => (
-                        <CategorySection key={section.category} section={section} player={player} annotations={annotations} onSaveAnnotation={saveAnnotation} annotationsVisible={annotationsVisible} onStage={onStage} selectedRow={selectedRow} onSelectRow={setSelectedRow} />
+                        <CategorySection key={section.category} section={section} player={player} annotations={annotations} onSaveAnnotation={saveAnnotation} annotationsVisible={annotationsVisible} onStage={onStage} />
                     ))}
                 </div>
             )}
@@ -320,10 +324,13 @@ function FilterChip({
     );
 }
 
-function CategorySection({ section, player, annotations, onSaveAnnotation, annotationsVisible, onStage, selectedRow, onSelectRow }: { section: Section; player: ClipPlayer; annotations: Record<string, SoundAnnotation>; onSaveAnnotation: (key: string, name: string, note: string, tags: string[]) => Promise<void>; annotationsVisible: boolean; onStage?: (edit: FoundryStagedSoundEdit) => void; selectedRow: string | null; onSelectRow: (key: string) => void }) {
+function CategorySection({ section, player, annotations, onSaveAnnotation, annotationsVisible, onStage }: { section: Section; player: ClipPlayer; annotations: Record<string, SoundAnnotation>; onSaveAnnotation: (key: string, name: string, note: string, tags: string[]) => Promise<void>; annotationsVisible: boolean; onStage?: (edit: FoundryStagedSoundEdit) => void }) {
     const { t } = useTranslation();
-    const Icon = CATEGORY_ICON[section.category];
-    const title = globalSoundSectionLabel(t, section.category);
+    const Icon = CATEGORY_ICON[section.category] ?? AudioLines;
+    const title = t(
+        `foundry.globalSound.category.${section.category}`,
+        soundTermLabel(section.category)
+    );
 
     return (
         <section className="space-y-2">
@@ -364,8 +371,6 @@ function CategorySection({ section, player, annotations, onSaveAnnotation, annot
                                 onSaveAnnotation={onSaveAnnotation}
                                 annotationsVisible={annotationsVisible}
                                 onStage={onStage}
-                                selected={selectedRow === `${row.soundevents}:${row.event}`}
-                                onSelect={() => onSelectRow(`${row.soundevents}:${row.event}`)}
                             />
                         ))}
                     </div>
@@ -381,16 +386,10 @@ function swapContextFor(row: GlobalSound): SwapContext {
     return { hero: '', heroName: '', soundeventsEntry: row.soundevents };
 }
 
-/** Stable per-row identity: an event name repeats across soundevents files. */
-function rowKey(sound: GlobalSound): string {
-    return `${sound.soundevents}:${sound.event}`;
-}
-
 function groupSounds(
     sounds: GlobalSound[],
-    classified: ReadonlyMap<string, SoundCategory>,
     search: string,
-    category: SoundCategory | 'all',
+    category: RailTerm | 'all',
     annotations: Record<string, SoundAnnotation>,
     annotatedOnly: boolean
 ): Section[] {
@@ -399,21 +398,20 @@ function groupSounds(
     // far more often than an event name, and pasting one used to return nothing.
     // See lib/soundDescribe.ts for why, and its test for the pinned case.
     const q = search.trim();
-    const categoryOf = (s: GlobalSound): SoundCategory => classified.get(rowKey(s)) ?? 'unclassified';
-    const matches = (s: GlobalSound) => {
+    const matches = (s: GlobalSound, term: RailTerm) => {
         const annotation = annotations[foundrySoundAnnotationKey(s.event, s.vsnd[0] ?? '')];
-        return (category === 'all' || categoryOf(s) === category) && (!annotatedOnly || isAnnotated(annotation))
+        return (category === 'all' || term === category) && (!annotatedOnly || isAnnotated(annotation))
             && matchSoundWithAnnotation([s.label, s.event, s.source, ...s.vsnd], annotation, q) !== null;
     };
 
-    const byCategory = new Map<SoundCategory, Map<string, GlobalSound[]>>();
+    const byCategory = new Map<RailTerm, Map<string, GlobalSound[]>>();
     for (const s of sounds) {
-        if (!matches(s)) continue;
-        const own = categoryOf(s);
-        let sources = byCategory.get(own);
+        const term = railTermFor(s);
+        if (!matches(s, term)) continue;
+        let sources = byCategory.get(term);
         if (!sources) {
             sources = new Map();
-            byCategory.set(own, sources);
+            byCategory.set(term, sources);
         }
         const rows = sources.get(s.source);
         if (rows) rows.push(s);

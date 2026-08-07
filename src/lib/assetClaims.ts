@@ -2,19 +2,37 @@
  * The asset-claims index: who claims a path, and which claimant wins.
  *
  * This is S1/S4 in docs/global-locker-foundry-ux-plan.md. "What claims this
- * path, which claimant wins" used to be derived twice, in two processes, from
- * two shapes: `inspectFoundryAssetSources` in the main process (over real VPK
- * directories) and `overlappingClaims` in the renderer (over recorded entries).
- * Two derivations of one fact is how the app came to disagree with itself about
- * what was installed.
+ * path, which claimant wins" used to be derived independently everywhere it
+ * was asked: `inspectFoundryAssetSources` in the main process (over real VPK
+ * directories), `overlappingClaims` in the renderer (over recorded entries),
+ * and five-plus Foundry/Locker components each calling the IPC directly and
+ * recomputing the winner lookup inside the view that rendered it. As many
+ * derivations of one fact as there were askers is how the app came to
+ * disagree with itself about what was installed, and how a mod could be a
+ * "winner" in one panel and unexplained in another.
  *
- * The two callers still differ in the one way they legitimately should: what
- * evidence they can see. The main process reads VPK directories and knows
- * everything; the renderer knows only what entries recorded. Neither gets to
- * have its own opinion about who *wins* a path they both can see.
+ * This module is the pure core: `buildAssetClaimsIndex` and friends.
+ * Deliberately dependency-free (no IPC, no Electron, no DOM) so BOTH
+ * processes can import it: the main process reads real VPK directories and
+ * knows everything (`foundryAssetSources.ts`); the renderer's cheap local
+ * half knows only what mods recorded writing (`recordedClaims.ts`, layered
+ * on the same tie-break rule). Neither gets its own opinion about who *wins*
+ * a path they can both see; there is exactly one implementation of "lowest
+ * enabled priority wins."
  *
- * Deliberately pure and dependency-free so both processes can import it (the
- * main process already imports `src/lib/crosshair` and friends the same way).
+ * The renderer's cached, IPC-backed authoritative layer
+ * (`assetClaims`/`peekAssetClaims`/`invalidateAssetClaims`/
+ * `inspectAssetClaims`) lives in `inspectedAssetClaims.ts`, a SEPARATE file,
+ * on purpose: it imports `./api` (the IPC bridge, `window.electronAPI`),
+ * which only exists in the renderer. Keeping it out of this file is what lets
+ * `electron/main/services/foundryAssetSources.ts` import
+ * `buildAssetClaimsIndex` without dragging a renderer-only, `window`-using
+ * module into the main process's build graph.
+ *
+ * OWNERSHIP INVARIANT, unchanged by any of this. Ownership is keyed on exact
+ * VPK entry paths and resolved in the main process by reading real VPK
+ * directories. Nothing here decides a winner from a label, a category, or a
+ * hero name, and nothing here may start doing so.
  */
 
 /** One normalized Source 2 asset path. A VPK directory may preserve different
@@ -69,8 +87,8 @@ function winnerFirst(a: AssetClaimant, b: AssetClaimant): number {
 /**
  * Build the index for `paths` from `claimants`.
  *
- * `paths` scopes the question: only these are answered, because both callers
- * are asking about a specific selection rather than the whole install. Pass an
+ * `paths` scopes the question: only these are answered, because every caller
+ * is asking about a specific selection rather than the whole install. Pass an
  * empty `paths` to mean "every path any claimant claims".
  */
 export function buildAssetClaimsIndex(

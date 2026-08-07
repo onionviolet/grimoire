@@ -4,7 +4,8 @@ import { useTranslation } from 'react-i18next';
 import { useConfirm } from '../common/confirmContext';
 import { EmptyState } from '../common/PageComponents';
 import Tx from '../translation/Tx';
-import { foundryInspectAssetSources, foundryTextures } from '../../lib/api';
+import { foundryTextures } from '../../lib/api';
+import { inspectAssetClaims } from '../../lib/inspectedAssetClaims';
 import { showToast } from '../../stores/toastStore';
 import type { HeroInfo, TextureCategory, TextureEntry, TextureGridItem } from '../../types/foundry';
 import TextureLightbox from './TextureLightbox';
@@ -16,6 +17,12 @@ interface TextureBrowseProps {
   heroes: HeroInfo[];
   /** codename -> display name, resolved once by the Foundry shell. */
   heroNames: Map<string, string>;
+  /** Roster codename of the hero this browse is embedded inside, or `null` for
+   *  the unscoped catalog. Required, never optional: see the note on
+   *  `LibraryBrowse`'s `hero` prop (structural cause S3). When given, the list
+   *  opens on that hero instead of on "Select a hero", which is what an
+   *  embedding workshop always meant by handing over a one-hero roster. */
+  hero: string | null;
   /** Stage a PNG replacement into the shared build tray. Absent means this
    *  surface is browse-only: no half-wired replace button is rendered. */
   onStage?: (edit: VisualStagedEdit) => void;
@@ -40,11 +47,12 @@ const LIMIT = 400;
  * stay bounded, and each row decodes its texture full-size on click. One IPC
  * call per (category, hero, search); the lightbox does the on-demand decode.
  */
-export default function TextureBrowse({ heroes, heroNames, onStage }: TextureBrowseProps) {
+export default function TextureBrowse({ heroes, heroNames, hero, onStage }: TextureBrowseProps) {
   const { t } = useTranslation();
   const confirm = useConfirm();
   const [category, setCategory] = useState<TextureCategory>('hero-model');
-  const [heroFilter, setHeroFilter] = useState('');
+  // The embedder's hero is the default, not a suggestion the panel may drop.
+  const [heroFilter, setHeroFilter] = useState(hero ?? '');
   const [search, setSearch] = useState('');
   const [items, setItems] = useState<TextureEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -66,7 +74,7 @@ export default function TextureBrowse({ heroes, heroNames, onStage }: TextureBro
         catalog: items,
         imagePath,
         name: t('foundry.texture.defaultReplacementName', '{{label}} replacement', { label: entry.label || 'Texture' }),
-        inspect: foundryInspectAssetSources,
+        inspect: inspectAssetClaims,
         confirm: (modNames) =>
           confirm({
             title: t('foundry.texture.stageConflictTitle', 'Stage a separate layered replacement?'),

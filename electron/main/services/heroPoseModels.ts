@@ -30,15 +30,36 @@ import { pathToFileURL } from 'url';
 import { app, protocol, net } from 'electron';
 import { runVpkmerge, runVpkmergeStdout, verifyVpkOutput } from './modMerger';
 import { SOURCE2_EXTRAS_VERSION } from '../../../src/lib/source2ExtrasVersion';
-import { codenamesForHero } from './heroPortraits';
-import { divergentBodyModelForHero } from '../../../src/lib/heroCodenames';
+import { modelCodenamesForHero, modelEntryForHero } from '../../../src/lib/heroIdentity';
 import { getCitadelPath, getAddonsPath, getDisabledPath } from './deadlock';
 import { resolvePreviewVpk } from './previewVpkRegistry';
 
 export const HERO_POSE_SCHEME = 'grimoire-hero';
 
 /**
- * Heroes Valve reworked in the "6 hero update": the current body model moved to
+ * MODEL NAMES LIVE IN THE HERO IDENTITY TABLE.
+ *
+ * `modelCodenames` and `modelEntry` on each row of
+ * [heroIdentity.ts](../../../src/lib/heroIdentity.ts) hold the values; this
+ * module holds the reasoning about the exporter, below, because that is what a
+ * reader here needs and it is not identity. Structural cause S5: a fourth
+ * private table beside the panorama and sound ones is how Abrams ends up
+ * spelled three different ways in three files.
+ *
+ * `modelCodenames` covers heroes whose body-model file basename diverges from
+ * their panorama codename, so `--hero <panorama>` discovery
+ * (`<dir>/<codename>.vmdl_c` under `models/heroes*`) misses them. Verified
+ * against the base pak: those names are the actual `.vmdl_c` basenames. Every
+ * other hero resolves from its panorama codename, so only the divergent ones
+ * carry the field.
+ *
+ * `--hero` matches by file basename regardless of the `_vN` dir, so e.g.
+ * Vindicta's `hornet_v3/hornet.vmdl_c` is found by plain `hornet` and needs no
+ * entry.
+ */
+
+/**
+ * `modelEntry` pins heroes Valve reworked in the "6 hero update": the current body model moved to
  * `models/heroes_wip/<name>/<name>.vmdl_c` (a fresh dir keyed by the display
  * name) while the pre-rework model stayed behind under
  * `heroes_staging/<codename>[_vN]`. `--hero <codename>` discovery picks the
@@ -71,30 +92,6 @@ export const HERO_POSE_SCHEME = 'grimoire-hero';
  * unaffected. Deliberately NOT pinned: Billy (`punkgoat` ships the rig but no pose
  * clip and already falls back to 2D).
  */
-const MODEL_ENTRY_OVERRIDES: Readonly<Record<string, string>> = {
-    Abrams: 'models/heroes_wip/abrams/abrams.vmdl_c',
-    McGinnis: 'models/heroes_wip/mcginnis/mcginnis.vmdl_c',
-    Pocket: 'models/heroes_wip/pocket/pocket.vmdl_c',
-    Ivy: 'models/heroes_wip/ivy/ivy.vmdl_c',
-    'Lady Geist': 'models/heroes_wip/geist/geist.vmdl_c',
-    Infernus: 'models/heroes_wip/inferno/inferno.vmdl_c',
-    Rem: 'models/heroes_wip/familiar/familiar_wip.vmdl_c',
-    Viscous: 'models/heroes_staging/viscous/viscous.vmdl_c',
-    Wraith: 'models/heroes_wip/wraith/wraith.vmdl_c'
-};
-
-/** Model codenames to try for a hero, most-specific first: any divergent
- *  body-model basename, then the panorama codename(s) that cover the rest of
- *  the roster. De-duplicated, order preserved. */
-function modelCodenamesForHero(heroName: string): string[] {
-    // Any body-model basename that diverges from the panorama codename first,
-    // from the hero codename join (`src/lib/heroCodenames.ts`). `--hero`
-    // discovery looks for `<dir>/<codename>.vmdl_c` under `models/heroes*` and
-    // misses those five heroes otherwise. The join only reports a divergent
-    // name, so the panorama codenames below are never listed twice.
-    const ordered = [...divergentBodyModelForHero(heroName), ...codenamesForHero(heroName)];
-    return [...new Set(ordered)];
-}
 
 /**
  * The vpkmerge `model export` selectors to try for a hero, in order. A reworked
@@ -103,7 +100,7 @@ function modelCodenamesForHero(heroName: string): string[] {
  * Each element is the discriminating arg pair spliced into the export command.
  */
 function modelSelectorsForHero(heroName: string): string[][] {
-    const entry = MODEL_ENTRY_OVERRIDES[heroName];
+    const entry = modelEntryForHero(heroName);
     if (entry) return [['--entry', entry]];
     return modelCodenamesForHero(heroName).map((codename) => ['--hero', codename]);
 }

@@ -17,7 +17,6 @@ import {
 import { useLocation, useNavigate } from 'react-router-dom';
 import { EmptyState, PageHeader } from '../components/common/PageComponents';
 import { canonicalHeroName } from '../lib/lockerUtils';
-import { CATEGORY_ORDER, type SoundCategory } from '../lib/soundInventory';
 import Tx from '../components/translation/Tx';
 import { useAppStore } from '../stores/appStore';
 import { foundryForge, foundryForgeInstall, foundryHeroes, foundryScanNonStandard, foundryWarmCache } from '../lib/api';
@@ -172,13 +171,17 @@ export default function Foundry() {
     const wanted = new URLSearchParams(location.search).get('tool');
     return SUBTOOLS.find((entry) => entry.id === wanted)?.id ?? null;
   }, [location.search]);
-  // The link carries a Locker SoundCategory verbatim now: both surfaces group
-  // by the same vocabulary, so there is nothing left to translate between them
-  // (the old `gameplay`/`other` spellings were the engine's, not ours).
+  // The link carries the catalog engine's own coarse category
+  // (`globalSoundFoundryCategory`'s output domain: ui/music/ambience/npc/item/
+  // gameplay/voice/other), translated here into the rail's shared vocabulary
+  // term (`RailTerm`/`SoundTerm`) that GlobalSoundBrowse's initialCategory
+  // expects. `other` becomes `catalogOther`; everything else is already
+  // spelled the same in both vocabularies.
   const linkedGlobalSoundCategory = useMemo(() => {
     const category = new URLSearchParams(location.search).get('category');
-    return category && (CATEGORY_ORDER as readonly string[]).includes(category)
-      ? (category as SoundCategory)
+    return category === 'ui' || category === 'music' || category === 'ambience' || category === 'npc' ||
+      category === 'item' || category === 'gameplay' || category === 'voice' || category === 'other'
+      ? category === 'other' ? 'catalogOther' : category
       : 'all';
   }, [location.search]);
   const clearLinkedTool = useCallback(() => {
@@ -379,7 +382,7 @@ export default function Foundry() {
           />
 
           {activeTool === 'sound' ? (
-            <SoundBrowse heroes={heroes} heroNames={heroNames} onStage={stageEdit} />
+            <SoundBrowse heroes={heroes} heroNames={heroNames} hero={null} onStage={stageEdit} />
           ) : activeTool === 'myChanges' ? (
             <MyChanges
               onAddNew={(filter) => {
@@ -388,17 +391,17 @@ export default function Foundry() {
               }}
             />
           ) : activeTool === 'globalSound' && settings?.forkGlobalSounds !== false ? (
-            <GlobalSoundBrowse initialCategory={linkedGlobalSoundCategory} onStage={stageEdit} />
+            <GlobalSoundBrowse hero={null} initialCategory={linkedGlobalSoundCategory} onStage={stageEdit} />
           ) : activeTool === 'texture' ? (
-            <TextureBrowse heroes={heroes} heroNames={heroNames} onStage={stageEdit} />
+            <TextureBrowse heroes={heroes} heroNames={heroNames} hero={null} onStage={stageEdit} />
           ) : activeTool === 'portraits' ? (
-            <PortraitBrowse heroNames={heroNames} onStage={stageEdit} />
+            <PortraitBrowse heroNames={heroNames} hero={null} onStage={stageEdit} />
           ) : activeTool === 'recolor' ? (
             <RecolorTool heroes={heroes} />
           ) : activeTool === 'items' ? (
-            <LibraryBrowse heroNames={heroNames} initialCategory="item-icon" onStage={stageEdit} />
+            <LibraryBrowse heroNames={heroNames} initialCategory="item-icon" hero={null} onStage={stageEdit} />
           ) : (
-            <LibraryBrowse heroNames={heroNames} onStage={stageEdit} />
+            <LibraryBrowse heroNames={heroNames} hero={null} onStage={stageEdit} />
           )}
         </div>
       </div>

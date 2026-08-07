@@ -503,7 +503,17 @@
         "description": "Your installed game files carry no non-hero soundevents."
       },
       "category": {
-        "all": "All"
+        "all": "All",
+        "ui": "Interface",
+        "music": "Music",
+        "item": "Items",
+        "gameplay": "Gameplay",
+        "melee": "Melee",
+        "npc": "NPC",
+        "ambience": "Ambience",
+        "voice": "Voice",
+        "other": "Other",
+        "catalogOther": "Other"
       }
     },
     "sources": {
