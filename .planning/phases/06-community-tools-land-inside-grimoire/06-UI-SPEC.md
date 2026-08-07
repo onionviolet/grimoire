@@ -34,8 +34,7 @@ This phase adds no new page and no new layout region — it extends `Browser.tsx
 | Token | Value | Usage |
 |-------|-------|-------|
 | xs | 4px | Icon-to-label gaps inside buttons/banners (`gap-1`) |
-| sm | 8px | Toolbar button gap (`gap-2`) — unmodified, existing spacing this phase's new elements sit adjacent to |
-| md | 12px | Gap between rows within one kind group (`gap-3`); inline banner internal padding (`px-3 py-2`) |
+| sm | 8px | Toolbar button gap (`gap-2`) — unmodified, existing spacing this phase's new elements sit adjacent to; also the gap between rows within one kind group (`gap-2`), so a kind group's own rows read as more tightly clustered than the 16px gap between separate kind groups |
 | lg | 16px | Gap between kind groups (`gap-4`) |
 | xl | 24px | Section gap between the toolbar row, the new kind-grouped shortcut rows, and the webview frame |
 
@@ -45,11 +44,12 @@ This phase adds no new page and no new layout region — it extends `Browser.tsx
 |-------|-------|---------------------------|
 | 2px | `Tag`/`Badge` vertical padding (`py-0.5`) | Pre-existing house exception for HUD-style status chrome, unrelated to this phase's new elements. Not "fixed" to the 8-point scale here — that would be an unscoped change to a shared primitive. |
 | 6px | Shortcut-row gap (`gap-1.5`), `Tag`/`Badge` horizontal padding (`px-1.5`) | Pre-existing, predates this phase. This phase's new kind-group rows reuse the exact same shortcut-row rendering (`flex flex-wrap gap-1.5`, unchanged), so the value appears adjacent to new work without being introduced by it. |
+| 12px | Refusal banner horizontal padding (`px-3`, paired with the already-on-grid 8px vertical `py-2`) | Not a token this phase declares — the new danger-tone refusal banner copies the existing `failure` paragraph's class string in `Browser.tsx` verbatim (`rounded-sm border ... px-3 py-2 text-xs`, see Color section), reusing that exact pre-existing call site rather than authoring new padding. Same carve-out pattern as the 2px/6px rows above. |
 
 `ConfirmModal`'s panel padding (`p-6` = 24px) is also unmodified and already on-grid; not touched this phase.
 
 Exceptions:
-- The two "Inherited, unmodified" values above (2px, 6px) are pre-existing house exceptions this phase's new elements sit next to, not values this phase declares as part of its own scale — see the carve-out table above rather than reading them as part of the Spacing Scale.
+- The three "Inherited, unmodified" values above (2px, 6px, 12px) are pre-existing house exceptions this phase's new elements sit next to or reuse verbatim, not values this phase declares as part of its own scale — see the carve-out table above rather than reading them as part of the Spacing Scale.
 - No new spacing values are needed beyond what `Browser.tsx`, `Tag`, `SectionHeader`, and `ConfirmModal` already define.
 
 ---
