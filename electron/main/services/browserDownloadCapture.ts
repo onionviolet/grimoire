@@ -158,15 +158,22 @@ function liveGuestUrl(webContents: WebContents): string {
 function registerToolDownloadCompletion(item: DownloadItem, tempPath: string): void {
     const displayName = displayNameForDownload(item.getFilename(), 'Browser download');
 
-    item.once('done', (_event, downloadState) => {
+    item.once('done', async (_event, downloadState) => {
         if (downloadState !== 'completed') {
-            void deleteTempFileQuietly(tempPath);
+            // Cancelled, interrupted, or any other non-completed terminal
+            // state: no confirm was ever shown, and none can be now, so the
+            // renderer only needs to know the in-flight toast is done.
+            await deleteTempFileQuietly(tempPath);
+            pushToolDownloadEvent({ status: 'failed', id: randomUUID() });
             return;
         }
 
         const classification = classifyToolDownload(tempPath, displayName);
         if (!classification.ok) {
-            void deleteTempFileQuietly(tempPath);
+            // Refused before any pending-map entry exists (this line runs
+            // before the `state.pending.set` below), so a refused download
+            // can never reach the confirm dialog (D-10).
+            await deleteTempFileQuietly(tempPath);
             pushToolDownloadEvent({ status: 'refused', id: randomUUID(), reason: classification.reason });
             return;
         }

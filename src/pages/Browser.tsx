@@ -75,6 +75,7 @@ export default function Browser() {
     const [current, setCurrent] = useState(HOME_DESTINATION_URL);
     const [loading, setLoading] = useState(false);
     const [failure, setFailure] = useState<string | null>(null);
+    const [refusal, setRefusal] = useState<string | null>(null);
     const [canBack, setCanBack] = useState(false);
     const [canForward, setCanForward] = useState(false);
     const handoff = useMemo(() => getGameBananaImportHandoff(current), [current]);
@@ -118,6 +119,8 @@ export default function Browser() {
                 // in-page must revoke the capture grant just as reliably as
                 // clicking a different shortcut would (RESEARCH Pattern 3).
                 setActiveBrowserDestination(destinationForUrl(url)?.kind ?? null, originOf(url));
+                // A stale refusal must not follow the user to another page.
+                setRefusal(null);
             }
         };
         const onStart = () => {
@@ -162,12 +165,13 @@ export default function Browser() {
         };
     }, [t]);
 
-    // Tool-download disclosure round trip (D-08/D-09). This effect owns only
-    // 'ready' (confirm-then-install) and 'refused' (toast); 'started' and
-    // 'replaced' are plan 06-02.
+    // Tool-download disclosure round trip (D-08/D-09/D-10). This effect owns
+    // 'ready' (confirm-then-install), 'refused' (danger-tone banner) and
+    // 'failed' (toast); 'started' and 'replaced' are plan 06-02.
     useEffect(() => {
         return onBrowserToolDownload((event) => {
             if (event.status === 'ready') {
+                setRefusal(null);
                 const displayName = event.name ?? t('browser.toolDownload.fallbackName', 'Browser download');
                 void (async () => {
                     const accepted = await confirm({
@@ -186,8 +190,17 @@ export default function Browser() {
                     await resolveToolDownload(event.id, accepted);
                 })();
             } else if (event.status === 'refused') {
+                // D-10: a refusal is loud and visible, never a silent drop.
+                // The reason is main-process English, rendered verbatim after
+                // a translated prefix; never shown as a confirm dialog.
                 const prefix = t('browser.toolDownload.refusedPrefix', 'Not added: ');
-                showToast(`${prefix}${event.reason ?? ''}`, { tone: 'error' });
+                setRefusal(`${prefix}${event.reason ?? ''}`);
+            } else if (event.status === 'failed') {
+                setRefusal(null);
+                showToast(
+                    t('browser.toolDownload.interrupted', 'The download did not finish. Nothing was added.'),
+                    { tone: 'error' }
+                );
             }
         });
     }, [confirm, t]);
@@ -288,6 +301,12 @@ export default function Browser() {
             {failure && (
                 <p className="rounded-sm border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-text-secondary">
                     {failure}
+                </p>
+            )}
+
+            {refusal && (
+                <p className="rounded-sm border border-state-danger/40 bg-state-danger/10 px-3 py-2 text-xs text-state-danger">
+                    {refusal}
                 </p>
             )}
 

@@ -3578,7 +3578,8 @@
       "confirm": "Add to library",
       "cancel": "Discard",
       "fallbackName": "Browser download",
-      "refusedPrefix": "Not added: "
+      "refusedPrefix": "Not added: ",
+      "interrupted": "The download did not finish. Nothing was added."
     }
   },
   "chatWheel": {
