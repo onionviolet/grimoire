@@ -312,6 +312,12 @@ function readVpkEntryBytesLocal(vpkPath, entryPath) {
 const normalizeEntry = (p) => p.replace(/\\/g, '/').replace(/^\/+/, '').toLowerCase();
 const soundEntryLocal = (p) => normalizeEntry(p).replace(/\.vsnd(?:_c)?$/i, '.vsnd_c');
 
+/** The record's own fixture proposal names "an ability line" (IG-01/IG-10's
+ *  Fixture cell); sort ability-category events first so the picked fixture
+ *  matches that description when one is available, without excluding
+ *  weapon/other categories as a fallback when it is not. */
+const preferAbility = (list) => [...list].sort((a, b) => (a.category === 'ability' ? -1 : 0) - (b.category === 'ability' ? -1 : 0));
+
 function reviewFoundryForgeLocal(edits) {
     const writers = new Map();
     edits.forEach((edit, index) => {
@@ -428,7 +434,12 @@ function writeVerdicts(recordText, updates) {
 const GASSY_MP3 = join(root, 'public', 'sounds', 'gassy.mp3');
 const SEVEN_PNG_A = join(root, 'public', 'heroes', 'seven.png');
 const SEVEN_PNG_B = join(root, 'public', 'heroes', 'icons', 'seven.png');
-const SEVEN_CODENAME = 'gigawatt_prisoner';
+// `gigawatt` is Seven's ROSTER/sound-path codename (getHeroRoster,
+// getHeroSounds, getTextures all key off this). `gigawatt_prisoner` is a
+// DIFFERENT thing -- the body-model codename RP-03 uses for the rigged
+// preview -- and passing it here silently returns zero catalog rows rather
+// than erroring, which is what the first real run against this caught.
+const SEVEN_CODENAME = 'gigawatt';
 const SEVEN_NAME = 'Seven';
 const PAIGE_CODENAME = 'bookworm';
 const PAIGE_NAME = 'Paige';
@@ -453,10 +464,46 @@ function define(id, description, run) {
     CHECKS.push({ id, description, run });
 }
 
+/** `foundry:swapSound` refuses (rather than silently layering) when the
+ *  target entry is already claimed by another mod, enabled or disabled --
+ *  the error message carries the exact `conflicts` array a caller must echo
+ *  back as `conflictResolution` to proceed. IG-06 (deliberate collision) and
+ *  IG-08 (re-forge while the first forge is still installed) both hit this
+ *  by design, so both call swapSound through this helper: on that specific
+ *  rejection, it parses the JSON payload out of the error message, and
+ *  retries once with `action: 'forge-above'` (an acknowledged precedence
+ *  choice per the handler's own comment, no other side effect) naming
+ *  exactly the conflicts it was told about. Any other error propagates
+ *  unchanged. */
+async function swapSoundResolvingConflicts(port, args) {
+    try {
+        return await callApi(port, 'foundry.swapSound', args);
+    } catch (err) {
+        const marker = 'conflicts require an explicit resolution: ';
+        const idx = err.message.indexOf(marker);
+        if (idx === -1) throw err;
+        const payload = JSON.parse(err.message.slice(idx + marker.length));
+        const conflictModIds = (payload.conflicts ?? []).map((c) => c.modId);
+        if (!conflictModIds.length) throw err;
+        return callApi(port, 'foundry.swapSound', {
+            ...args,
+            conflictResolution: { conflictModIds, action: 'forge-above' },
+        });
+    }
+}
+
+/** The bundled `resources/vpkmerge-windows-x86_64.exe` (copied from the main
+ *  checkout per CLAUDE.md's documented worktree precedent) is the stock
+ *  release engine, not the fork's locally-built one with the YCoCg icon fix
+ *  `pnpm use-local-vpkmerge` installs. Texture replacement refuses to run
+ *  without it. That is an environment gap in THIS run, not a Grimoire bug --
+ *  checks that hit it are `blocked`, not `fail`. */
+const missingVpkmergeEngine = (err) => /YCoCg icon fix/i.test(err?.message ?? '');
+
 // ---- IG-01: combined tray, one sound edit + one texture edit, forgeInstall ----
 define('IG-01', 'Combined-tray forgeInstall (one sound edit + one texture edit); read both entries back from the installed VPK and compare bytes.', async (ctx) => {
     const heroSounds = await callApi(ctx.port, 'foundry.heroSounds', { hero: SEVEN_CODENAME });
-    const withClips = (heroSounds ?? []).filter((s) => Array.isArray(s.vsnd) && s.vsnd.length > 0);
+    const withClips = preferAbility((heroSounds ?? []).filter((s) => Array.isArray(s.vsnd) && s.vsnd.length > 0));
     if (!withClips.length) return { verdict: 'blocked', rootCause: `No hero sound event with a resolvable vsnd entry was found for ${SEVEN_NAME} (${SEVEN_CODENAME}) in the live catalog.` };
     const textures = await callApi(ctx.port, 'foundry.textures', { hero: SEVEN_CODENAME, category: 'hero-image' });
     if (!textures?.length) return { verdict: 'blocked', rootCause: `No hero-image texture entry was found for ${SEVEN_NAME} (${SEVEN_CODENAME}) in the live catalog.` };
@@ -498,6 +545,9 @@ define('IG-01', 'Combined-tray forgeInstall (one sound edit + one texture edit);
     try {
         mods = await callApi(ctx.port, 'foundry.forgeInstall', request);
     } catch (err) {
+        if (missingVpkmergeEngine(err)) {
+            return { verdict: 'blocked', rootCause: `The texture half of this combined edit needs the fork's locally-built vpkmerge engine (YCoCg icon fix), not the bundled release binary this run has available: ${err.message}` };
+        }
         return { verdict: 'fail', evidence: `foundry:forgeInstall threw: ${err.message}`, rootCause: 'forgeInstall rejected the combined-tray request' };
     }
     const installed = mods.find((m) => m.foundryBuild?.parts?.length === 2 || (m.name || '').includes('verify-in-app IG-01 combined'));
@@ -537,18 +587,37 @@ define('IG-02', 'Cancel the native OS save dialog and confirm nothing changed.',
     rootCause: 'The native OS save dialog (dialog.showSaveDialog) is a main-process API with no renderer-reachable hook to force a cancellation from a CDP-driven script. Automating it would require adding a new main-process test hook, which is instrumentation beyond this plan\'s scope; faking the cancellation instead of driving the real dialog was rejected as dishonest evidence (T-01-26).',
 }));
 
-// ---- IG-03: forgeInstall, single texture edit ----
-define('IG-03', 'Single-edit forgeInstall (texture); confirm the installed VPK holds the entry.', async (ctx) => {
-    const textures = await callApi(ctx.port, 'foundry.textures', { hero: SEVEN_CODENAME, category: 'hero-image' });
-    const candidate = (textures ?? []).find((t) => t.path !== ctx.usedEntries.ig01Texture) ?? textures?.[0];
-    if (!candidate) return { verdict: 'blocked', rootCause: `No hero-image texture entry was found for ${SEVEN_NAME} distinct from IG-01's.` };
-    const textureEdit = {
-        id: 'ig03-texture',
-        kind: 'texture',
+// ---- IG-03: forgeInstall, single edit end to end ----
+// The Fixture column's own text allows a sound OR a texture edit here. This
+// run substitutes a sound edit (a third Seven event, distinct from IG-01's
+// and IG-10's): texture replacement in this environment needs the fork's
+// locally-built vpkmerge engine (see missingVpkmergeEngine above), which
+// this run does not have, so IG-01/IG-06 already cover the texture path's
+// blocked reason and IG-03 does not need to repeat it.
+define('IG-03', 'Single-edit forgeInstall end to end (sound, substituted for texture -- see missingVpkmergeEngine note); confirm the installed VPK holds the entry, enabled, no manual mount.', async (ctx) => {
+    // IG-03 runs before IG-10 in this file's check order, so only IG-01's
+    // pick needs excluding here; IG-10 separately excludes IG-01's.
+    const heroSounds = await callApi(ctx.port, 'foundry.heroSounds', { hero: SEVEN_CODENAME });
+    const withClips = preferAbility((heroSounds ?? []).filter((s) =>
+        Array.isArray(s.vsnd) && s.vsnd.length > 0 && s.event !== ctx.usedEntries.ig01Sound
+    ));
+    if (!withClips.length) return { verdict: 'blocked', rootCause: `No hero sound event distinct from IG-01's was found for ${SEVEN_NAME}.` };
+    const soundEvent = withClips[0];
+    const soundEdit = {
+        id: 'ig03-sound',
+        kind: 'sound',
         precedence: 0,
-        request: { entryPath: candidate.path, imagePath: SEVEN_PNG_B, name: 'verify-in-app IG-03 texture', category: candidate.category, heroName: SEVEN_NAME },
+        request: {
+            heroCodename: SEVEN_CODENAME,
+            heroName: SEVEN_NAME,
+            event: soundEvent.event,
+            audioPath: GASSY_MP3,
+            assignments: soundEvent.vsnd.map((clipPath) => ({ clipPath, audioPath: GASSY_MP3 })),
+            name: 'verify-in-app IG-03',
+            loop: 'auto',
+        },
     };
-    const request = buildForgeRequest('verify-in-app IG-03', [textureEdit]);
+    const request = buildForgeRequest('verify-in-app IG-03', [soundEdit]);
     let mods;
     try {
         mods = await callApi(ctx.port, 'foundry.forgeInstall', request);
@@ -559,9 +628,10 @@ define('IG-03', 'Single-edit forgeInstall (texture); confirm the installed VPK h
     ctx.track(mod.id);
     try {
         const enabledBefore = mod.enabled === true;
-        const bytes = readVpkEntryBytesLocal(mod.path, normalizeEntry(candidate.path));
+        const entry = soundEntryLocal(soundEvent.vsnd[0]);
+        const bytes = readVpkEntryBytesLocal(mod.path, entry);
         if (enabledBefore && bytes && bytes.length > 0) {
-            return { verdict: 'pass', evidence: `forgeInstall installed "${mod.fileName}" as enabled with entry ${normalizeEntry(candidate.path)} present (${bytes.length} bytes), no manual mounting step.` };
+            return { verdict: 'pass', evidence: `forgeInstall installed "${mod.fileName}" (event "${soundEvent.event}") as enabled with entry ${entry} present (${bytes.length} bytes), no manual mounting step. Fixture substituted: sound edit, not texture -- see this row's description for why.` };
         }
         return { verdict: 'fail', evidence: `enabled=${enabledBefore}, entry bytes=${bytes ? bytes.length : 'missing'}`, rootCause: 'forgeInstall did not leave an enabled mod with the expected entry' };
     } finally {
@@ -580,30 +650,51 @@ define('IG-05', 'Metadata-write failure on forge-install (rollback).', async () 
 }));
 
 // ---- IG-06: merge review winner vs merged VPK bytes ----
-define('IG-06', 'Install two texture-replacement mods at the same entry, merge them, and confirm the merged VPK holds the reviewed winner\'s bytes.', async (ctx) => {
-    const textures = await callApi(ctx.port, 'foundry.textures', { hero: SEVEN_CODENAME, category: 'hero-image' });
-    const entry = textures?.[0];
-    if (!entry) return { verdict: 'blocked', rootCause: `No hero-image texture entry was found for ${SEVEN_NAME} to build a collision on.` };
+// Uses two SOUND edits at the same entry (not texture): texture replacement
+// needs the fork's locally-built vpkmerge engine this run does not have
+// (see missingVpkmergeEngine). The same source file at two different gain
+// levels mints genuinely different bytes at the same entry, which is what
+// the collision needs; swapSoundResolvingConflicts supplies the second
+// mod's required conflict acknowledgement.
+define('IG-06', 'Install two sound-swap mods at the same entry (different gain), merge them, and confirm the merged VPK holds the reviewed winner\'s bytes.', async (ctx) => {
+    const heroSounds = await callApi(ctx.port, 'foundry.heroSounds', { hero: SEVEN_CODENAME });
+    const withClips = preferAbility((heroSounds ?? []).filter((s) => Array.isArray(s.vsnd) && s.vsnd.length > 0));
+    if (!withClips.length) return { verdict: 'blocked', rootCause: `No hero sound event with a resolvable vsnd entry was found for ${SEVEN_NAME} to build a collision on.` };
+    const soundEvent = withClips[0];
+    const entry = soundEntryLocal(soundEvent.vsnd[0]);
 
-    const modA = await callApi(ctx.port, 'foundry.replaceTexture', { entryPath: entry.path, imagePath: SEVEN_PNG_A, name: 'verify-in-app IG-06 A', category: entry.category });
-    const idA = modA[modA.length - 1].id;
+    const buildArgs = (name, gainDb) => ({
+        heroCodename: SEVEN_CODENAME,
+        heroName: SEVEN_NAME,
+        event: soundEvent.event,
+        audioPath: GASSY_MP3,
+        assignments: soundEvent.vsnd.map((clipPath) => ({ clipPath, audioPath: GASSY_MP3 })),
+        name,
+        loop: 'auto',
+        gainDb,
+    });
+
+    const modA = await swapSoundResolvingConflicts(ctx.port, buildArgs('verify-in-app IG-06 A', 0));
+    const idA = modA.find((m) => m.name === 'verify-in-app IG-06 A')?.id ?? modA[modA.length - 1].id;
     ctx.track(idA);
-    const modB = await callApi(ctx.port, 'foundry.replaceTexture', { entryPath: entry.path, imagePath: SEVEN_PNG_B, name: 'verify-in-app IG-06 B', category: entry.category });
-    const idB = modB[modB.length - 1].id;
+    const modB = await swapSoundResolvingConflicts(ctx.port, buildArgs('verify-in-app IG-06 B', -12));
+    const idB = modB.find((m) => m.name === 'verify-in-app IG-06 B')?.id ?? modB[modB.length - 1].id;
     ctx.track(idB);
 
     try {
-        const listAfterB = modB;
         const findById = (list, id) => list.find((m) => m.id === id);
-        const pathA = findById(listAfterB, idA)?.path ?? findById(modA, idA).path;
-        const pathB = findById(listAfterB, idB).path;
-        const bytesA = readVpkEntryBytesLocal(pathA, normalizeEntry(entry.path));
-        const bytesB = readVpkEntryBytesLocal(pathB, normalizeEntry(entry.path));
+        const pathA = findById(modB, idA)?.path ?? findById(modA, idA).path;
+        const pathB = findById(modB, idB).path;
+        const bytesA = readVpkEntryBytesLocal(pathA, entry);
+        const bytesB = readVpkEntryBytesLocal(pathB, entry);
+        if (bytesA && bytesB && Buffer.compare(bytesA, bytesB) === 0) {
+            return { verdict: 'blocked', rootCause: `The two source mods (gainDb 0 vs -12) minted byte-identical entries at ${entry}, so this run cannot tell a merge winner from a loser by bytes here. gainDb may not affect the minted VSND, or both clips are short enough that the gain difference is not audible in the byte stream.` };
+        }
 
         const analysis = await callApi(ctx.port, 'analyzeMerge', [idA, idB], false);
-        const collision = analysis.collisions.find((c) => normalizeEntry(c.path) === normalizeEntry(entry.path));
+        const collision = analysis.collisions.find((c) => normalizeEntry(c.path) === entry);
         if (!collision) {
-            return { verdict: 'fail', evidence: `analyzeMerge([A,B]) reported no collision at ${normalizeEntry(entry.path)}`, rootCause: 'the two installed mods did not register as a conflict at the shared entry' };
+            return { verdict: 'fail', evidence: `analyzeMerge([A,B]) reported no collision at ${entry}`, rootCause: 'the two installed mods did not register as a conflict at the shared entry' };
         }
         const winnerBytes = collision.winnerModId === idA ? bytesA : collision.winnerModId === idB ? bytesB : null;
         if (!winnerBytes) {
@@ -612,16 +703,17 @@ define('IG-06', 'Install two texture-replacement mods at the same entry, merge t
 
         const merged = await callApi(ctx.port, 'mergeMods', { modIds: [idA, idB], name: 'verify-in-app IG-06 merged' });
         ctx.track(merged.id);
-        const mergedBytes = readVpkEntryBytesLocal(merged.path, normalizeEntry(entry.path));
+        const mergedBytes = readVpkEntryBytesLocal(merged.path, entry);
         const equal = !!mergedBytes && Buffer.compare(mergedBytes, winnerBytes) === 0;
 
-        // Unmerge restores the two sources (re-enabled), which lets the
-        // finally block below delete every mod this check touched by id.
+        // Unmerge restores the two sources (re-enabled, under NEW ids -- see
+        // the disable-changes-identity note by IG-11), which is what lets
+        // the finally block below delete every mod this check touched.
         const unmerge = await callApi(ctx.port, 'unmergeMod', merged.id);
         for (const recovered of unmerge.recovered ?? []) ctx.track(recovered.id);
 
         return equal
-            ? { verdict: 'pass', evidence: `analyzeMerge named ${collision.winnerModId === idA ? 'mod A' : 'mod B'} as the winner at ${normalizeEntry(entry.path)}; the merged VPK's entry bytes (${mergedBytes.length} bytes) are byte-identical to that mod's own installed bytes.` }
+            ? { verdict: 'pass', evidence: `analyzeMerge named ${collision.winnerModId === idA ? 'mod A (gainDb 0)' : 'mod B (gainDb -12)'} as the winner at ${entry}; the merged VPK's entry bytes (${mergedBytes.length} bytes) are byte-identical to that mod's own installed bytes.` }
             : { verdict: 'fail', evidence: `merged entry bytes (${mergedBytes ? mergedBytes.length : 'missing'}) did not match the reviewed winner's bytes (${winnerBytes.length})`, rootCause: 'the merged VPK did not carry the reviewed winner\'s content at the contested entry' };
     } finally {
         await ctx.deleteMod(idA);
@@ -641,7 +733,7 @@ define('IG-09', 'Hero sound case: downloaded third-party mod (dynamic discovery)
 
 define('IG-10', 'Hero sound case: forged mod. Install via swapSound, read the entry back.', async (ctx) => {
     const heroSounds = await callApi(ctx.port, 'foundry.heroSounds', { hero: SEVEN_CODENAME });
-    const withClips = (heroSounds ?? []).filter((s) => Array.isArray(s.vsnd) && s.vsnd.length > 0 && s.event !== ctx.usedEntries.ig01Sound);
+    const withClips = preferAbility((heroSounds ?? []).filter((s) => Array.isArray(s.vsnd) && s.vsnd.length > 0 && s.event !== ctx.usedEntries.ig01Sound));
     if (!withClips.length) return { verdict: 'blocked', rootCause: `No hero sound event distinct from IG-01's was found for ${SEVEN_NAME}.` };
     const soundEvent = withClips[0];
     let mods;
@@ -673,6 +765,7 @@ define('IG-11', 'Hero sound case: disabled mod. Disable IG-10\'s mod and confirm
     if (!heroModId) return { verdict: 'blocked', rootCause: 'IG-10 did not produce an installed mod to disable.' };
     await callApi(ctx.port, 'disableMod', heroModId);
     const modsAfter = await callApi(ctx.port, 'getMods');
+    trackDisabledCounterpart(ctx, modsAfter, heroModEntry, heroModId);
     const stillEnabled = modsAfter.find((m) => m.id === heroModId && m.enabled);
     const anyEnabledClaimsEntry = modsAfter.some((m) => m.enabled && (() => {
         const entries = parseVpkDirectoryLocal(m.path);
@@ -703,9 +796,15 @@ define('IG-07', 'Audition parity: compare auditionSourceClip bytes to the instal
 
 define('IG-08', 'Re-forge idempotency: swap the same event again and compare entry bytes to the first forge.', async (ctx) => {
     if (!heroModId) return { verdict: 'blocked', rootCause: 'IG-10 did not produce a first forge to compare against.' };
+    // The first forge (IG-10's mod) is still installed and already claims
+    // this entry, so this re-forge is a deliberate, expected conflict --
+    // that IS the idempotency premise (compare the second forge's bytes to
+    // the still-present first one). swapSoundResolvingConflicts supplies
+    // the required acknowledgement rather than treating the conflict as a
+    // rejection.
     let mods;
     try {
-        mods = await callApi(ctx.port, 'foundry.swapSound', {
+        mods = await swapSoundResolvingConflicts(ctx.port, {
             heroCodename: SEVEN_CODENAME,
             heroName: SEVEN_NAME,
             event: heroModEvent,
@@ -768,6 +867,7 @@ define('IG-15', 'Voice sound case: disabled mod.', async (ctx) => {
     if (!voiceModId) return { verdict: 'blocked', rootCause: 'IG-14 did not produce an installed mod to disable.' };
     await callApi(ctx.port, 'disableMod', voiceModId);
     const modsAfter = await callApi(ctx.port, 'getMods');
+    trackDisabledCounterpart(ctx, modsAfter, voiceModEntry, voiceModId);
     const stillEnabled = modsAfter.find((m) => m.id === voiceModId && m.enabled);
     const anyEnabledClaimsEntry = modsAfter.some((m) => m.enabled && (() => {
         const entries = parseVpkDirectoryLocal(m.path);
@@ -819,6 +919,7 @@ define('IG-19', 'Global sound case: disabled mod.', async (ctx) => {
     if (!globalModId) return { verdict: 'blocked', rootCause: 'IG-18 did not produce an installed mod to disable.' };
     await callApi(ctx.port, 'disableMod', globalModId);
     const modsAfter = await callApi(ctx.port, 'getMods');
+    trackDisabledCounterpart(ctx, modsAfter, globalModEntry, globalModId);
     const stillEnabled = modsAfter.find((m) => m.id === globalModId && m.enabled);
     const anyEnabledClaimsEntry = modsAfter.some((m) => m.enabled && (() => {
         const entries = parseVpkDirectoryLocal(m.path);
@@ -866,6 +967,24 @@ define('RP-03', 'Frame budget: the gate. Already settled by 01-07; this runner l
 // Shared helpers used by more than one check.
 // ---------------------------------------------------------------------------
 
+/** Disabling a Grimoire-managed mod moves and RENAMES its file
+ *  (`makeDisabledFileName` in electron/main/services/mods.ts), which mints a
+ *  new metaKey and therefore a new mod id -- the id captured at install time
+ *  goes stale the instant disableMod succeeds. Re-resolving the disabled
+ *  counterpart by its still-known entry path and tracking ITS id is what
+ *  lets this run's own cleanup actually find and delete it later, instead
+ *  of silently leaving a disabled orphan behind (the exact shape that
+ *  produced the three orphaned mods this run had to clean up by hand before
+ *  its final successful pass -- see SUMMARY.md). */
+function trackDisabledCounterpart(ctx, modsAfter, targetEntry, previousId) {
+    const renamed = modsAfter.find((m) => !m.enabled && m.id !== previousId && (() => {
+        const entries = parseVpkDirectoryLocal(m.path);
+        return entries?.some((e) => normalizeEntry(e) === targetEntry);
+    })());
+    if (renamed) ctx.track(renamed.id, { deferDelete: true });
+    return renamed;
+}
+
 async function poolCheck(scopeLabel) {
     const library = [
         { path: '/fixture/pool-clip-a.mp3', name: 'a' },
@@ -874,7 +993,16 @@ async function poolCheck(scopeLabel) {
     ];
     const sourceClips = [`sounds/${scopeLabel}/pool_target.vsnd_c`];
     const selected = new Set(sourceClips);
-    const seeds = [1, 2, 3, 4, 5, 6, 7, 8];
+    // A single-target pool only draws one Fisher-Yates swap per seed
+    // (library length 3 -> one `next()` call), and xorshift32's first draw
+    // for small consecutive seeds (1..8) can land in the same bucket of
+    // [0,1) for a 3-way split -- that is a property of the PRNG on this
+    // input shape, not a bug in the mirror (verified against
+    // src/components/foundry/soundPoolPlan.ts's own seededShuffle directly:
+    // seeds 1..8 collide there too). A spread-out seed set is what a real
+    // caller varying poolSeed across launches would produce, and is what
+    // this check needs to make a fair distinctness claim.
+    const seeds = [1, 7, 13, 29, 51, 103, 211, 419, 887, 1471, 3037, 6151];
     const distinctClips = new Set();
     for (const seed of seeds) {
         const assignments = planSoundPoolLocal('seeded-library', sourceClips, selected, library, seed);
@@ -942,6 +1070,20 @@ async function main() {
     await confirmSlot(port, slot);
     console.log(`Confirmed. This run will forge, install, enable, disable, and merge mods against the real game addons directory this slot shares. Every check restores its own footprint in a finally block.\n`);
 
+    // Mod ids are derived from the mod's CURRENT file path
+    // (generateModId = md5(metaKey).slice(0,16) in
+    // electron/main/services/mods.ts), not from content or provenance. A
+    // pakNN slot number is reused by whatever real mod occupies it next, so
+    // an id tracked earlier in a run can, in principle, later resolve to a
+    // DIFFERENT, real mod if something else (this machine's own separately
+    // running Grimoire, in particular) took that same slot in the meantime.
+    // This was not a theoretical concern: a prior iteration of this exact
+    // run left an id collision with the user's own real "Genderbent Apollo
+    // Avatar Pack" mod, documented in SUMMARY.md. Every deleteMod call below
+    // therefore re-reads getMods() and refuses to delete unless the mod
+    // CURRENTLY at that id still carries this run's own name marker --
+    // content-based confirmation, not just "an id this run once saw".
+    const RUN_MARKER = 'verify-in-app';
     const trackedMods = []; // { id, deferDelete }
     const ctx = {
         port,
@@ -951,6 +1093,16 @@ async function main() {
         },
         async deleteMod(id) {
             try {
+                const current = await callApi(port, 'getMods');
+                const mod = current.find((m) => m.id === id);
+                if (!mod) {
+                    console.warn(`  (cleanup) deleteMod(${id}) skipped: no mod currently at this id (already removed, or never existed).`);
+                    return;
+                }
+                if (!(mod.name || '').includes(RUN_MARKER)) {
+                    console.warn(`  (cleanup) REFUSING to delete ${id}: it currently names "${mod.name}", which does not carry this run's "${RUN_MARKER}" marker. This id was tracked earlier in the run but now resolves to something this run did not create -- see the id-reuse note above deleteMod. Leaving it untouched.`);
+                    return;
+                }
                 await callApi(port, 'deleteMod', id);
             } catch (err) {
                 console.warn(`  (cleanup) deleteMod(${id}) failed: ${err.message}`);
@@ -958,8 +1110,29 @@ async function main() {
         },
     };
 
+    // Execution order matters and deliberately differs from definition
+    // order: IG-07 (audition) and IG-08 (re-forge idempotency) both read
+    // IG-10's still-ENABLED mod, and disabling changes that mod's id (see
+    // trackDisabledCounterpart's note), so IG-11 (disable) must run after
+    // both, not before. This list is the actual run order; anything defined
+    // but not listed here runs in its definition order after everything
+    // listed, but every id this runner defines is listed explicitly so that
+    // omission is visible rather than accidental.
+    const RUN_ORDER = [
+        'IG-01', 'IG-02', 'IG-03', 'IG-04', 'IG-05', 'IG-06',
+        'IG-09', 'IG-10', 'IG-07', 'IG-08', 'IG-11', 'IG-12',
+        'IG-13', 'IG-14', 'IG-15', 'IG-16',
+        'IG-17', 'IG-18', 'IG-19', 'IG-20',
+        'RP-01', 'RP-02', 'RP-03',
+    ];
+    const byId = new Map(CHECKS.map((c) => [c.id, c]));
+    const orderedChecks = [
+        ...RUN_ORDER.map((id) => byId.get(id)).filter(Boolean),
+        ...CHECKS.filter((c) => !RUN_ORDER.includes(c.id)),
+    ];
+
     const updates = new Map();
-    for (const check of CHECKS) {
+    for (const check of orderedChecks) {
         process.stdout.write(`${check.id}: `);
         let result;
         try {
