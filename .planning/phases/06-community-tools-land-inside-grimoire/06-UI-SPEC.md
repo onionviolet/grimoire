@@ -29,32 +29,47 @@ created: 2026-08-07
 
 ## Spacing Scale
 
-This phase adds no new page and no new layout region — it extends `Browser.tsx`'s existing toolbar/shortcut-row/webview-frame layout and reuses `ConfirmModal`. Declared values below are the actual tokens already load-bearing in the surfaces this phase touches (Tailwind's 4px step, per `docs/ui-conventions.md`):
+This phase adds no new page and no new layout region — it extends `Browser.tsx`'s existing toolbar/shortcut-row/webview-frame layout and reuses `ConfirmModal`. The table below declares only the spacing values this phase actually introduces or newly arranges, and every one of them is a clean multiple of 4:
 
 | Token | Value | Usage |
 |-------|-------|-------|
-| 2xs | 2px | `Tag`/`Badge` vertical padding (`py-0.5`) — existing exception, not new |
 | xs | 4px | Icon-to-label gaps inside buttons/banners (`gap-1`) |
-| sm | 6-8px | Compact control spacing: shortcut-row gap (`gap-1.5`), toolbar button gap (`gap-2`), `Tag`/`Badge` horizontal padding (`px-1.5`/`px-2`) |
-| md | 12-16px | Banner/confirm-modal internal padding (`px-3 py-2` for the inline banner, `p-6` for `ConfirmModal`'s panel is unchanged, not touched this phase) |
-| lg | 24px | Section gap between the toolbar row, the new kind-grouped shortcut rows, and the webview frame (`gap-3`→ round up to the 24px band when a group header is inserted; keep `gap-3`/12px between rows within one kind group, `gap-4`/16px between kind groups) |
+| sm | 8px | Toolbar button gap (`gap-2`) — unmodified, existing spacing this phase's new elements sit adjacent to |
+| md | 12px | Gap between rows within one kind group (`gap-3`); inline banner internal padding (`px-3 py-2`) |
+| lg | 16px | Gap between kind groups (`gap-4`) |
+| xl | 24px | Section gap between the toolbar row, the new kind-grouped shortcut rows, and the webview frame |
+
+**Inherited, unmodified (pre-existing, out of scope this phase):**
+
+| Value | Usage | Why it's off the 4px grid |
+|-------|-------|---------------------------|
+| 2px | `Tag`/`Badge` vertical padding (`py-0.5`) | Pre-existing house exception for HUD-style status chrome, unrelated to this phase's new elements. Not "fixed" to the 8-point scale here — that would be an unscoped change to a shared primitive. |
+| 6px | Shortcut-row gap (`gap-1.5`), `Tag`/`Badge` horizontal padding (`px-1.5`) | Pre-existing, predates this phase. This phase's new kind-group rows reuse the exact same shortcut-row rendering (`flex flex-wrap gap-1.5`, unchanged), so the value appears adjacent to new work without being introduced by it. |
+
+`ConfirmModal`'s panel padding (`p-6` = 24px) is also unmodified and already on-grid; not touched this phase.
 
 Exceptions:
-- `Tag`/`Badge` compact padding (2px/6px) is a pre-existing house exception for HUD-style status chrome, not something this phase introduces — do not "fix" it to the 8-point scale.
+- The two "Inherited, unmodified" values above (2px, 6px) are pre-existing house exceptions this phase's new elements sit next to, not values this phase declares as part of its own scale — see the carve-out table above rather than reading them as part of the Spacing Scale.
 - No new spacing values are needed beyond what `Browser.tsx`, `Tag`, `SectionHeader`, and `ConfirmModal` already define.
 
 ---
 
 ## Typography
 
-This phase introduces no new page heading (`Browser.tsx` renders no `PageHeader`/`h1` today and this phase does not add one). Declared sizes cover every new/extended text role this phase actually needs:
+This phase introduces no new page heading (`Browser.tsx` renders no `PageHeader`/`h1` today and this phase does not add one). This phase's declared scale holds to exactly 2 font weights:
 
 | Role | Size | Weight | Line Height |
 |------|------|--------|-------------|
 | Body | 14px (`text-sm`) | 400 regular | 1.5 — disclosure/refusal banner copy, toast copy |
-| Label | 12px (`text-xs`) | 600 semibold, uppercase, `tracking-wider` | 1.2 — new kind-group section headers (matches `SectionHeader`), existing shortcut-button labels stay at 12px/500 unchanged |
-| Control | 14px (`text-sm`) | 500 medium | 1 (`leading-none`) — `Button` labels (`Add to library` / `Discard`), matching the existing `Button` primitive's `md` size exactly |
-| Heading/Display | n/a this phase | n/a | n/a | No page heading is added or modified; if a future phase adds `PageHeader` to Browser, it inherits the existing app-wide `text-3xl md:text-4xl font-reaver` display role unchanged |
+| Label | 12px (`text-xs`) | 600 semibold, uppercase, `tracking-wider` | 1.2 — new kind-group section headers (matches `SectionHeader`) |
+| Heading/Display | n/a this phase | n/a | n/a — no page heading is added or modified; if a future phase adds `PageHeader` to Browser, it inherits the existing app-wide `text-3xl md:text-4xl font-reaver` display role unchanged |
+
+**Pre-existing exception (not counted against this phase's 2-weight scale):**
+
+| Role | Size | Weight | Line Height | Why it's not a third weight |
+|------|------|--------|--------------|------------------------------|
+| Control | 14px (`text-sm`) | 500 medium | 1 (`leading-none`) | `Button` labels (`Add to library` / `Discard`) reuse the existing `Button` primitive as-is. Weight 500 is hard-locked in `baseStyles` (`font-medium`, `src/components/common/ui.tsx:350`) — every `Button` in the codebase, in every phase, renders at 500; this phase neither chooses nor introduces that weight, it inherits it by calling the shared primitive. Treated the same way as the 2px/6px pre-existing spacing exceptions: disclosed and out of scope, not silently absorbed into this phase's declared scale. |
+| Control (existing, unmodified) | 12px (`text-xs`) | 500 medium | — | Existing shortcut-button labels (`Button` `sm` size) already render at 12px/500 today and are unchanged by this phase — same pre-existing exception as above. |
 
 ---
 
