@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.26.20
 milestone_name: milestone
 current_phase: 06
-current_phase_name: Community Tools Land Inside Grimoire
+current_phase_name: community-tools-land-inside-grimoire
 status: executing
 stopped_at: Phase 06 UI-SPEC approved
-last_updated: "2026-08-07T19:44:32.771Z"
+last_updated: "2026-08-07T21:23:02.943Z"
 last_activity: 2026-08-07
-last_activity_desc: Phase 02 complete, transitioned to Phase 06
+last_activity_desc: Phase 06 execution started
 progress:
   total_phases: 3
   completed_phases: 2
@@ -23,14 +23,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-05)
 
 **Core value:** A Deadlock player can change their game and always know exactly what changed, who owns it, and how to undo it.
-**Current focus:** Phase 02 — a-supported-fork-release
+**Current focus:** Phase 06 — community-tools-land-inside-grimoire
 
 ## Current Position
 
-Phase: 06 — Community Tools Land Inside Grimoire
-Plan: Not started
-Status: Ready to execute
-Last activity: 2026-08-07 — Phase 02 complete, transitioned to Phase 06
+Phase: 06 (community-tools-land-inside-grimoire) — EXECUTING
+Plan: 1 of 5
+Status: Executing Phase 06
+Last activity: 2026-08-07 — Phase 06 execution started
 
 Progress: [█████████░] 93%
 

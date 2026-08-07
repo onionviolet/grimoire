@@ -169,12 +169,12 @@ Plans:
   4. The webview is no less hardened after the download path changes than before: the guest still has no preload, no Node, its own partition, and an http(s)-only `src`
   5. A destination declares what kind of thing it is, so a handoff keys off that kind rather than a hardcoded URL match
 
-**Plans**: 5 plans
+**Plans**: 1/5 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 06-01-PLAN.md — Tracer: an end-to-end tool download reaches the mod library (capture, identity gate, disclosure, install)
+- [x] 06-01-PLAN.md — Tracer: an end-to-end tool download reaches the mod library (capture, identity gate, disclosure, install)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -204,4 +204,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phase 6 declar
 | 3. Foundry Completes Its Build Contract | 0/TBD | Not started | - |
 | 4. Locker And Foundry As One Object | 0/TBD | Not started | - |
 | 5. One Inventory, One Journey | 0/TBD | Not started | - |
-| 6. Community Tools Land Inside Grimoire | 0/5 | Planned | - |
+| 6. Community Tools Land Inside Grimoire | 1/5 | In Progress|  |
