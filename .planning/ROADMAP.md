@@ -73,7 +73,28 @@ Plans:
   4. A shipped installer points at a social service someone has decided on, and no surface advertises a check that will never run against it
   5. An experimental surface cannot be reached with its setting off, and no shipped document claims a capability the project forbids claiming
 
-**Plans**: TBD
+**Plans**: 6 plans
+
+Plans:
+**Wave 1**
+
+- [ ] 02-01-PLAN.md: Tracer: move the update modal's support link to the fork's GitHub Issues through catalog, guard, and gate, then expand to the Settings support section and record the D-03 exclusions
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 02-02-PLAN.md: Reconcile the fetch script and engine policy with D-02, guard the release workflow's pinned engine SHA, and put the packaged in-game colour check on the verification record
+- [ ] 02-03-PLAN.md: Gate the Chat Wheel page on its own setting with a render test for all three states, and drop the profile spec's cross-tool compatibility claims
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 02-04-PLAN.md: Merge structural-refactor-7 after confirming its worktree is inactive, resolve the assetClaims design collision by human decision, and prove the tree is green
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 02-05-PLAN.md: Remove the worktrees, delete the merged branches with the lowercase flag behind a one-way-door checkpoint, and retire the temporary merge plan document
+- [ ] 02-06-PLAN.md: Record ADR-018 for the dormant social service, prove the client already degrades correctly, and settle the terms-gate drift
+
+**Waves**: 1 = {02-01}; 2 = {02-02, 02-03}; 3 = {02-04}; 4 = {02-05, 02-06}
 
 **Notes**: The packaged smoke record does not gate a release (decided 2026-07-28), but the YCoCg engine fix does gate correctness: 197 of 12,561 pak textures are DXT5-YCoCg and they are mixed inside the item-icon category, so an unpinned engine garbles or not depending on which icon the user happens to drop on. The social item is a release decision, not a merge decision: whichever way it goes, migration 0005 must be applied **before** the Worker deploys, because the profile routes select its columns. Note that `pnpm typecheck` resolves the sibling `grimoire-social` from disk and stays green while CI fails, so verify by reverting the sibling file and running `pnpm exec tsc -b --force`.
 
@@ -163,7 +184,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phase 6 declar
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Verified Against The Game | 8/8 | Complete    | 2026-08-06 |
-| 2. A Supported Fork Release | 0/TBD | Not started | - |
+| 2. A Supported Fork Release | 0/6 | Planned | - |
 | 3. Foundry Completes Its Build Contract | 0/TBD | Not started | - |
 | 4. Locker And Foundry As One Object | 0/TBD | Not started | - |
 | 5. One Inventory, One Journey | 0/TBD | Not started | - |
