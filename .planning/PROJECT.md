@@ -23,13 +23,14 @@ Shipped and confirmed in the codebase. Full evidence per item is in `.planning/R
 - 3D hero preview: static posed export, Source 2 material and lighting parity, NPR, cloth, and a rigged sibling export (dev-gated)
 - Social phase 1 and 1.5 client, plus the Worker-side revalidation cron and view counter (built, undeployed)
 - UI consistency pass lanes 1 through 8 (shell rule, route resolver, `uiPrefs`, `useConfirm`, `SearchInput`, `useScrollRestore`, keyboard and assistive-tech floor)
+- A supported fork release: pinned-SHA fork engine build with a release-workflow guard, support destinations moved to the fork's own issue tracker, `structural-refactor-7` merged and the branch set consolidated to `main` only, a decided (dormant) social service disposition recorded in ADR-018, and the last ungated experimental surface (Chat Wheel) closed. The in-game colour half of the engine-pin criterion stays an explicitly accepted `blocked` row (IG-23) pending a packaged build and a live Deadlock session — validated in Phase 2 (2026-08-07)
 
 ### Active
 
 The current milestone converts a large body of landed but unproven work into a verified, supported, coherent product.
 
-- [ ] Close the verification debt: prove the Foundry, merge, rigged-preview, and performance paths against a running Deadlock build, and give the untested renderer lanes a test that actually renders them
-- [ ] Ship a supported fork release: a checksum-pinned fork engine, a packaged Windows smoke record, a fork-owned support destination, a consolidated branch set, and a decided social service target
+- [x] Close the verification debt: prove the Foundry, merge, rigged-preview, and performance paths against a running Deadlock build, and give the untested renderer lanes a test that actually renders them (Phase 1, 2026-08-06)
+- [x] Ship a supported fork release: a checksum-pinned fork engine, a packaged Windows smoke record, a fork-owned support destination, a consolidated branch set, and a decided social service target (Phase 2, 2026-08-07)
 - [ ] Complete the Foundry build contract: recolor and model edits can enter a combined build, sound shuffle is reachable from Foundry, and a pool auditions every clip
 - [ ] Close the Locker and Foundry parity gap: Foundry gets preview, Locker gets pre-write disclosure, portraits get variant awareness, and the hero grid shows what the user has made
 - [ ] Give global inventory one home and portraits one journey, then finish the consistency floor (undo, blockers, and one vocabulary)
@@ -126,7 +127,7 @@ Written policy that constrains how and where work is done. Recorded with the sou
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
 | The packaged Windows smoke record does not block a release (2026-07-28) | It is a human sitting in front of the game; gating on it stalled every release. Tracked as post-release verification, fix forward | Pending |
-| This fork relies on the upstream social deployment (2026-07-29) | Forking `grimoire-social` means repointing the sibling remote, CI's hardcoded checkout, and the baked release URL, then deploying with migration 0005 | ⚠️ Revisit in Phase 2 |
+| This fork relies on the upstream social deployment (2026-07-29) | Forking `grimoire-social` means repointing the sibling remote, CI's hardcoded checkout, and the baked release URL, then deploying with migration 0005 | ✓ Revisited in Phase 2 (ADR-018, 2026-08-07): stays on the upstream Worker, wave-3 features (cron, view counter) stay dormant, client already degrades correctly |
 | Availability fields absent means "this service does not report it", null means "not checked yet" | Without the split, every Discover card carried a permanent "not checked yet" badge advertising a check that was never coming | ✓ Good |
 | An installed Foundry build is deliberately not a Locker skin | A build may be a portrait, an icon, a sound, or several at once; an active-skin card, a load-order slot, a shuffle entry, and a 3D merge source are all claims it cannot honour | ✓ Good |
 | The Foundry shuffle pool is keyed on content hash, never `mod.id` or `metaKey` | Both are pakNN-derived and change on every toggle, so a persisted opt-in keyed on either would detach the first time it ran | ✓ Good |
@@ -136,4 +137,4 @@ Written policy that constrains how and where work is done. Recorded with the sou
 | The Sound Locker route was built, then folded back into the Locker shell | Two hero grids for one hero's content was the distance the lane set out to remove; legacy `/locker/sounds*` URLs are rewritten | ⚠️ Revisit (contested variant 1) |
 
 ---
-*Last updated: 2026-08-05 after doc ingest and roadmap creation*
+*Last updated: 2026-08-07 after Phase 2 completion*
