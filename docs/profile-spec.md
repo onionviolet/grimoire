@@ -1,8 +1,8 @@
 # Mod Profile Format Spec
 
-A portable JSON format for sharing mod loadouts between mod managers.
+A portable JSON format for sharing Deadlock mod loadouts between machines running Grimoire. This format is Grimoire-only and not compatible with other mod managers.
 
-The format was first implemented in [Grimoire](https://github.com/Slush97/grimoire) for Deadlock, but the schema is intentionally game and manager agnostic. A profile is just a named, ordered list of mod references, each pinned to a specific source (currently GameBanana) plus optional manager-specific extensions.
+The format was first implemented in [Grimoire](https://github.com/Slush97/grimoire) for Deadlock. The schema is deliberately game neutral and carries a slot for tool-specific extensions, but nothing outside Grimoire reads or writes it today. A profile is just a named, ordered list of mod references, each pinned to a specific source (currently GameBanana) plus optional tool-specific extensions.
 
 * Format ID: `mod-profile`
 * Current schema version: `1.1`
@@ -12,9 +12,9 @@ The format was first implemented in [Grimoire](https://github.com/Slush97/grimoi
 
 ## Goals
 
-1. Round-trip a user's mod loadout (which mods, which variants, what order, enabled state) between machines and between mod managers.
+1. Round-trip a user's mod loadout (which mods, which variants, what order, enabled state) between machines.
 2. Preserve fidelity by pinning exact file versions, while degrading gracefully when those versions are no longer hosted.
-3. Stay forward-compatible: new sources, new games, and manager-specific state can be added without breaking older readers.
+3. Stay forward-compatible: new sources, new games, and tool-specific state can be added without breaking older readers.
 
 Non-goals: hosting profiles, voting / social features, transporting actual mod files. The format is references-only.
 
@@ -73,7 +73,7 @@ Non-goals: hosting profiles, voting / social features, transporting actual mod f
 | `exportedBy` | object | yes | `{ tool: string, version: string }`. Used in import UIs and bug reports. |
 | `profile` | object | yes | Profile metadata. See below. |
 | `mods` | array | yes | Ordered list of mod entries. Order is informational; `priority` controls load order. |
-| `extensions` | object | no | Namespaced manager-specific data. See [Extensions](#extensions). |
+| `extensions` | object | no | Namespaced tool-specific data. See [Extensions](#extensions). |
 
 ### `game`
 
@@ -169,18 +169,18 @@ A share code is informationally equivalent to a `.modprofile.json` file; one can
 
 ## Extensions
 
-`extensions` is a top-level object keyed by manager / tool name. Each key owns its sub-object freely.
+`extensions` is a top-level object keyed by tool name. Each key owns its sub-object freely.
 
 ```json
 "extensions": {
   "grimoire": { "crosshair": {...}, "autoexecCommands": [...] },
-  "someothermanager": { "loadoutSlot": 3 }
+  "someothertool": { "loadoutSlot": 3 }
 }
 ```
 
 Rules:
 
-* Manager-specific keys SHOULD use the tool's canonical short name (lowercase, no spaces).
+* Tool-specific keys SHOULD use the tool's canonical short name (lowercase, no spaces).
 * Readers MUST ignore extension keys they don't recognize.
 * Readers MUST NOT alter or strip extension keys when re-saving a profile they imported.
 * Extensions MUST NOT carry data that's required for correct mod resolution. If it's required, it belongs in core fields and warrants a schema version bump.
