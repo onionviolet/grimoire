@@ -241,8 +241,25 @@ Then the full gate set. These mirror CI (`ci.yml`) and the husky `pre-push` hook
 anything red here is red on push too:
 
 ```bash
-pnpm i18n:check && node scripts/gen-locale-manifest.mjs --check && pnpm encoding:check && pnpm typecheck && pnpm lint && pnpm test && pnpm build
+pnpm i18n:check && node scripts/gen-locale-manifest.mjs --check && pnpm encoding:check && pnpm typecheck && pnpm lint && pnpm test
 ```
+
+`pnpm build` needs one environment variable, or it fails by design:
+
+```bash
+GRIMOIRE_SOCIAL_BASE_URL=https://example.invalid pnpm build
+```
+
+This is a pre-existing gate in `electron.vite.config.ts`, not something this merge
+introduced: a production build bakes the social Worker URL into the renderer, and the
+build refuses rather than silently shipping an installer pointed at `localhost:8787`.
+The check is a literal `https://` prefix test with no network call, so any https value
+satisfies it. `CONTRIBUTING.md` documents `https://example.invalid` for exactly this
+"prove it compiles" case.
+
+**Only use a throwaway value here.** A real URL belongs in a build that actually ships,
+and choosing which Worker our installers point at is a separate decision (see section 8,
+rule 9).
 
 What each one is actually catching here:
 
@@ -426,6 +443,9 @@ Do not improvise past any of these. Ask the repo owner.
 6. Any `git branch -d` refuses, meaning the branch is not actually merged.
 7. Before any `git push origin --delete`.
 8. Before touching anything in `../grimoire-social`. Out of scope entirely.
+9. Before putting any real URL in `GRIMOIRE_SOCIAL_BASE_URL`. Verification builds use a
+   throwaway https value. Which Worker a shipped installer points at is a release
+   decision, not a merge decision, and it is out of scope for this document.
 
 ## 9. Conventions to respect
 
