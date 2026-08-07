@@ -18,22 +18,21 @@ import { useAppStore } from '../stores/appStore';
 import { EmptyState } from '../components/common/PageComponents';
 import Tx from '../components/translation/Tx';
 import { getGameBananaImportHandoff } from '../lib/browserImportHandoff';
+import { BROWSER_DESTINATIONS, destinationForUrl, HOME_DESTINATION_URL } from '../lib/browserCatalog';
+import { onBrowserToolDownload, resolveToolDownload, setActiveBrowserDestination } from '../lib/browserToolDownload';
+import { useConfirm } from '../components/common/confirmContext';
+import { showToast } from '../stores/toastStore';
 
-/** Shortcut destinations. These are a deliberately small set of useful and
- *  community-loved Deadlock stops, rather than a general bookmark manager. */
-const SHORTCUTS: { label: string; url: string; nsfw?: boolean }[] = [
-    { label: 'GameBanana', url: 'https://gamebanana.com/games/20948' },
-    { label: 'Deadlock Forge', url: 'https://deadlockforge.net/' },
-    { label: 'Deadlock Wiki', url: 'https://deadlocked.wiki/' },
-    { label: 'deadlock-api', url: 'https://deadlock-api.com/' },
-    { label: 'Deadlock.io', url: 'https://deadlock.io/' },
-    { label: 'Deadlocker', url: 'https://www.deadlocker.gg/' },
-    { label: 'r/DeadlockTheGame', url: 'https://www.reddit.com/r/DeadlockTheGame/' },
-    { label: 'Deadlock Daily (memes)', url: 'https://www.deadlockdaily.com/' },
-    { label: 'Goonlock (18+)', url: 'https://goonlock.com/', nsfw: true },
-];
-
-const HOME_URL = SHORTCUTS[0].url;
+/** The origin to push alongside a destination's kind (Pattern 3): recomputed
+ *  from the guest's live URL on every nav event, never assumed from what was
+ *  last clicked. Null for an unparseable URL. */
+function originOf(url: string): string | null {
+    try {
+        return new URL(url).origin;
+    } catch {
+        return null;
+    }
+}
 
 /** Accept what a user would actually type. Bare hosts get https://, and
  *  anything that is not http(s) is refused here as well as in the main process
@@ -68,11 +67,12 @@ interface WebviewEl extends HTMLElement {
 export default function Browser() {
     const { t } = useTranslation();
     const navigate = useNavigate();
+    const confirm = useConfirm();
     const settings = useAppStore((s) => s.settings);
     const ref = useRef<WebviewEl | null>(null);
 
-    const [address, setAddress] = useState(HOME_URL);
-    const [current, setCurrent] = useState(HOME_URL);
+    const [address, setAddress] = useState(HOME_DESTINATION_URL);
+    const [current, setCurrent] = useState(HOME_DESTINATION_URL);
     const [loading, setLoading] = useState(false);
     const [failure, setFailure] = useState<string | null>(null);
     const [canBack, setCanBack] = useState(false);
@@ -81,7 +81,7 @@ export default function Browser() {
     // Keep browser shortcuts consistent with the Browse content preference.
     // "Blur" leaves the optional adult destination visible; "hide" removes it.
     const visibleShortcuts = useMemo(
-        () => SHORTCUTS.filter((shortcut) => !shortcut.nsfw || settings?.browseNsfwContentMode !== 'hide'),
+        () => BROWSER_DESTINATIONS.filter((shortcut) => !shortcut.nsfw || settings?.browseNsfwContentMode !== 'hide'),
         [settings?.browseNsfwContentMode],
     );
 
@@ -113,6 +113,11 @@ export default function Browser() {
             if (url && url !== 'about:blank') {
                 setCurrent(url);
                 setAddress(url);
+                // Recomputed from the guest's own current URL on every nav
+                // event (not "last shortcut clicked"): a tool page redirecting
+                // in-page must revoke the capture grant just as reliably as
+                // clicking a different shortcut would (RESEARCH Pattern 3).
+                setActiveBrowserDestination(destinationForUrl(url)?.kind ?? null, originOf(url));
             }
         };
         const onStart = () => {
@@ -132,6 +137,14 @@ export default function Browser() {
             setFailure(detail.errorDescription || t('browser.loadFailed', 'Page failed to load.'));
         };
 
+        // The webview's initial `src` is the home destination; push its kind
+        // before the first `did-navigate` fires so a download attempted
+        // before that first event still resolves against the right grant.
+        setActiveBrowserDestination(
+            destinationForUrl(HOME_DESTINATION_URL)?.kind ?? null,
+            originOf(HOME_DESTINATION_URL)
+        );
+
         el.addEventListener('did-start-loading', onStart);
         el.addEventListener('did-stop-loading', onStop);
         el.addEventListener('did-navigate', syncNav);
@@ -143,8 +156,41 @@ export default function Browser() {
             el.removeEventListener('did-navigate', syncNav);
             el.removeEventListener('did-navigate-in-page', syncNav);
             el.removeEventListener('did-fail-load', onFail);
+            // Leaving the page revokes the grant: nothing captured after this
+            // point belongs to a destination the user can still see.
+            setActiveBrowserDestination(null, null);
         };
     }, [t]);
+
+    // Tool-download disclosure round trip (D-08/D-09). This effect owns only
+    // 'ready' (confirm-then-install) and 'refused' (toast); 'started' and
+    // 'replaced' are plan 06-02.
+    useEffect(() => {
+        return onBrowserToolDownload((event) => {
+            if (event.status === 'ready') {
+                const displayName = event.name ?? t('browser.toolDownload.fallbackName', 'Browser download');
+                void (async () => {
+                    const accepted = await confirm({
+                        title: <Tx k="browser.toolDownload.title" fallback="Add this download to your mod library?" />,
+                        message: (
+                            <Tx
+                                k="browser.toolDownload.message"
+                                fallback='Will add to your mod library as "{{name}}".'
+                                values={{ name: displayName }}
+                            />
+                        ),
+                        confirmLabel: <Tx k="browser.toolDownload.confirm" fallback="Add to library" />,
+                        cancelLabel: <Tx k="browser.toolDownload.cancel" fallback="Discard" />,
+                        variant: 'primary',
+                    });
+                    await resolveToolDownload(event.id, accepted);
+                })();
+            } else if (event.status === 'refused') {
+                const prefix = t('browser.toolDownload.refusedPrefix', 'Not added: ');
+                showToast(`${prefix}${event.reason ?? ''}`, { tone: 'error' });
+            }
+        });
+    }, [confirm, t]);
 
     if (!settings?.experimentalBrowser) {
         return (
@@ -192,7 +238,7 @@ export default function Browser() {
                 </button>
                 <button
                     type="button"
-                    onClick={() => go(HOME_URL)}
+                    onClick={() => go(HOME_DESTINATION_URL)}
                     title={t('browser.home', 'Home')}
                     className="flex h-8 w-8 items-center justify-center rounded-sm border border-border bg-bg-tertiary text-text-secondary transition-colors hover:text-text-primary"
                 >
@@ -265,7 +311,7 @@ export default function Browser() {
                     partition matches the one the main process pins. */}
                 {createElement('webview', {
                     ref,
-                    src: HOME_URL,
+                    src: HOME_DESTINATION_URL,
                     partition: 'persist:grimoire-browser',
                     style: { width: '100%', height: '100%', display: 'flex' },
                 })}

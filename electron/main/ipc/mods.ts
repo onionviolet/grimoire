@@ -1257,7 +1257,11 @@ ipcMain.handle('read-renderer-asset', async (_, relPath: string): Promise<string
  * `thumbnailFetchTargets` rather than fired here, so the network work happens
  * after the lock is released.
  */
-async function importCustomModSource(
+// Exported (not just used by the 'import-custom-mods' handler below) so
+// ipc/browser.ts can route a confirmed browser-tool download through this
+// exact same install path (D-01/D-02/D-03) rather than a second, bespoke
+// import function.
+export async function importCustomModSource(
     deadlockPath: string,
     args: ImportCustomModArgs,
     thumbnailFetchTargets: AdoptedThumbnailTarget[]
