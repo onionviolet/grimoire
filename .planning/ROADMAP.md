@@ -17,7 +17,7 @@ Two things shape the sequence more than feature value. First, doc status headers
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Verified Against The Game** - Run the verification debt to zero: prove Foundry, merge, rigged preview, and the performance card against a running build, and make the untested renderer lanes testable
+- [x] **Phase 1: Verified Against The Game** - Run the verification debt to zero: prove Foundry, merge, rigged preview, and the performance card against a running build, and make the untested renderer lanes testable (completed 2026-08-06)
 - [ ] **Phase 2: A Supported Fork Release** - Pin a fork engine, package and smoke it, own the support destination, consolidate the branches, and decide which social service a shipped installer points at
 - [ ] **Phase 3: Foundry Completes Its Build Contract** - Recolor and model edits can enter a combined build, sound shuffle is reachable from Foundry, and a pool auditions every clip
 - [ ] **Phase 4: Locker And Foundry As One Object** - Foundry gets preview, Locker gets pre-write disclosure, portraits get variant awareness, and the hero grid shows what the user has made
@@ -162,7 +162,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phase 6 declar
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Verified Against The Game | 8/8 | In Progress|  |
+| 1. Verified Against The Game | 8/8 | Complete    | 2026-08-06 |
 | 2. A Supported Fork Release | 0/TBD | Not started | - |
 | 3. Foundry Completes Its Build Contract | 0/TBD | Not started | - |
 | 4. Locker And Foundry As One Object | 0/TBD | Not started | - |

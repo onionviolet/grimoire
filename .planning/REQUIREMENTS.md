@@ -149,10 +149,10 @@ Variant 3's declared sequencing hazard has partly resolved itself: `HeroDetailFr
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| REQ-ingame-verification-sweep | Phase 1 | Pending |
-| REQ-renderer-test-harness | Phase 1 | Pending |
-| REQ-rigged-preview-release-gate | Phase 1 | Pending |
-| REQ-performance-convar-safer-experimentation | Phase 1 | Pending |
+| REQ-ingame-verification-sweep | Phase 1 | Complete as amended (D-19..D-23, D-26): 16 of 23 app rows pass, 7 blocked, 18 engine rows deferred with reasons |
+| REQ-renderer-test-harness | Phase 1 | Complete |
+| REQ-rigged-preview-release-gate | Phase 1 | Complete |
+| REQ-performance-convar-safer-experimentation | Phase 1 | Complete app-side; the 16 ConVar readings remain outstanding (CV-01..16 deferred) |
 | REQ-packaged-fork-engine | Phase 2 | Pending |
 | REQ-fork-support-destination | Phase 2 | Pending |
 | REQ-upstream-merge-aug-2026 | Phase 2 | Pending |
