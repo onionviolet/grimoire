@@ -172,10 +172,18 @@ Plans:
 **Plans**: 5 plans
 
 Plans:
+**Wave 1**
+
 - [ ] 06-01-PLAN.md — Tracer: an end-to-end tool download reaches the mod library (capture, identity gate, disclosure, install)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 06-02-PLAN.md — Refuse a non-VPK visibly, and hold exactly one pending download at a time
 - [ ] 06-03-PLAN.md — Pin the guest webview hardening and permission floor with tests
 - [ ] 06-04-PLAN.md — Probe every destination once and record keep, correct, or remove
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 06-05-PLAN.md — Group destinations by kind, and record the browser's bounded control set
 
 **UI hint**: yes
