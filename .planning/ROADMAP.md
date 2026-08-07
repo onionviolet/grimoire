@@ -73,7 +73,7 @@ Plans:
   4. A shipped installer points at a social service someone has decided on, and no surface advertises a check that will never run against it
   5. An experimental surface cannot be reached with its setting off, and no shipped document claims a capability the project forbids claiming
 
-**Plans**: 1/6 plans executed
+**Plans**: 3/6 plans executed
 
 Plans:
 **Wave 1**
@@ -82,8 +82,8 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 02-02-PLAN.md: Reconcile the fetch script and engine policy with D-02, guard the release workflow's pinned engine SHA, and put the packaged in-game colour check on the verification record
-- [ ] 02-03-PLAN.md: Gate the Chat Wheel page on its own setting with a render test for all three states, and drop the profile spec's cross-tool compatibility claims
+- [x] 02-02-PLAN.md: Reconcile the fetch script and engine policy with D-02, guard the release workflow's pinned engine SHA, and put the packaged in-game colour check on the verification record
+- [x] 02-03-PLAN.md: Gate the Chat Wheel page on its own setting with a render test for all three states, and drop the profile spec's cross-tool compatibility claims
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -184,7 +184,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phase 6 declar
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Verified Against The Game | 8/8 | Complete    | 2026-08-06 |
-| 2. A Supported Fork Release | 1/6 | In Progress|  |
+| 2. A Supported Fork Release | 3/6 | In Progress|  |
 | 3. Foundry Completes Its Build Contract | 0/TBD | Not started | - |
 | 4. Locker And Foundry As One Object | 0/TBD | Not started | - |
 | 5. One Inventory, One Journey | 0/TBD | Not started | - |
