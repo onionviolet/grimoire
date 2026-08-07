@@ -31,6 +31,35 @@ in [third-party-notices.md](./third-party-notices.md).
   When the meaning of one changes, delete the key and add a new one rather than
   rewording in place, or stale translations keep displaying the old claim.
 
+### Support destination (D-03)
+
+The fork's support destination is GitHub Issues at
+`https://github.com/onionviolet/grimoire/issues`, chosen because it already
+existed and works, and no fork-owned chat channel exists.
+
+Three call sites moved to it: the update modal footer, the Settings "found a
+bug or have a feature request" row, and the Settings generated diagnostic
+report's action row.
+
+Four surfaces are deliberately left upstream-owned, each for its own reason:
+
+- The About Grimoire attribution block (`SupportSection.tsx`): it is
+  attribution and already names upstream.
+- The Ko-fi label: the Standing Policy on third-party notices requires the
+  beneficiary to stay named as upstream.
+- The Discord Rich Presence buttons in `electron/main/services/discordRpc.ts`:
+  they are promotional attribution shown to third parties on the user's own
+  Discord profile, already labelled as upstream's, and are not a help flow the
+  app initiates for its own user.
+- The README credit line: credit framing, not a support funnel.
+
+These four are a conscious exclusion, not an oversight.
+`src/components/supportDestinations.test.ts` is the guard that enforces both
+halves of this decision: it fails if a support-context surface still points at
+upstream's Discord, and it fails just as loudly if an attribution surface's
+upstream mention is stripped. Anyone changing any of these six surfaces should
+find that test, not a surprise.
+
 ## Branch hygiene
 
 - Integrate completed work into `main` promptly.
