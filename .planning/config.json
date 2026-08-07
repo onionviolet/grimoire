@@ -1,0 +1,7 @@
+{
+  "workflow": {
+    "_auto_chain_active": false,
+    "build_command": "GRIMOIRE_SOCIAL_BASE_URL=https://example.invalid pnpm build",
+    "test_command": "pnpm test"
+  }
+}
