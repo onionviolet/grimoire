@@ -56,7 +56,7 @@ function rangeIds(prefix, start, end) {
 }
 
 const EXPECTED_IDS = [
-  ...rangeIds('IG', 1, 22),
+  ...rangeIds('IG', 1, 23),
   ...rangeIds('RP', 1, 3),
   ...rangeIds('CV', 1, 16),
 ];
