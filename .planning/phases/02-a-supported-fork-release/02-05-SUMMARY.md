@@ -156,3 +156,10 @@ None - no external service configuration required.
 ---
 *Phase: 02-a-supported-fork-release*
 *Completed: 2026-08-07*
+
+## Self-Check: PASSED
+
+- FOUND: commit `5a45338` (chore(02-05): consolidate branches and retire the upstream merge plan)
+- FOUND: `docs/merge-plan-upstream-2026-08.md` absent, as claimed
+- FOUND: `.planning/phases/02-a-supported-fork-release/02-05-SUMMARY.md`
+- Confirmed stable a third time: `git branch --no-merged main` empty, `git branch --list` shows only `main`, `git worktree list` shows one entry

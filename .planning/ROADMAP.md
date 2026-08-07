@@ -73,7 +73,7 @@ Plans:
   4. A shipped installer points at a social service someone has decided on, and no surface advertises a check that will never run against it
   5. An experimental surface cannot be reached with its setting off, and no shipped document claims a capability the project forbids claiming
 
-**Plans**: 4/6 plans executed
+**Plans**: 5/6 plans executed
 
 Plans:
 **Wave 1**
@@ -91,7 +91,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 02-05-PLAN.md: Remove the worktrees, delete the merged branches with the lowercase flag behind a one-way-door checkpoint, and retire the temporary merge plan document
+- [x] 02-05-PLAN.md: Remove the worktrees, delete the merged branches with the lowercase flag behind a one-way-door checkpoint, and retire the temporary merge plan document
 - [ ] 02-06-PLAN.md: Record ADR-018 for the dormant social service, prove the client already degrades correctly, and settle the terms-gate drift
 
 **Waves**: 1 = {02-01}; 2 = {02-02, 02-03}; 3 = {02-04}; 4 = {02-05, 02-06}
@@ -184,7 +184,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phase 6 declar
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Verified Against The Game | 8/8 | Complete    | 2026-08-06 |
-| 2. A Supported Fork Release | 4/6 | In Progress|  |
+| 2. A Supported Fork Release | 5/6 | In Progress|  |
 | 3. Foundry Completes Its Build Contract | 0/TBD | Not started | - |
 | 4. Locker And Foundry As One Object | 0/TBD | Not started | - |
 | 5. One Inventory, One Journey | 0/TBD | Not started | - |

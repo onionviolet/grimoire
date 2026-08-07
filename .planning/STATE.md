@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 02
 current_phase_name: a-supported-fork-release
 status: executing
-stopped_at: Completed 02-04-PLAN.md (structural-refactor-7 merge)
-last_updated: "2026-08-07T16:05:29.398Z"
+stopped_at: Completed 02-05-PLAN.md (branch consolidation and merge-plan retirement)
+last_updated: "2026-08-07T16:21:21.795Z"
 last_activity: 2026-08-07
 last_activity_desc: Plan 02-04 (structural-refactor-7 merge) complete
 progress:
   total_phases: 3
   completed_phases: 1
   total_plans: 14
-  completed_plans: 12
+  completed_plans: 13
 ---
 
 # Project State
@@ -28,11 +28,11 @@ See: .planning/PROJECT.md (updated 2026-08-05)
 ## Current Position
 
 Phase: 02 (a-supported-fork-release) — EXECUTING
-Plan: 5 of 6
+Plan: 6 of 6
 Status: Ready to execute
 Last activity: 2026-08-07 — Plan 02-04 (structural-refactor-7 merge) complete
 
-Progress: [█████████░] 86%
+Progress: [█████████░] 93%
 
 ## Performance Metrics
 
@@ -59,6 +59,7 @@ Progress: [█████████░] 86%
 | Plan | Duration | Tasks | Files |
 |------|----------|-------|-------|
 | Phase 02 P04 | 40min | 3 tasks | 36 files |
+| Phase 02 P05 | 20min | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -72,6 +73,8 @@ Recent decisions affecting current work:
 - 2026-07-28: Serial waves, not eight parallel lanes, because nearly every lane appends to the same four shared files
 - [Phase ?]: 2026-08-07: assetClaims collision resolved as combine — shared pure core for both processes, renderer IPC cache layered on top in its own file (inspectedAssetClaims.ts)
 - [Phase ?]: 2026-08-07: structural-refactor-7 merged into main via real merge commit c0571a2; branch deletion and merge-plan doc retirement deferred to plan 02-05 per REQ-upstream-merge-aug-2026's Phase B/C split
+- [Phase ?]: 2026-08-07: push-then-delete-all authorized for branch consolidation: main pushed to origin, twelve fully merged branches deleted with git branch -d, five remote branches deleted, merge-plan doc retired
+- [Phase ?]: 2026-08-07: codex/foundry-build-diff's git branch -d refusal (stale own-remote tracking ref) resolved by deleting the remote branch first and retrying -d, never forcing with -D
 
 ### Pending Todos
 
@@ -101,6 +104,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-08-07T16:05:29.378Z
-Stopped at: Completed 02-04-PLAN.md (structural-refactor-7 merge)
+Last session: 2026-08-07T16:21:21.773Z
+Stopped at: Completed 02-05-PLAN.md (branch consolidation and merge-plan retirement)
 Resume file: None
