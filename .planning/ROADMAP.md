@@ -39,7 +39,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   5. The pool cards, alternatives gallery, portrait editor, seeded sound editor, and Chat Wheel VPK round trip each have a check that actually renders or exercises them
   6. `node scripts/check-verification-record.mjs --strict` exits 0 with no game session: 23 app-tier rows settled by `pnpm verify:in-app`, and 18 engine-tier rows (the 16 ConVar readings plus the two portrait-variant rows) carrying a `deferred` verdict with a per-row reason
 
-**Plans**: 7/8 plans executed
+**Plans**: 8/8 plans executed
 
 Plans:
 **Wave 1**
@@ -53,7 +53,7 @@ Plans:
 
 - [x] 01-02-PLAN.md — Render the alternatives gallery and the sound trim/gain badge lanes at interaction depth
 - [x] 01-03-PLAN.md — Render the seeded SoundImportEditor and the portrait editor through stubbed canvas and Web Audio
-- [ ] 01-08-PLAN.md — Tier the verification record, build the CDP runner that settles its 23 app-tier rows, and defer the 18 engine-tier rows with reasons
+- [x] 01-08-PLAN.md — Tier the verification record, build the CDP runner that settles its 23 app-tier rows, and defer the 18 engine-tier rows with reasons
 - [x] 01-07-PLAN.md — Measure Seven on the rigged preview over CDP, record the recommendation, and apply it to `RELEASE_RENDER_FLAGS.rigged`
 
 **Waves**: 1 = {01-01, 01-04, 01-05, 01-06}; 2 = {01-02, 01-03, 01-08}; 3 = {01-07}
@@ -162,7 +162,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phase 6 declar
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Verified Against The Game | 7/8 | In Progress|  |
+| 1. Verified Against The Game | 8/8 | In Progress|  |
 | 2. A Supported Fork Release | 0/TBD | Not started | - |
 | 3. Foundry Completes Its Build Contract | 0/TBD | Not started | - |
 | 4. Locker And Foundry As One Object | 0/TBD | Not started | - |
