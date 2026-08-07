@@ -127,6 +127,8 @@ Commands: `eval`, `evalfile` (for expressions that lose a fight with shell quoti
 
 `shot` writes a PNG that can be read back, so visual checks are possible. Prefer `text`/`html` anyway: they say *why* something is wrong, a screenshot only says *that* it looks wrong.
 
+**`pnpm verify:in-app`** (`scripts/verify-in-app.mjs`) is a purpose-built driver on the same CDP transport, not a general-purpose command: it settles the 23 app-tier rows of `docs/ingame-verification-record.md` unattended, forging, installing, enabling, disabling, and merging real mods through `window.electronAPI` and reading the resulting VPKs back with its own parser. A pass there proves Grimoire wrote the intended bytes to the intended path; it proves nothing about whether the Source 2 engine actually loads, plays, or draws them, which stays a `docs/ingame-verification-record.md` engine-tier row. The same slot rule applies and is enforced in code: never slot 0, never an unslotted app, and the runner refuses to start until it has confirmed the live `window.__GRIMOIRE_DEV_SLOT` matches. Run `node scripts/verify-in-app.mjs --dry-run` first; it prints the full plan and touches nothing.
+
 Notes:
 
 - The port is env-gated, not `is.dev`-gated, because it evaluates arbitrary code in the renderer. It is never set in a packaged build (`electron/main/index.ts`).
