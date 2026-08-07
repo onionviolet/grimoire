@@ -91,6 +91,19 @@ pnpm use-local-vpkmerge
 pnpm package:win
 ```
 
-The stock `v0.19.0` download remains a fallback only until the fork publishes a
-versioned, checksum-pinned release. Promote that release in
-`scripts/fetch-vpkmerge.mjs` rather than silently tracking a moving binary.
+### Engine build policy (D-02)
+
+As of this phase (2026-08-06) the fork engine reaches a packaged build by
+building `onionviolet/vpkmerge` from a pinned commit SHA in the release
+workflow (`.github/workflows/release.yml`). That is the supported path: the
+workflow checks out the pinned SHA, runs `cargo build`, and bundles the
+result via `pnpm use-local-vpkmerge` before packaging.
+
+The stock `v0.19.0` download that `scripts/fetch-vpkmerge.mjs` performs on
+`pnpm install` is the dev-machine bootstrap only, and is expected to stay
+that way; it is not the packaged release's engine source. Promoting a
+published, checksum-pinned `onionviolet/vpkmerge` release into that script's
+`ASSETS` table remains an open option nobody has taken, not silently dropped
+and not silently done. `scripts/check-release-engine-pin.mjs` is the guard
+that keeps the pinned-SHA build-from-source path honest: it fails a push if
+the workflow's checkout ref loosens off a full commit SHA.

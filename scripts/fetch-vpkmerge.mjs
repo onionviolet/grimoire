@@ -1,8 +1,25 @@
 #!/usr/bin/env node
-// Fetch the vpkmerge CLI binary for the current platform from
-// github.com/Slush97/vpkmerge releases. Runs as a postinstall step so
-// `pnpm install` produces a build that can package vpkmerge alongside
-// the Electron app via electron-builder's extraResources.
+// Fetches the stock upstream Slush97/vpkmerge v0.19.0 release asset. That is
+// deliberate: this script's only job is to give a developer machine a
+// working binary after `pnpm install`, nothing more. Runs as a postinstall
+// step via electron-builder's extraResources so a dev build can package
+// vpkmerge alongside the Electron app.
+//
+// The packaged release gets the fork engine a different way:
+// `.github/workflows/release.yml` checks out `onionviolet/vpkmerge` at a
+// pinned commit SHA, runs `cargo build` against it, then
+// `pnpm use-local-vpkmerge` overwrites whatever this script fetched with
+// that build before packaging.
+//
+// The stock asset predates the fork's YCoCg icon fix, so
+// `electron/main/services/foundryTextureReplace.ts` refuses texture
+// replacement against it rather than producing wrong colours. This script
+// deletes the `.ycocg-icon-safe` marker on every install (see below) so a
+// stock binary can never inherit a local build's attestation.
+//
+// Promoting a checksum-pinned `onionviolet/vpkmerge` release into the
+// ASSETS table below remains future work this phase decided not to start;
+// see D-02 in docs/fork-maintenance.md.
 //
 // Pinned to a specific vpkmerge release tag so a vpkmerge release doesn't
 // silently change grimoire's behavior. Bump VPKMERGE_VERSION and the matching
