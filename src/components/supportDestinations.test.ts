@@ -1,5 +1,7 @@
+/// <reference types="node" />
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, it, expect } from 'vitest';
 
 // Two-sided guard for the D-03 support-destination decision: every fork-owned
@@ -9,6 +11,7 @@ import { describe, it, expect } from 'vitest';
 // this test just as loudly as an under-correction that leaves a support
 // surface pointed at upstream.
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, '..', '..');
 
 // Copied verbatim from electron/main/services/discordRpc.ts. This is the
