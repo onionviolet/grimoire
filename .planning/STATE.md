@@ -23,7 +23,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-05)
 
 **Core value:** A Deadlock player can change their game and always know exactly what changed, who owns it, and how to undo it.
-**Current focus:** Phase 01 — verified-against-the-game
+**Current focus:** Phase 06 — community-tools-land-inside-grimoire (Phase 01 complete 2026-08-06)
 
 ## Current Position
 
