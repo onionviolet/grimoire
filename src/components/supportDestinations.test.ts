@@ -8,10 +8,6 @@ import { describe, it, expect } from 'vitest';
 // must still name upstream. An over-correction that strips attribution fails
 // this test just as loudly as an under-correction that leaves a support
 // surface pointed at upstream.
-//
-// NOTE: coverage here is intentionally incomplete after this task.
-// SupportSection.tsx's two support-context anchors are added by the next
-// task (Task 2), which extends this file rather than replacing it.
 
 const REPO_ROOT = join(__dirname, '..', '..');
 
@@ -49,5 +45,29 @@ describe('support destination guard (D-03)', () => {
     it('leaves the README credit line intact', () => {
         const readme = readSource('README.md');
         expect(readme).toContain(UPSTREAM_DISCORD_INVITE);
+    });
+
+    it('does not send a user from the Settings support section to the upstream Discord', () => {
+        const supportSection = readSource('src/components/settings/sections/SupportSection.tsx');
+        expect(supportSection).not.toContain(UPSTREAM_DISCORD_INVITE);
+    });
+
+    it('links the Settings support section to this fork\'s issue tracker', () => {
+        // SupportSection.tsx builds its GitHub Issues hrefs from a local
+        // FORK_REPO constant + template literal (`${FORK_REPO}/issues`)
+        // rather than a literal URL string, so assert on the constant and
+        // its use in an /issues path instead of the fully-formed URL.
+        const supportSection = readSource('src/components/settings/sections/SupportSection.tsx');
+        expect(supportSection).toContain("'https://github.com/onionviolet/grimoire'");
+        expect(supportSection).toContain('${FORK_REPO}/issues');
+    });
+
+    // The About Grimoire attribution block in the same file must survive
+    // this edit untouched: it is attribution, not a support destination, and
+    // D-03 keeps it upstream-labelled.
+    it('leaves the About Grimoire attribution block intact in the Settings support section', () => {
+        const supportSection = readSource('src/components/settings/sections/SupportSection.tsx');
+        const upstreamRepoMatches = supportSection.match(/UPSTREAM_REPO/g) ?? [];
+        expect(upstreamRepoMatches.length).toBeGreaterThanOrEqual(2);
     });
 });
