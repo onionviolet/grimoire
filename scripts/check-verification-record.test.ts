@@ -69,7 +69,7 @@ function padded(prefix: string, n: number): string {
 
 function defaultCheckRows(): CheckRowFields[] {
   const rows: CheckRowFields[] = [];
-  for (let n = 1; n <= 22; n += 1) rows.push(makeCheckRow(padded('IG', n)));
+  for (let n = 1; n <= 23; n += 1) rows.push(makeCheckRow(padded('IG', n)));
   for (let n = 1; n <= 3; n += 1) rows.push(makeCheckRow(padded('RP', n)));
   return rows;
 }
@@ -307,12 +307,12 @@ describe('checkVerificationRecord', () => {
   it('parses a mixed record with both schemas correctly', () => {
     const text = buildRecord();
     const rows = parseVerificationRecord(text) as Array<{ schema: string; ID: string }>;
-    expect(rows).toHaveLength(41);
-    expect(rows.filter((r) => r.schema === 'check')).toHaveLength(25);
+    expect(rows).toHaveLength(42);
+    expect(rows.filter((r) => r.schema === 'check')).toHaveLength(26);
     expect(rows.filter((r) => r.schema === 'convar')).toHaveLength(16);
 
     const result = checkVerificationRecord(text);
-    expect(result.totalRows).toBe(41);
+    expect(result.totalRows).toBe(42);
     expect(result.ok).toBe(true);
   });
 });
