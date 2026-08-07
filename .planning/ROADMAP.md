@@ -73,7 +73,7 @@ Plans:
   4. A shipped installer points at a social service someone has decided on, and no surface advertises a check that will never run against it
   5. An experimental surface cannot be reached with its setting off, and no shipped document claims a capability the project forbids claiming
 
-**Plans**: 3/6 plans executed
+**Plans**: 4/6 plans executed
 
 Plans:
 **Wave 1**
@@ -87,7 +87,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 02-04-PLAN.md: Merge structural-refactor-7 after confirming its worktree is inactive, resolve the assetClaims design collision by human decision, and prove the tree is green
+- [x] 02-04-PLAN.md: Merge structural-refactor-7 after confirming its worktree is inactive, resolve the assetClaims design collision by human decision, and prove the tree is green
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
@@ -184,7 +184,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phase 6 declar
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Verified Against The Game | 8/8 | Complete    | 2026-08-06 |
-| 2. A Supported Fork Release | 3/6 | In Progress|  |
+| 2. A Supported Fork Release | 4/6 | In Progress|  |
 | 3. Foundry Completes Its Build Contract | 0/TBD | Not started | - |
 | 4. Locker And Foundry As One Object | 0/TBD | Not started | - |
 | 5. One Inventory, One Journey | 0/TBD | Not started | - |

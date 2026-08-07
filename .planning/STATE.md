@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 02
 current_phase_name: a-supported-fork-release
 status: executing
-stopped_at: Phase 1 context gathered
-last_updated: "2026-08-07T02:48:07.654Z"
-last_activity: 2026-08-06
-last_activity_desc: Phase 02 execution started
+stopped_at: Completed 02-04-PLAN.md (structural-refactor-7 merge)
+last_updated: "2026-08-07T16:05:29.398Z"
+last_activity: 2026-08-07
+last_activity_desc: Plan 02-04 (structural-refactor-7 merge) complete
 progress:
   total_phases: 3
   completed_phases: 1
   total_plans: 14
-  completed_plans: 8
+  completed_plans: 12
 ---
 
 # Project State
@@ -28,11 +28,11 @@ See: .planning/PROJECT.md (updated 2026-08-05)
 ## Current Position
 
 Phase: 02 (a-supported-fork-release) — EXECUTING
-Plan: 1 of 6
-Status: Executing Phase 02
-Last activity: 2026-08-06 — Phase 02 execution started
+Plan: 5 of 6
+Status: Ready to execute
+Last activity: 2026-08-07 — Plan 02-04 (structural-refactor-7 merge) complete
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [█████████░] 86%
 
 ## Performance Metrics
 
@@ -54,6 +54,11 @@ Progress: [░░░░░░░░░░] 0%
 - Trend: n/a
 
 *Updated after each plan completion*
+**Per-Plan Metrics:**
+
+| Plan | Duration | Tasks | Files |
+|------|----------|-------|-------|
+| Phase 02 P04 | 40min | 3 tasks | 36 files |
 
 ## Accumulated Context
 
@@ -65,6 +70,8 @@ Recent decisions affecting current work:
 - 2026-07-28: The packaged Windows smoke record does not block a release; it is post-release verification, fix forward
 - 2026-07-29: This fork relies on the upstream social deployment, so the wave 3 cron and view counter do not run; revisit in Phase 2
 - 2026-07-28: Serial waves, not eight parallel lanes, because nearly every lane appends to the same four shared files
+- [Phase ?]: 2026-08-07: assetClaims collision resolved as combine — shared pure core for both processes, renderer IPC cache layered on top in its own file (inspectedAssetClaims.ts)
+- [Phase ?]: 2026-08-07: structural-refactor-7 merged into main via real merge commit c0571a2; branch deletion and merge-plan doc retirement deferred to plan 02-05 per REQ-upstream-merge-aug-2026's Phase B/C split
 
 ### Pending Todos
 
@@ -94,6 +101,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-08-06T14:50:01.531Z
-Stopped at: Phase 1 context gathered
-Resume file: .planning/phases/01-verified-against-the-game/01-CONTEXT.md
+Last session: 2026-08-07T16:05:29.378Z
+Stopped at: Completed 02-04-PLAN.md (structural-refactor-7 merge)
+Resume file: None
