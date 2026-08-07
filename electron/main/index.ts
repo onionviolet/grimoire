@@ -152,6 +152,7 @@ import { runStartupRecovery } from './ipc/launch';
 import { loadSettings, saveSettings } from './services/settings';
 import { attachBrowserFilter, configureFilter } from './services/browserContentFilter';
 import { attachBrowserDownloadCapture } from './services/browserDownloadCapture';
+import { hardenGuestWebPreferences } from './services/webviewHardening';
 import { backfillMissingMetadataHashes } from './services/metadata';
 import { backfillImprintedFlags } from './services/imprintMods';
 import { destroyDiscordRpc } from './services/discordRpc';
@@ -359,26 +360,7 @@ function createWindow(): void {
     // renderer could otherwise ask for a privileged guest. This handler is the
     // authority: it runs in the main process and overrides what was requested.
     mainWindow.webContents.on('will-attach-webview', (_event, webPreferences, params) => {
-        // Never let a guest reach Node, and never let it borrow our preload
-        // (which exposes the whole electronAPI surface to whatever page loads).
-        delete webPreferences.preload;
-        webPreferences.nodeIntegration = false;
-        webPreferences.nodeIntegrationInSubFrames = false;
-        webPreferences.contextIsolation = true;
-        webPreferences.sandbox = true;
-        webPreferences.webSecurity = true;
-        webPreferences.allowRunningInsecureContent = false;
-        webPreferences.experimentalFeatures = false;
-
-        // Third-party pages get their own session partition, so their cookies
-        // and storage never touch the app's session (which holds the user's
-        // GameBanana login).
-        params.partition = 'persist:grimoire-browser';
-
-        // Only ever load real web pages. Blocks file:// (local file read) and
-        // the app's own custom schemes from being driven by page content.
-        const src = String(params.src ?? '');
-        if (!/^https?:\/\//i.test(src)) params.src = 'about:blank';
+        hardenGuestWebPreferences(webPreferences, params);
     });
 
     // Popups from inside the browser go to the user's real browser rather than
