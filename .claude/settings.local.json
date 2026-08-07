@@ -5,5 +5,8 @@
       "WebFetch(domain:api.deadlock-api.com)",
       "Bash(git fetch *)"
     ]
+  },
+  "worktree": {
+    "baseRef": "head"
   }
 }
