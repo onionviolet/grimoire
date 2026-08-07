@@ -135,3 +135,12 @@ None - no external service configuration required.
 ---
 *Phase: 02-a-supported-fork-release*
 *Completed: 2026-08-07*
+
+## Self-Check: PASSED
+
+- FOUND: src/components/social/dormantService.test.ts
+- FOUND: docs/social-architecture-decisions.md
+- FOUND: .planning/phases/02-a-supported-fork-release/02-06-SUMMARY.md
+- FOUND: commit 374de62 (Task 1)
+- FOUND: commit 604fa61 (Task 3)
+- FOUND: commit d6fd79a (SUMMARY.md)
