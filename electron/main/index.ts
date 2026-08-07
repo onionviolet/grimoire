@@ -142,6 +142,7 @@ import './ipc/previewCache';
 import './ipc/discord';
 import './ipc/saltIngest';
 import './ipc/servers';
+import './ipc/browser';
 import './ipc/foundry';
 import './ipc/performanceConfig';
 import './ipc/dmmMigrate';
@@ -150,6 +151,7 @@ import { initUpdater, checkForUpdates, getInstallSource } from './services/updat
 import { runStartupRecovery } from './ipc/launch';
 import { loadSettings, saveSettings } from './services/settings';
 import { attachBrowserFilter, configureFilter } from './services/browserContentFilter';
+import { attachBrowserDownloadCapture } from './services/browserDownloadCapture';
 import { backfillMissingMetadataHashes } from './services/metadata';
 import { backfillImprintedFlags } from './services/imprintMods';
 import { destroyDiscordRpc } from './services/discordRpc';
@@ -164,7 +166,7 @@ let mainWindow: BrowserWindow | null = null;
  *  paths that would otherwise be opened by the user's default OS handler. */
 const SAFE_OPEN_SCHEMES = new Set(['http:', 'https:', 'mailto:']);
 
-function openExternalSafe(rawUrl: string): void {
+export function openExternalSafe(rawUrl: string): void {
     try {
         const u = new URL(rawUrl);
         if (SAFE_OPEN_SCHEMES.has(u.protocol)) {
@@ -398,11 +400,11 @@ function createWindow(): void {
             return { action: 'deny' };
         });
         // Downloads inside an embedded browser have no UI to manage them and
-        // would write to disk unattended, so hand them off too.
-        guest.session.on('will-download', (event, item) => {
-            event.preventDefault();
-            openExternalSafe(item.getURL());
-        });
+        // would write to disk unattended, so hand them off to the system
+        // browser by default. The one exception is a catalog `kind: 'tool'`
+        // destination (D-11), whose download is redirected into Grimoire's
+        // own temp directory instead; see browserDownloadCapture.ts.
+        attachBrowserDownloadCapture(guest.session);
     });
 
     // Catch in-place navigations (bare `<a href="https://...">` clicks in

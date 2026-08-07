@@ -65,6 +65,7 @@ import type {
     DeadworksRelayStats,
 } from './deadworks';
 import type { DmmMigrationRequest, DmmMigrationReport } from '../lib/dmmMigration';
+import type { BrowserDestinationKind } from '../lib/browserCatalog';
 
 export interface BrowseModsArgs {
     page: number;
@@ -334,6 +335,33 @@ export interface ImportCustomModsProgress {
     vpkPath: string;
     phase: 'importing' | 'done' | 'failed';
     imported?: number;
+    error?: string;
+}
+
+/** Lifecycle of a browser-tool download's round trip from `will-download` to
+ *  disclosure. This plan (06-01) emits and handles only 'ready' and
+ *  'refused'; 'started' and 'replaced' are pushed by plan 06-02 once the
+ *  in-flight toast and second-click replacement land, and 'failed' covers a
+ *  future non-classification error path. Declaring the full union now avoids
+ *  churning this type twice. */
+export type BrowserToolDownloadStatus = 'started' | 'ready' | 'refused' | 'failed' | 'replaced';
+
+export interface BrowserToolDownloadEvent {
+    status: BrowserToolDownloadStatus;
+    id: string;
+    /** Display name of the captured file (present for 'ready'). */
+    name?: string;
+    /** `describeVpkRejection()` text, main-process English (present for 'refused'). */
+    reason?: string;
+    /** Catalog label of the source destination (used by 06-02's toasts). */
+    tool?: string;
+}
+
+export interface ResolveToolDownloadResult {
+    ok: boolean;
+    /** True when `id` was absent from the pending map (already resolved,
+     *  cleaned up, or never existed): nothing was imported. */
+    stale?: boolean;
     error?: string;
 }
 
@@ -1205,6 +1233,19 @@ export interface ElectronAPI {
     /** Write a renderer-side trace line into main.log (and therefore into
      *  diagnostic reports). Fire-and-forget, returns nothing. */
     traceDiagnostic: (scope: string, message: string) => void;
+
+    // In-app browser: tool-download capture round trip (D-08/D-09/D-11).
+    /** Subscribe to the main process's pending-tool-download push. Returns an
+     *  unsubscribe function. */
+    onBrowserToolDownload: (callback: (event: BrowserToolDownloadEvent) => void) => () => void;
+    /** Answer a pending tool download: `accepted` installs it through the
+     *  existing import-custom-mods path, decline discards the temp file. */
+    resolveToolDownload: (id: string, accepted: boolean) => Promise<ResolveToolDownloadResult>;
+    /** Fire-and-forget: tell main which catalog destination (if any) the
+     *  guest's current URL resolves to, so `will-download` knows whether to
+     *  capture. Pushed on every nav event, not just on shortcut click
+     *  (RESEARCH Pattern 3). */
+    setActiveBrowserDestination: (kind: BrowserDestinationKind | null, origin: string | null) => void;
 
     // Crosshair Presets
     getCrosshairPresets: () => Promise<{ presets: CrosshairPreset[]; activePresetId: string | null }>;

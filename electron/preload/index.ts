@@ -74,10 +74,13 @@ import type {
     UpdateStatus,
     LockerImageVariant,
     CropRect,
+    BrowserToolDownloadEvent,
+    ResolveToolDownloadResult,
 } from '../../src/types/electron';
 import type { AppearanceSurface } from '../../src/types/mod';
 import type { DeadworksConnectProgress } from '../../src/types/deadworks';
 import type { DmmMigrationRequest } from '../../src/lib/dmmMigration';
+import type { BrowserDestinationKind } from '../../src/lib/browserCatalog';
 import type {
     ProfileSort,
     PublishRequest,
@@ -605,6 +608,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // Write a renderer-side trace line into main.log so it reaches diagnostic
     // reports. Deliberately one-way and unawaited; see ipc/diagnostics.ts.
     traceDiagnostic: (scope: string, message: string) => ipcRenderer.send('diagnostics:trace', scope, message),
+
+    // In-app browser: tool-download capture round trip (D-08/D-09/D-11).
+    onBrowserToolDownload: (callback: (event: BrowserToolDownloadEvent) => void) => {
+        const listener = (_event: Electron.IpcRendererEvent, payload: BrowserToolDownloadEvent) => callback(payload);
+        ipcRenderer.on('browser:tool-download', listener);
+        return () => ipcRenderer.removeListener('browser:tool-download', listener);
+    },
+    resolveToolDownload: (id: string, accepted: boolean): Promise<ResolveToolDownloadResult> =>
+        ipcRenderer.invoke('browser:resolve-tool-download', id, accepted),
+    setActiveBrowserDestination: (kind: BrowserDestinationKind | null, origin: string | null) =>
+        ipcRenderer.send('browser:set-active-destination', kind, origin),
 
     // Crosshair Presets
     getCrosshairPresets: () => ipcRenderer.invoke('crosshair:getPresets'),

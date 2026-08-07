@@ -3571,6 +3571,14 @@
     "disabled": {
       "title": "Browser is off",
       "description": "Enable the in-app browser in Settings to use this page."
+    },
+    "toolDownload": {
+      "title": "Add this download to your mod library?",
+      "message": "Will add to your mod library as \"{{name}}\".",
+      "confirm": "Add to library",
+      "cancel": "Discard",
+      "fallbackName": "Browser download",
+      "refusedPrefix": "Not added: "
     }
   },
   "chatWheel": {
