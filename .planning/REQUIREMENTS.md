@@ -58,7 +58,7 @@ Shipped work, confirmed against the working tree at v1.26.20 on 2026-08-05. **Th
 - [ ] **REQ-fork-support-destination**: No fork-owned surface sends a user to the upstream project's support channel. `src/components/UpdateModal.tsx` currently links the main Grimoire Discord, where a fork user could ask for help nobody there can give. Decide the fork's support destination first (or omit the link), then apply that decision consistently. Attribution and the Ko-fi label stay as the third-party-notices ADR requires: they belong to upstream and must say so.
 - [ ] **REQ-upstream-merge-aug-2026**: Phases B and C of the temporary ops plan. `structural-refactor-7` is 5 ahead and 38 behind and still holds unmerged work; fold it into `main`. Fast-forward and delete `dev-slot-seeding`, then delete the branches that are fully merged (ahead 0, so deleting discards nothing). Retire `docs/merge-plan-upstream-2026-08.md` once Phase C is done and pushed. Phase A landed; re-verify with `git fetch --all --prune` before starting.
 - [ ] **REQ-social-service-disposition**: Decide which Worker a shipped installer points at, and make the client honest about it. Three options are on the table: fork `grimoire-social` to `onionviolet` (repoint the sibling remote, `ci.yml`'s hardcoded checkout, and the baked `GRIMOIRE_SOCIAL_BASE_URL`, then deploy **with migration 0005 applied first**, because the profile routes select its columns and will 500 without it), offer the cron and view counter upstream as a pull request, or leave the surface dormant and say so. Three commits sit unpushed in `../grimoire-social` and `ProfileDetailWithAvailability` is the shim holding CI together; note that `pnpm typecheck` resolves the sibling from disk and stays green while CI fails. Includes two client-side items that only matter once a service is chosen: rendering GameBanana's own mod titles in the gone-mods list in place of the `GameBanana: #123, #456` tooltip, and the TOS gate drift (the design puts it at first login, the code fires it at first publish and stores acceptance in localStorage, which is per-machine and clearable). The TOS gate is a decision, not a bug: move the gate or correct the design doc, do not let an implementer pick.
-- [ ] **REQ-experimental-gate-and-doc-drift**: Experimental surfaces are gated where it counts and the docs stop claiming things the code forbids. The Chat Wheel experimental gate is enforced on the sidebar entry but not on the route itself, so the route is reachable with the setting off. `docs/profile-spec.md` line 3 markets the format as portable "between mod managers", which `CLAUDE.md` forbids claiming.
+- [x] **REQ-experimental-gate-and-doc-drift**: Experimental surfaces are gated where it counts and the docs stop claiming things the code forbids. The Chat Wheel experimental gate is enforced on the sidebar entry but not on the route itself, so the route is reachable with the setting off. `docs/profile-spec.md` line 3 markets the format as portable "between mod managers", which `CLAUDE.md` forbids claiming.
 
 ### Foundry build contract
 
@@ -157,7 +157,7 @@ Variant 3's declared sequencing hazard has partly resolved itself: `HeroDetailFr
 | REQ-fork-support-destination | Phase 2 | Pending |
 | REQ-upstream-merge-aug-2026 | Phase 2 | Pending |
 | REQ-social-service-disposition | Phase 2 | Pending |
-| REQ-experimental-gate-and-doc-drift | Phase 2 | Pending |
+| REQ-experimental-gate-and-doc-drift | Phase 2 | Complete |
 | REQ-foundry-forge-edit-kinds | Phase 3 | Pending |
 | REQ-foundry-sound-shuffle-surfacing | Phase 3 | Pending |
 | REQ-foundry-pool-audition-fidelity | Phase 3 | Pending |
@@ -173,6 +173,7 @@ Variant 3's declared sequencing hazard has partly resolved itself: `HeroDetailFr
 | REQ-browser-navigation-gaps | Phase 6 | Pending |
 
 **Coverage:**
+
 - v1 requirements: 22 total
 - Mapped to phases: 22
 - Unmapped: 0 ✓

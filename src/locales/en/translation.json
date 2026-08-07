@@ -3601,7 +3601,11 @@
     "wheelFull": "This wheel is full ({{max}} commands).",
     "iconUnknown": "Not a ChatLane icon name; the wheel will show no icon.",
     "advancedYaml": "Advanced YAML",
-    "remove": "Remove"
+    "remove": "Remove",
+    "disabled": {
+      "title": "Chat Wheel is off",
+      "description": "Enable the Chat Wheel in Settings to use this page."
+    }
   },
   "sourceBlocking": {
     "incompleteTitle": "This list may be incomplete",

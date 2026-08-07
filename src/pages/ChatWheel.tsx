@@ -4,6 +4,7 @@ import { AlertTriangle, FileUp, Save, Sparkles } from 'lucide-react';
 import { getMods, readChatWheel, saveChatWheel, getChatWheelStarter, getChatWheelStatus, validateChatWheel } from '../lib/api';
 import { useAppStore } from '../stores/appStore';
 import { Button } from '../components/common/ui';
+import { EmptyState } from '../components/common/PageComponents';
 import { useConfirm } from '../components/common/confirmContext';
 import Tx from '../components/translation/Tx';
 import type { Mod } from '../types/mod';
@@ -27,6 +28,7 @@ export default function ChatWheel() {
   const [validation, setValidation] = useState<{ state: 'checking' | 'valid' | 'invalid'; message?: string } | null>(null);
   const validationRequest = useRef(0);
   const loadMods = useAppStore((state) => state.loadMods);
+  const settings = useAppStore((state) => state.settings);
 
   const selected = useMemo(() => wheels.find((wheel) => wheel.id === selectedId), [selectedId, wheels]);
   const model = useMemo(() => parseChatWheelYaml(yaml), [yaml]);
@@ -180,6 +182,21 @@ export default function ChatWheel() {
       setBusy(null);
     }
   };
+
+  if (!settings?.experimentalChatWheel) {
+    return (
+      <EmptyState
+        icon={Sparkles}
+        title={<Tx k="chatWheel.disabled.title" fallback="Chat Wheel is off" />}
+        description={
+          <Tx
+            k="chatWheel.disabled.description"
+            fallback="Enable the Chat Wheel in Settings to use this page."
+          />
+        }
+      />
+    );
+  }
 
   return (
     <div className="mx-auto w-full max-w-6xl space-y-5 p-6">
