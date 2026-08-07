@@ -33,13 +33,13 @@ export type VariantChoice = 'random' | { fileId: number };
 
 /**
  * Stable identity for a skin used by the shuffle for the opt-in pool. Prefers
- * the GameBanana archive id, then the content hash, then the volatile mod id.
+ * the GameBanana archive id, then the content hash, then the mod id.
  *
- * We deliberately do NOT reuse getLockerSkinKey: its `mod:<id>` fallback keys
- * off mod.id, which is derived from the pakNN filename and changes every time a
- * mod is enabled/disabled. A persisted opt-in for a local (non-GameBanana)
- * import would then silently stop matching after the first shuffle. sha256 is
- * content-addressed and survives the rename.
+ * We deliberately do NOT reuse getLockerSkinKey, which falls straight from the
+ * GameBanana id to `mod:<id>`. mod.id is stable across enable/disable now, but
+ * it is per-INSTALL: reinstalling the same local file mints a new one, so a
+ * persisted opt-in would stop matching. sha256 is content-addressed and matches
+ * the same skin however it got there, which is what a saved opt-in means.
  */
 export function shuffleSkinKey(mod: Mod): string {
   if (typeof mod.gameBananaId === 'number' && mod.gameBananaId > 0) {

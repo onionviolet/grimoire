@@ -23,11 +23,11 @@ type DisabledModIdentity = Pick<Mod, 'id' | 'gameBananaId' | 'sha256'>;
  * group and a singleton from that same submission intentionally share a key, so
  * the preference survives the entry changing between grouped and ungrouped.
  *
- * The key is also stable across the enabled/disabled boundary: the GameBanana id
- * is immutable, sha256 is content-addressed (the metadata sidecar carries it
- * across the pakNN rename that enabling/disabling performs), and only the
- * last-resort `mod:<id>` form is volatile, because mod.id is derived from the
- * pakNN filename.
+ * Every form of the key is stable across the enabled/disabled boundary: the
+ * GameBanana id is immutable, sha256 is content-addressed, and the last-resort
+ * `mod:<id>` form rides on mod.id, which is now the mod's persisted uid rather
+ * than a hash of its pakNN filename. The sidecar carries all three across the
+ * rename that enabling/disabling performs.
  */
 export function modPreferenceKey(mod: DisabledModIdentity): string {
   if (typeof mod.gameBananaId === 'number' && mod.gameBananaId > 0) {

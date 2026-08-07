@@ -1,10 +1,10 @@
 import { promises as fs } from 'fs';
 import { existsSync } from 'fs';
 import { join, dirname, basename } from 'path';
-import { createHash, randomBytes } from 'crypto';
+import { randomBytes } from 'crypto';
 import { getAddonsPath, getDisabledPath, getAddonFolderPaths, getModScanRootPaths, getGrimoirePath, createNextOverflowFolder, overflowAddonsPath, MAX_ADDON_FOLDERS, metaKeyFor, isPriorityFolderPath, isReservedPriorityVpkPath, PRIORITY_FIRST_SLOT } from './deadlock';
 import { fixGameinfo } from './system';
-import { getModMetadata, setModMetadata, removeModMetadata, migrateModMetadata } from './metadata';
+import { getModMetadata, setModMetadata, removeModMetadata, migrateModMetadata, ensureModUids } from './metadata';
 import { compareFileContents } from './fileMatch';
 import { resolveVpkIdentity, readEmbeddedAddonInfo, carryForwardOriginalIdentity } from './vpkIdentity';
 import { loadSettings } from './settings';
@@ -87,6 +87,15 @@ async function renameWithRetry(from: string, to: string, attempts = 5): Promise<
  *  layer's enrichMod builds from this plus the metadata sidecar (globalType,
  *  lockerCosmetics, abilitySounds, ...). Keep new wire-only fields there. */
 export interface Mod {
+    /** Stable identity for this mod, read from the sidecar's `modUid` (minted by
+     *  ensureModUids on the first scan that sees the file). It does NOT change
+     *  when the mod is enabled, disabled, reordered, or moved between the base
+     *  addons folder, an overflow folder, and the priority root, and it is never
+     *  re-issued to whatever mod later occupies a slot this one vacated. Before
+     *  this it was md5(metaKey), so it was a function of the slot rather than of
+     *  the mod: a toggle changed a mod's identity, and a recycled pakNN slot
+     *  handed the new occupant the old occupant's id, which let a stale
+     *  reference (a queued op, a cached list) act on an unrelated mod. */
     id: string;
     name: string;
     fileName: string;
@@ -94,8 +103,9 @@ export interface Mod {
     /** Metadata/identity key for this VPK, derived from its folder location.
      *  Bare filename for the base addons folder + .disabled (unchanged for
      *  existing installs); `addons{N}/<file>` for overflow folders. Use this,
-     *  not fileName, as the key for getModMetadata/setModMetadata and as the
-     *  generateModId input, so a pakNN_dir.vpk can't collide across folders. */
+     *  not fileName, as the key for getModMetadata/setModMetadata, so a
+     *  pakNN_dir.vpk can't collide across folders. This IS location-derived and
+     *  changes on every move; `id` is the thing that doesn't. */
     metaKey: string;
     enabled: boolean;
     priority: number;
@@ -160,16 +170,6 @@ function parseVpkPriority(filename: string): number | null {
 }
 
 /**
- * Generate a mod ID by hashing its metadata key (see metaKeyFor). The key is the
- * bare filename for base-addons + .disabled mods (so existing IDs are unchanged)
- * and `addons{N}/<file>` for overflow mods, which keeps IDs unique when the same
- * pakNN_dir.vpk name exists in more than one addon folder.
- */
-function generateModId(metaKey: string): string {
-    return createHash('md5').update(metaKey).digest('hex').slice(0, 16);
-}
-
-/**
  * Extract a human-readable name from the VPK filename
  */
 function extractModName(filename: string): string {
@@ -196,8 +196,10 @@ function extractModName(filename: string): string {
  *
  * Disabled VPKs are not loaded by the game, so they don't need a pakNN load-order
  * slot. Naming them free-form (a) lifts the 99-name cap on the disabled library
- * and (b) keeps the enabled (pakNN) and disabled namespaces disjoint, so
- * `md5(fileName)` stays globally unique with no identity/metadata migration.
+ * and (b) keeps the enabled (pakNN) and disabled namespaces disjoint, so the
+ * metaKey a file is filed under is unique across both folders. Identity no
+ * longer rides on that name (see Mod.id), but the metadata sidecar is still
+ * keyed by it, so the uniqueness requirement stands.
  *
  * The readable stem comes from the file's own name when it has one; for an
  * enabled mod (always a bare pakNN with no descriptive stem) we fall back to the
@@ -304,11 +306,16 @@ function pickEnableSlot(forbidden: Set<number>, preferred: Array<number | undefi
     throw new Error(ENABLE_LIMIT_MESSAGE);
 }
 
+/** A VPK found on disk, before scanMods resolves its stable id. Split out
+ *  because ids come from the metadata sidecar and are assigned for the whole
+ *  scan in one batch (see ensureModUids), not per file. */
+type ScannedVpk = Omit<Mod, 'id'>;
+
 /**
  * Scan a folder for VPK mods (async)
  */
-async function scanFolder(folder: string, enabled: boolean): Promise<Mod[]> {
-    const mods: Mod[] = [];
+async function scanFolder(folder: string, enabled: boolean): Promise<ScannedVpk[]> {
+    const mods: ScannedVpk[] = [];
 
     if (!existsSync(folder)) {
         return mods;
@@ -352,7 +359,6 @@ async function scanFolder(folder: string, enabled: boolean): Promise<Mod[]> {
             const metaKey = metaKeyFor(fullPath);
 
             mods.push({
-                id: generateModId(metaKey),
                 name: extractModName(entry),
                 fileName: entry,
                 path: fullPath,
@@ -398,7 +404,39 @@ export async function scanMods(deadlockPath: string): Promise<Mod[]> {
         scanFolder(disabledPath, false),
     ]);
 
-    const mods = scanned.flat();
+    // Resolve every scanned VPK to its stable sidecar uid, minting one for any
+    // file we haven't seen before (a fresh install, a hand-dropped VPK, or a
+    // library that predates this scheme).
+    //
+    // The seed must be content, never the path: a path seed would re-derive a
+    // deleted mod's uid for the next occupant of its slot, which is exactly the
+    // aliasing this scheme exists to prevent. The sidecar's stored sha256 is
+    // already the canonical hash for anything Grimoire installed, so the read
+    // below only touches disk for a file we have neither hashed nor identified
+    // before, and only once in that file's life.
+    const found = scanned.flat();
+    const seeds = new Map<string, string>();
+    for (const m of found) {
+        const meta = getModMetadata(m.metaKey);
+        if (meta?.modUid) continue; // already has an id; nothing to seed
+        const known = meta?.sha256;
+        if (known) {
+            seeds.set(m.metaKey, known);
+            continue;
+        }
+        try {
+            // Embed-aware: an imprinted VPK reports its ORIGINAL hash from the
+            // embed instead of being re-hashed, so identity survives imprinting.
+            seeds.set(m.metaKey, (await resolveVpkIdentity(m.path)).sha256);
+        } catch (err) {
+            // Unreadable right now (lock, permissions). ensureModUids falls back
+            // to a random uid, which costs reproducibility for this one file but
+            // keeps it from ever colliding with another mod's identity.
+            modTrace(`scanMods: could not hash ${m.metaKey} for its id seed: ${String(err)}`);
+        }
+    }
+    const uids = ensureModUids(found.map((m) => ({ metaKey: m.metaKey, seed: seeds.get(m.metaKey) })));
+    const mods: Mod[] = found.map((m) => ({ ...m, id: uids.get(m.metaKey)! }));
 
     // Self-heal: an enabled user VPK living in the priority root must carry
     // the priorityMod flag, or the Global surfaces can't see it and the next
@@ -567,7 +605,7 @@ async function reconcileEnabledDisabledCollisions(
         }
 
         // Contents differ, so keep both, but the disabled copy must lose the
-        // bare-filename id namespace it shares with the base-folder file. Give it
+        // bare-filename metadata-key namespace it shares with the base-folder file. Give it
         // a free-form name (exactly as disableMod does) rather than a scarce pakNN
         // slot: disabled VPKs aren't loaded by the engine, so they need no
         // load-order number, and the free-form namespace has no 99-slot cap.
@@ -689,7 +727,9 @@ async function moveModToFolderAs(
 
     return {
         ...targetMod,
-        id: generateModId(destMetaKey),
+        // id is deliberately carried over: it lives in the sidecar row that
+        // migrateModMetadata just moved to destMetaKey, so a move is not an
+        // identity change. This is the enable/disable half of the fix.
         fileName: destinationFileName,
         metaKey: destMetaKey,
         enabled,
@@ -716,7 +756,7 @@ interface AllocatedSlot {
  * `preferred` slot numbers (a remembered last-priority, a mod's own legacy pakNN)
  * are honored only in the base folder. `disabledForbidden` are pakNN held by
  * .disabled files; the base folder must avoid them because base + .disabled share
- * the bare-filename id namespace (overflow folders are folder-namespaced, so they
+ * the bare-filename metadata-key namespace (overflow folders are folder-namespaced, so they
  * don't). Shared by enableMod and allocateEnabledVpkPath.
  */
 async function allocateSlot(
@@ -901,9 +941,11 @@ export function setModPriorityFolder(deadlockPath: string, modId: string, priori
  * returned it, and the second `fs.rename` clobbered the first, so a mod the UI
  * still showed enabled had no VPK in addons (#bugs: toggling "disabled a lot of
  * them without replacing them with the mods i turned on"; "addons folder does not
- * reflect what is shown"). Also, a mod's id is derived from its filename, which a
- * move changes, so concurrent ops worked off stale ids. The queue makes each op
- * observe a consistent folder state and allocate non-colliding slots.
+ * reflect what is shown"). The queue makes each op observe a consistent folder
+ * state and allocate non-colliding slots. (It also used to be load-bearing for
+ * identity, back when a mod's id was a hash of its filename and any move
+ * invalidated it; ids are stable across moves now, so the remaining job is slot
+ * allocation and the enabled/disabled placement each op reads.)
  *
  * Non-reentrant: a locked function must NOT call another locked one (it would
  * wait on a queue slot it already holds). The one internal cross-call,
@@ -1195,7 +1237,7 @@ async function setModPriorityImpl(
     // also reject one held by a disabled file: the two share the bare-filename id
     // namespace, so reconcile would otherwise rename the disabled file on the next
     // scan and a merged-mod manifest pointing at it would lose its source.
-    // (Overflow folders have a folder-prefixed id namespace, so disabled names
+    // (Overflow folders have a folder-prefixed metadata-key namespace, so disabled names
     // can't collide there.)
     const collides =
         existsSync(join(parentDir, newFileName)) ||
@@ -1208,11 +1250,10 @@ async function setModPriorityImpl(
     await fs.rename(join(parentDir, targetMod.fileName), newPath);
     const newMetaKey = metaKeyFor(newPath);
 
-    const oldMeta = getModMetadata(targetMod.metaKey);
-    if (oldMeta) {
-        setModMetadata(newMetaKey, oldMeta);
-        removeModMetadata(targetMod.metaKey);
-    }
+    // migrateModMetadata rather than setModMetadata + remove: it OVERWRITES the
+    // destination row instead of merging into it, so an orphan row left at the
+    // new slot can't leak its fields (or its uid) onto this mod.
+    migrateModMetadata([{ from: targetMod.metaKey, to: newMetaKey }]);
 
     return {
         ...targetMod,
@@ -1220,7 +1261,6 @@ async function setModPriorityImpl(
         fileName: newFileName,
         metaKey: newMetaKey,
         path: newPath,
-        id: generateModId(newMetaKey),
     };
 }
 

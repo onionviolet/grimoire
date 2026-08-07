@@ -1,4 +1,4 @@
-import { createHash } from 'crypto';
+import { createHash, randomBytes } from 'crypto';
 import { createReadStream, readFileSync, writeFileSync, existsSync, renameSync, unlinkSync, statSync, mkdirSync, copyFileSync, readdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { metaKeyFor } from './deadlock';
@@ -125,6 +125,16 @@ export interface ModMetadata {
      *  when the user wants to stay on a specific version after the author
      *  replaces or rearranges files. */
     ignoreUpdates?: boolean;
+    /** Stable identity for this VPK, minted once and then carried through every
+     *  rename by migrateModMetadata. This is what `Mod.id` is, and the reason it
+     *  lives in the sidecar rather than being derived from the path: enabling a
+     *  mod moves it from `.disabled/<name>_dir.vpk` to `addons/pakNN_dir.vpk`,
+     *  and a pakNN slot vacated by one mod is later handed to another. A
+     *  path-derived id therefore changed identity on every toggle and let a
+     *  stale reference resolve to a completely different mod. See ensureModUids
+     *  for the minting rule (content-seeded when the canonical sha256 is known)
+     *  and for why a freed slot can never re-issue a retired uid. */
+    modUid?: string;
     /** User marked this mod Global: it lives in the priority root
      *  (citadel/grimoire), which the engine searches before citadel/addons, so
      *  it wins every file collision and the launch shuffle leaves it enabled.
@@ -243,6 +253,79 @@ export async function setModMetadataWithHash(
         ...data,
         sha256: (await resolveVpkIdentity(filePath)).sha256,
     });
+}
+
+/** Shape of a minted mod uid: 16 lowercase hex chars, matching the width of the
+ *  old md5-of-path ids so nothing downstream has to widen a column or a log. */
+const MOD_UID_RE = /^[0-9a-f]{16}$/;
+
+/**
+ * Resolve a stable uid for each scanned VPK, minting and persisting one for any
+ * entry that doesn't have it yet. Returns metaKey -> uid for the whole batch.
+ *
+ * Batched on purpose: this runs on every scan, and a per-mod setModMetadata
+ * would re-read and re-write the entire sidecar once per mod. One load, one
+ * save, and nothing is written at all once every mod has a uid (the steady
+ * state after the first scan).
+ *
+ * `seed` must be the mod's CANONICAL content hash, never its path. Content
+ * seeding is what makes a rebuilt sidecar row recover the same uid; a path seed
+ * would instead re-derive a DELETED mod's uid for whatever lands in its slot
+ * next, which is the bug this whole mechanism exists to close. A caller that
+ * genuinely cannot read the file passes no seed and gets a random uid: that
+ * loses reproducibility for that one file and keeps the safety property.
+ *
+ * The seed is only a seed. Uniqueness comes from the collision loop against
+ * every uid already in the sidecar, which is what keeps two byte-identical
+ * installs apart. Nothing ever re-mints an entry that already has a uid, so an
+ * id is permanent from the moment it is written.
+ */
+export function ensureModUids(
+    entries: Array<{ metaKey: string; seed?: string }>
+): Map<string, string> {
+    const metadata = loadMetadata();
+    const resolved = new Map<string, string>();
+
+    const taken = new Set<string>();
+    for (const row of Object.values(metadata)) {
+        if (row?.modUid && MOD_UID_RE.test(row.modUid)) taken.add(row.modUid);
+    }
+
+    let dirty = false;
+    for (const { metaKey, seed } of entries) {
+        const existing = metadata[metaKey]?.modUid;
+        if (existing && MOD_UID_RE.test(existing)) {
+            resolved.set(metaKey, existing);
+            continue;
+        }
+        const uid = mintModUid(seed ?? randomBytes(32).toString('hex'), taken);
+        taken.add(uid);
+        metadata[metaKey] = { ...metadata[metaKey], modUid: uid };
+        resolved.set(metaKey, uid);
+        dirty = true;
+    }
+
+    if (dirty) saveMetadata(metadata);
+    return resolved;
+}
+
+/**
+ * Derive a free uid from `seed`. Salting and re-hashing (rather than falling
+ * straight to randomness) keeps the common case reproducible: the first install
+ * of a given content hash always lands on the same uid.
+ */
+function mintModUid(seed: string, taken: ReadonlySet<string>): string {
+    for (let attempt = 0; attempt < 64; attempt++) {
+        const salt = attempt === 0 ? '' : `#${attempt}`;
+        const uid = createHash('sha256')
+            .update(`grimoire-mod-uid:${seed}${salt}`)
+            .digest('hex')
+            .slice(0, 16);
+        if (!taken.has(uid)) return uid;
+    }
+    // 64 collisions on a 64-bit space means the seed space is degenerate, not
+    // that we are out of ids. Fall back to randomness rather than loop forever.
+    return randomBytes(8).toString('hex');
 }
 
 /**
