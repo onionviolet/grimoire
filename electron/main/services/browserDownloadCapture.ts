@@ -24,10 +24,16 @@ import type { BrowserToolDownloadEvent } from '../../../src/types/electron';
 
 /** The active in-app-browser destination, as pushed by the renderer on every
  *  navigation event (`browser:set-active-destination`). Derived from the
- *  live URL on every nav, never "last shortcut clicked" (Pattern 3). */
+ *  live URL on every nav, never "last shortcut clicked" (Pattern 3). `label`
+ *  is the catalog entry's display label, carried alongside kind/origin so a
+ *  download's in-flight/replaced toast can name its source without a second
+ *  catalog lookup in the main process. */
 interface ActiveDestination {
     kind: BrowserDestinationKind | null;
     origin: string | null;
+    /** Optional so call sites/fixtures that only care about kind/origin
+     *  (e.g. `shouldCaptureToolDownload`'s existing tests) need not supply it. */
+    label?: string | null;
 }
 
 interface PendingToolDownload {
@@ -45,15 +51,19 @@ interface CaptureState {
 }
 
 const state: CaptureState = {
-    activeDestination: { kind: null, origin: null },
+    activeDestination: { kind: null, origin: null, label: null },
     pending: new Map(),
     attachedSessions: new Set(),
 };
 
 /** The only writer of the active-destination state. Called from
  *  `ipc/browser.ts`'s `browser:set-active-destination` handler. */
-export function setActiveDestination(kind: BrowserDestinationKind | null, origin: string | null): void {
-    state.activeDestination = { kind, origin };
+export function setActiveDestination(
+    kind: BrowserDestinationKind | null,
+    origin: string | null,
+    label: string | null
+): void {
+    state.activeDestination = { kind, origin, label };
 }
 
 /**
@@ -131,6 +141,30 @@ export function takePendingToolDownload(id: string): PendingToolDownload | null 
     return entry;
 }
 
+/** Every id currently pending disclosure. Exists for introspection (tests,
+ *  diagnostics); production code never needs to enumerate the map, only to
+ *  take a single entry by id. */
+export function pendingToolDownloadIds(): string[] {
+    return [...state.pending.keys()];
+}
+
+/** Enforces the single-pending-download invariant: only one tool download's
+ *  disclosure can be unanswered at a time (UI-SPEC zero-one-many row). Before
+ *  accepting a newly classified download, evicts whatever was pending,
+ *  deleting its temp file and pushing `replaced` naming the tool that
+ *  superseded it, so a resolve arriving later for the evicted id finds it
+ *  absent from the map and returns stale (T-06-07's confused-deputy
+ *  mitigation: `takePendingToolDownload` cannot tell "never issued" apart
+ *  from "superseded", and does not need to). */
+export async function replacePending(entry: PendingToolDownload, tool: string): Promise<void> {
+    for (const [previousId, previous] of state.pending) {
+        state.pending.delete(previousId);
+        await deleteTempFileQuietly(previous.tempPath);
+        pushToolDownloadEvent({ status: 'replaced', id: previousId, tool });
+    }
+    state.pending.set(entry.id, entry);
+}
+
 function pushToolDownloadEvent(payload: BrowserToolDownloadEvent): void {
     const win = getMainWindow();
     if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) {
@@ -150,12 +184,28 @@ function liveGuestUrl(webContents: WebContents): string {
     }
 }
 
+/** The label to show in the in-flight/replaced toasts: the catalog label the
+ *  renderer last pushed alongside the active destination, or the guest URL's
+ *  host when no label is known (e.g. it arrived null/empty). Captured once,
+ *  synchronously, at `will-download` time rather than read lazily out of
+ *  `state.activeDestination` later, since the guest can navigate away while
+ *  this download is still writing (RESEARCH Pattern 3). */
+function toolLabelFor(active: ActiveDestination, liveUrl: string): string {
+    if (active.label) return active.label;
+    try {
+        return new URL(liveUrl).host;
+    } catch {
+        return '';
+    }
+}
+
 /** Registers the async classify-and-disclose continuation for a download
  *  whose save path has already been set. Split out from the will-download
  *  listener so `item.setSavePath(...)` can be the literal, unqualified first
  *  statement of the tool branch below (Pitfall 3) with nothing async or
- *  IPC-shaped preceding it. */
-function registerToolDownloadCompletion(item: DownloadItem, tempPath: string): void {
+ *  IPC-shaped preceding it. `tool` is captured at will-download time (see
+ *  `toolLabelFor`) and threaded through to the eventual `replaced` push. */
+function registerToolDownloadCompletion(item: DownloadItem, tempPath: string, tool: string): void {
     const displayName = displayNameForDownload(item.getFilename(), 'Browser download');
 
     item.once('done', async (_event, downloadState) => {
@@ -171,15 +221,18 @@ function registerToolDownloadCompletion(item: DownloadItem, tempPath: string): v
         const classification = classifyToolDownload(tempPath, displayName);
         if (!classification.ok) {
             // Refused before any pending-map entry exists (this line runs
-            // before the `state.pending.set` below), so a refused download
-            // can never reach the confirm dialog (D-10).
+            // before `replacePending` below), so a refused download can
+            // never reach the confirm dialog (D-10).
             await deleteTempFileQuietly(tempPath);
             pushToolDownloadEvent({ status: 'refused', id: randomUUID(), reason: classification.reason });
             return;
         }
 
         const id = randomUUID();
-        state.pending.set(id, { id, tempPath, displayName });
+        // Evicts whatever was pending (at most one entry) before this one
+        // becomes the pending download, so the single-pending invariant
+        // holds even across two Build VPK clicks in one session.
+        await replacePending({ id, tempPath, displayName }, tool);
         pushToolDownloadEvent({ status: 'ready', id, name: displayName });
     });
 }
@@ -217,6 +270,11 @@ export function attachBrowserDownloadCapture(session: Session): void {
         // never gets a chance to apply its default (silent,
         // OS-Downloads-folder) save behavior first.
         item.setSavePath(allocateToolDownloadTempPath(root, item.getFilename()));
-        registerToolDownloadCompletion(item, item.getSavePath());
+        const tool = toolLabelFor(state.activeDestination, liveGuestUrl(webContents));
+        registerToolDownloadCompletion(item, item.getSavePath(), tool);
+        // Pushed last, after the save path is set and the completion
+        // listener is registered, so the renderer's in-flight toast can
+        // never precede Chromium actually starting to write the bytes.
+        pushToolDownloadEvent({ status: 'started', id: randomUUID(), tool });
     });
 }

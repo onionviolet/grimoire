@@ -339,11 +339,11 @@ export interface ImportCustomModsProgress {
 }
 
 /** Lifecycle of a browser-tool download's round trip from `will-download` to
- *  disclosure. This plan (06-01) emits and handles only 'ready' and
- *  'refused'; 'started' and 'replaced' are pushed by plan 06-02 once the
- *  in-flight toast and second-click replacement land, and 'failed' covers a
- *  future non-classification error path. Declaring the full union now avoids
- *  churning this type twice. */
+ *  disclosure. Every member is both emitted (browserDownloadCapture.ts) and
+ *  handled (the `onBrowserToolDownload` effect in Browser.tsx): 'started' and
+ *  'replaced' back the in-flight/replaced toasts, 'ready' opens the confirm
+ *  disclosure, 'refused' renders the danger-tone banner, and 'failed' covers
+ *  a non-completed DownloadItem terminal state. */
 export type BrowserToolDownloadStatus = 'started' | 'ready' | 'refused' | 'failed' | 'replaced';
 
 export interface BrowserToolDownloadEvent {
@@ -353,7 +353,8 @@ export interface BrowserToolDownloadEvent {
     name?: string;
     /** `describeVpkRejection()` text, main-process English (present for 'refused'). */
     reason?: string;
-    /** Catalog label of the source destination (used by 06-02's toasts). */
+    /** Catalog label of the source destination, or the guest URL's host when
+     *  no label is known (present for 'started' and 'replaced'). */
     tool?: string;
 }
 
@@ -1244,8 +1245,13 @@ export interface ElectronAPI {
     /** Fire-and-forget: tell main which catalog destination (if any) the
      *  guest's current URL resolves to, so `will-download` knows whether to
      *  capture. Pushed on every nav event, not just on shortcut click
-     *  (RESEARCH Pattern 3). */
-    setActiveBrowserDestination: (kind: BrowserDestinationKind | null, origin: string | null) => void;
+     *  (RESEARCH Pattern 3). `label` is the catalog entry's display label,
+     *  used to name the source in the in-flight/replaced toasts. */
+    setActiveBrowserDestination: (
+        kind: BrowserDestinationKind | null,
+        origin: string | null,
+        label: string | null
+    ) => void;
 
     // Crosshair Presets
     getCrosshairPresets: () => Promise<{ presets: CrosshairPreset[]; activePresetId: string | null }>;

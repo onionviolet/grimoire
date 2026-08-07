@@ -3579,7 +3579,9 @@
       "cancel": "Discard",
       "fallbackName": "Browser download",
       "refusedPrefix": "Not added: ",
-      "interrupted": "The download did not finish. Nothing was added."
+      "interrupted": "The download did not finish. Nothing was added.",
+      "downloading": "Downloading from {{tool}}...",
+      "replaced": "Replaced with a newer download from {{tool}}."
     }
   },
   "chatWheel": {

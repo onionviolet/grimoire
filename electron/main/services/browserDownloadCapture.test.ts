@@ -23,6 +23,7 @@ import {
     attachBrowserDownloadCapture,
     classifyToolDownload,
     displayNameForDownload,
+    pendingToolDownloadIds,
     setActiveDestination,
     shouldCaptureToolDownload,
     toolDownloadTempRoot,
@@ -228,13 +229,20 @@ describe('will-download tool capture: refusal and failure paths (D-10)', () => {
             isDestroyed: () => false,
             webContents: { isDestroyed: () => false, send: sendSpy },
         };
-        setActiveDestination('tool', 'https://xkitkatcat.github.io');
+        setActiveDestination('tool', 'https://xkitkatcat.github.io', 'Pimp My Hideout');
     });
 
     function pushedEvents(): BrowserToolDownloadEvent[] {
         return sendSpy.mock.calls
             .filter(([channel]) => channel === 'browser:tool-download')
             .map(([, payload]) => payload as BrowserToolDownloadEvent);
+    }
+
+    /** Events after the synchronous `started` push every will-download
+     *  capture now emits (Task 2) — this describe block asserts only the
+     *  terminal (refused/ready/failed) outcome, not the in-flight push. */
+    function terminalEvents(): BrowserToolDownloadEvent[] {
+        return pushedEvents().filter((e) => e.status !== 'started');
     }
 
     it('refuses a ZIP-header file: pushed reason equals describeVpkRejection, temp file is gone, no ready is ever pushed', async () => {
@@ -249,7 +257,7 @@ describe('will-download tool capture: refusal and failure paths (D-10)', () => {
         await triggerDone('completed');
 
         expect(existsSync(getSavePath())).toBe(false);
-        const events = pushedEvents();
+        const events = terminalEvents();
         expect(events).toHaveLength(1);
         expect(events[0].status).toBe('refused');
         expect(events[0].reason).toBe(
@@ -270,7 +278,7 @@ describe('will-download tool capture: refusal and failure paths (D-10)', () => {
         await triggerDone('completed');
 
         expect(existsSync(getSavePath())).toBe(false);
-        const events = pushedEvents();
+        const events = terminalEvents();
         expect(events).toHaveLength(1);
         expect(events[0].status).toBe('refused');
         expect(events[0].reason).toBe(
@@ -290,7 +298,7 @@ describe('will-download tool capture: refusal and failure paths (D-10)', () => {
         await triggerDone('completed');
 
         expect(existsSync(getSavePath())).toBe(true);
-        const events = pushedEvents();
+        const events = terminalEvents();
         expect(events).toHaveLength(1);
         expect(events[0].status).toBe('ready');
         expect(events[0].name).toBe('build.vpk');
@@ -308,9 +316,79 @@ describe('will-download tool capture: refusal and failure paths (D-10)', () => {
         await triggerDone('interrupted');
 
         expect(existsSync(getSavePath())).toBe(false);
-        const events = pushedEvents();
+        const events = terminalEvents();
         expect(events).toHaveLength(1);
         expect(events[0].status).toBe('failed');
         expect(events.some((e) => e.status === 'ready' || e.status === 'refused')).toBe(false);
+    });
+
+    it('pushes started as the last statement of the tool branch, before any file classification runs', () => {
+        const willDownload = attachAndCaptureListener();
+        const { item, webContents, getSavePath } = makeStubItem(
+            'build.vpk',
+            'https://xkitkatcat.github.io/pimpmyhideout/'
+        );
+
+        willDownload({}, item, webContents);
+
+        // No fixture bytes were ever written to getSavePath() and `done` was
+        // never triggered, so classifyToolDownload cannot have run yet; the
+        // only thing that could have been pushed synchronously is `started`.
+        const events = pushedEvents();
+        expect(events).toHaveLength(1);
+        expect(events[0].status).toBe('started');
+        expect(events[0].tool).toBe('Pimp My Hideout');
+        expect(existsSync(getSavePath())).toBe(false);
+    });
+});
+
+describe('replace-newest: only one pending tool download disclosure at a time', () => {
+    let dir: string;
+    let sendSpy: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+        dir = mkdtempSync(join(tmpdir(), 'browser-download-replace-'));
+        harness.userData = dir;
+        sendSpy = vi.fn();
+        harness.mainWindow = {
+            isDestroyed: () => false,
+            webContents: { isDestroyed: () => false, send: sendSpy },
+        };
+        setActiveDestination('tool', 'https://xkitkatcat.github.io', 'Pimp My Hideout');
+    });
+
+    function pushedEvents(): BrowserToolDownloadEvent[] {
+        return sendSpy.mock.calls
+            .filter(([channel]) => channel === 'browser:tool-download')
+            .map(([, payload]) => payload as BrowserToolDownloadEvent);
+    }
+
+    it('two consecutive captures produce a replaced push for the first id; the first temp path is gone and the pending map holds exactly one entry', async () => {
+        const willDownload = attachAndCaptureListener();
+
+        const first = makeStubItem('first.vpk', 'https://xkitkatcat.github.io/pimpmyhideout/');
+        willDownload({}, first.item, first.webContents);
+        writeVpkFixture(first.getSavePath());
+        await first.triggerDone('completed');
+
+        const firstReady = pushedEvents().find((e) => e.status === 'ready');
+        expect(firstReady).toBeDefined();
+        const firstId = firstReady!.id;
+        const firstTempPath = first.getSavePath();
+
+        const second = makeStubItem('second.vpk', 'https://xkitkatcat.github.io/pimpmyhideout/');
+        willDownload({}, second.item, second.webContents);
+        writeVpkFixture(second.getSavePath());
+        await second.triggerDone('completed');
+
+        expect(existsSync(firstTempPath)).toBe(false);
+        expect(existsSync(second.getSavePath())).toBe(true);
+
+        const ids = pendingToolDownloadIds();
+        expect(ids).toHaveLength(1);
+        expect(ids).not.toContain(firstId);
+
+        const replaced = pushedEvents().filter((e) => e.status === 'replaced');
+        expect(replaced.some((e) => e.id === firstId && e.tool === 'Pimp My Hideout')).toBe(true);
     });
 });
