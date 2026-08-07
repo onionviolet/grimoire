@@ -366,6 +366,31 @@ A log of the load-bearing decisions made while planning Grimoire Social. Each en
 
 ---
 
+## ADR-018: This fork points at the upstream Worker and its wave 3 features stay dormant
+
+**Date:** 2026-08-07
+**Status:** Accepted
+
+**Context.** `.github/workflows/release.yml` bakes `GRIMOIRE_SOCIAL_BASE_URL: https://grimoire-social.slusheliott.workers.dev` into every packaged Windows build. That Worker is upstream-owned. Three commits (`5f870bd` adding the mod-availability and owner view-count wire fields, `754efe7` adding the revalidation cron and coalesced view counts, `13a5695` fixing a detail-read failure when no execution context exists) sit unpushed in the local `../grimoire-social` checkout, whose only remote is `Slush97/grimoire-social`. No `onionviolet/grimoire-social` fork exists. Migration `0005_revalidation_and_views.sql`, which adds the four columns those commits' code selects, has not been applied to any database this fork controls.
+
+**Decision.** Per project decision D-01, the shipped installer keeps pointing at the upstream Worker. The sibling is not forked. `.github/workflows/ci.yml`'s and `.github/workflows/release.yml`'s sibling checkouts, and `scripts/check-sibling-repos.mjs`'s `SIBLINGS` entry, keep naming `Slush97/grimoire-social`. The three commits stay unpushed. Migration 0005 is not applied. No Worker is deployed.
+
+**Consequences.**
+- (-) The revalidation cron and the view counter do not run against the deployment this fork ships against, so `mods_available`, `mods_revalidated_at`, `unavailable_mod_ids`, and `view_count` are absent from every response in practice, not merely null.
+- (+) The client was built for exactly that. `resolveModsAvailability` in `src/components/social/availability.ts` treats an absent `mods_available` as `{ kind: 'unsupported' }` and renders no badge, distinct from a present `null` (`{ kind: 'unknown' }`, rendered as "not checked yet"); the defined-check in `src/components/social/SocialProfileHeader.tsx` (`isOwner && viewCount !== undefined`) renders no view-count row when the field is absent, and still renders a real zero. `src/components/social/dormantService.test.ts` is the guard that keeps both gates in place: it fails if either check is loosened to a truthiness test or removed.
+- (+/-) The `ProfileDetailWithAvailability` shim in `src/types/social.ts`, a local widening of the sibling's `ProfileDetail` with the `view_count` and `unavailable_mod_ids` fields the deployed service does not send, stays necessary. It stops being necessary only if the sibling change becomes reachable from CI (the sibling is pushed and `ci.yml`/`release.yml` check out a ref that includes it).
+- (+) The CI-truth typecheck taken for this decision passed: the local sibling was confirmed clean on `main`, 3 commits ahead of `origin/main`, then detached to `origin/main` (resolved `efffe0b`) to match what a fresh CI checkout resolves, and `pnpm exec tsc -b --force` exited 0 against that detached state. This repository currently builds from a clean CI checkout of the sibling; there is no divergence-caused typecheck failure today. The sibling was restored to `main` afterward.
+- (-) `.github/workflows/ci.yml`'s sibling checkout is pinned to `ref: main`, a moving branch rather than a commit SHA. This is a pre-existing supply-chain soft spot this decision leaves in place, unlike the forked-vpkmerge checkout in the same workflow family, which plan 02-02 pins to a fixed SHA specifically to avoid this class of drift.
+- (-) The GameBanana mod-title tooltip in `src/components/social/ModsAvailableBadge.tsx` still shows raw numeric ids (`GameBanana: #123, #456`) rather than mod titles, and is deliberately not built: `unavailable_mod_ids` never populates against a service that does not run the revalidation cron, so there is nothing to look titles up for. Build it when a deployment that runs the revalidation cron exists, which is the trigger this decision is leaving unbuilt work waiting on.
+
+**Alternatives considered.** Forking `grimoire-social` to `onionviolet`: repoint the three call sites above, push the three unpushed commits, create a D1 database, apply migration 0005, then rebake the URL and deploy the Worker. Rejected for this plan's scope per D-01; every step is real work with its own risk (a schema push, a fresh D1 instance, a Wrangler deploy) and none of it is reversible from this plan. Offering the cron and counter upstream as a pull request to `Slush97/grimoire-social`: rejected as out of scope here, and contingent on upstream wanting the change, which this plan does not decide.
+
+**Ordering constraint, recorded because it is the fact most likely to be lost if this decision is revisited.** Migration 0005 adds the four columns (`mods_available`, `mods_revalidated_at`, `unavailable_mod_ids`, `view_count` and their supporting shape) that the profile routes' `SELECT` statements read in the commits above. It must be applied to the target D1 database *before* a Worker build that selects those columns is deployed to that database. These are two separate, non-atomic operations: a deploy that runs ahead of its migration will 500 on every profile read the moment the new Worker code executes a `SELECT` for a column that does not exist yet.
+
+**Terms-of-service gate placement (Task 2 of the plan that produced this ADR).** `docs/social-architecture.md` said the TOS gate fires "at first login" in two places (Liability framing, and the Phase 1 checklist). The shipped code fires it inline in `PublishDialog.tsx` at the moment of publish, storing acceptance under a `localStorage` key (`grimoire-social-tos-accepted-v1`) rather than at sign-in. Decided **doc-follows-code**: the design document is corrected to say first publish, matching the code, rather than moving the gate to first login. Reasoning: the gate already sits at the moment consent actually matters (when content leaves the machine), moving it would add a new surface, new catalog keys, and translator work for a flow only users who sign in would see, and a user who only signs in and browses has agreed to nothing either way, which is an acceptable outcome under this framing. Either placement stores acceptance identically: per-machine, in `localStorage`, clearable by the user. That is not a durable, account-bound, or server-recorded consent record regardless of which surface shows the checkbox, and the corrected document text says so explicitly rather than implying otherwise.
+
+---
+
 ## Index of decisions
 
 | ID | Title | Status |
@@ -387,3 +412,4 @@ A log of the load-bearing decisions made while planning Grimoire Social. Each en
 | ADR-015 | Shared types via Zod schemas package | Accepted |
 | ADR-016 | Owner-only PATCH for title + description on profiles | Accepted |
 | ADR-017 | Coalesced view counts + paced revalidation cron (Phase 1.5) | Accepted |
+| ADR-018 | This fork points at the upstream Worker and its wave 3 features stay dormant | Accepted |

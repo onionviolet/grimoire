@@ -253,7 +253,7 @@ Solo-dev moderation discipline: **structural friction over manual review**.
 - Community moderators / trust levels
 - Appeals workflow (manual via Discord for now)
 
-**Liability framing**: we host metadata + references to GameBanana submissions, not files. Add a one-paragraph TOS at first login: "publishing requires content that complies with GameBanana's TOS; you grant us the right to host the metadata; we may remove anything." Don't overlawyer; this is a small community tool.
+**Liability framing**: we host metadata + references to GameBanana submissions, not files. Add a one-paragraph TOS at first publish: "publishing requires content that complies with GameBanana's TOS; you grant us the right to host the metadata; we may remove anything." Don't overlawyer; this is a small community tool. Acceptance is stored per-machine in `localStorage`, not server-side or account-bound, so it is a friction reducer rather than a durable consent record (see ADR-018).
 
 ### 6.5. Account deletion
 
@@ -419,7 +419,7 @@ The app shifts from "zero telemetry" to "explicit social opt-in." Discover tab f
 8. Admin CLI (Node script hitting the API with admin token), including `feature-profile` and `unfeature-profile` commands
 9. Electron: `social.ts` service + IPC + preload + Discover tab + Publish dialog
 10. Sidebar entry, NSFW gating, login flow with **async** safeStorage
-11. TOS modal at first login; account-deletion path in Settings
+11. TOS gate at first publish (stored per-machine in `localStorage`, not a durable consent record; see ADR-018); account-deletion path in Settings
 12. **Pre-seed: hand-build 10-20 featured profiles** before launch so Discover isn't empty on day one
 13. Wrangler deploy to `*.workers.dev`; soft-launch to a Discord channel for feedback
 
