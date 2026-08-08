@@ -169,7 +169,7 @@ Plans:
   4. The webview is no less hardened after the download path changes than before: the guest still has no preload, no Node, its own partition, and an http(s)-only `src`
   5. A destination declares what kind of thing it is, so a handoff keys off that kind rather than a hardcoded URL match
 
-**Plans**: 6 plans (5 executed, 1 gap closure pending)
+**Plans**: 6/6 plans executed
 
 Plans:
 **Wave 1**
@@ -188,7 +188,7 @@ Plans:
 
 **Wave 4** *(gap closure, blocked on Wave 3 completion)*
 
-- [ ] 06-06-PLAN.md — Make the tool download disclosure survive navigation (CR-01) and sweep the temp root at startup (WR-05)
+- [x] 06-06-PLAN.md — Make the tool download disclosure survive navigation (CR-01) and sweep the temp root at startup (WR-05)
 
 **UI hint**: yes
 
@@ -208,4 +208,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phase 6 declar
 | 3. Foundry Completes Its Build Contract | 0/TBD | Not started | - |
 | 4. Locker And Foundry As One Object | 0/TBD | Not started | - |
 | 5. One Inventory, One Journey | 0/TBD | Not started | - |
-| 6. Community Tools Land Inside Grimoire | 5/5 | In Progress|  |
+| 6. Community Tools Land Inside Grimoire | 6/6 | In Progress|  |
