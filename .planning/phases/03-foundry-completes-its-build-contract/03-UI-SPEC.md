@@ -1,7 +1,7 @@
 ---
 phase: 3
 slug: foundry-completes-its-build-contract
-status: draft
+status: approved
 shadcn_initialized: false
 preset: none
 created: 2026-08-08
@@ -102,17 +102,71 @@ Accent reserved for (explicit list, nothing else): the recolor `Tag`'s icon and 
 > Populated by the ui-phase UI-consideration probe (Step 9.5). Shape-rooted UI *state*
 > coverage (empty / loading / error / populated / partial / overflow / zero-one-many / long-text).
 
-Applicable state considerations resolved: 5 covered, 2 backstop, 0 unresolved.
+**Probe run:** 5 elements, 35 applicable considerations — **27 covered, 8 backstop, 0 unresolved.**
 
-| Category | Element(s) | Status | Resolution / Reason |
-|----------|------------|--------|---------------------|
-| loading | Recolor "Stage" button, Abilities tab | 🧪 backstop | `prepareRecolorStagedEdit` is async (bakes + lists a VPK before staging, per RESEARCH.md Pattern 1) and may be slow for VFX-heavy heroes (Assumptions Log A1). The button must enter `Button isLoading` with "Staging…" copy for the duration; no measured latency exists yet, so this is a backstop until a UAT pass confirms the spinner actually covers the real wait |
-| error | Recolor staging, unreadable-mod inspection failure | ✅ covered | Exact copy specified above, mirroring `SoundBrowse.tsx`'s live "Cannot stage this sound while {{mods}} cannot be inspected" pattern — the mechanism (`visualEdits.ts`'s `inspect`/`confirm`) already exists and is reused unchanged |
-| populated (collision) | Recolor staging over an already-enabled same-path owner | ✅ covered | Confirmation copy specified above, mirroring `SoundBrowse.tsx:1204`'s existing conflict-preflight string exactly |
-| zero-one-many | Sound-shuffle toggle row, per hero | ✅ covered | Zero sound-swap mods for a hero → row does not render (D-11's `.filter()` behavior). One or many → one toggle button per sound-swap mod, matching how `HeroSkinsPanel.tsx` already renders one per skin group |
-| partial | `HeroEffectsPanel`'s Abilities tab (staged) vs Body+Gun tab (immediate) coexisting in one mounted panel | ✅ covered | Distinguishing captions specified above for both tabs (Pitfall 4) — this is the state-coverage fix for the exact ambiguity RESEARCH.md flags |
-| long-text | Hero display name in the "Open in Sound Locker" link's target hero, and in `addToShuffle`/`removeFromShuffle`'s `{{name}}` interpolation | 🧪 backstop | Existing i18n keys already interpolate hero name without a declared truncation strategy anywhere else in the codebase (`MyChanges.tsx`'s equivalent link has the same property); no hero name in the current roster is long enough to overflow the `text-[11px]` link, but no explicit `truncate` class exists either — carry the existing (unverified) assumption forward rather than adding new handling this phase didn't ask for |
-| overflow | Multiple sound-shuffle toggle rows stacking under one hero in `SoundBrowse.tsx` | ✅ covered | Each row is a single inline button appended to the existing `SoundRow` layout (`gap-2` per the Spacing Scale above); no new wrapping/scrolling container is introduced, so overflow behavior is inherited from `SoundRow`'s existing flex layout unchanged |
+E2's detected kinds were widened at the propose-then-confirm step (`static-content` → `+ interactive-control, form`): the prose classifier read the staged-status line as static text, which suppressed its `empty` and `partial` categories even though it is a two-valued indicator derived from a variable-size staged-edit set.
+
+### E1 — Recolor "Stage" button (`HeroEffectsPanel.tsx`, Abilities tab)
+
+| Category | Status | Resolution / Reason |
+|----------|--------|---------------------|
+| empty | ✅ covered | No colour/mode selected yet → the Stage button renders `disabled` (existing `Button` disabled treatment, unchanged). There is no separate empty banner; the disabled control *is* the empty state |
+| loading | 🧪 backstop | `prepareRecolorStagedEdit` is async (bakes + lists a VPK before staging, RESEARCH.md Pattern 1) and may be slow for VFX-heavy heroes (Assumptions Log A1). Button enters `Button isLoading` with "Staging…". No measured latency exists yet — **verification: backstop** (UAT confirms the spinner covers the real wait) |
+| error | ✅ covered | "Cannot stage this recolor while {{mods}} cannot be inspected. Resolve those VPKs and try again." — mirrors `SoundBrowse.tsx`'s live inspection-failure pattern; `visualEdits.ts`'s `inspect`/`confirm` mechanism is reused unchanged |
+| populated | ✅ covered | Enabled `Button variant="primary"` carrying the mode-specific label ("Stage colour" / "Stage rainbow" / "Stage gradient" / "Stage trippy VFX"), accent-bordered per the Color contract, with the status line and caption below it |
+| partial | 🧪 backstop | A hero whose ability VFX layers are only partly detectable (some layers extract, others do not). RESEARCH.md does not establish whether `detectVfxLayer` reports per-layer partial success. **verification: backstop** — if partial detection is reachable, the button must state which layers will be staged rather than staging silently |
+| overflow | ✅ covered | The longest label, "Stage trippy VFX" (16 chars), is exactly the width of the "Apply trippy VFX" label it replaces, inside the same full-width panel column. No new overflow surface is introduced |
+| zero-one-many | 🧪 backstop | Behavior when a recolor edit for this hero is *already* staged and the user stages again: replace-in-place or append a second edit. Not established in RESEARCH.md. **verification: backstop** — the planner must not assume either; UAT settles it |
+| long-text | 🧪 backstop | The "Stage {{mode}}" labels are i18n keys; a locale (German, Hebrew) may render materially longer than the English 16 chars. No `truncate` exists on the existing `Button`. **verification: backstop** — check the longest shipped locale before assuming the label fits |
+
+### E2 — Staged-status line and distinguishing caption (`HeroEffectsPanel.tsx`)
+
+| Category | Status | Resolution / Reason |
+|----------|--------|---------------------|
+| empty | ✅ covered | Zero staged recolor edits → **"Not staged"**. This is the default render, not a suppressed element: the line always occupies its row so the panel does not reflow when an edit is staged |
+| loading | ✅ covered | While `prepareRecolorStagedEdit` is in flight the status line holds its previous value unchanged; the in-progress affordance lives solely on the button (E1 loading). No second spinner |
+| error | ✅ covered | Staging failed → the line stays "Not staged" and the error surfaces through E1's error copy. The status line never reports a state the build tray does not actually hold |
+| partial | 🧪 backstop | Copy is binary ("Staged, not yet forged" / "Not staged") but the underlying staged-edit set can hold several recolor edits for one hero. The plural/partial reading is undefined. **verification: backstop** — either confirm one-edit-per-hero holds, or the copy needs a count |
+| overflow | ✅ covered | Single `text-xs text-text-secondary` line inside the existing panel column; it wraps rather than clipping, matching `HeroEffectsPanel`'s existing description-line convention |
+| long-text | ✅ covered | Localized status and caption strings wrap onto additional lines within the same column. No fixed height is set, so a longer translation grows the block rather than truncating |
+
+### E3 — Recolor kind tag in the Foundry build tray change list (`MyChanges.tsx`, `changeList.ts`)
+
+| Category | Status | Resolution / Reason |
+|----------|--------|---------------------|
+| empty | ✅ covered | Empty change list → existing `foundry.workshop.stagedEditsEmpty` ("Stage an edit, then review it in the Build tray") renders unchanged. This phase adds no new empty-state copy here |
+| loading | ✅ covered | An entry appears only after staging resolves; there is no optimistic row and therefore no per-entry skeleton |
+| error | ✅ covered | A failed stage adds no entry. The list never shows a half-created recolor row |
+| populated | ✅ covered | `Tag tone="accent"` labelled "Recolor" (reusing `foundry.subtools.recolor` verbatim) with the lucide `Palette` icon, sitting alongside the existing Sound and Texture entries |
+| partial | 🧪 backstop | Sound and texture entries carry a preview affordance; whether a recolor entry can render an equivalent preview is not established. **verification: backstop** — a recolor row with no preview must still read as complete, not broken |
+| overflow | ✅ covered | Long change lists scroll inside the build tray's existing scroll container. The recolor row is the same height as the sound/texture rows, so no new overflow behavior is introduced |
+| zero-one-many | ✅ covered | The `entry.kind === 'sound' ? 'Sound' : 'Texture'` ternaries at `MyChanges.tsx:333` and `changeList.ts:160` widen to an exhaustive three-branch switch. A fallback branch must exist so an unrecognized future kind renders a neutral label rather than mislabelling itself "Texture" |
+
+### E4 — Sound-shuffle toggle button, per sound row (`SoundBrowse.tsx` / `HeroWorkshop.tsx`)
+
+| Category | Status | Resolution / Reason |
+|----------|--------|---------------------|
+| empty | ✅ covered | Hero with zero sound-swap mods → the toggle row does not render at all (D-11's `.filter()` behavior). This is an absence, deliberately not an empty-state banner |
+| loading | ✅ covered | Pool membership is read from already-loaded local state, so there is no async gap and no loading treatment |
+| error | 🧪 backstop | A failed pool write (disk or IPC error) is not covered by an existing pattern in `HeroSkinsPanel.tsx`. **verification: backstop** — the toggle must revert its `aria-pressed` state rather than showing a pressed button whose write did not land |
+| populated | ✅ covered | Icon-only `Shuffle` button, unpressed on the existing `bg-white/[0.16]` track, gaining the accent fill only once `aria-pressed` is true — per the Color contract's 4-item accent reserve |
+| partial | ✅ covered | Some of a hero's sounds in the pool and others not is the normal case: each row's toggle carries its own independent `aria-pressed`, so mixed state is representable without any aggregate indicator |
+| overflow | ✅ covered | Each toggle is a single inline button appended to the existing `SoundRow` flex layout at `gap-2`. No new wrapping or scrolling container is introduced; overflow is inherited from `SoundRow` unchanged |
+| zero-one-many | ✅ covered | One toggle per sound-swap mod, matching how `HeroSkinsPanel.tsx` already renders one per skin group. Zero → no row (see empty) |
+| long-text | ✅ covered | The hero name interpolates into the `locker.randomize.addToShuffle`/`removeFromShuffle` `title`/`aria-label` only, never into rendered layout, so name length cannot affect the row's width |
+
+### E5 — "Open in Sound Locker" link (`SoundBrowse.tsx`)
+
+| Category | Status | Resolution / Reason |
+|----------|--------|---------------------|
+| empty | ✅ covered | A hero with no sound-swap mods has no shuffle surface, so the link is absent along with the row it sits in (same D-11 rule as E4 empty) |
+| loading | ✅ covered | Navigation is a synchronous HashRouter route change to `/locker/sounds?hero=<display name>`. No pending or interstitial state exists to render |
+| error | 🧪 backstop | The link passes a hero *display name* into the Locker's filter (`lockerMode.ts:61-66`). Whether every display name round-trips to a match is not verified. **verification: backstop** — a name that fails to match must land on the unfiltered Sound Locker, never on a silently empty filtered view |
+| populated | ✅ covered | `text-[11px] font-normal text-text-secondary hover:text-text-primary` with the lucide `ExternalLink` icon at `size={11}`, reusing the `MyChanges.tsx:313` compact-link pattern byte-for-byte |
+| overflow | ✅ covered | Inline link inside the existing row; it wraps with its container rather than forcing horizontal scroll |
+| long-text | ✅ covered | The label is the fixed string "Open in Sound Locker" — the hero name goes into the query string, not the visible label — so a long hero name cannot widen the link |
+
+**Planner note:** the 8 backstop rows are not blockers, but each one carries a question no artifact currently answers. At verify time, a backstop with no wired evidence routes to `human_needed` rather than passing silently. The two most likely to change implementation shape are E1 `zero-one-many` (does re-staging replace or append?) and E3 `zero-one-many` (the kind ternary needs an exhaustive fallback branch).
 
 ---
 
@@ -127,11 +181,11 @@ Applicable state considerations resolved: 5 covered, 2 backstop, 0 unresolved.
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Registry Safety: PASS
+- [x] Dimension 1 Copywriting: PASS
+- [x] Dimension 2 Visuals: PASS
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS — revised from BLOCK (was 5 sizes / 3 weights)
+- [x] Dimension 5 Spacing: PASS — revised from BLOCK (2px/6px moved out of the declared scale)
+- [x] Dimension 6 Registry Safety: PASS
 
-**Approval:** pending
+**Approval:** approved (gsd-ui-checker, revision 1, 2026-08-08). UI-consideration probe run post-approval: 35 applicable, 27 covered, 8 backstop, 0 unresolved.
