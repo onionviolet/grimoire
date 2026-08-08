@@ -177,6 +177,14 @@ None - no external service configuration required.
 - Carried-forward findings out of scope for this plan (per its own Non-goals section): WR-02 (`destinationForUrl` path prefix not segment-boundary aware), WR-03 (dropped adopted-thumbnail fetch on the browser install path), WR-04 (`normalizeUrl` misclassifies bare host:port), WR-05 (`browser:resolve-tool-download` does not runtime-narrow its arguments), IN-01 (unused event id on `failed`/`refused`). None were touched while passing through the same files.
 - The live Pimp My Hideout dev-slot check (clicking Build VPK on the real hosted tool) remains a manual/UAT row per 06-01's decision, but is now worth running once since this plan's fix is precisely what that check would have caught failing before.
 
+## Self-Check: PASSED
+
+- FOUND: electron/main/ipc/mods.toolDownloadImportSeam.test.ts
+- FOUND: .planning/phases/06-community-tools-land-inside-grimoire/06-07-SUMMARY.md
+- FOUND commit: 120ec99 (Task 1)
+- FOUND commit: 175646c (Task 2)
+- FOUND commit: 2535945 (this SUMMARY)
+
 ---
 *Phase: 06-community-tools-land-inside-grimoire*
 *Completed: 2026-08-08*
