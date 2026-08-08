@@ -22,6 +22,7 @@ import MultiVpkPickerModal from './MultiVpkPickerModal';
 import ImportCustomModsModal from './ImportCustomModsModal';
 import type { ImportCustomModResult } from '../lib/api';
 import DiscordPresence from './DiscordPresence';
+import { useBrowserToolDownloadHandoff } from '../lib/useBrowserToolDownloadHandoff';
 
 export default function Layout() {
   const { t } = useTranslation();
@@ -154,6 +155,10 @@ export default function Layout() {
     });
     return unsubscribe;
   }, []);
+
+  // The tool-download disclosure is app scoped for the same reason the
+  // one-click install handler is: it outlives the page that started it.
+  useBrowserToolDownloadHandoff();
 
   // Surface GameBanana rate limiting app-wide. The heavy "Fix Unknown"
   // auto-detect is the usual trigger, but any tab can hit it, so the warning
