@@ -25,21 +25,26 @@ created: 2026-08-08
 
 **Scope note:** this phase adds no new page or route. Every element below is a small addition to three existing, already-styled surfaces (`HeroColorPicker.tsx`/`HeroEffectsPanel.tsx`, `FoundryBuildTray.tsx`/`MyChanges.tsx`/`changeList.ts`, `HeroWorkshop.tsx`/`SoundBrowse.tsx`). The contract below is deliberately narrow: it declares how the *new* recolor-staging and sound-shuffle elements must look and read, using the app's existing tokens and primitives rather than inventing new ones. It does not restate the whole app's design system.
 
+**Visual hierarchy (per touched surface):**
+- **Abilities tab staging area (`HeroEffectsPanel.tsx`):** the accent-bordered "Stage {{mode}}" button is the first thing the eye lands on (it already carries the app's one accent-reserved primary-button treatment); the new "Staged, not yet forged" / "Not staged" status line and distinguishing caption sit visually subordinate to it in `text-text-secondary`, read second.
+- **Foundry sound-shuffle row (`SoundBrowse.tsx`/`HeroWorkshop.tsx`):** the existing sound entry (name + waveform/controls) remains the primary focal point unchanged; the new shuffle toggle button is a secondary, same-row affordance that only gains visual weight (accent fill) once pressed — it must not compete with the sound entry for attention at rest.
+
 ---
 
 ## Spacing Scale
 
-Declared values (the project's actual Tailwind scale, multiples of 4 with the noted half-step exception):
+Declared values this phase's new layout introduces (standard 8-point scale, multiples of 4 only — {4, 8, 16, 24, 32, 48, 64}):
 
 | Token | Value | Usage in this phase |
 |-------|-------|-----|
-| 2xs | 2px (`py-0.5`) | Tag/Badge vertical padding — reuse `Tag`/`Badge` as-is, do not hand-roll |
-| xs | 4px (`gap-1`, `px-1.5`≈6px) | Icon-to-label gaps on the new "Open in Sound Locker" link and the recolor kind `Tag`, matching `ExternalLink size={11}` + text pattern already in `MyChanges.tsx:305-317` |
+| xs | 4px (`gap-1`) | Smallest step in the declared scale; available if a new element needs a tight icon/label gap, not currently required by name below |
 | sm | 8px (`gap-2`, `px-2`) | Spacing between the sound-shuffle toggle button and its row's other controls in `SoundRow` |
 | md | 16px (`p-4`, `gap-4`) | Padding inside any new inline row/section wrapping the shuffle toggle in `HeroWorkshop.tsx` |
 | lg | 24px (`p-6`) | Not newly introduced by this phase — existing `Card`/panel padding this phase's elements sit inside |
 
-Exceptions: the codebase's HUD-styled compact chrome (`Tag`, `IconButton` `sm` size, the existing "Open in Sound Locker" link) already uses half-steps below 4px (`py-0.5` = 2px, `gap-1.5` = 6px). This phase's new elements must match those exact existing classes rather than round to the nearest 4/8 multiple — consistency with the immediate neighboring control outranks the abstract 8-point scale here.
+Exceptions: none. This phase's own declared scale contains no values outside the standard set above.
+
+Pre-existing legacy classes (outside this phase's declared scale, not part of the contract above): the new recolor `Tag` and the new "Open in Sound Locker" link introduce no spacing values of their own — they reuse two already-shipped, untouched components byte-for-byte: the existing `Tag`/`Badge` primitive (`py-0.5` = 2px vertical padding) and the existing icon-to-label gap pattern already live in `MyChanges.tsx:305-317` (`gap-1.5`/`px-1.5` ≈ 6px). These classes predate this phase and live on controls this phase does not restyle; they are recorded here only so an implementer copies the existing class verbatim rather than mistaking it for a new sub-4px token this phase is inventing.
 
 ---
 
@@ -47,15 +52,16 @@ Exceptions: the codebase's HUD-styled compact chrome (`Tag`, `IconButton` `sm` s
 
 | Role | Size | Weight | Line Height |
 |------|------|--------|-------------|
+| Compact | 11px (`text-[11px]`) | 400 (`font-normal`, Radiance) | 1.2 |
+| Label | 12px (`text-xs`) | 400 (regular, Radiance) | 1.2 |
 | Body | 14px (`text-sm`) | 400 (regular, Radiance) | 1.5 |
-| Label | 12px (`text-xs`) | 500 (`font-medium`, Radiance) | 1.2 |
 | Heading | 18px (`text-lg`) | 600 (`font-semibold`, Radiance) — *not* Reaver | 1.2 |
-| Display | 30px (`text-3xl`) | 600 (Reaver, the font's only face) | 1.1 (`leading-tight`) |
+
+Exactly 4 sizes, exactly 2 weights (400 regular / 600 semibold). No Display role — this phase introduces no new page-level heading, so the 30px/Reaver size is out of scope for this contract rather than declared-but-unused.
 
 Notes specific to this phase:
-- The new inline "Open in Sound Locker" link and the recolor `Tag` reuse the codebase's existing **11px** (`text-[11px]`) compact-link convention verbatim (`MyChanges.tsx:313`) — this is an intentional, already-established exception one step below the Label row, not a new size to add to the app's scale.
-- Display (30px/Reaver) is listed for completeness only; this phase introduces no new page-level heading and must not add one.
-- Any new copy on the Abilities tab distinguishing "stages" from Body+Gun's "applies immediately" (see Copywriting Contract) uses the **Body** row (`text-xs text-text-secondary`, matching `HeroEffectsPanel`'s existing description-line convention), not a new heading.
+- The new inline "Open in Sound Locker" link and the recolor `Tag` use the **Compact** row (11px, `text-[11px]`, `font-normal`) — this is the codebase's existing compact-link convention verbatim (`MyChanges.tsx:313`), folded into the declared 4-size scale rather than treated as a fifth, undeclared exception.
+- Any new copy on the Abilities tab distinguishing "stages" from Body+Gun's "applies immediately" (see Copywriting Contract) uses the **Label** row (`text-xs text-text-secondary`, matching `HeroEffectsPanel`'s existing description-line convention), not a new heading.
 
 ---
 
