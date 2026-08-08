@@ -284,4 +284,110 @@ describe('useBrowserToolDownloadHandoff', () => {
         expect(toasts[0].tone).toBe('error');
         expect(toasts[0].message).toBe('The download did not finish. Nothing was added.');
     });
+
+    // WR-01 (06-REVIEW.md): an accept-time resolve failure used to be
+    // discarded silently. These tests drive `resolveToolDownloadSpy` to
+    // every shape `resolvePendingToolDownload` can return (and one it
+    // cannot: an outright IPC rejection) and assert the failure reaches the
+    // same two refusal surfaces the 'refused' branch already uses, routed by
+    // the live route exactly the same way.
+    describe('an accept-time resolve failure (WR-01)', () => {
+        it('on /browser sets the store refusal to the prefix plus the error text, and shows no toast', async () => {
+            resolveToolDownloadSpy.mockResolvedValue({ ok: false, error: 'No Deadlock path configured' });
+            const confirmSpy = vi.fn<ConfirmFn>().mockResolvedValue(true);
+            await renderHarness(root, confirmSpy, '/browser');
+
+            await act(async () => {
+                capturedSubscriber!({ status: 'ready', id: 'accept-fail-id', name: 'build.vpk' });
+                await flush();
+            });
+
+            expect(useBrowserToolDownloadStore.getState().refusal).toBe('Not added: No Deadlock path configured');
+            expect(useToastStore.getState().toasts).toHaveLength(0);
+        });
+
+        it('off /browser shows exactly one error toast ending with the error text, and leaves the store refusal null', async () => {
+            resolveToolDownloadSpy.mockResolvedValue({ ok: false, error: 'No Deadlock path configured' });
+            const confirmSpy = vi.fn<ConfirmFn>().mockResolvedValue(true);
+            await renderHarness(root, confirmSpy, '/browser');
+
+            await act(async () => {
+                capturedNavigate!('/installed');
+            });
+
+            await act(async () => {
+                capturedSubscriber!({ status: 'ready', id: 'accept-fail-id-2', name: 'build.vpk' });
+                await flush();
+            });
+
+            expect(useBrowserToolDownloadStore.getState().refusal).toBeNull();
+            const toasts = useToastStore.getState().toasts;
+            expect(toasts).toHaveLength(1);
+            expect(toasts[0].tone).toBe('error');
+            expect(toasts[0].message.endsWith('No Deadlock path configured')).toBe(true);
+        });
+
+        it('a stale result produces zero toasts and a null refusal', async () => {
+            resolveToolDownloadSpy.mockResolvedValue({ ok: false, stale: true });
+            const confirmSpy = vi.fn<ConfirmFn>().mockResolvedValue(true);
+            await renderHarness(root, confirmSpy, '/browser');
+
+            await act(async () => {
+                capturedSubscriber!({ status: 'ready', id: 'stale-result-id', name: 'build.vpk' });
+                await flush();
+            });
+
+            expect(useBrowserToolDownloadStore.getState().refusal).toBeNull();
+            expect(useToastStore.getState().toasts).toHaveLength(0);
+        });
+
+        it('declining produces zero toasts and a null refusal even though the result is non-ok', async () => {
+            resolveToolDownloadSpy.mockResolvedValue({ ok: false, stale: false });
+            const confirmSpy = vi.fn<ConfirmFn>().mockResolvedValue(false);
+            await renderHarness(root, confirmSpy, '/browser');
+
+            await act(async () => {
+                capturedSubscriber!({ status: 'ready', id: 'decline-result-id', name: 'build.vpk' });
+                await flush();
+            });
+
+            expect(useBrowserToolDownloadStore.getState().refusal).toBeNull();
+            expect(useToastStore.getState().toasts).toHaveLength(0);
+        });
+
+        it('a rejected resolve promise produces exactly one error toast off /browser whose message ends with the thrown message', async () => {
+            resolveToolDownloadSpy.mockRejectedValue(new Error('IPC channel closed'));
+            const confirmSpy = vi.fn<ConfirmFn>().mockResolvedValue(true);
+            await renderHarness(root, confirmSpy, '/browser');
+
+            await act(async () => {
+                capturedNavigate!('/installed');
+            });
+
+            await act(async () => {
+                capturedSubscriber!({ status: 'ready', id: 'reject-id', name: 'build.vpk' });
+                await flush();
+            });
+
+            expect(useBrowserToolDownloadStore.getState().refusal).toBeNull();
+            const toasts = useToastStore.getState().toasts;
+            expect(toasts).toHaveLength(1);
+            expect(toasts[0].tone).toBe('error');
+            expect(toasts[0].message.endsWith('IPC channel closed')).toBe(true);
+        });
+
+        it('a successful accept produces zero toasts and a null refusal', async () => {
+            resolveToolDownloadSpy.mockResolvedValue({ ok: true });
+            const confirmSpy = vi.fn<ConfirmFn>().mockResolvedValue(true);
+            await renderHarness(root, confirmSpy, '/browser');
+
+            await act(async () => {
+                capturedSubscriber!({ status: 'ready', id: 'success-id', name: 'build.vpk' });
+                await flush();
+            });
+
+            expect(useBrowserToolDownloadStore.getState().refusal).toBeNull();
+            expect(useToastStore.getState().toasts).toHaveLength(0);
+        });
+    });
 });
