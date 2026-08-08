@@ -169,7 +169,7 @@ Plans:
   4. The webview is no less hardened after the download path changes than before: the guest still has no preload, no Node, its own partition, and an http(s)-only `src`
   5. A destination declares what kind of thing it is, so a handoff keys off that kind rather than a hardcoded URL match
 
-**Plans**: 5/5 plans executed
+**Plans**: 6 plans (5 executed, 1 gap closure pending)
 
 Plans:
 **Wave 1**
@@ -185,6 +185,10 @@ Plans:
 **Wave 3** *(blocked on Wave 2 completion)*
 
 - [x] 06-05-PLAN.md — Group destinations by kind, and record the browser's bounded control set
+
+**Wave 4** *(gap closure, blocked on Wave 3 completion)*
+
+- [ ] 06-06-PLAN.md — Make the tool download disclosure survive navigation (CR-01) and sweep the temp root at startup (WR-05)
 
 **UI hint**: yes
 
