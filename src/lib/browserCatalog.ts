@@ -46,13 +46,28 @@ export const BROWSER_DESTINATIONS: readonly BrowserDestination[] = Object.freeze
     { label: 'Pimp My Hideout', url: 'https://xkitkatcat.github.io/pimpmyhideout/', kind: 'tool' },
 ]);
 
-/** The GameBanana entry's url, looked up by label rather than array index so
- *  a future catalog reorder can never silently change what "home" means. */
-export const HOME_DESTINATION_URL: string = (() => {
-    const home = BROWSER_DESTINATIONS.find((destination) => destination.label === 'GameBanana');
-    if (!home) throw new Error('browserCatalog: no GameBanana entry to anchor HOME_DESTINATION_URL');
+/**
+ * Resolves the Home destination's url by label lookup, never by array index,
+ * so a future catalog reorder can never silently change what "home" means.
+ * Throws when the named entry is absent rather than returning a fallback, so
+ * a removal that orphans Home fails loudly at the call site instead of
+ * sending Home to the wrong site. Exported (with `catalog`/`label` as
+ * parameters) so the throw path is unit testable against a synthetic
+ * catalog, without needing GameBanana removed from the real one.
+ */
+export function resolveHomeDestinationUrl(
+    catalog: readonly BrowserDestination[],
+    label: string = 'GameBanana'
+): string {
+    const home = catalog.find((destination) => destination.label === label);
+    if (!home) throw new Error(`browserCatalog: no ${label} entry to anchor HOME_DESTINATION_URL`);
     return home.url;
-})();
+}
+
+/** The GameBanana entry's url. Resolved eagerly at import time so an
+ *  orphaned Home (see `resolveHomeDestinationUrl`) fails at startup rather
+ *  than at first navigation. */
+export const HOME_DESTINATION_URL: string = resolveHomeDestinationUrl(BROWSER_DESTINATIONS);
 
 /** Host (lowercased, leading `www.` stripped) and pathname of a URL, or null
  *  for an empty or unparseable input. Never a substring match on the raw
@@ -102,4 +117,44 @@ export function destinationKindForUrl(
     catalog: readonly BrowserDestination[] = BROWSER_DESTINATIONS
 ): BrowserDestinationKind | null {
     return destinationForUrl(url, catalog)?.kind ?? null;
+}
+
+/**
+ * Reproduces the nsfw-visibility predicate the shortcut row has always
+ * applied: keep an entry unless it is nsfw and the mode is `hide`. `blur` and
+ * any other mode leave the entry in the list (the blur styling is applied at
+ * render time, not here).
+ */
+export function visibleDestinations(
+    entries: readonly BrowserDestination[],
+    nsfwMode: string | undefined
+): BrowserDestination[] {
+    return entries.filter((entry) => !entry.nsfw || nsfwMode !== 'hide');
+}
+
+/** One kind's entries, in the order they appear in `KIND_ORDER`. */
+export interface BrowserDestinationGroup {
+    kind: BrowserDestinationKind;
+    entries: BrowserDestination[];
+}
+
+/**
+ * Buckets `entries` by `kind`, walking `KIND_ORDER` so the result is always in
+ * that fixed order regardless of the input array's own order. A kind with no
+ * entries produces no group object at all: there is nothing for the caller to
+ * special-case for an empty group. Within a group, entries keep their input
+ * order; nothing here sorts, so declaration order in `BROWSER_DESTINATIONS`
+ * is what determines render order. Safe to call on every render, including
+ * with an already-grouped-and-reflattened input.
+ */
+export function groupDestinationsByKind(
+    entries: readonly BrowserDestination[]
+): BrowserDestinationGroup[] {
+    const groups: BrowserDestinationGroup[] = [];
+    for (const kind of KIND_ORDER) {
+        const kindEntries = entries.filter((entry) => entry.kind === kind);
+        if (kindEntries.length === 0) continue;
+        groups.push({ kind, entries: kindEntries });
+    }
+    return groups;
 }
