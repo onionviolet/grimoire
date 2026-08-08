@@ -2,7 +2,7 @@
 phase: 06-community-tools-land-inside-grimoire
 reviewed: 2026-08-07T00:00:00Z
 depth: standard
-files_reviewed: 20
+files_reviewed: 24
 files_reviewed_list:
   - docs/browser-destinations.md
   - docs/browser-scope-boundary.md
@@ -16,13 +16,17 @@ files_reviewed_list:
   - electron/main/services/webviewHardening.test.ts
   - electron/main/services/webviewHardening.ts
   - electron/preload/index.ts
+  - src/components/Layout.tsx
   - src/lib/browserCatalog.reachability.test.ts
   - src/lib/browserCatalog.test.ts
   - src/lib/browserCatalog.ts
   - src/lib/browserToolDownload.ts
+  - src/lib/useBrowserToolDownloadHandoff.test.tsx
+  - src/lib/useBrowserToolDownloadHandoff.tsx
   - src/locales/en/translation.json
   - src/locales/manifest.json
   - src/pages/Browser.tsx
+  - src/stores/browserToolDownloadStore.ts
   - src/stores/toastStore.ts
   - src/types/electron.ts
 findings:
@@ -35,139 +39,191 @@ status: issues_found
 
 # Phase 06: Code Review Report
 
-**Reviewed:** 2026-08-07T00:00:00Z
+**Reviewed:** 2026-08-07
 **Depth:** standard
-**Files Reviewed:** 20
+**Files Reviewed:** 24
 **Status:** issues_found
 
 ## Summary
 
-This phase adds the in-app browser's tool-download capture/disclosure round
-trip (`will-download` capture, temp-file classification against the VPK
-identity gate, a confirm-then-install handoff into the existing custom-mod
-import path) plus the guest-webview hardening it depends on
-(`webviewHardening.ts`), and refactors that hardening + a prior "always open
-externally" download handler out of `electron/main/index.ts` into two
-testable services. The hardening module, the pending-download confused-deputy
-protections (`takePendingToolDownload`/`replacePending`), and the origin
-re-check in `shouldCaptureToolDownload` are all sound and well covered by
-their unit tests, which genuinely exercise the invariants the code comments
-claim (single-pending eviction, stale-id resolution, VPK-only capture, the
-nine webview-hardening invariants, the permission floor).
+This is a re-review of the full phase-06 file union (all six plans, including
+the 06-06 gap-closure plan) against the prior `06-REVIEW.md`. Two specific
+prior findings were checked for real closure, not just "new code exists":
 
-The most significant problem is architectural: the confirm/disclosure round
-trip that this phase's own docs describe as having "nothing in between for a
-user to manage" is wired to a page-scoped React effect (`Browser.tsx`) rather
-than an app-scoped one (the pattern the rest of the codebase already uses for
-equivalent flows, e.g. `onOneClickInstall`/`onMultiVpkPick` in `Layout.tsx`).
-Navigating away from the Browser route while a capture is in flight tears
-down the only subscriber to `onBrowserToolDownload`, so a download that
-reaches classification after that point is silently lost: no confirm dialog,
-no refusal banner, no toast, and an orphaned temp file with no cleanup path.
-The remaining findings are smaller correctness/consistency gaps: a
-non-segment-aware path-prefix match that is currently dormant but is wired
-into the same-origin capture gate, a dropped best-effort side effect on the
-browser-tool install path, an address-bar regex misclassification, and no
-startup sweep of the temp download directory.
+- **Prior CR-01 (disclosure subscriber was page-scoped, dropped on
+  navigation) — CONFIRMED CLOSED.** `useBrowserToolDownloadHandoff` now lives
+  in `src/lib/useBrowserToolDownloadHandoff.tsx` and is called exactly once
+  from `src/components/Layout.tsx` (not `Browser.tsx`). It reads the current
+  route through a ref (`pathnameRef`) rather than resubscribing on navigation,
+  so the effect's dependency array (`[confirm, t]`) never changes across a
+  route change. `useBrowserToolDownloadHandoff.test.tsx` drives a real
+  `MemoryRouter` navigation away from `/browser` mid-flow and asserts (a) the
+  subscription is not re-established (`subscribeSpy` called once) and (b) a
+  `'ready'` event pushed after the navigation still reaches the confirm
+  dialog. This is genuine regression coverage, not just presence of new code.
+- **Prior WR-05 (no sweep for orphaned browser-download temp files) —
+  CONFIRMED CLOSED.** `sweepToolDownloadTempRoot` is invoked from
+  `app.whenReady()` in `electron/main/index.ts:540`, before `createWindow()`
+  and before any webview can attach a download-capture session, and only
+  deletes plain files (`dirent.isFile()`) that are absent from the live
+  pending-map protected set, never recursing and never touching a directory
+  or symlink. `browserDownloadCapture.test.ts`'s `sweepToolDownloadTempRoot
+  (WR-05)` block exercises the missing-root, empty-root, multi-file,
+  double-sweep, subdirectory-survival, explicit-protected-path, live-pending-
+  path, unlink-failure, and (platform-permitting) symlink-survival cases.
 
-## Critical Issues
+Both fixes are real and the associated tests exercise the actual regression,
+not a superficial rename.
 
-### CR-01: Tool-download disclosure is lost if the user navigates away from the Browser page while a capture is in flight
+However, tracing the accept path of the tool-download capture feature itself
+end-to-end (the flagship capability this phase adds) into
+`electron/main/ipc/mods.ts` surfaces a new blocker that was not present (or
+not previously found) in the prior review: the temp file the capture path
+allocates can never pass the shared import function's own file-type gate, so
+accepting a captured download always fails, silently, from the user's point
+of view. Several Warning/Info items from the prior review (path-prefix
+matching, the dropped adopted-thumbnail fetch, the address-bar scheme regex,
+IPC argument under-validation, and the unused event id) remain open in the
+current code and are carried forward below with their current line numbers.
 
-**File:** `src/pages/Browser.tsx:205-281`
+## Narrative Findings (AI reviewer)
 
-**Issue:** The entire tool-download disclosure round trip — the confirm
-dialog for `'ready'`, the danger-tone banner for `'refused'`, the toast for
-`'failed'`, and the stale-id bookkeping for `'replaced'` — is handled by a
-`useEffect` inside the `Browser` page component, which subscribes via
-`onBrowserToolDownload` and unsubscribes on unmount:
+### Critical Issues
 
-```tsx
-useEffect(() => {
-    return onBrowserToolDownload((event) => {
-        // ...'started' / 'ready' (confirm) / 'refused' / 'failed' / 'replaced'
-    });
-}, [confirm, t]);
+#### CR-01: Accepting a captured browser-tool download always throws "Selected file is not a .vpk or supported archive"
+
+**File:** `electron/main/services/browserDownloadCapture.ts:98-100` and `electron/main/ipc/mods.ts:1279-1284`
+
+**Issue:** `allocateToolDownloadTempPath` always names the captured temp file
+`${randomUUID()}.download`:
+
+```ts
+// electron/main/services/browserDownloadCapture.ts:98-100
+export function allocateToolDownloadTempPath(root: string, _suggestedFilename: string): string {
+    return join(root, `${randomUUID()}.download`);
+}
 ```
 
-`Browser` is a child route rendered under the persistent `Layout` (see
-`src/App.tsx`), so navigating to any other page (Installed, Locker, Settings,
-...) unmounts it and removes this listener. The capture pipeline itself lives
-at session scope in the main process
-(`electron/main/services/browserDownloadCapture.ts`,
-`attachBrowserDownloadCapture`) and is independent of whether the Browser
-page is mounted — `will-download` fires on the guest session regardless.
+`resolvePendingToolDownload` (`electron/main/ipc/browser.ts:64-85`) passes
+that exact path through as `vpkPath` on accept:
 
-If a captured download's classification (`classifyToolDownload`, run inside
-the `DownloadItem`'s `'done'` handler) completes *after* the user has
-navigated away from `/browser`, main process pushes `'ready'` (or
-`'refused'`/`'failed'`) over `browser:tool-download`, but nothing is listening
-any more. The event is not replayed when the user later returns to the page
-(`ipcRenderer.on` is a plain event emitter; there is no queue or "last
-event" replay). Concretely, for the `'ready'` case:
+```ts
+await deps.install({ vpkPath: entry.tempPath, name: entry.displayName, nsfw: false }, deadlockPath);
+```
 
-- The confirm dialog required before anything is added to the mod library
-  (D-08/D-09) never appears.
-- The entry stays in `browserDownloadCapture.ts`'s `state.pending` map,
-  and its temp file stays on disk under
-  `<userData>/browser-downloads/<uuid>.download`, until either another tool
-  download supersedes it (`replacePending` evicts and deletes it) or the app
-  restarts (the map is in-memory only, so a restart drops the reference but
-  — see WR-05 below — nothing on startup deletes the orphaned file either).
+`importCustomModSource`, the shared install function this reaches (the same
+one drag-drop/custom-import use), gates purely on file extension before it
+ever inspects file contents:
 
-This directly contradicts what this phase's own scope document asserts is
-the invariant: `docs/browser-scope-boundary.md` states a captured download
-"is either handed to the mod library after an explicit confirmation... or...
-handed to the system browser. There is nothing in between for a user to
-manage." A download stuck in the pending map with a lost disclosure is
-exactly the missing "in between" state that document says does not exist.
+```ts
+// electron/main/ipc/mods.ts:1279-1284
+const lower = vpkPath.toLowerCase();
+const isVpk = lower.endsWith('.vpk');
+if (!isVpk && !isArchive(vpkPath)) {
+    throw new Error('Selected file is not a .vpk or supported archive (.zip, .7z, .rar)');
+}
+```
 
-Contrast with the codebase's own established pattern for equivalent
-confirm-required async flows: `onOneClickInstall` and `onMultiVpkPick` are
-both subscribed in `src/components/Layout.tsx` (the persistent route
-wrapper), not in a page component, specifically so they survive navigation.
+`isArchive` (`electron/main/services/extract.ts:56-59`) is likewise
+extension-only (`.zip`/`.7z`/`.rar`). A path ending in `.download` satisfies
+neither check, so this throws immediately — before `resolveInstallableVpk`
+(the function that actually sniffs magic bytes) is ever called. Every
+accepted tool download therefore throws inside `importCustomModSource`, is
+caught by `resolvePendingToolDownload`'s `try/catch`, and resolves to
+`{ ok: false, error: 'Selected file is not a .vpk or supported archive (.zip, .7z, .rar)' }`
+— even though `classifyToolDownload` (which does read magic bytes, via
+`checkVpkFile`) already proved the file is a real, valid VPK before the
+`'ready'` disclosure was ever shown to the user. The install is guaranteed to
+fail for every accepted download, on every platform, through every code path
+that reaches this line.
 
-**Fix:** Move the `onBrowserToolDownload` subscription (and the toast/confirm
-handling it drives) out of `Browser.tsx` and into `Layout.tsx` (or another
-component that stays mounted for the app's lifetime), mirroring how
-`onOneClickInstall`/`onMultiVpkPick` are already wired. The `useConfirm()`
-hook and `showToast`/`dismissToast` helpers are already usable from
-`Layout.tsx`'s tree, so this requires no new dependency — just relocating the
-effect (and the two refs it uses) to a component that isn't torn down when
-the user leaves `/browser`.
+This slipped through the existing tests because
+`electron/main/ipc/browser.test.ts` mocks `./mods`'s `importCustomModSource`
+entirely (`vi.mock('./mods', () => ({ importCustomModSource: vi.fn() }))`),
+and `browserDownloadCapture.test.ts` never calls the real install function —
+so the seam between the capture path's temp-file naming and the shared
+import function's extension gate is never exercised end-to-end by any test.
 
-## Warnings
+**Fix:** Give the allocated temp path a `.vpk` extension — the only content
+`classifyToolDownload` ever lets reach `state.pending`, so this is a
+lossless rename, not a format change:
 
-### WR-01: `destinationForUrl`'s path-prefix match is not segment-boundary aware, and it feeds the tool-download capture gate
+```ts
+export function allocateToolDownloadTempPath(root: string, _suggestedFilename: string): string {
+    return join(root, `${randomUUID()}.vpk`);
+}
+```
+
+Update the JSDoc/tests that currently assert a `.download` suffix
+accordingly, and add an integration-style test that calls the *real*
+`importCustomModSource` (not a mock) against a path shaped like this
+function's output, so this seam cannot regress silently again.
+
+### Warnings
+
+#### WR-01: An accept-time failure (including CR-01's, or "No Deadlock path configured") is silently swallowed in the renderer
+
+**File:** `src/lib/useBrowserToolDownloadHandoff.tsx:96`
+
+**Issue:** The confirm-and-resolve continuation ignores the result of
+`resolveToolDownload`:
+
+```ts
+if (staleDownloadIdsRef.current.delete(event.id)) return;
+await resolveToolDownload(event.id, accepted);
+```
+
+`ResolveToolDownloadResult` (`src/types/electron.ts:361-367`) carries `ok`,
+`stale?`, and `error?`, and `resolvePendingToolDownload` populates `error` on
+every failure branch (no configured Deadlock path, an install throw, or — per
+CR-01 above — the extension-gate throw). None of it reaches the user: no
+toast, no banner update. The confirm dialog closes, the temp file is deleted
+(the `finally` in `resolvePendingToolDownload` always runs regardless of
+outcome), and nothing else visibly happens — from the user's point of view
+the mod they just confirmed simply never appears, with no explanation. This
+contradicts the same file's own documented intent for the will-download-time
+refusal ("D-10: a refusal is loud and visible, never a silent drop"), which
+is honored for `'refused'` but not for this resolve-time failure path. It is
+also a large part of why CR-01 is hard to notice in manual testing: an accept
+looks like a no-op rather than a loud, attributable failure.
+
+**Fix:** Surface a failed, non-stale result the same way `'refused'` is
+surfaced (banner on `/browser`, toast elsewhere):
+
+```ts
+const result = await resolveToolDownload(event.id, accepted);
+if (accepted && !result.ok && !result.stale) {
+    const sentence = `${t('browser.toolDownload.refusedPrefix', 'Not added: ')}${result.error ?? ''}`;
+    if (isBrowserRoute(pathnameRef.current)) {
+        setBrowserToolDownloadRefusal(sentence);
+    } else {
+        showToast(sentence, { tone: 'error', duration: 9000 });
+    }
+}
+```
+
+#### WR-02 (carried forward, still open): `destinationForUrl`'s path-prefix match is not segment-boundary aware, and it feeds the tool-download capture gate
 
 **File:** `src/lib/browserCatalog.ts:93-112`
 
-**Issue:** The tie-break rule for two catalog entries sharing a host picks
-the entry whose `pathname` is "the longest prefix" of the visited pathname,
-implemented with a raw `String.prototype.startsWith()`:
+**Issue:** Unchanged since the prior review. The shared-host tie-break rule
+matches on raw string prefix:
 
 ```ts
 if (!visited.pathname.startsWith(entry.pathname)) continue;
 ```
 
-This has no segment-boundary check, so a catalog entry declared at
-`/pimpmyhideout` would also match a visited path of `/pimpmyhideout2` or
-`/pimpmyhideoutV2-beta` — different pages that merely share the literal
-string prefix, not a real sub-path. Today's ten-entry catalog has no two
-entries on the same host, so this is dormant. But it is not just a display
-concern: `Browser.tsx`'s `syncNav` calls `destinationForUrl(url)` and pushes
-the resolved `kind`/`label` via `setActiveBrowserDestination`, and
-`shouldCaptureToolDownload` (`browserDownloadCapture.ts`) gates capture on
-`active.kind === 'tool'`. A future catalog addition that shares a host with
-the existing `tool`-kind entry (e.g. a second `xkitkatcat.github.io/...`
-page, or any future `tool` entry sharing a host with a `reference`/
-`community-feed` entry) could have its `kind` misattributed by this
-prefix-only match, silently widening or narrowing the download-capture
-grant for pages the user did not actually navigate to.
+with no segment-boundary check, so a catalog entry declared at
+`/pimpmyhideout` would also match a visited path of `/pimpmyhideout2`. Today's
+ten-entry catalog has no two entries sharing a host, so this is dormant, but
+`Browser.tsx`'s `syncNav` feeds this function's result straight into
+`setActiveBrowserDestination`, and `shouldCaptureToolDownload` gates the
+tool-download capture grant on the resolved `kind`. A future catalog entry
+sharing a host with the existing `tool` entry could have its kind
+misattributed by this prefix-only match, silently widening or narrowing the
+download-capture grant.
 
-**Fix:** Match on path segments, not raw string prefix, e.g. require the
-next character after the matched prefix to be `/`, the end of string, or
-absent:
+**Fix:** Require a segment boundary after the matched prefix:
 
 ```ts
 function isPathPrefix(entryPath: string, visitedPath: string): boolean {
@@ -177,86 +233,61 @@ function isPathPrefix(entryPath: string, visitedPath: string): boolean {
 }
 ```
 
-### WR-02: Browser-tool-download install path silently drops the adopted-thumbnail fetch that the equivalent import path performs
+#### WR-03 (carried forward, still open): Browser-tool-download install path silently drops the adopted-thumbnail fetch that the equivalent import path performs
 
 **File:** `electron/main/ipc/browser.ts:45-52`
 
-**Issue:** `defaultResolveDeps.install` calls `importCustomModSource` with an
-empty, throwaway array for `thumbnailFetchTargets`:
+**Issue:** Unchanged since the prior review. `defaultResolveDeps.install`
+calls `importCustomModSource` with a throwaway empty array:
 
 ```ts
 install: (args, deadlockPath) =>
     runExclusiveModMutation(() => importCustomModSource(deadlockPath, args, [])),
 ```
 
-`importCustomModSource` (`electron/main/ipc/mods.ts`) pushes onto whatever
-array it's given whenever the just-imported file's embedded Grimoire
-adoption metadata reveals a `gameBananaId` with no thumbnail. The
-`'import-custom-mods'` batch handler collects this same array and fires
-`fireAdoptedThumbnailFetches(thumbnailFetchTargets)` after the batch
-completes; the browser-tool-download path never does, because the literal
-`[]` passed here is discarded once the call returns. The comment on
-`resolvePendingToolDownload` claims the accepted branch "reaches the mod
-library only through this shared entry point, identical to drag-drop and
-custom import" — that's true for the copy/metadata/imprint-flag side of
-`importCustomModSource`, but not for this one queued side effect.
+`importCustomModSource` pushes onto whatever array it is given whenever the
+just-imported file's embedded adoption metadata reveals a `gameBananaId` with
+no thumbnail; the `'import-custom-mods'` batch handler collects this array
+and fires `fireAdoptedThumbnailFetches` on it afterward, but the
+browser-tool-download path discards the array (`[]`) the moment the call
+returns, so that fetch never happens for a tool-captured mod.
 
-**Fix:** Either thread a real (even if immediately-fired) array through and
-call `fireAdoptedThumbnailFetches` on it after `deps.install` resolves, or
-document explicitly that browser-tool-download installs intentionally skip
-adopted-thumbnail fetching (and why) rather than silently no-op-ing via a
-discarded array.
+**Fix:** Thread a real array through and call `fireAdoptedThumbnailFetches`
+on it after `deps.install` resolves, or explicitly document that
+browser-tool-download installs intentionally skip adopted-thumbnail
+fetching.
 
-### WR-03: Address bar `normalizeUrl` misclassifies a bare `host:port` as an existing URI scheme
+#### WR-04 (carried forward, still open): Address bar `normalizeUrl` misclassifies a bare `host:port` as an existing URI scheme
 
 **File:** `src/pages/Browser.tsx:44-58`
 
-**Issue:**
+**Issue:** Unchanged since the prior review.
 
 ```ts
-function normalizeUrl(input: string): string | null {
-    const raw = input.trim();
-    if (!raw) return null;
-    const candidate = /^[a-z][a-z0-9+.-]*:/i.test(raw) ? raw : `https://${raw}`;
-    try {
-        const parsed = new URL(candidate);
-        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
-        return parsed.href;
-    } catch {
-        return null;
-    }
-}
+const candidate = /^[a-z][a-z0-9+.-]*:/i.test(raw) ? raw : `https://${raw}`;
 ```
 
-The scheme-detection regex `/^[a-z][a-z0-9+.-]*:/i` matches any
-`letter-then-alnum/+.-` run followed by a colon — which also matches a bare
-hostname with an explicit port, e.g. `localhost:8080` or
-`mywiki.example:8443`. Typing either into the address bar is treated as
-"already has a scheme," so `new URL('localhost:8080')` is parsed with
-`protocol === 'localhost:'`, fails the http/https check, and the user gets
+matches any `letter-then-alnum/+.-` run followed by a colon, including a bare
+hostname with a port, e.g. `localhost:8080`. That input is treated as
+"already has a scheme," `new URL('localhost:8080')` parses with
+`protocol === 'localhost:'`, fails the http/https check, and the user sees
 "That does not look like a web address" for an input that plainly is one.
 
-**Fix:** Only treat `raw` as already-schemed when the part before the colon
-is a *known* scheme (`http`/`https`), or check for `://` rather than a bare
-`:` before deciding not to prepend `https://`:
+**Fix:**
 
 ```ts
 const candidate = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
 ```
-(This also naturally rejects `javascript:`/other non-http schemes into the
-`https://javascript:alert(1)` bucket, which then fails to parse as a sane
-host and is rejected anyway — no regression versus the current explicit
-protocol check.)
 
-### WR-04: `browser:resolve-tool-download` / `browser:set-active-destination` under-validate their non-`kind` arguments
+#### WR-05 (carried forward, still open): `browser:resolve-tool-download` / `browser:set-active-destination` under-validate their non-`kind` arguments
 
-**File:** `electron/main/ipc/browser.ts:20-33`, `87-91`
+**File:** `electron/main/ipc/browser.ts:20-33, 87-91`
 
-**Issue:** `browser:set-active-destination` type-checks `kind` against
-`VALID_KINDS` but only shallow-`typeof`-checks `origin`/`label` as strings
-(any string is accepted, including garbage that doesn't parse as an origin).
-`browser:resolve-tool-download`'s handler takes `id: string, accepted:
-boolean` straight from the renderer with no runtime narrowing at all:
+**Issue:** Unchanged since the prior review. `browser:set-active-destination`
+type-checks `kind` against `VALID_KINDS` but only shallow-`typeof`-checks
+`origin`/`label`. `browser:resolve-tool-download`'s handler takes `id:
+string, accepted: boolean` straight from the renderer with no runtime
+narrowing at all:
 
 ```ts
 ipcMain.handle(
@@ -266,63 +297,39 @@ ipcMain.handle(
 );
 ```
 
-If a non-string `id` or non-boolean `accepted` ever reaches this handler
-(e.g. from a future caller, or a renderer-side type error that TypeScript
-doesn't catch across the IPC boundary at runtime), `takePendingToolDownload`
-does a `Map.get(id)` with a non-string key (always misses, harmless) but
-`!accepted` on a non-boolean falls through to JS truthiness rather than
-failing loudly. Low practical risk today (the only caller is
-`browserToolDownload.ts`'s typed wrapper), but it's an inconsistency with the
-defensive posture the same file applies one function up
-(`isValidKind`/`typeof origin === 'string'`).
+Low practical risk today (the only caller is `browserToolDownload.ts`'s typed
+wrapper), but it is an inconsistency with the defensive posture the same file
+applies one function up.
 
-**Fix:** Apply the same `typeof` narrowing used in the `set-active-destination`
-handler to `id`/`accepted` before calling `resolvePendingToolDownload`.
+**Fix:** Apply the same `typeof` narrowing used in `set-active-destination`
+to `id`/`accepted` before calling `resolvePendingToolDownload`.
 
-### WR-05: `browser-downloads` temp directory is never swept on startup
+### Info
 
-**File:** `electron/main/services/browserDownloadCapture.ts:86-92`, `247-256`
+#### IN-01 (carried forward, still open): `BrowserToolDownloadEvent.id` is generated but semantically unused for `'failed'`/`'refused'`
 
-**Issue:** `toolDownloadTempRoot`/`attachBrowserDownloadCapture` create
-`<userData>/browser-downloads/` on first attach but nothing ever removes
-stale contents from it. Every path that normally clears an entry
-(`deleteTempFileQuietly` on refuse/decline/accept/replace) only runs for
-downloads whose lifecycle actually completes while the app is running. A
-temp file left behind by an app crash, a forced quit mid-download, or the
-lost-disclosure scenario in CR-01 (until the next tool download happens to
-supersede it) will sit in that directory indefinitely across app restarts —
-nothing scans or prunes it on the next launch the way, for example, the
-extraction temp dirs elsewhere in the codebase are cleaned up per-operation
-via `finally`.
+**File:** `electron/main/services/browserDownloadCapture.ts:302, 312`
 
-**Fix:** Sweep `browser-downloads` on startup (e.g. alongside the other
-startup recovery/backfill calls in `electron/main/index.ts`), removing any
-file whose name isn't in the current in-memory pending map (which, on a
-fresh process, is always empty, so a simple "delete everything in this
-directory older than N minutes" or "delete everything, since the map never
-survives a restart" sweep is sufficient).
+**Issue:** Unchanged since the prior review.
 
-## Info
+```ts
+pushToolDownloadEvent({ status: 'failed', id: randomUUID() });
+...
+pushToolDownloadEvent({ status: 'refused', id: randomUUID(), reason: classification.reason });
+```
 
-### IN-01: `BrowserToolDownloadEvent.id` is generated but semantically unused for three of five statuses
+Neither id is ever correlated with a pending-map entry (none exists yet at
+either push site) or read by the renderer
+(`useBrowserToolDownloadHandoff.tsx`'s `'refused'`/`'failed'` branches never
+reference `event.id`). `id` is a required field on the type, so it reads as
+load-bearing when it is filler for these two statuses.
 
-**File:** `electron/main/services/browserDownloadCapture.ts:217, 227`
-
-**Issue:** `'failed'` and `'refused'` events are pushed with
-`id: randomUUID()`, but that id is never correlated with anything (no
-pending-map entry exists yet at the point either is pushed, and
-`Browser.tsx`'s handlers for `'refused'`/`'failed'` never read `event.id`).
-`BrowserToolDownloadEvent.id` is typed as a required field, which makes it
-look load-bearing for every status when it's actually only meaningful for
-`'ready'` and `'replaced'`.
-
-**Fix:** Either make `id` optional on the type and omit it for `'failed'`/
-`'refused'`, or add a short comment at the type declaration noting it's
-present-but-unused for those two statuses, so a future reader doesn't
-assume it round-trips to something.
+**Fix:** Either make `id` optional on the `'failed'`/`'refused'` variants (a
+`status`-discriminated union), or add a short comment at each call site
+noting the id is unused for these statuses.
 
 ---
 
-_Reviewed: 2026-08-07T00:00:00Z_
+_Reviewed: 2026-08-07_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
