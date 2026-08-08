@@ -36,7 +36,7 @@ export const KIND_ORDER: readonly BrowserDestinationKind[] = ['mod-host', 'tool'
 export const BROWSER_DESTINATIONS: readonly BrowserDestination[] = Object.freeze([
     { label: 'GameBanana', url: 'https://gamebanana.com/games/20948', kind: 'mod-host' },
     { label: 'Deadlock Forge', url: 'https://deadlockforge.net/', kind: 'reference' },
-    { label: 'Deadlock Wiki', url: 'https://deadlocked.wiki/', kind: 'reference' },
+    { label: 'Deadlock Wiki', url: 'https://deadlock.wiki/', kind: 'reference' },
     { label: 'deadlock-api', url: 'https://deadlock-api.com/', kind: 'reference' },
     { label: 'Deadlock.io', url: 'https://deadlock.io/', kind: 'reference' },
     { label: 'Deadlocker', url: 'https://www.deadlocker.gg/', kind: 'reference' },

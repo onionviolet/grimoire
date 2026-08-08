@@ -18,11 +18,11 @@ Grimoire stands behind its content.
 
 ## Reachability table
 
-| Label | Declared kind | Requested URL | Status | Final URL | Page title | Host changed | Proposed verdict |
+| Label | Declared kind | Requested URL | Status | Final URL | Page title | Host changed | Verdict |
 |---|---|---|---|---|---|---|---|
 | GameBanana | mod-host | https://gamebanana.com/games/20948 | 200 | https://gamebanana.com/games/20948 | not captured in the first 8 KB (see note) | false | keep |
 | Deadlock Forge | reference | https://deadlockforge.net/ | 200 | https://deadlockforge.net/ | Deadlock Forge | false | keep |
-| Deadlock Wiki | reference | https://deadlocked.wiki/ | 200 (also observed: 410, see below) | https://deadlocked.wiki/ (also observed: redirects off-host, see below) | Loading... (also observed: none, see below) | false (also observed: true, see below) | needs a human call |
+| Deadlock Wiki | reference | https://deadlocked.wiki/ | 200 (also observed: 410, see below) | https://deadlocked.wiki/ (also observed: redirects off-host, see below) | Loading... (also observed: none, see below) | false (also observed: true, see below) | correct (to `https://deadlock.wiki/`) |
 | deadlock-api | reference | https://deadlock-api.com/ | 200 | https://deadlock-api.com/ | Deadlock Stats Tracker: Win Rates, Ranks and Leaderboards | false | keep |
 | Deadlock.io | reference | https://deadlock.io/ | 200 | https://deadlock.io/ | Deadlock Game: heroes, items, mechanics and patches - Deadlock.io | false | keep |
 | Deadlocker | reference | https://www.deadlocker.gg/ | 200 | https://www.deadlocker.gg/ | Deadlocker | false | keep |
@@ -69,22 +69,21 @@ Consistent across four separate probes.
   token>...')`. A plain `fetch` (no JS execution, exactly what a
   reachability probe or a bookmark link does) never gets past this shell.
 - One of four probes: HTTP 410, redirected to
-  `http://ww80.deadlocked.wiki/?subid1=<uuid>` — a numbered `ww`-subdomain
+  `http://ww80.deadlocked.wiki/?subid1=<uuid>` (a numbered `ww`-subdomain
   with a `subid1` tracking parameter, a pattern characteristic of
-  domain-parking ad networks, not a modding wiki.
+  domain-parking ad networks, not a modding wiki).
 
 Both behaviors were observed from the same requesting environment, run
 minutes apart, with no code change between them. This looks like a domain
 sitting behind either an anti-bot JS challenge, a parking/ad-monetization
 proxy, or both, rather than a plain, reliable MediaWiki like `deadlock.wiki`.
 
-**This entry needs a human call** (see the section below): the evidence
-favors correcting the catalog's `Deadlock Wiki` entry from
-`https://deadlocked.wiki/` to `https://deadlock.wiki/`, but the reviewer
-should independently confirm `deadlock.wiki` is the actively maintained
-community wiki (not just the domain that resolves cleanly) before approving
-the change, since a probe can distinguish "resolves reliably" from "is the
-wiki the community actually uses."
+**This entry needed a human call** (see "Applied" below for how it was
+resolved): the automated evidence favored correcting the catalog's
+`Deadlock Wiki` entry from `https://deadlocked.wiki/` to
+`https://deadlock.wiki/`, but a probe alone can distinguish "resolves
+reliably" from "is the wiki the community actually uses," so this specific
+row was routed to a human decision rather than the mechanical rules.
 
 ## D-06: no crosshair generator entry
 
@@ -96,14 +95,30 @@ catalog is the UX cost REQ-browser-tool-catalog itself warns about, not a
 feature to add. This review confirms the omission is the intended state, not
 something left out by oversight.
 
-## Entries needing a human call
-
-| Entry | Question a human needs to answer |
-|---|---|
-| Deadlock Wiki (currently `https://deadlocked.wiki/`) | Should this entry be corrected to `https://deadlock.wiki/`, the host that resolved reliably to a real MediaWiki titled "The Deadlock Wiki" across every probe, given `deadlocked.wiki` served a JS-redirect challenge shell on three probes and an HTTP 410 to a parking-network-shaped host on the fourth? Is `deadlock.wiki` in fact the wiki the Deadlock modding community actually uses, or does `deadlocked.wiki`'s challenge page lead somewhere legitimate that this probe simply cannot see past? |
-
 ## Applied
 
-Pending Task 2's decision. This section will record what changed in
-`src/lib/browserCatalog.ts` and on what date, once the verdicts above are
-approved.
+**Date applied:** 2026-08-07.
+
+**Decision:** accept-with-changes. All 9 `keep` verdicts in the table above
+were accepted as written; no code change. The `Deadlock Wiki` entry's
+`needs a human call` row was resolved as **correct**, replacing its `url`
+from `https://deadlocked.wiki/` to `https://deadlock.wiki/` in
+`src/lib/browserCatalog.ts`. Its `label` ("Deadlock Wiki"), `kind`
+(`reference`), and declaration order are unchanged: only the `url` field
+moved.
+
+**Corroborating evidence for the correction** (a real-browser check, which
+both this file's automated probe and a plain `curl`/`fetch` found
+unreliable against `deadlocked.wiki`'s bot-challenge behavior): `deadlock.wiki`
+is the real, actively maintained community wiki, "The Deadlock Wiki," 1,363
+articles, hero pages, content updated within the last week, and a Discord
+link. `deadlocked.wiki`, in contrast, resolves through its `Loading...`
+JavaScript shell to a redirect that lands on TikTok: it is a squatted or
+hijacked domain, not a wiki. This corroborates and resolves the ambiguity
+this file's probe flagged; no further verification is needed on this point.
+
+No entry was removed, so `HOME_DESTINATION_URL` (anchored to the GameBanana
+entry, unaffected by this change) still resolves to a live catalog entry.
+No `kind` changed from its D-05 default. No crosshair-generator entry was
+added (D-06, unchanged). The Goonlock entry's `nsfw: true` and
+`community-feed` kind are unchanged.

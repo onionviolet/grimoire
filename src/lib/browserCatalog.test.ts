@@ -29,6 +29,10 @@ describe('BROWSER_DESTINATIONS', () => {
         expect(gameBanana).toBeDefined();
         expect(HOME_DESTINATION_URL).toBe(gameBanana?.url);
     });
+
+    it('resolves HOME_DESTINATION_URL to a live catalog entry, proving it was not orphaned by a review-driven removal', () => {
+        expect(destinationForUrl(HOME_DESTINATION_URL)).not.toBeNull();
+    });
 });
 
 describe('destinationForUrl / destinationKindForUrl', () => {
