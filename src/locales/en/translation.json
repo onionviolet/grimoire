@@ -3572,6 +3572,14 @@
       "title": "Browser is off",
       "description": "Enable the in-app browser in Settings to use this page."
     },
+    "catalog": {
+      "groups": {
+        "modHost": "Mod hosts",
+        "tool": "Tools",
+        "reference": "Reference",
+        "communityFeed": "Community"
+      }
+    },
     "toolDownload": {
       "title": "Add this download to your mod library?",
       "message": "Will add to your mod library as \"{{name}}\".",

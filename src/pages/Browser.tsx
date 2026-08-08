@@ -18,7 +18,14 @@ import { useAppStore } from '../stores/appStore';
 import { EmptyState } from '../components/common/PageComponents';
 import Tx from '../components/translation/Tx';
 import { getGameBananaImportHandoff } from '../lib/browserImportHandoff';
-import { BROWSER_DESTINATIONS, destinationForUrl, HOME_DESTINATION_URL } from '../lib/browserCatalog';
+import {
+    BROWSER_DESTINATIONS,
+    destinationForUrl,
+    groupDestinationsByKind,
+    HOME_DESTINATION_URL,
+    visibleDestinations,
+    type BrowserDestinationKind,
+} from '../lib/browserCatalog';
 import { onBrowserToolDownload, resolveToolDownload, setActiveBrowserDestination } from '../lib/browserToolDownload';
 import { useConfirm } from '../components/common/confirmContext';
 import { dismissToast, showToast } from '../stores/toastStore';
@@ -64,6 +71,16 @@ interface WebviewEl extends HTMLElement {
     getURL(): string;
 }
 
+/** i18n key + English fallback for each kind group's header (06-UI-SPEC.md
+ *  Copywriting Contract). `KIND_ORDER` decides render order; this only
+ *  decides what a kind is called. */
+const GROUP_LABEL_KEYS: Record<BrowserDestinationKind, { key: string; fallback: string }> = {
+    'mod-host': { key: 'browser.catalog.groups.modHost', fallback: 'Mod hosts' },
+    tool: { key: 'browser.catalog.groups.tool', fallback: 'Tools' },
+    reference: { key: 'browser.catalog.groups.reference', fallback: 'Reference' },
+    'community-feed': { key: 'browser.catalog.groups.communityFeed', fallback: 'Community' },
+};
+
 export default function Browser() {
     const { t } = useTranslation();
     const navigate = useNavigate();
@@ -88,10 +105,12 @@ export default function Browser() {
     // calling resolveToolDownload against a file that no longer exists.
     const staleDownloadIdsRef = useRef<Set<string>>(new Set());
     const handoff = useMemo(() => getGameBananaImportHandoff(current), [current]);
-    // Keep browser shortcuts consistent with the Browse content preference.
-    // "Blur" leaves the optional adult destination visible; "hide" removes it.
-    const visibleShortcuts = useMemo(
-        () => BROWSER_DESTINATIONS.filter((shortcut) => !shortcut.nsfw || settings?.browseNsfwContentMode !== 'hide'),
+    // Keep browser shortcuts consistent with the Browse content preference
+    // ("blur" leaves the optional adult destination visible, "hide" removes
+    // it), then bucket the survivors by declared kind (D-04) so the UI can
+    // render Mod hosts, Tools, Reference and Community as separate rows.
+    const groups = useMemo(
+        () => groupDestinationsByKind(visibleDestinations(BROWSER_DESTINATIONS, settings?.browseNsfwContentMode)),
         [settings?.browseNsfwContentMode],
     );
 
@@ -277,7 +296,7 @@ export default function Browser() {
     }
 
     return (
-        <div className="flex h-full flex-col gap-3">
+        <div className="flex h-full flex-col gap-6">
             <div className="flex flex-wrap items-center gap-2">
                 <button
                     type="button"
@@ -341,17 +360,39 @@ export default function Browser() {
                 </button>
             </div>
 
-            <div className="flex flex-wrap gap-1.5">
-                {visibleShortcuts.map((s) => (
-                    <button
-                        key={s.url}
-                        type="button"
-                        onClick={() => go(s.url)}
-                        className="rounded-sm border border-border bg-bg-tertiary px-2 py-1 text-xs text-text-secondary transition-colors hover:text-text-primary"
-                    >
-                        {s.label}
-                    </button>
-                ))}
+            <div className="flex flex-col gap-4">
+                {groups.map((group) => {
+                    const { key, fallback } = GROUP_LABEL_KEYS[group.kind];
+                    return (
+                        <div key={group.kind} className="flex flex-col gap-2">
+                            {/* Not the shared SectionHeader primitive: it renders
+                                text-sm/font-medium (weight 500), and 06-UI-SPEC.md
+                                declares this phase's label role at 12px/weight 600
+                                (text-xs font-semibold), a third weight SectionHeader
+                                does not offer. Kept local rather than widening the
+                                shared primitive for one page. */}
+                            <h3
+                                className={`text-xs font-semibold uppercase tracking-wider ${
+                                    group.kind === 'tool' ? 'text-accent' : 'text-text-secondary'
+                                }`}
+                            >
+                                <Tx k={key} fallback={fallback} />
+                            </h3>
+                            <div className="flex flex-wrap gap-1.5">
+                                {group.entries.map((s) => (
+                                    <button
+                                        key={s.url}
+                                        type="button"
+                                        onClick={() => go(s.url)}
+                                        className="rounded-sm border border-border bg-bg-tertiary px-2 py-1 text-xs text-text-secondary transition-colors hover:text-text-primary"
+                                    >
+                                        {s.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    );
+                })}
             </div>
 
             {failure && (
