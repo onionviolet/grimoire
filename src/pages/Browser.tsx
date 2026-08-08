@@ -26,9 +26,8 @@ import {
     visibleDestinations,
     type BrowserDestinationKind,
 } from '../lib/browserCatalog';
-import { onBrowserToolDownload, resolveToolDownload, setActiveBrowserDestination } from '../lib/browserToolDownload';
-import { useConfirm } from '../components/common/confirmContext';
-import { dismissToast, showToast } from '../stores/toastStore';
+import { setActiveBrowserDestination } from '../lib/browserToolDownload';
+import { useBrowserToolDownloadStore } from '../stores/browserToolDownloadStore';
 
 /** The origin to push alongside a destination's kind (Pattern 3): recomputed
  *  from the guest's live URL on every nav event, never assumed from what was
@@ -84,7 +83,6 @@ const GROUP_LABEL_KEYS: Record<BrowserDestinationKind, { key: string; fallback: 
 export default function Browser() {
     const { t } = useTranslation();
     const navigate = useNavigate();
-    const confirm = useConfirm();
     const settings = useAppStore((s) => s.settings);
     const ref = useRef<WebviewEl | null>(null);
 
@@ -92,18 +90,10 @@ export default function Browser() {
     const [current, setCurrent] = useState(HOME_DESTINATION_URL);
     const [loading, setLoading] = useState(false);
     const [failure, setFailure] = useState<string | null>(null);
-    const [refusal, setRefusal] = useState<string | null>(null);
+    const refusal = useBrowserToolDownloadStore((s) => s.refusal);
+    const setRefusal = useBrowserToolDownloadStore((s) => s.setRefusal);
     const [canBack, setCanBack] = useState(false);
     const [canForward, setCanForward] = useState(false);
-    // The in-flight 'Downloading from...' toast's id, so it can be dismissed
-    // the moment a terminal status (ready/refused/failed) arrives for the
-    // same download rather than lingering until its own timeout.
-    const downloadingToastIdRef = useRef<number | null>(null);
-    // Ids evicted by a 'replaced' push while their confirm dialog may still
-    // be open. The dialog itself cannot be closed from outside `useConfirm`,
-    // so a still-pending answer for a stale id resolves as a no-op instead of
-    // calling resolveToolDownload against a file that no longer exists.
-    const staleDownloadIdsRef = useRef<Set<string>>(new Set());
     const handoff = useMemo(() => getGameBananaImportHandoff(current), [current]);
     // Keep browser shortcuts consistent with the Browse content preference
     // ("blur" leaves the optional adult destination visible, "hide" removes
@@ -194,91 +184,7 @@ export default function Browser() {
             // point belongs to a destination the user can still see.
             setActiveBrowserDestination(null, null, null);
         };
-    }, [t]);
-
-    // Tool-download disclosure round trip (D-08/D-09/D-10). Every member of
-    // BrowserToolDownloadStatus is handled here: 'started' (in-flight toast),
-    // 'ready' (confirm-then-install), 'refused' (danger-tone banner),
-    // 'failed' (toast), and 'replaced' (toast + stale the superseded id so a
-    // still-open confirm for it resolves as a no-op declined rather than a
-    // second import).
-    useEffect(() => {
-        return onBrowserToolDownload((event) => {
-            if (event.status === 'started') {
-                if (downloadingToastIdRef.current !== null) dismissToast(downloadingToastIdRef.current);
-                downloadingToastIdRef.current = showToast(
-                    t('browser.toolDownload.downloading', 'Downloading from {{tool}}...', {
-                        tool: event.tool ?? '',
-                    }),
-                    { tone: 'info', duration: 60000 }
-                );
-            } else if (event.status === 'ready') {
-                if (downloadingToastIdRef.current !== null) {
-                    dismissToast(downloadingToastIdRef.current);
-                    downloadingToastIdRef.current = null;
-                }
-                setRefusal(null);
-                const displayName = event.name ?? t('browser.toolDownload.fallbackName', 'Browser download');
-                void (async () => {
-                    const accepted = await confirm({
-                        title: <Tx k="browser.toolDownload.title" fallback="Add this download to your mod library?" />,
-                        message: (
-                            <Tx
-                                k="browser.toolDownload.message"
-                                fallback='Will add to your mod library as "{{name}}".'
-                                values={{ name: displayName }}
-                            />
-                        ),
-                        confirmLabel: <Tx k="browser.toolDownload.confirm" fallback="Add to library" />,
-                        cancelLabel: <Tx k="browser.toolDownload.cancel" fallback="Discard" />,
-                        variant: 'primary',
-                    });
-                    // A 'replaced' event may have arrived while this confirm
-                    // was still open (the dialog itself cannot be closed from
-                    // here, only answered): treat any answer to a superseded
-                    // id as a no-op rather than resolving against a file that
-                    // is already gone.
-                    if (staleDownloadIdsRef.current.delete(event.id)) return;
-                    await resolveToolDownload(event.id, accepted);
-                })();
-            } else if (event.status === 'refused') {
-                // D-10: a refusal is loud and visible, never a silent drop.
-                // The reason is main-process English, rendered verbatim after
-                // a translated prefix; never shown as a confirm dialog.
-                if (downloadingToastIdRef.current !== null) {
-                    dismissToast(downloadingToastIdRef.current);
-                    downloadingToastIdRef.current = null;
-                }
-                const prefix = t('browser.toolDownload.refusedPrefix', 'Not added: ');
-                setRefusal(`${prefix}${event.reason ?? ''}`);
-            } else if (event.status === 'failed') {
-                if (downloadingToastIdRef.current !== null) {
-                    dismissToast(downloadingToastIdRef.current);
-                    downloadingToastIdRef.current = null;
-                }
-                setRefusal(null);
-                showToast(
-                    t('browser.toolDownload.interrupted', 'The download did not finish. Nothing was added.'),
-                    { tone: 'error' }
-                );
-            } else if (event.status === 'replaced') {
-                if (downloadingToastIdRef.current !== null) {
-                    dismissToast(downloadingToastIdRef.current);
-                    downloadingToastIdRef.current = null;
-                }
-                showToast(
-                    t('browser.toolDownload.replaced', 'Replaced with a newer download from {{tool}}.', {
-                        tool: event.tool ?? '',
-                    }),
-                    { tone: 'info' }
-                );
-                // The evicted id's confirm dialog (if still open) resolves as
-                // a no-op the moment the user answers it; the backend already
-                // discarded the entry, so nothing else needs to happen now.
-                staleDownloadIdsRef.current.add(event.id);
-            }
-        });
-    }, [confirm, t]);
+    }, [t, setRefusal]);
 
     if (!settings?.experimentalBrowser) {
         return (

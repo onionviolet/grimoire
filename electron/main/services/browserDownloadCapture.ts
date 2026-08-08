@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
-import { mkdirSync } from 'node:fs';
-import { unlink } from 'node:fs/promises';
+import { mkdirSync, type Dirent } from 'node:fs';
+import { readdir, unlink } from 'node:fs/promises';
 import { app, type DownloadItem, type Session, type WebContents } from 'electron';
 import { checkVpkFile, describeVpkRejection } from './vpk';
 import { getMainWindow, openExternalSafe } from '../index';
@@ -146,6 +146,91 @@ export function takePendingToolDownload(id: string): PendingToolDownload | null 
  *  take a single entry by id. */
 export function pendingToolDownloadIds(): string[] {
     return [...state.pending.keys()];
+}
+
+/** The `tempPath` of every entry currently in `state.pending`. Path-shaped
+ *  sibling of `pendingToolDownloadIds`, and it exists so
+ *  `sweepToolDownloadTempRoot` can state its safety rule in terms of live
+ *  entries rather than trusting a caller to know. */
+export function pendingToolDownloadPaths(): string[] {
+    return [...state.pending.values()].map((entry) => entry.tempPath);
+}
+
+/**
+ * Delete orphaned captured downloads under `root`, returning how many were
+ * deleted. Takes the root as a parameter for the same reason
+ * `toolDownloadTempRoot` does: so it is testable without `app`.
+ *
+ * Retention rule: a captured temp file is retained only for as long as its
+ * id is in the in-memory pending map, and that map never survives the
+ * process. Every regular file present in the root at process start is
+ * therefore orphaned by construction, so the sweep deletes all of them.
+ * There is deliberately no age threshold and no size cap: an age threshold
+ * would only delay a deletion that is already provably safe (the sweep runs
+ * from `app.whenReady`, before any window has loaded a renderer, so no
+ * capture can be in flight), and the directory holds at most one live file
+ * at a time by the single-pending invariant.
+ *
+ * Safety rule, four parts, all of which this implementation actually
+ * enforces rather than merely asserts: it never deletes a path present in
+ * the protected set (which defaults to `pendingToolDownloadPaths()`, so the
+ * safety rule is the default rather than something a call site has to
+ * remember); it reads only the direct entries of the root via `readdir`
+ * with `withFileTypes` and deletes only entries whose dirent reports
+ * `isFile`, so a directory or a symbolic-link entry is skipped and never
+ * followed (`withFileTypes` uses lstat semantics, so a link to a file
+ * reports `isFile` false); it never recurses; and it builds every deletion
+ * path as `join(root, dirent.name)` from the dirent's own name, never from
+ * a suggested filename that came from the guest. A skipped non-file entry
+ * is logged once with `console.warn` so an unexpected entry is visible
+ * rather than silent.
+ *
+ * Failure handling matches `runPoseCacheSweep` (`heroPoseModels.ts`): a
+ * missing root returns 0 rather than throwing, and a per-entry unlink
+ * failure is caught, logged, and does not stop the remaining entries. This
+ * function never throws.
+ *
+ * Path comparison against the protected set is plain string membership in a
+ * Set. That is correct here rather than lucky, because both sides are
+ * produced by `join` against the same root: `allocateToolDownloadTempPath`
+ * builds `join(root, uuid + '.download')` and this sweep builds
+ * `join(root, dirent.name)`, so both are already platform-normalized the
+ * same way. A later reader should not add a redundant `resolve()`.
+ */
+export async function sweepToolDownloadTempRoot(
+    root: string,
+    protectedPaths?: Iterable<string>
+): Promise<number> {
+    const protectedSet = new Set(protectedPaths ?? pendingToolDownloadPaths());
+
+    let entries: Dirent[];
+    try {
+        entries = await readdir(root, { withFileTypes: true, encoding: 'utf8' });
+    } catch {
+        // Missing root: nothing to sweep, not an error.
+        return 0;
+    }
+
+    let deleted = 0;
+    for (const dirent of entries) {
+        const path = join(root, dirent.name);
+        if (protectedSet.has(path)) continue;
+        if (!dirent.isFile()) {
+            // A directory or a symbolic link (withFileTypes uses lstat
+            // semantics, so a link is never reported isFile): never
+            // recursed into, never followed, and never deleted. Logged
+            // because an unexpected entry here should be visible.
+            console.warn('[BrowserDownloadCapture] Skipping non-file entry during sweep:', path);
+            continue;
+        }
+        try {
+            await unlink(path);
+            deleted += 1;
+        } catch (err) {
+            console.warn('[BrowserDownloadCapture] Failed to delete orphaned temp file:', path, err);
+        }
+    }
+    return deleted;
 }
 
 /** Enforces the single-pending-download invariant: only one tool download's
