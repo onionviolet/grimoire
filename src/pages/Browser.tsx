@@ -6,9 +6,9 @@
 // sandbox/contextIsolation, pins the partition and rejects any non-http(s) src.
 // This file only drives navigation; it cannot widen the guest's privileges.
 //
-// Deliberately not a full browser. No tabs, no downloads (the main process
-// hands those to the real browser), no extensions. It is a shortcut to the
-// handful of sites that matter while modding.
+// Deliberately not a full browser. The bounded control set (what exists, what
+// doesn't, and why) is recorded in docs/browser-scope-boundary.md; that
+// document is the record, this comment is only a pointer to it.
 
 import { createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, RotateCw, Home, ExternalLink, Globe, X, Download } from 'lucide-react';

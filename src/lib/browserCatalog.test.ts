@@ -6,6 +6,7 @@ import {
     groupDestinationsByKind,
     HOME_DESTINATION_URL,
     KIND_ORDER,
+    resolveHomeDestinationUrl,
     visibleDestinations,
     type BrowserDestination,
 } from './browserCatalog';
@@ -33,7 +34,26 @@ describe('BROWSER_DESTINATIONS', () => {
     });
 
     it('resolves HOME_DESTINATION_URL to a live catalog entry, proving it was not orphaned by a review-driven removal', () => {
-        expect(destinationForUrl(HOME_DESTINATION_URL)).not.toBeNull();
+        const home = destinationForUrl(HOME_DESTINATION_URL);
+        expect(home).not.toBeNull();
+        expect(home?.kind).toBe('mod-host');
+    });
+});
+
+describe('resolveHomeDestinationUrl', () => {
+    it('resolves by label, not by array position', () => {
+        const catalog: BrowserDestination[] = [
+            { label: 'Other', url: 'https://other.example.com/', kind: 'reference' },
+            { label: 'Named', url: 'https://named.example.com/', kind: 'mod-host' },
+        ];
+        expect(resolveHomeDestinationUrl(catalog, 'Named')).toBe('https://named.example.com/');
+    });
+
+    it('throws when the named entry is absent, so an orphaned Home cannot ship silently', () => {
+        const catalog: BrowserDestination[] = [
+            { label: 'Other', url: 'https://other.example.com/', kind: 'reference' },
+        ];
+        expect(() => resolveHomeDestinationUrl(catalog, 'GameBanana')).toThrow();
     });
 });
 
