@@ -5,12 +5,12 @@ milestone_name: milestone
 current_phase: 3
 current_phase_name: Foundry Completes Its Build Contract
 status: executing
-stopped_at: Phase 3 UI-SPEC approved
-last_updated: "2026-08-08T17:21:26.487Z"
+stopped_at: Phase 4 context gathered
+last_updated: "2026-08-08T18:28:51.460Z"
 last_activity: 2026-08-08
 last_activity_desc: Phase 06 complete, transitioned to Phase 3
 progress:
-  total_phases: 4
+  total_phases: 5
   completed_phases: 3
   total_plans: 24
   completed_plans: 21
@@ -92,6 +92,11 @@ None yet.
 - **`.planning/config.json` does not exist.** Granularity defaulted to standard and phase IDs to sequential. Run `/gsd-config` if either should differ.
 - **Sibling repo drift.** Three commits in `../grimoire-social` are unpushed and CI cannot see them; `pnpm typecheck` resolves the sibling from disk and stays green while CI fails.
 
+### Roadmap Evolution
+
+- Phase 4 edited: split success criterion 3; retained Foundry image sourcing
+- Phase 5 edited: added Locker portrait-variant awareness criterion
+
 ## Deferred Items
 
 Items acknowledged and carried forward:
@@ -106,6 +111,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-08-08T16:49:55.385Z
-Stopped at: Phase 3 UI-SPEC approved
-Resume file: .planning/phases/03-foundry-completes-its-build-contract/03-UI-SPEC.md
+Last session: 2026-08-08T18:28:51.437Z
+Stopped at: Phase 4 context gathered
+Resume file: .planning/phases/04-locker-and-foundry-as-one-object/04-CONTEXT.md
