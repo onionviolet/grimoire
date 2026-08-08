@@ -112,8 +112,13 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
+**Wave 1**
+
 - [ ] 03-01-PLAN.md - Recolor tracer: stage a recolor in Foundry and forge it into the combined VPK, with the built array alignment fixed and locked
 - [ ] 03-02-PLAN.md - Sound shuffle reachable from Foundry with a Locker link, plus the pool-audition traceability correction
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 03-03-PLAN.md - Recolor rows in My changes, the workshop Appearance mount, both effect surfaces captioned, human verification
 
 **UI hint**: yes
