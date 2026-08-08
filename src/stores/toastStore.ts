@@ -58,3 +58,10 @@ export const useToastStore = create<ToastState>((set) => ({
 export function showToast(message: string, opts?: ToastOptions): number {
   return useToastStore.getState().showToast(message, opts);
 }
+
+/** Imperative helper for non-component call sites, mirroring `showToast`.
+ *  Dismissing an id that is already gone (auto-expired, already dismissed)
+ *  is a no-op, matching `dismissToast`'s own filter-based implementation. */
+export function dismissToast(id: number): void {
+  useToastStore.getState().dismissToast(id);
+}

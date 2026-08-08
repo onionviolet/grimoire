@@ -617,8 +617,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
     resolveToolDownload: (id: string, accepted: boolean): Promise<ResolveToolDownloadResult> =>
         ipcRenderer.invoke('browser:resolve-tool-download', id, accepted),
-    setActiveBrowserDestination: (kind: BrowserDestinationKind | null, origin: string | null) =>
-        ipcRenderer.send('browser:set-active-destination', kind, origin),
+    setActiveBrowserDestination: (kind: BrowserDestinationKind | null, origin: string | null, label: string | null) =>
+        ipcRenderer.send('browser:set-active-destination', kind, origin, label),
 
     // Crosshair Presets
     getCrosshairPresets: () => ipcRenderer.invoke('crosshair:getPresets'),

@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { DownloadItem, Session, WebContents } from 'electron';
 
 // `attachBrowserDownloadCapture` reads `app.getPath('userData')` and
 // `getMainWindow`/`openExternalSafe` come from `../index` (electron/main's
@@ -9,27 +10,78 @@ import { join } from 'node:path';
 // Both are mocked so this file exercises only browserDownloadCapture's own
 // logic, matching the project's existing convention for main-process service
 // tests (see electron/main/services/priorityFolderFailure.test.ts).
-const harness = vi.hoisted(() => ({ userData: '' }));
+const harness = vi.hoisted(() => ({ userData: '', mainWindow: null as unknown }));
 vi.mock('electron', () => ({ app: { getPath: () => harness.userData } }));
 vi.mock('../index', () => ({
-    getMainWindow: vi.fn(() => null),
+    getMainWindow: vi.fn(() => harness.mainWindow),
     openExternalSafe: vi.fn(),
 }));
 
+import { describeVpkRejection } from './vpk';
 import {
     allocateToolDownloadTempPath,
     attachBrowserDownloadCapture,
     classifyToolDownload,
     displayNameForDownload,
+    pendingToolDownloadIds,
+    setActiveDestination,
     shouldCaptureToolDownload,
     toolDownloadTempRoot,
 } from './browserDownloadCapture';
+import type { BrowserToolDownloadEvent } from '../../../src/types/electron';
 
 function writeVpkFixture(path: string): void {
     const header = Buffer.alloc(64);
     header.writeUInt32LE(0x55aa1234, 0); // VPK_MAGIC
     header.writeUInt32LE(2, 4); // version 2
     writeFileSync(path, header);
+}
+
+/** A stub `DownloadItem` whose `done` callback is captured (not fired by
+ *  Electron) so a test can control exactly when the classification/cleanup
+ *  continuation runs and await it, since `registerToolDownloadCompletion`'s
+ *  listener is an async function that production code never awaits. */
+function makeStubItem(filename: string, guestUrl: string): {
+    item: DownloadItem;
+    webContents: WebContents;
+    getSavePath: () => string;
+    triggerDone: (state: 'completed' | 'cancelled' | 'interrupted') => Promise<void>;
+} {
+    let savePath = '';
+    let doneCb: ((event: unknown, state: string) => unknown) | null = null;
+    const item = {
+        getFilename: () => filename,
+        getURL: () => guestUrl,
+        setSavePath: (p: string) => { savePath = p; },
+        getSavePath: () => savePath,
+        once: (event: string, cb: (...args: unknown[]) => unknown) => {
+            if (event === 'done') doneCb = cb;
+        },
+    } as unknown as DownloadItem;
+    const webContents = { getURL: () => guestUrl } as unknown as WebContents;
+    return {
+        item,
+        webContents,
+        getSavePath: () => savePath,
+        triggerDone: async (state) => {
+            await doneCb?.({}, state);
+        },
+    };
+}
+
+/** Attaches the capture handler to a fresh stub session and returns the
+ *  captured `will-download` listener, so a test can invoke it directly with
+ *  synthesized `(event, item, webContents)` arguments. */
+function attachAndCaptureListener(): (event: unknown, item: DownloadItem, webContents: WebContents) => void {
+    let willDownloadListener: ((...args: unknown[]) => void) | null = null;
+    const stubSession = {
+        on: (event: string, listener: (...args: unknown[]) => void) => {
+            if (event === 'will-download') willDownloadListener = listener;
+        },
+    } as unknown as Session;
+    attachBrowserDownloadCapture(stubSession);
+    if (!willDownloadListener) throw new Error('will-download listener was not registered');
+    return willDownloadListener;
 }
 
 describe('shouldCaptureToolDownload', () => {
@@ -162,5 +214,181 @@ describe('attachBrowserDownloadCapture', () => {
         attachBrowserDownloadCapture(stubSession);
 
         expect(listeners).toHaveLength(1);
+    });
+});
+
+describe('will-download tool capture: refusal and failure paths (D-10)', () => {
+    let dir: string;
+    let sendSpy: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+        dir = mkdtempSync(join(tmpdir(), 'browser-download-roundtrip-'));
+        harness.userData = dir;
+        sendSpy = vi.fn();
+        harness.mainWindow = {
+            isDestroyed: () => false,
+            webContents: { isDestroyed: () => false, send: sendSpy },
+        };
+        setActiveDestination('tool', 'https://xkitkatcat.github.io', 'Pimp My Hideout');
+    });
+
+    function pushedEvents(): BrowserToolDownloadEvent[] {
+        return sendSpy.mock.calls
+            .filter(([channel]) => channel === 'browser:tool-download')
+            .map(([, payload]) => payload as BrowserToolDownloadEvent);
+    }
+
+    /** Events after the synchronous `started` push every will-download
+     *  capture now emits (Task 2) — this describe block asserts only the
+     *  terminal (refused/ready/failed) outcome, not the in-flight push. */
+    function terminalEvents(): BrowserToolDownloadEvent[] {
+        return pushedEvents().filter((e) => e.status !== 'started');
+    }
+
+    it('refuses a ZIP-header file: pushed reason equals describeVpkRejection, temp file is gone, no ready is ever pushed', async () => {
+        const willDownload = attachAndCaptureListener();
+        const { item, webContents, getSavePath, triggerDone } = makeStubItem(
+            'build.vpk',
+            'https://xkitkatcat.github.io/pimpmyhideout/'
+        );
+
+        willDownload({}, item, webContents);
+        writeFileSync(getSavePath(), Buffer.from([0x50, 0x4b, 0x03, 0x04, 0, 0, 0, 0]));
+        await triggerDone('completed');
+
+        expect(existsSync(getSavePath())).toBe(false);
+        const events = terminalEvents();
+        expect(events).toHaveLength(1);
+        expect(events[0].status).toBe('refused');
+        expect(events[0].reason).toBe(
+            describeVpkRejection('build.vpk', { valid: false, format: 'zip', label: 'ZIP archive' })
+        );
+        expect(events.some((e) => e.status === 'ready')).toBe(false);
+    });
+
+    it('refuses a zero-byte file, reason equals describeVpkRejection for an empty file', async () => {
+        const willDownload = attachAndCaptureListener();
+        const { item, webContents, getSavePath, triggerDone } = makeStubItem(
+            'empty.vpk',
+            'https://xkitkatcat.github.io/pimpmyhideout/'
+        );
+
+        willDownload({}, item, webContents);
+        writeFileSync(getSavePath(), Buffer.alloc(0));
+        await triggerDone('completed');
+
+        expect(existsSync(getSavePath())).toBe(false);
+        const events = terminalEvents();
+        expect(events).toHaveLength(1);
+        expect(events[0].status).toBe('refused');
+        expect(events[0].reason).toBe(
+            describeVpkRejection('empty.vpk', { valid: false, format: 'empty', label: 'empty file' })
+        );
+    });
+
+    it('accepts a real VPK header: no refusal, status is ready, temp file is kept', async () => {
+        const willDownload = attachAndCaptureListener();
+        const { item, webContents, getSavePath, triggerDone } = makeStubItem(
+            'build.vpk',
+            'https://xkitkatcat.github.io/pimpmyhideout/'
+        );
+
+        willDownload({}, item, webContents);
+        writeVpkFixture(getSavePath());
+        await triggerDone('completed');
+
+        expect(existsSync(getSavePath())).toBe(true);
+        const events = terminalEvents();
+        expect(events).toHaveLength(1);
+        expect(events[0].status).toBe('ready');
+        expect(events[0].name).toBe('build.vpk');
+    });
+
+    it('a non-completed terminal state deletes the temp file, pushes failed, and never shows a confirm dialog (no ready/refused)', async () => {
+        const willDownload = attachAndCaptureListener();
+        const { item, webContents, getSavePath, triggerDone } = makeStubItem(
+            'build.vpk',
+            'https://xkitkatcat.github.io/pimpmyhideout/'
+        );
+
+        willDownload({}, item, webContents);
+        writeVpkFixture(getSavePath());
+        await triggerDone('interrupted');
+
+        expect(existsSync(getSavePath())).toBe(false);
+        const events = terminalEvents();
+        expect(events).toHaveLength(1);
+        expect(events[0].status).toBe('failed');
+        expect(events.some((e) => e.status === 'ready' || e.status === 'refused')).toBe(false);
+    });
+
+    it('pushes started as the last statement of the tool branch, before any file classification runs', () => {
+        const willDownload = attachAndCaptureListener();
+        const { item, webContents, getSavePath } = makeStubItem(
+            'build.vpk',
+            'https://xkitkatcat.github.io/pimpmyhideout/'
+        );
+
+        willDownload({}, item, webContents);
+
+        // No fixture bytes were ever written to getSavePath() and `done` was
+        // never triggered, so classifyToolDownload cannot have run yet; the
+        // only thing that could have been pushed synchronously is `started`.
+        const events = pushedEvents();
+        expect(events).toHaveLength(1);
+        expect(events[0].status).toBe('started');
+        expect(events[0].tool).toBe('Pimp My Hideout');
+        expect(existsSync(getSavePath())).toBe(false);
+    });
+});
+
+describe('replace-newest: only one pending tool download disclosure at a time', () => {
+    let dir: string;
+    let sendSpy: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+        dir = mkdtempSync(join(tmpdir(), 'browser-download-replace-'));
+        harness.userData = dir;
+        sendSpy = vi.fn();
+        harness.mainWindow = {
+            isDestroyed: () => false,
+            webContents: { isDestroyed: () => false, send: sendSpy },
+        };
+        setActiveDestination('tool', 'https://xkitkatcat.github.io', 'Pimp My Hideout');
+    });
+
+    function pushedEvents(): BrowserToolDownloadEvent[] {
+        return sendSpy.mock.calls
+            .filter(([channel]) => channel === 'browser:tool-download')
+            .map(([, payload]) => payload as BrowserToolDownloadEvent);
+    }
+
+    it('two consecutive captures produce a replaced push for the first id; the first temp path is gone and the pending map holds exactly one entry', async () => {
+        const willDownload = attachAndCaptureListener();
+
+        const first = makeStubItem('first.vpk', 'https://xkitkatcat.github.io/pimpmyhideout/');
+        willDownload({}, first.item, first.webContents);
+        writeVpkFixture(first.getSavePath());
+        await first.triggerDone('completed');
+
+        const firstReady = pushedEvents().find((e) => e.status === 'ready');
+        expect(firstReady).toBeDefined();
+        const firstId = firstReady!.id;
+        const firstTempPath = first.getSavePath();
+
+        const second = makeStubItem('second.vpk', 'https://xkitkatcat.github.io/pimpmyhideout/');
+        willDownload({}, second.item, second.webContents);
+        writeVpkFixture(second.getSavePath());
+        await second.triggerDone('completed');
+
+        expect(existsSync(firstTempPath)).toBe(false);
+        expect(existsSync(second.getSavePath())).toBe(true);
+
+        const ids = pendingToolDownloadIds();
+        expect(ids).toHaveLength(1);
+        expect(ids).not.toContain(firstId);
+
+        const replaced = pushedEvents().filter((e) => e.status === 'replaced');
+        expect(replaced.some((e) => e.id === firstId && e.tool === 'Pimp My Hideout')).toBe(true);
     });
 });

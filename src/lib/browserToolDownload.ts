@@ -23,7 +23,12 @@ export function resolveToolDownload(id: string, accepted: boolean): Promise<Reso
 }
 
 /** Fire-and-forget: tell main which catalog destination (if any) the guest's
- *  current URL resolves to, so `will-download` knows whether to capture. */
-export function setActiveBrowserDestination(kind: BrowserDestinationKind | null, origin: string | null): void {
-    window.electronAPI.setActiveBrowserDestination(kind, origin);
+ *  current URL resolves to, so `will-download` knows whether to capture.
+ *  `label` names the source in the in-flight/replaced toasts. */
+export function setActiveBrowserDestination(
+    kind: BrowserDestinationKind | null,
+    origin: string | null,
+    label: string | null
+): void {
+    window.electronAPI.setActiveBrowserDestination(kind, origin, label);
 }
