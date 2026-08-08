@@ -109,7 +109,13 @@ Plans:
   2. A user can add or remove a hero sound from its launch shuffle pool without leaving Foundry, and can reach the Locker's view of that same pool from there
   3. Auditioning a randomizer pool plays every clip in the pool, so what the user hears before forging is what the pool actually contains
 
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 03-01-PLAN.md - Recolor tracer: stage a recolor in Foundry and forge it into the combined VPK, with the built array alignment fixed and locked
+- [ ] 03-02-PLAN.md - Sound shuffle reachable from Foundry with a Locker link, plus the pool-audition traceability correction
+- [ ] 03-03-PLAN.md - Recolor rows in My changes, the workshop Appearance mount, both effect surfaces captioned, human verification
+
 **UI hint**: yes
 
 **Notes**: Deliberately bounded. Widening `FoundryForgeEdit` also means fixing the `built` array alignment in `foundryForge.ts`, which only pushes for sound and texture today and is currently kept safe by the type alone. The invariants do not move: exact normalized paths stay the ownership key, Installed and the Locker stay the only authority for enabled state, and a failed or unreadable inspection still blocks the ambiguous action.
@@ -212,4 +218,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phase 6 declar
 | 3. Foundry Completes Its Build Contract | 0/TBD | Not started | - |
 | 4. Locker And Foundry As One Object | 0/TBD | Not started | - |
 | 5. One Inventory, One Journey | 0/TBD | Not started | - |
-| 6. Community Tools Land Inside Grimoire | 7/7 | In Progress|  |
+| 6. Community Tools Land Inside Grimoire | 7/7 | Complete    | 2026-08-08 |
