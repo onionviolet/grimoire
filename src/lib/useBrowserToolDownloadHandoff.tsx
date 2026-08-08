@@ -6,6 +6,7 @@ import { onBrowserToolDownload, resolveToolDownload } from './browserToolDownloa
 import { useConfirm } from '../components/common/confirmContext';
 import { dismissToast, showToast } from '../stores/toastStore';
 import { setBrowserToolDownloadRefusal } from '../stores/browserToolDownloadStore';
+import type { ResolveToolDownloadResult } from '../types/electron';
 
 /**
  * App-scoped tool-download disclosure subscriber (D-08/D-09/D-10), called
@@ -58,6 +59,17 @@ export function useBrowserToolDownloadHandoff(): void {
 
     useEffect(() => {
         return onBrowserToolDownload((event) => {
+            // Reads `pathnameRef.current` at call time rather than at
+            // subscribe time, so a sentence produced after the user
+            // navigated lands where the user now is; and it exists so there
+            // is one refusal surface rather than two that can drift apart
+            // (used by both the 'refused' branch below and an accept-time
+            // failure in the 'ready' branch).
+            const routeRefusalSentence = (sentence: string) => {
+                if (isBrowserRoute(pathnameRef.current)) setBrowserToolDownloadRefusal(sentence);
+                else showToast(sentence, { tone: 'error', duration: 9000 });
+            };
+
             if (event.status === 'started') {
                 if (downloadingToastIdRef.current !== null) dismissToast(downloadingToastIdRef.current);
                 downloadingToastIdRef.current = showToast(
@@ -93,7 +105,33 @@ export function useBrowserToolDownloadHandoff(): void {
                     // id as a no-op rather than resolving against a file that
                     // is already gone.
                     if (staleDownloadIdsRef.current.delete(event.id)) return;
-                    await resolveToolDownload(event.id, accepted);
+                    let result: ResolveToolDownloadResult;
+                    try {
+                        result = await resolveToolDownload(event.id, accepted);
+                    } catch (err) {
+                        // The main process cannot currently throw here
+                        // (resolvePendingToolDownload catches everything),
+                        // but the IPC round trip itself can fail, and an
+                        // uncaught rejection inside this void async IIFE
+                        // would be exactly the silent drop this exists to
+                        // remove.
+                        result = { ok: false, error: err instanceof Error ? err.message : String(err) };
+                    }
+                    // Surface only a failure the user is owed: a decline is
+                    // the user's own answer and stays silent, a stale result
+                    // was already explained by the 'replaced' toast and stays
+                    // silent, and a success stays silent.
+                    if (accepted && !result.ok && !result.stale) {
+                        const sentence = result.error
+                            ? `${t('browser.toolDownload.refusedPrefix', 'Not added: ')}${result.error}`
+                            // Defensive only: every failure branch in
+                            // resolvePendingToolDownload populates error
+                            // today. Exists so a future contract change
+                            // degrades to a translated sentence instead of a
+                            // dangling prefix ending in a colon.
+                            : t('browser.toolDownload.interrupted', 'The download did not finish. Nothing was added.');
+                        routeRefusalSentence(sentence);
+                    }
                 })();
             } else if (event.status === 'refused') {
                 // D-10: a refusal is loud and visible, never a silent drop.
@@ -110,11 +148,7 @@ export function useBrowserToolDownloadHandoff(): void {
                 // null). This is the UI-SPEC error state row, extended to the
                 // case the spec did not have to consider while the subscriber
                 // was page scoped.
-                if (isBrowserRoute(pathnameRef.current)) {
-                    setBrowserToolDownloadRefusal(sentence);
-                } else {
-                    showToast(sentence, { tone: 'error', duration: 9000 });
-                }
+                routeRefusalSentence(sentence);
             } else if (event.status === 'failed') {
                 if (downloadingToastIdRef.current !== null) {
                     dismissToast(downloadingToastIdRef.current);

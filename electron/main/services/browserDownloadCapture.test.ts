@@ -163,8 +163,15 @@ describe('allocateToolDownloadTempPath', () => {
         expect(first).not.toBe(second);
         expect(first.startsWith(root)).toBe(true);
         expect(second.startsWith(root)).toBe(true);
-        expect(first.endsWith('.download')).toBe(true);
-        expect(second.endsWith('.download')).toBe(true);
+        expect(first.endsWith('.vpk')).toBe(true);
+        expect(second.endsWith('.vpk')).toBe(true);
+    });
+
+    it('is independent of the suggested filename: no extension still yields the same shape of path', () => {
+        const root = join('C:', 'fake', 'root');
+        const withNoExtension = allocateToolDownloadTempPath(root, 'build-with-no-extension');
+        expect(withNoExtension.startsWith(root)).toBe(true);
+        expect(withNoExtension.endsWith('.vpk')).toBe(true);
     });
 });
 
