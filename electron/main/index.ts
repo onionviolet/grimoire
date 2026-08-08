@@ -151,7 +151,7 @@ import { initUpdater, checkForUpdates, getInstallSource } from './services/updat
 import { runStartupRecovery } from './ipc/launch';
 import { loadSettings, saveSettings } from './services/settings';
 import { attachBrowserFilter, configureFilter } from './services/browserContentFilter';
-import { attachBrowserDownloadCapture } from './services/browserDownloadCapture';
+import { attachBrowserDownloadCapture, sweepToolDownloadTempRoot, toolDownloadTempRoot } from './services/browserDownloadCapture';
 import { hardenGuestWebPreferences } from './services/webviewHardening';
 import { backfillMissingMetadataHashes } from './services/metadata';
 import { backfillImprintedFlags } from './services/imprintMods';
@@ -532,6 +532,12 @@ if (!gotTheLock) {
         // Reclaim disk from stale or least-recently-used pose entries; the
         // cache is also swept after each export.
         void sweepHeroPoseCache();
+
+        // The pending tool-download map is in-memory only, so anything still
+        // in this directory at startup was orphaned by a crash, a forced
+        // quit, or a disclosure that was never answered, and none of it is
+        // reachable from any user flow.
+        void sweepToolDownloadTempRoot(toolDownloadTempRoot(app.getPath('userData')));
 
         // Default open or close DevTools by F12 in development
         app.on('browser-window-created', (_, window) => {

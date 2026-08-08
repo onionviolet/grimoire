@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { DownloadItem, Session, WebContents } from 'electron';
@@ -17,6 +17,24 @@ vi.mock('../index', () => ({
     openExternalSafe: vi.fn(),
 }));
 
+// Lets one test (the "cannot be deleted" case) force a single `unlink` call
+// to fail without touching filesystem permissions, which is unreliable
+// cross-platform (notably on Windows). Every other path delegates to the
+// real implementation, so this mock is inert unless a test opts in.
+const unlinkControl = vi.hoisted(() => ({ failPath: null as string | null }));
+vi.mock('node:fs/promises', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('node:fs/promises')>();
+    return {
+        ...actual,
+        unlink: vi.fn(async (path: Parameters<typeof actual.unlink>[0]) => {
+            if (typeof path === 'string' && path === unlinkControl.failPath) {
+                throw new Error('EPERM: simulated unlink failure');
+            }
+            return actual.unlink(path);
+        }),
+    };
+});
+
 import { describeVpkRejection } from './vpk';
 import {
     allocateToolDownloadTempPath,
@@ -24,8 +42,10 @@ import {
     classifyToolDownload,
     displayNameForDownload,
     pendingToolDownloadIds,
+    pendingToolDownloadPaths,
     setActiveDestination,
     shouldCaptureToolDownload,
+    sweepToolDownloadTempRoot,
     toolDownloadTempRoot,
 } from './browserDownloadCapture';
 import type { BrowserToolDownloadEvent } from '../../../src/types/electron';
@@ -391,4 +411,142 @@ describe('replace-newest: only one pending tool download disclosure at a time', 
         const replaced = pushedEvents().filter((e) => e.status === 'replaced');
         expect(replaced.some((e) => e.id === firstId && e.tool === 'Pimp My Hideout')).toBe(true);
     });
+});
+
+describe('sweepToolDownloadTempRoot (WR-05)', () => {
+    let dir: string;
+
+    beforeEach(() => {
+        dir = mkdtempSync(join(tmpdir(), 'browser-download-sweep-'));
+        unlinkControl.failPath = null;
+    });
+
+    it('sweeping a root that does not exist returns 0 and does not throw', async () => {
+        const missing = join(dir, 'does-not-exist');
+        await expect(sweepToolDownloadTempRoot(missing)).resolves.toBe(0);
+    });
+
+    it('sweeping an empty root returns 0', async () => {
+        await expect(sweepToolDownloadTempRoot(dir)).resolves.toBe(0);
+    });
+
+    it('sweeping a root holding three plain files deletes all three and returns 3', async () => {
+        writeFileSync(join(dir, 'a.download'), 'a');
+        writeFileSync(join(dir, 'b.download'), 'b');
+        writeFileSync(join(dir, 'c.download'), 'c');
+
+        await expect(sweepToolDownloadTempRoot(dir)).resolves.toBe(3);
+        expect(readdirSync(dir)).toHaveLength(0);
+    });
+
+    it('a second sweep immediately after the first returns 0 and leaves the directory in the same state', async () => {
+        writeFileSync(join(dir, 'a.download'), 'a');
+        writeFileSync(join(dir, 'b.download'), 'b');
+
+        await expect(sweepToolDownloadTempRoot(dir)).resolves.toBe(2);
+        expect(readdirSync(dir)).toHaveLength(0);
+
+        await expect(sweepToolDownloadTempRoot(dir)).resolves.toBe(0);
+        expect(readdirSync(dir)).toHaveLength(0);
+    });
+
+    it('a subdirectory inside the root survives the sweep and is not recursed into', async () => {
+        const subdir = join(dir, 'nested');
+        mkdirSync(subdir);
+        const nestedFile = join(subdir, 'inside.download');
+        writeFileSync(nestedFile, 'inside');
+        writeFileSync(join(dir, 'orphan.download'), 'orphan');
+
+        const deleted = await sweepToolDownloadTempRoot(dir);
+
+        expect(deleted).toBe(1);
+        expect(existsSync(subdir)).toBe(true);
+        expect(existsSync(nestedFile)).toBe(true);
+        expect(existsSync(join(dir, 'orphan.download'))).toBe(false);
+    });
+
+    it('a path passed as protected survives the sweep even though it is a plain file in the root', async () => {
+        const protectedPath = join(dir, 'keep.download');
+        const orphanPath = join(dir, 'orphan.download');
+        writeFileSync(protectedPath, 'keep');
+        writeFileSync(orphanPath, 'orphan');
+
+        const deleted = await sweepToolDownloadTempRoot(dir, [protectedPath]);
+
+        expect(deleted).toBe(1);
+        expect(existsSync(protectedPath)).toBe(true);
+        expect(existsSync(orphanPath)).toBe(false);
+    });
+
+    it('by default the protected set is whatever the live pending map holds: a pending file survives, a non-pending file does not', async () => {
+        harness.userData = dir;
+        setActiveDestination('tool', 'https://xkitkatcat.github.io', 'Pimp My Hideout');
+        const willDownload = attachAndCaptureListener();
+        const root = toolDownloadTempRoot(dir);
+
+        const { item, webContents, getSavePath, triggerDone } = makeStubItem(
+            'build.vpk',
+            'https://xkitkatcat.github.io/pimpmyhideout/'
+        );
+        willDownload({}, item, webContents);
+        writeVpkFixture(getSavePath());
+        await triggerDone('completed');
+
+        // Registered through the real will-download harness rather than
+        // reaching into module state, so this proves the default wiring
+        // (sweepToolDownloadTempRoot's own pendingToolDownloadPaths()
+        // default), not just the explicit-parameter path above.
+        expect(pendingToolDownloadPaths()).toContain(getSavePath());
+
+        const orphanPath = join(root, 'orphan.download');
+        writeFileSync(orphanPath, 'orphan');
+
+        const deleted = await sweepToolDownloadTempRoot(root);
+
+        expect(deleted).toBe(1);
+        expect(existsSync(getSavePath())).toBe(true);
+        expect(existsSync(orphanPath)).toBe(false);
+    });
+
+    it('a file that cannot be deleted does not abort the sweep: the remaining entries are still processed', async () => {
+        const stubbornPath = join(dir, 'stubborn.download');
+        const orphanPath = join(dir, 'orphan.download');
+        writeFileSync(stubbornPath, 'stubborn');
+        writeFileSync(orphanPath, 'orphan');
+        unlinkControl.failPath = stubbornPath;
+
+        const deleted = await sweepToolDownloadTempRoot(dir);
+
+        expect(deleted).toBe(1);
+        expect(existsSync(stubbornPath)).toBe(true);
+        expect(existsSync(orphanPath)).toBe(false);
+    });
+
+    // Bonus, not load-bearing: the directory case above already proves the
+    // isFile gate on every platform. Creating a symlink on Windows needs
+    // Developer Mode, so this is guarded rather than required.
+    it.skipIf(process.platform === 'win32')(
+        'a symlink entry in the root is skipped and never followed',
+        async () => {
+            const targetPath = join(dir, 'target.download');
+            writeFileSync(targetPath, 'target');
+            const linkPath = join(dir, 'link.download');
+            try {
+                symlinkSync(targetPath, linkPath);
+            } catch {
+                // Symlink creation can still fail in a locked-down sandbox
+                // even off Windows; skip rather than fail this bonus case.
+                return;
+            }
+            const orphanPath = join(dir, 'orphan.download');
+            writeFileSync(orphanPath, 'orphan');
+
+            const deleted = await sweepToolDownloadTempRoot(dir);
+
+            expect(deleted).toBe(1);
+            expect(existsSync(linkPath)).toBe(true);
+            expect(existsSync(targetPath)).toBe(true);
+            expect(existsSync(orphanPath)).toBe(false);
+        }
+    );
 });
