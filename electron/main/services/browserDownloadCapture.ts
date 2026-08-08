@@ -94,9 +94,28 @@ export function toolDownloadTempRoot(userDataDir: string): string {
 /** A fresh, collision-free temp path under `root`, independent of the
  *  suggested filename (Pitfall 4): two Build VPK clicks in one session must
  *  allocate two distinct paths, never silently overwrite one pending file
- *  with another. */
+ *  with another.
+ *
+ *  1. The path is still built from `randomUUID()` and never from the guest's
+ *     suggested filename (Pitfall 4), so two Build VPK clicks in one session
+ *     allocate two distinct paths and no guest-supplied string ever becomes
+ *     a path component.
+ *  2. The suffix is `.vpk` because this path's only consumer is
+ *     `importCustomModSource`, which checks the extension before it reads a
+ *     byte and refuses anything else outright. A neutral suffix guaranteed a
+ *     refusal for a file the app had already proved was fine. That is CR-01,
+ *     and it made every accepted download fail.
+ *  3. The suffix is an addressing detail and not a claim about the bytes. It
+ *     is chosen at will-download time, before a single byte has been
+ *     written, and nothing on this path ever treats it as evidence:
+ *     `classifyToolDownload` reads magic bytes through `checkVpkFile` and is
+ *     what decides whether a download is ever disclosed, and
+ *     `resolveInstallableVpk` reads magic bytes again and is what decides
+ *     whether it is ever installed. By the time this path is used as an
+ *     install source, `classifyToolDownload` has already proved the header
+ *     is a VPK, which is why naming it so is lossless. */
 export function allocateToolDownloadTempPath(root: string, _suggestedFilename: string): string {
-    return join(root, `${randomUUID()}.download`);
+    return join(root, `${randomUUID()}.vpk`);
 }
 
 /** A safe display name for the disclosure/refusal copy: trims, strips any
@@ -193,7 +212,7 @@ export function pendingToolDownloadPaths(): string[] {
  * Path comparison against the protected set is plain string membership in a
  * Set. That is correct here rather than lucky, because both sides are
  * produced by `join` against the same root: `allocateToolDownloadTempPath`
- * builds `join(root, uuid + '.download')` and this sweep builds
+ * builds `join(root, uuid + '.vpk')` and this sweep builds
  * `join(root, dirent.name)`, so both are already platform-normalized the
  * same way. A later reader should not add a redundant `resolve()`.
  */
