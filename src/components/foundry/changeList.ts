@@ -168,10 +168,11 @@ export function changeFilterOf(entry: FoundryChangeEntry): FoundryChangeFilter {
       // texture row does.
       return 'other';
     default: {
-      // A fourth kind must fail the compile rather than silently shelfing
-      // under a texture category it was never assigned.
+      // A fourth compile-time kind still fails typecheck on this assignment;
+      // a runtime-forged value shelves under `other` like the UI fallback
+      // (FileQuestion icon / neutral Change label in My changes).
       const impossible: never = entry.kind;
-      throw new Error(`Unhandled change kind: ${impossible}`);
+      return 'other';
     }
   }
 }
