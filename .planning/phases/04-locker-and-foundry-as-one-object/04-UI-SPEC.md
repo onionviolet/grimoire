@@ -1,7 +1,7 @@
 ---
 phase: 4
 slug: locker-and-foundry-as-one-object
-status: draft
+status: approved
 shadcn_initialized: false
 preset: none
 created: 2026-08-08
@@ -213,11 +213,11 @@ All copy above is written as **i18n key + English value**, per `docs/ui-conventi
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Registry Safety: PASS
+- [x] Dimension 1 Copywriting: PASS
+- [x] Dimension 2 Visuals: PASS
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS
+- [x] Dimension 5 Spacing: PASS
+- [x] Dimension 6 Registry Safety: PASS
 
-**Approval:** pending
+**Approval:** APPROVED by gsd-ui-checker on 2026-08-08. 6/6 dimensions PASS. One non-blocking recommendation: the auto-fallback banner's `locker.pose.retry` = "Retry" is a single-word CTA, accepted as verbatim reuse of shipped copy. The scope note above was independently verified against the working tree (f614bb7 is an ancestor of HEAD; cited file:line evidence matches).
