@@ -85,7 +85,7 @@ import {
   MenuSubTrigger,
   MenuTrigger,
 } from '../components/common/menu';
-import { showToast } from '../stores/toastStore';
+import { dismissToast, showToast } from '../stores/toastStore';
 import { useAppStore, type BrowseArtistRef } from '../stores/appStore';
 import { getActiveDeadlockPath } from '../lib/appSettings';
 import { isImprintPending } from '../lib/imprintPending';
@@ -118,6 +118,7 @@ import { canOpenImageSource, copyImageToClipboard, resolveImageSource } from '..
 import { resolveUpdateTarget } from '../lib/updateFileMatch';
 import { createEnabledVpkRestoreSnapshot, shouldRestoreVpkEnabled, type EnabledVpkRestoreSnapshot } from '../lib/vpkRestore';
 import { modRestoreKey } from '../lib/soloRestore';
+import { bulkChangedCount, bulkUndoPlan, captureBulkSnapshot, type BulkModSnapshot } from '../lib/bulkUndo';
 import { buildCachedModDetails, canUseCachedModDetails } from '../lib/cachedModDetails';
 import {
   createDisabledEntryComparator,
@@ -1126,6 +1127,20 @@ export default function Installed() {
     done: number;
     total: number;
   } | null>(null);
+  // Pending undo offer for the most recent reversible bulk mutation. Holds
+  // the snapshot captured before the batch, the ids to restore the selection
+  // from, and the toast id so a newer batch can supersede the previous offer
+  // (D-15). Null when no undo is outstanding; the offer is one-shot and drops
+  // when its toast goes away.
+  const [undoOffer, setUndoOffer] = useState<{
+    toastId: number;
+    snapshot: BulkModSnapshot[];
+    selection: string[];
+  } | null>(null);
+  // True while a restore is replaying. Disables the same controls a batch
+  // does, and is cleared in a finally so a failed restore never strands the
+  // page (T-05-11).
+  const [undoBusy, setUndoBusy] = useState(false);
   // Persisted screen position of the floating select bar. `null` means
   // "use the default top-center anchor"; once the user drags it we store the
   // top-left corner in px and reuse it next time the bar appears.
@@ -2473,6 +2488,9 @@ export default function Installed() {
   // doesn't fire mid bulk-operation or steal ESC from the delete-confirm modal.
   useEscapeKey(exitSelectMode, selectMode && !bulkProgress && !modToDelete);
 
+  // Bulk delete stays outside the undo contract (D-14): a deleted VPK is not
+  // recoverable from a snapshot of store state, so it keeps its confirmation
+  // instead of gaining an undo offer it could not honour.
   const handleDeleteConfirm = async () => {
     if (!modToDelete) return;
     const wasBulk = !!modToDelete.isBulk;
@@ -2510,6 +2528,66 @@ export default function Installed() {
   const selectedEnabledCount = selectedMods.filter((m) => m.enabled).length;
   const selectedDisabledCount = selectedMods.length - selectedEnabledCount;
 
+  // One-shot undo for a completed reversible bulk mutation (D-14, D-15).
+  // Dismisses any previous offer first so a newer batch supersedes it rather
+  // than stacking a second toast, skips the toast entirely when nothing
+  // actually changed, and otherwise offers Undo with the captured snapshot and
+  // the selection a restore should bring back.
+  const offerBulkUndo = useCallback(
+    (snapshot: BulkModSnapshot[], selection: string[]) => {
+      if (undoOffer) dismissToast(undoOffer.toastId);
+      const changed = bulkChangedCount(snapshot, mods);
+      if (changed === 0) return;
+
+      const runRestore = async () => {
+        setUndoBusy(true);
+        try {
+          // Build the plan against the LIVE list: a field the user changed by
+          // hand since the batch is only restored if it still differs from the
+          // snapshot, and a mod that was uninstalled in between is skipped.
+          const ops = bulkUndoPlan(snapshot, mods);
+          const restoredIds = new Set<string>();
+          for (const op of ops) {
+            try {
+              if (op.kind === 'toggle') {
+                const ok = await toggleMod(op.modId);
+                if (ok) restoredIds.add(op.modId);
+              } else if (op.kind === 'lockerHero') {
+                await setModLockerHero(op.modId, op.value);
+                restoredIds.add(op.modId);
+              } else {
+                await setModGlobalType(op.modId, op.value);
+                restoredIds.add(op.modId);
+              }
+            } catch (err) {
+              // One failed op does not abort the rest of the restore; the
+              // finally below still clears the busy state either way.
+              console.error('[Installed] Bulk undo op failed:', err);
+            }
+          }
+          await loadMods();
+          // D-14: restore the selection too, so the user is not left to
+          // rebuild it by hand.
+          setSelectedIds(new Set(selection));
+          setSelectMode(true);
+          showToast(t('common.bulkUndo.restored', { count: restoredIds.size }));
+        } finally {
+          setUndoOffer(null);
+          setUndoBusy(false);
+        }
+      };
+
+      const toastId = showToast(t('common.bulkUndo.message', { count: changed }), {
+        actionLabel: t('common.bulkUndo.action'),
+        onAction: () => {
+          void runRestore();
+        },
+      });
+      setUndoOffer({ toastId, snapshot, selection });
+    },
+    [mods, t, undoOffer, toggleMod, setModLockerHero, setModGlobalType, loadMods],
+  );
+
   const handleBulkEnable = async () => {
     // Snapshot the work list before the loop so the progress total stays
     // stable even as `mods` updates after each toggle.
@@ -2518,6 +2596,10 @@ export default function Installed() {
       exitSelectMode();
       return;
     }
+    // Capture pre-batch state for the undo offer (D-14): the restore replays
+    // this snapshot and re-selects these ids.
+    const selection = selectedMods.map((m) => m.id);
+    const snapshot = captureBulkSnapshot(mods, selection);
     setBulkProgress({ verb: 'Enabling', done: 0, total: targets.length });
     for (let i = 0; i < targets.length; i++) {
       const ok = await toggleMod(targets[i].id);
@@ -2527,6 +2609,7 @@ export default function Installed() {
       if (!ok) break;
     }
     setBulkProgress(null);
+    offerBulkUndo(snapshot, selection);
     exitSelectMode();
   };
 
@@ -2536,6 +2619,8 @@ export default function Installed() {
       exitSelectMode();
       return;
     }
+    const selection = selectedMods.map((m) => m.id);
+    const snapshot = captureBulkSnapshot(mods, selection);
     setBulkProgress({ verb: 'Disabling', done: 0, total: targets.length });
     for (let i = 0; i < targets.length; i++) {
       const ok = await toggleMod(targets[i].id);
@@ -2543,6 +2628,7 @@ export default function Installed() {
       if (!ok) break;
     }
     setBulkProgress(null);
+    offerBulkUndo(snapshot, selection);
     exitSelectMode();
   };
 
@@ -4285,7 +4371,7 @@ export default function Installed() {
               variant={selectMode ? 'primary' : 'secondary'}
               onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
               icon={CheckSquare}
-              disabled={!!bulkProgress}
+              disabled={!!bulkProgress || !!undoBusy}
               className="!px-2.5"
               aria-label={selectMode ? t('installed.actions.exitSelectionMode') : t('installed.actions.selectMultiple')}
               title={selectMode ? t('installed.actions.exitSelectionMode') : t('installed.actions.selectMultipleHint')}
