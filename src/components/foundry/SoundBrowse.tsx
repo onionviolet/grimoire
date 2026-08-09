@@ -21,17 +21,21 @@ import {
     Layers,
     Shuffle,
     Download,
+    ExternalLink,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import { useConfirm } from '../common/confirmContext';
 import { EmptyState } from '../common/PageComponents';
 import Tx from '../translation/Tx';
 import { SoundImportEditor, type SoundImportEdits } from './SoundImportEditor';
 import AssetSourcesPanel from './AssetSourcesPanel';
+import ShuffleToggleButton from './ShuffleToggleButton';
 import { useAssetSourceInspection } from './assetSourceInspection';
 import { useClipPlayer, type ClipPlayer, type RowState } from './useClipPlayer';
 import { resolveForgeAudioPath } from './resolveForgeAudio';
 import { planSoundPool, type PoolAudio, type SoundPoolMode } from './soundPoolPlan';
+import { heroSoundShuffleRows, soundLockerHref } from '../../lib/foundrySoundShuffle';
 import {
     foundryHeroSounds,
     foundryInspectSoundConflicts,
@@ -123,6 +127,7 @@ const CATEGORY_ICON: Record<HeroSoundCategory, typeof Sparkles> = {
  */
 export default function SoundBrowse({ heroes, heroNames, hero: scopedHero, only, onStage }: SoundBrowseProps) {
     const { t } = useTranslation();
+    const navigate = useNavigate();
     const showGameplay = only !== 'voice';
     const showVoice = only !== 'gameplay';
 
@@ -144,6 +149,21 @@ export default function SoundBrowse({ heroes, heroNames, hero: scopedHero, only,
     const hero = scopedHero ?? (picked || heroOptions[0]?.code || '');
     const heroName = heroOptions.find((h) => h.code === hero)?.name ?? hero;
     const swapContext = useMemo<SwapContext>(() => ({ hero, heroName }), [hero, heroName]);
+
+    // The launch-shuffle pool surface. Rendered only for hero-scoped views (the
+    // workshop's Abilities/Voice sections); the top-level catalog tab has no
+    // hero to scope a pool to. Membership is read from already-loaded local
+    // state and toggled through the single existing appStore action, so Foundry
+    // and the Locker can never disagree about who is in the pool.
+    const scopedHeroName = scopedHero ? heroNames.get(scopedHero) ?? '' : '';
+    const heroScoped = Boolean(scopedHeroName);
+    const mods = useAppStore((state) => state.mods);
+    const soundShuffleIncluded = useAppStore((state) => state.soundShuffleIncluded);
+    const toggleSoundShuffleIncluded = useAppStore((state) => state.toggleSoundShuffleIncluded);
+    const shuffleRows = useMemo(
+        () => (heroScoped ? heroSoundShuffleRows(mods, scopedHeroName) : []),
+        [mods, heroScoped, scopedHeroName],
+    );
 
     // Gameplay-sound fetch, tagged with the hero it belongs to so loading/error
     // derive from whether it matches the current hero (the effect only sets state
@@ -269,6 +289,39 @@ export default function SoundBrowse({ heroes, heroNames, hero: scopedHero, only,
                     {t('foundry.sound.annotatedOnly')}
                 </button>}
             </div>
+
+            {heroScoped && shuffleRows.length > 0 && (
+                <section className="rounded-sm border border-border bg-bg-secondary/40 p-4">
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                        <h3 className="text-xs font-semibold text-text-primary">
+                            {t('locker.randomize.onLaunch')}
+                        </h3>
+                        <button
+                            type="button"
+                            onClick={() => navigate(soundLockerHref(scopedHeroName))}
+                            className="flex items-center gap-1 text-[11px] font-normal text-text-secondary hover:text-text-primary"
+                        >
+                            <ExternalLink size={11} /> {t('foundry.myChanges.openInSoundLocker')}
+                        </button>
+                    </div>
+                    <ul className="space-y-2">
+                        {shuffleRows.map((row) => (
+                            <li key={row.key} className="flex items-center gap-2">
+                                <span className="min-w-0 flex-1 truncate text-sm text-text-primary" title={row.name}>
+                                    {row.name}
+                                </span>
+                                <ShuffleToggleButton
+                                    isIncluded={soundShuffleIncluded.has(row.key)}
+                                    onToggle={() => toggleSoundShuffleIncluded(row.key)}
+                                    name={row.name}
+                                    armed
+                                    className="shrink-0"
+                                />
+                            </li>
+                        ))}
+                    </ul>
+                </section>
+            )}
 
             {showGameplay &&
                 (loading ? (
