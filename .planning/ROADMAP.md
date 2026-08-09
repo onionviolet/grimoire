@@ -137,11 +137,11 @@ Plans:
   3. Foundry can source an image without requiring a file drop
   4. A hero card in the Foundry grid carries the same state a Locker hero card does: favorites, and a count of what the user has already made for that hero
 
-**Plans**: 2 plans
+**Plans**: 1/2 plans executed
 
 **Wave 1**
 
-- [ ] 04-01-PLAN.md - The composable replaceable stage: model as the Locker's plate, Foundry on the same opt-in slot, the tray-preview stale pill, human verification
+- [x] 04-01-PLAN.md - The composable replaceable stage: model as the Locker's plate, Foundry on the same opt-in slot, the tray-preview stale pill, human verification
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -264,6 +264,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phase 6 declar
 | 1. Verified Against The Game | 8/8 | Complete    | 2026-08-06 |
 | 2. A Supported Fork Release | 6/6 | Complete    | 2026-08-07 |
 | 3. Foundry Completes Its Build Contract | 3/3 | In Progress|  |
-| 4. Locker And Foundry As One Object | 0/TBD | Not started | - |
+| 4. Locker And Foundry As One Object | 1/2 | In Progress|  |
 | 5. One Inventory, One Journey | 0/5 | Not started | - |
 | 6. Community Tools Land Inside Grimoire | 7/7 | Complete    | 2026-08-08 |

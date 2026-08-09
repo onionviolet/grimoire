@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.26.20
 milestone_name: milestone
-current_phase: 3
-current_phase_name: Foundry Completes Its Build Contract
-current_plan: 3
-status: verifying
-stopped_at: Completed 03-03-PLAN.md
-last_updated: "2026-08-09T06:09:48.954Z"
-last_activity: 2026-08-08
-last_activity_desc: Phase 06 complete, transitioned to Phase 3
+current_phase: 4
+current_phase_name: locker-and-foundry-as-one-object
+current_plan: 2
+status: executing
+stopped_at: Completed 04-01-PLAN.md
+last_updated: "2026-08-09T06:58:44.550Z"
+last_activity: 2026-08-09
+last_activity_desc: Phase 4 execution started
 progress:
   total_phases: 6
   completed_phases: 4
   total_plans: 32
-  completed_plans: 24
+  completed_plans: 25
 ---
 
 # Project State
@@ -24,18 +24,18 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-05)
 
 **Core value:** A Deadlock player can change their game and always know exactly what changed, who owns it, and how to undo it.
-**Current focus:** Phase 06 — community-tools-land-inside-grimoire
+**Current focus:** Phase 4 — locker-and-foundry-as-one-object
 
 ## Current Position
 
-Phase: 3 — Foundry Completes Its Build Contract
-Current Plan: 3
-Total Plans in Phase: 3
-Plan: 3 of 3
-Status: Phase complete — ready for verification
-Last activity: 2026-08-08 — Phase 06 complete, transitioned to Phase 3
+Phase: 4 (locker-and-foundry-as-one-object) — EXECUTING
+Current Plan: 2
+Total Plans in Phase: 2
+Plan: 2 of 2
+Status: Ready to execute
+Last activity: 2026-08-09 — Phase 4 execution started
 
-Progress: [████████░░] 75%
+Progress: [████████░░] 78%
 
 ## Performance Metrics
 
@@ -68,6 +68,7 @@ Progress: [████████░░] 75%
 | Phase 03 P01 | 10 | 2 tasks | 22 files |
 | Phase 03 P02 | 7 | 3 tasks | 6 files |
 | Phase 03 P03 | 5 | 3 tasks | 7 files |
+| Phase 04 P01 | 12 | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -95,6 +96,10 @@ Recent decisions affecting current work:
 - [Phase ?]: changeFilterOf branches sound/texture/recolor explicitly with a never-typed default, so a fourth kind fails typecheck rather than shelfing under a texture category it was never assigned
 - [Phase ?]: The workshop Appearance mount passes the existing stage callback as onStageRecolor; because prepareRecolorStagedEdit ids by hero and Foundry dedupes staged edits by id, both entry points produce exactly one tray row per hero
 - [Phase ?]: Both effect-surface captions live in HeroEffectsPanel gated on onStageRecolor (abilitiesStageNote / appliesImmediately); TrippySkinPanel behaviour and the Locker hero page mount are untouched and uncaptioned
+- [Phase ?]: Stage-mode persistence uses a new per-surface key grimoire.{surface}.heroStage.mode; the panel-open boolean keeps its original meaning and becomes the pop-out state
+- [Phase ?]: Locker defaults optimistically to Model per D-02; a definitive pose failure flips only the displayed mode for that mount and is never persisted
+- [Phase ?]: Foundry gets no auto-fallback banner: an opted-in preview keeps the model and shows HeroPoseViewer's own failure state
+- [Phase ?]: Four obsolete 3D-toggle i18n keys removed once i18n:check proved no references remained
 
 ### Pending Todos
 
@@ -137,6 +142,6 @@ Real-game verification is deferred to the end of this milestone run per explicit
 
 ## Session Continuity
 
-Last session: 2026-08-09T06:09:48.337Z
-Stopped at: Completed 03-03-PLAN.md
+Last session: 2026-08-09T06:58:30.405Z
+Stopped at: Completed 04-01-PLAN.md
 Resume file: None
