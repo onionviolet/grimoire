@@ -7,10 +7,12 @@ import {
   AlertTriangle,
   ChevronDown,
   ExternalLink,
+  FileQuestion,
   Image as ImageIcon,
   Layers,
   List,
   Loader2,
+  Palette,
   Pencil,
   Plus,
   Power,
@@ -19,9 +21,11 @@ import {
   Shuffle,
   Trash2,
   Volume2,
+  type LucideIcon,
 } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 import { showToast } from '../../stores/toastStore';
+import { Tag } from '../common/ui';
 import {
   foundryCheckAudioPaths,
   foundryForgeInstall,
@@ -42,6 +46,7 @@ import {
   sortFoundryChanges,
   type FoundryChangeEntry,
   type FoundryChangeFilter,
+  type FoundryChangeKind,
   type FoundryChangeSort,
 } from './changeList';
 
@@ -62,6 +67,31 @@ const SORTS: Array<{ value: FoundryChangeSort; labelKey: string; fallback: strin
   { value: 'hero', labelKey: 'foundry.myChanges.sort.hero', fallback: 'Hero' },
   { value: 'enabled', labelKey: 'foundry.myChanges.sort.enabled', fallback: 'Enabled first' },
 ];
+
+/** One icon per authored kind. The `??` fallback keeps a forged or future
+ *  part.kind from borrowing the texture row's icon: it reads as a neutral file
+ *  instead of impersonating a row type it is not (T-03-09). */
+const KIND_ICONS: Record<FoundryChangeKind, LucideIcon> = {
+  sound: Volume2,
+  texture: ImageIcon,
+  recolor: Palette,
+};
+
+/** The kind tag a row carries. Sound and texture rows keep rendering none
+ *  today; recolor gets the accent-toned Recolor tag, and any unrecognised
+ *  future or forged kind gets the neutral Change label rather than being
+ *  mislabelled as a texture. */
+function kindLabelOf(kind: FoundryChangeKind): { key: string; fallback: string; tone: 'accent' | 'neutral' } | null {
+  switch (kind) {
+    case 'sound':
+    case 'texture':
+      return null;
+    case 'recolor':
+      return { key: 'foundry.subtools.recolor', fallback: 'Recolor', tone: 'accent' };
+    default:
+      return { key: 'foundry.myChanges.kind.other', fallback: 'Change', tone: 'neutral' };
+  }
+}
 
 interface MyChangesProps {
   /** Jump to the authoring surface that makes this kind of change. The shell
@@ -330,13 +360,21 @@ export default function MyChanges({ onAddNew, heroName }: MyChangesProps) {
             {entries.map((entry) => {
               const editing = renaming[entry.id];
               const value = draftName[entry.id] ?? entry.mod.name;
-              const Icon = entry.kind === 'sound' ? Volume2 : ImageIcon;
+              const Icon = KIND_ICONS[entry.kind] ?? FileQuestion;
+              const kindLabel = kindLabelOf(entry.kind);
               return (
                 <div key={entry.id} className="border-b border-border/60 px-3 py-2 last:border-b-0">
                   <div className="flex items-center gap-2">
                     <Icon size={14} className="shrink-0 text-accent" />
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm text-text-primary">{entry.title}</p>
+                      <div className="flex min-w-0 items-center gap-2">
+                        <p className="min-w-0 truncate text-sm text-text-primary">{entry.title}</p>
+                        {kindLabel && (
+                          <Tag tone={kindLabel.tone} className="shrink-0">
+                            {t(kindLabel.key, kindLabel.fallback)}
+                          </Tag>
+                        )}
+                      </div>
                       <p className="truncate text-[11px] text-text-secondary" title={entry.subtitle}>
                         {[entry.subtitle, entry.sourceFileName].filter(Boolean).join(' · ')}
                       </p>

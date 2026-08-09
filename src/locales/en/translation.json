@@ -575,6 +575,9 @@
       "resolving": "Resolving the active winner...",
       "tryAgain": "Try again",
       "incompleteInspection": "{{mods}} could not be inspected, so this picture is incomplete.",
+      "kind": {
+        "other": "Change"
+      },
       "winsAll": "This change wins every path it writes.",
       "disabledInactive": "Disabled, so nothing here is active.",
       "overriddenAt": "Overridden at {{path}}",

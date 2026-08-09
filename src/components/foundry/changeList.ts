@@ -157,11 +157,23 @@ export function countFoundryChangesByHero(mods: readonly Mod[]): Map<string, num
 export type FoundryChangeFilter = 'all' | 'sound' | TextureCategory;
 
 export function changeFilterOf(entry: FoundryChangeEntry): FoundryChangeFilter {
-  if (entry.kind === 'sound') return 'sound';
-  // A recolor row carries no catalog category (its entries are the baked VFX
-  // paths), so it shelves under `other` exactly as an uncategorized texture
-  // row does.
-  return entry.category ?? 'other';
+  switch (entry.kind) {
+    case 'sound':
+      return 'sound';
+    case 'texture':
+      return entry.category ?? 'other';
+    case 'recolor':
+      // A recolor row carries no catalog category (its entries are the baked
+      // VFX paths), so it shelves under `other` exactly as an uncategorized
+      // texture row does.
+      return 'other';
+    default: {
+      // A fourth kind must fail the compile rather than silently shelfing
+      // under a texture category it was never assigned.
+      const impossible: never = entry.kind;
+      throw new Error(`Unhandled change kind: ${impossible}`);
+    }
+  }
 }
 
 export function filterFoundryChanges(

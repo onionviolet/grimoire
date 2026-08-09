@@ -71,6 +71,29 @@ describe('collectFoundryChanges', () => {
         expect(rows[0].entries).toEqual(['panorama/images/heroes/bull.png']);
     });
 
+    it('gives a mixed build one row per part, including a recolor part', () => {
+        const rows = collectFoundryChanges([mod({
+            id: 'mixed-build',
+            foundryBuild: {
+                writeSet: ['panorama/images/heroes/bull.png', 'sounds/abrams/charge_01.vsnd_c', 'particles/abrams/glow.vtex_c'],
+                parts: [
+                    { kind: 'sound', title: 'Charge horn', entries: ['sounds/abrams/charge_01.vsnd_c'], heroName: 'Abrams', event: 'Abrams.Charge' },
+                    { kind: 'texture', title: 'Abrams portrait', entries: ['panorama/images/heroes/bull.png'], category: 'hero-image', heroName: 'Abrams' },
+                    { kind: 'recolor', title: 'Abrams soul glow', entries: ['particles/abrams/glow.vtex_c'], heroName: 'Abrams' },
+                ],
+            },
+        })]);
+        expect(rows.map((row) => row.kind)).toEqual(['sound', 'texture', 'recolor']);
+        expect(rows.map((row) => row.entries)).toEqual([
+            ['sounds/abrams/charge_01.vsnd_c'],
+            ['panorama/images/heroes/bull.png'],
+            ['particles/abrams/glow.vtex_c'],
+        ]);
+        // All three parts are the same VPK, so the UI must be able to say so
+        // for the recolor row exactly as it does for the other two.
+        expect(rows.every((row) => row.partOfBuild)).toBe(true);
+    });
+
     it('keeps a build with no recorded parts, carrying its whole write set', () => {
         const rows = collectFoundryChanges([mod({
             id: 'bare-build',
@@ -120,6 +143,22 @@ describe('filterFoundryChanges', () => {
     it('matches the hero and the source filename too', () => {
         expect(filterFoundryChanges(rows, { query: 'abrams' }).map((row) => row.id)).toEqual(['a']);
         expect(filterFoundryChanges(rows, { query: 'dash.png' }).map((row) => row.id)).toEqual(['b']);
+    });
+
+    it('shelves a recolor row under other and keeps it out of the sound filter', () => {
+        const rows = collectFoundryChanges([mod({
+            id: 'mixed-build',
+            foundryBuild: {
+                writeSet: ['sounds/abrams/charge_01.vsnd_c', 'particles/abrams/glow.vtex_c'],
+                parts: [
+                    { kind: 'sound', title: 'Charge horn', entries: ['sounds/abrams/charge_01.vsnd_c'], heroName: 'Abrams', event: 'Abrams.Charge' },
+                    { kind: 'recolor', title: 'Abrams soul glow', entries: ['particles/abrams/glow.vtex_c'], heroName: 'Abrams' },
+                ],
+            },
+        })]);
+        const recolor = rows.find((row) => row.kind === 'recolor')!;
+        expect(changeFilterOf(recolor)).toBe('other');
+        expect(filterFoundryChanges(rows, { filter: 'sound' }).map((row) => row.kind)).toEqual(['sound']);
     });
 });
 
