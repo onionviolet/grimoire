@@ -3,6 +3,36 @@ import { tmpdir } from 'os';
 import { describe, expect, it, vi } from 'vitest';
 import { buildFoundryForgeVpk, describeFoundryBuild, forgeAndExportFoundryVpk, reviewFoundryForge } from './foundryForge';
 import type { FoundryForgeEdit, FoundryForgeRequest } from '../../../src/types/foundry';
+import { runVpkmerge } from './modMerger';
+import { buildRecolorVpk } from './foundryRecolor';
+
+// The end-to-end three-kind case drives every builder through the merged
+// output. Mock the per-kind builders and the engine so the test asserts the
+// orchestration (one source path per edit, in precedence order) rather than
+// re-running real bakes or touching the filesystem beyond the forge temp.
+vi.mock('./foundryCatalog', () => ({
+    buildHeroSoundSwapVpk: vi.fn(async () => ({ vpkPath: '/tmp/sound.vpk', suggestedName: 'sound.vpk' })),
+    cleanupHeroSoundSwapBuild: vi.fn(async () => {}),
+}));
+vi.mock('./foundryTextureReplace', () => ({
+    buildTextureReplacementVpk: vi.fn(async () => ({ vpkPath: '/tmp/texture.vpk', suggestedName: 'texture.vpk' })),
+    cleanupTextureReplacementBuild: vi.fn(async () => {}),
+}));
+vi.mock('./foundryRecolor', () => ({
+    buildRecolorVpk: vi.fn(async () => ({ vpkPath: '/tmp/recolor.vpk', cleanup: async () => {} })),
+}));
+vi.mock('./modMerger', () => ({
+    runVpkmerge: vi.fn(async () => {}),
+    verifyVpkOutput: vi.fn(async () => {}),
+}));
+vi.mock('./vpk', () => ({
+    parseVpkDirectory: vi.fn(() => [
+        'materials/hero/ult.vtex_c',
+        'particles/hero/ult.vpcf_c',
+        'sounds/dash.vsnd_c',
+        'textures/hero/dash.vtex_c',
+    ]),
+}));
 
 /** Foundry build temps are named so they can be counted; a leaked directory is
  *  the exact residue "atomic cancel" promises never to leave behind. */
@@ -22,6 +52,14 @@ const soundEdit: FoundryForgeEdit = {
 const textureEdit: FoundryForgeEdit = {
     id: 'visual', kind: 'texture', precedence: 1,
     request: { entryPath: 'Sounds\\Dash.VSND_C', imagePath: 'dash.png', name: 'Dash', category: 'ability-icon' },
+};
+
+const recolorEdit: FoundryForgeEdit = {
+    id: 'recolor', kind: 'recolor', precedence: 3,
+    request: {
+        heroName: 'Hero', mode: 'hue', hue: 280, saturation: 1, brightness: 1,
+        entries: ['PARTICLES/HERO/ULT.VPCF_C', 'particles/hero/ult.vpcf_c', 'Materials\\Hero\\Ult.VTEX_C'],
+    },
 };
 
 describe('reviewFoundryForge', () => {
@@ -107,6 +145,41 @@ describe('buildFoundryForgeVpk', () => {
 
         await expect(buildFoundryForgeVpk('C:/game', request)).rejects.toThrow('stale');
         expect(await countForgeTemps()).toBe(before);
+    });
+
+    it('merges one source path per edit across sound, texture and recolor, keeping built aligned with the request', async () => {
+        // Distinct entry paths on purpose: this asserts alignment (one source
+        // per edit, in precedence order), not collision resolution.
+        const request: FoundryForgeRequest = {
+            name: 'Three kinds',
+            edits: [
+                { ...textureEdit, request: { ...textureEdit.request, entryPath: 'textures/hero/dash.vtex_c', name: 'Dash texture' } },
+                soundEdit,
+                recolorEdit,
+            ],
+            confirmation: {
+                writeSet: [
+                    'materials/hero/ult.vtex_c',
+                    'particles/hero/ult.vpcf_c',
+                    'sounds/dash.vsnd_c',
+                    'textures/hero/dash.vtex_c',
+                ],
+                collisionWinners: [],
+            },
+        };
+
+        const result = await buildFoundryForgeVpk('C:/game', request);
+
+        // Precedence 1 texture, 2 sound, 3 recolor: the merged VPK receives one
+        // source per edit in that order, and the recolor part is among them.
+        expect(runVpkmerge).toHaveBeenCalledWith([
+            expect.stringMatching(/foundry_dir\.vpk$/),
+            '/tmp/texture.vpk',
+            '/tmp/sound.vpk',
+            '/tmp/recolor.vpk',
+        ]);
+        expect(buildRecolorVpk).toHaveBeenCalledWith('C:/game', request.edits[2].request);
+        await result.cleanup();
     });
 });
 

@@ -521,9 +521,15 @@ function ChangeDetails({
     try {
       // The recorded sources are the user's own files and may have moved since
       // the build. Check before starting rather than failing partway through.
-      const wanted = [...new Set(recorded.edits.flatMap((edit) => (edit.kind === 'sound'
-        ? [edit.request.audioPath, ...(edit.request.assignments ?? []).map((assignment) => assignment.audioPath)]
-        : [edit.request.imagePath])).filter(Boolean))];
+      const wanted = [...new Set(recorded.edits.flatMap((edit) => {
+        if (edit.kind === 'sound') {
+          return [edit.request.audioPath, ...(edit.request.assignments ?? []).map((assignment) => assignment.audioPath)];
+        }
+        if (edit.kind === 'texture') return [edit.request.imagePath];
+        // A recolor edit's inputs are numeric picker parameters, resolved to
+        // the shared per-hero bake cache main owns; no user file to check.
+        return [];
+      }).filter(Boolean))];
       const present = new Set(await foundryCheckAudioPaths(wanted));
       const missing = wanted.filter((path) => !present.has(path));
       if (missing.length) {

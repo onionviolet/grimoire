@@ -202,6 +202,18 @@ export interface HeroEffectExportRequest {
     trippy?: import('./mod').TrippyVfxChoice;
 }
 
+/**
+ * A hero ability-VFX effect staged into the Foundry build tray. Extends the
+ * export request with the exact normalized VPK entries the bake writes,
+ * discovered from the real bake output at staging time (never guessed
+ * renderer-side from a per-hero path table). The same request rides the whole
+ * way to the forge, so the reviewed write set and the merged VPK's contents
+ * cannot drift apart.
+ */
+export interface RecolorForgeRequest extends HeroEffectExportRequest {
+    entries: string[];
+}
+
 /** Outcome of a save-to-disk export: `exported` false means the user cancelled
  *  the save dialog; `path` is the file written when `exported` is true. */
 export interface VpkExportResult {
@@ -402,7 +414,8 @@ export interface TextureReplacementRequest {
  * VPK, so reviewing or cancelling a tray never changes the mod library. */
 export type FoundryForgeEdit =
     | { id: string; kind: 'sound'; precedence: number; request: HeroSoundSwapRequest }
-    | { id: string; kind: 'texture'; precedence: number; request: TextureReplacementRequest };
+    | { id: string; kind: 'texture'; precedence: number; request: TextureReplacementRequest }
+    | { id: string; kind: 'recolor'; precedence: number; request: RecolorForgeRequest };
 
 /** The renderer repeats its reviewed result here. Main derives it again from
  * the requests and rejects stale/tampered confirmation rather than trusting a

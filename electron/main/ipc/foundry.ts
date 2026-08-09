@@ -31,6 +31,7 @@ import { getCitadelPath } from '../services/deadlock';
 import { readVpkEntryBytes } from '../services/vpk';
 import { scanMods } from '../services/mods';
 import { buildHeroEffectVpkForExport } from '../services/heroColors';
+import { discoverRecolorEntries } from '../services/foundryRecolor';
 import { exportVpkViaDialog } from '../services/foundryExport';
 import { buildFoundryForgeVpk, forgeAndExportFoundryVpk } from '../services/foundryForge';
 import {
@@ -399,6 +400,17 @@ ipcMain.handle(
             req
         );
         return exportVpkViaDialog(vpkPath, suggestedName);
+    }
+);
+
+// Discover the exact entries a recolor bake writes BEFORE anything is staged,
+// so the tray's write set comes from the real bake output, never a renderer
+// guess. Resolves only the entry list: no vpkPath, userData path, or Deadlock
+// install path crosses to the renderer, and no save dialog is opened.
+ipcMain.handle(
+    'foundry:prepareRecolorStage',
+    async (_e, req: HeroEffectExportRequest): Promise<{ entries: string[] }> => {
+        return { entries: await discoverRecolorEntries(requireDeadlockPath(), req) };
     }
 );
 

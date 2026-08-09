@@ -1561,6 +1561,15 @@ export async function foundryExportHeroEffect(
   return window.electronAPI.foundry.exportHeroEffect(req);
 }
 
+/** Discover the exact VPK entries a recolor bake writes, before staging. The
+ *  tray's write set therefore comes from the real bake output, and the bake at
+ *  forge time is the same cached one (one bake, not two). */
+export async function foundryPrepareRecolorStage(
+  req: import('../types/foundry').HeroEffectExportRequest
+): Promise<{ entries: string[] }> {
+  return window.electronAPI.foundry.prepareRecolorStage(req);
+}
+
 /** Swap a hero gameplay sound event's audio with a user MP3 and install the
  *  result as a managed local mod. Resolves with the refreshed installed mod list
  *  (the new swap appears under the hero, tagged as a Foundry sound swap). */

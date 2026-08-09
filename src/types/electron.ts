@@ -1388,6 +1388,11 @@ export interface ElectronAPI {
         exportHeroEffect: (
             req: import('./foundry').HeroEffectExportRequest
         ) => Promise<import('./foundry').VpkExportResult>;
+        /** Resolve the exact VPK entries a recolor bake writes, for staging.
+         *  Returns only the entry list; never a filesystem path. */
+        prepareRecolorStage: (
+            req: import('./foundry').HeroEffectExportRequest
+        ) => Promise<{ entries: string[] }>;
         forge: (req: import('./foundry').FoundryForgeRequest) => Promise<import('./foundry').VpkExportResult>;
         swapSound: (
             req: import('./foundry').HeroSoundSwapRequest

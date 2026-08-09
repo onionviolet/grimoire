@@ -4,9 +4,13 @@ import { Sparkles, Loader2, AlertCircle, Zap, Shirt } from 'lucide-react';
 import { getHeroColorSupport } from '../../lib/api';
 import HeroColorPicker from './HeroColorPicker';
 import TrippySkinPanel from './TrippySkinPanel';
+import type { RecolorStagedEdit } from '../foundry/recolorStagedEdit';
 
 interface HeroEffectsPanelProps {
   heroName: string;
+  /** Foundry mount: forwards to the Abilities picker so Apply becomes Stage.
+   *  Absent (the Locker), the picker keeps its immediate-apply path. */
+  onStageRecolor?: (edit: RecolorStagedEdit) => void;
 }
 
 /**
@@ -19,7 +23,7 @@ interface HeroEffectsPanelProps {
  * Both surfaces share the same per-hero support gate (pinned vpkmerge recipes),
  * checked once here so the children can assume support.
  */
-export default function HeroEffectsPanel({ heroName }: HeroEffectsPanelProps) {
+export default function HeroEffectsPanel({ heroName, onStageRecolor }: HeroEffectsPanelProps) {
   const { t } = useTranslation();
   const [supported, setSupported] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -106,7 +110,11 @@ export default function HeroEffectsPanel({ heroName }: HeroEffectsPanelProps) {
           {/* Both stay mounted so applied dots track without refetch churn and
               in-flight slider state survives flipping between surfaces. */}
           <div className={surface === 'abilities' ? 'space-y-3' : 'hidden'}>
-            <HeroColorPicker heroName={heroName} onAppliedChange={setAbilitiesApplied} />
+            <HeroColorPicker
+              heroName={heroName}
+              onAppliedChange={setAbilitiesApplied}
+              onStage={onStageRecolor}
+            />
           </div>
           <div className={surface === 'skin' ? 'space-y-3' : 'hidden'}>
             <TrippySkinPanel

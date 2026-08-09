@@ -727,6 +727,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
         rebuildCatalog: () => ipcRenderer.invoke('foundry:rebuildCatalog'),
         exportHeroEffect: (req: HeroEffectExportRequest) =>
             ipcRenderer.invoke('foundry:exportHeroEffect', req),
+        prepareRecolorStage: (req: HeroEffectExportRequest): Promise<{ entries: string[] }> =>
+            ipcRenderer.invoke('foundry:prepareRecolorStage', req),
         swapSound: (req: HeroSoundSwapRequest) =>
             ipcRenderer.invoke('foundry:swapSound', req),
         inspectSoundConflicts: (writeSet: string[]) =>

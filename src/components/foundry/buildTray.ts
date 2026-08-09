@@ -1,5 +1,6 @@
 import type { FoundryForgeEdit, FoundryForgeRequest } from '../../types/foundry';
 import type { FoundryStagedSoundEdit } from './soundStagedEdit';
+import type { RecolorStagedEdit } from './recolorStagedEdit';
 import type { VisualStagedEdit } from './visualEdits';
 
 /**
@@ -108,10 +109,16 @@ export function isStagedVisualEdit(edit: FoundryStagedEdit): edit is VisualStage
   return edit.kind === 'texture' && 'source' in edit;
 }
 
+export function isStagedRecolorEdit(edit: FoundryStagedEdit): edit is RecolorStagedEdit {
+  return edit.kind === 'recolor' && 'request' in edit;
+}
+
 /** The first staged edit the forge cannot build yet, so the tray can name the
  *  kind instead of failing inside the build with a generic error. */
 export function unsupportedStagedEditKind(edits: readonly FoundryStagedEdit[]): FoundryEditKind | null {
-  return edits.find((edit) => !isStagedSoundEdit(edit) && !isStagedVisualEdit(edit))?.kind ?? null;
+  return edits.find(
+    (edit) => !isStagedSoundEdit(edit) && !isStagedVisualEdit(edit) && !isStagedRecolorEdit(edit),
+  )?.kind ?? null;
 }
 
 /**
@@ -131,6 +138,10 @@ export function stagedEditSourceFiles(edits: readonly FoundryStagedEdit[]): stri
     } else if (isStagedVisualEdit(edit)) {
       files.push(edit.source.imagePath);
     }
+    // A recolor edit deliberately contributes nothing here: its inputs are
+    // numeric picker parameters (hue/saturation/brightness/mode), already
+    // resolved to the shared per-hero bake cache main owns, not user files on
+    // disk that could move or vanish between staging and forging.
   }
   return [...new Set(files.filter((file) => typeof file === 'string' && file.trim().length > 0))];
 }
@@ -156,6 +167,7 @@ export function toForgeRequest(name: string, review: BuildTrayReview): FoundryFo
   const edits: FoundryForgeEdit[] = review.selected.map((edit) => {
     if (isStagedSoundEdit(edit)) return { id: edit.id, kind: 'sound', precedence: edit.precedence, request: edit.request };
     if (isStagedVisualEdit(edit)) return { id: edit.id, kind: 'texture', precedence: edit.precedence, request: edit.source };
+    if (isStagedRecolorEdit(edit)) return { id: edit.id, kind: 'recolor', precedence: edit.precedence, request: edit.request };
     // Unreachable via the UI (it pre-checks with unsupportedStagedEditKind),
     // but never guess a build for a kind the forge does not implement.
     throw new Error(`Unsupported staged edit kind: ${edit.kind}`);

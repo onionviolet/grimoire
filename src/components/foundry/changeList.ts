@@ -24,7 +24,7 @@ export { compiledSoundEntry, normalizeChangeEntry };
  * ownership questions are answered by inspecting those paths, never by this.
  */
 
-export type FoundryChangeKind = 'sound' | 'texture';
+export type FoundryChangeKind = 'sound' | 'texture' | 'recolor';
 
 export interface FoundryChangeEntry {
   /** Stable row identity. A multi-part build needs more than the mod id. */
@@ -158,6 +158,9 @@ export type FoundryChangeFilter = 'all' | 'sound' | TextureCategory;
 
 export function changeFilterOf(entry: FoundryChangeEntry): FoundryChangeFilter {
   if (entry.kind === 'sound') return 'sound';
+  // A recolor row carries no catalog category (its entries are the baked VFX
+  // paths), so it shelves under `other` exactly as an uncategorized texture
+  // row does.
   return entry.category ?? 'other';
 }
 

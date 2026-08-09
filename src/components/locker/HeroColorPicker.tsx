@@ -17,11 +17,16 @@ import {
   applyHeroPrism,
   applyTrippyVfx,
   foundryExportHeroEffect,
+  foundryInspectAssetSources,
+  foundryPrepareRecolorStage,
   previewHeroColor,
   revertHeroColor,
   getActiveHeroColor,
   getGameRunningStatus,
 } from '../../lib/api';
+import { useConfirm } from '../common/confirmContext';
+import { prepareRecolorStagedEdit } from '../foundry/recolorStagedEdit';
+import type { RecolorStagedEdit } from '../foundry/recolorStagedEdit';
 import type { HeroEffectExportRequest } from '../../types/foundry';
 import {
   GRADIENT_PRESETS,
@@ -47,6 +52,11 @@ interface HeroColorPickerProps {
   heroName: string;
   /** Lets the parent surface toggle show an applied dot for this surface. */
   onAppliedChange?: (applied: boolean) => void;
+  /** When supplied, the Abilities picker stages into the Foundry build tray
+   *  instead of applying immediately. Absent (the Locker mount), the existing
+   *  immediate-apply path, its Applied status, and the revert button are
+   *  unchanged. */
+  onStage?: (edit: RecolorStagedEdit) => void;
 }
 
 /** Default target when nothing is applied yet: 280 (purple) at source
@@ -143,8 +153,9 @@ const q = (x: number): number => Math.round(x * 100) / 100;
  * Locker-managed VPK that wins by load order; remove it to revert to vanilla.
  * Rendered only when the parent has confirmed hero support (pinned recipe).
  */
-export default function HeroColorPicker({ heroName, onAppliedChange }: HeroColorPickerProps) {
+export default function HeroColorPicker({ heroName, onAppliedChange, onStage }: HeroColorPickerProps) {
   const { t } = useTranslation();
+  const confirm = useConfirm();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // The target currently applied in-game (null when none), and the live picks.
@@ -179,6 +190,10 @@ export default function HeroColorPicker({ heroName, onAppliedChange }: HeroColor
   const [activeTrippy, setActiveTrippy] = useState<TrippyVfxChoice | null>(null);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  // Foundry staging mode: the recolor staged for this hero (null when nothing
+  // is staged). Drives the "Staged, not yet forged" / "Not staged" status
+  // line; the tray itself stays the authority on what is actually staged.
+  const [stagedEdit, setStagedEdit] = useState<RecolorStagedEdit | null>(null);
   const [changed, setChanged] = useState(false);
   // Path of the most recently exported VPK file (null until an export succeeds).
   const [exportedPath, setExportedPath] = useState<string | null>(null);
@@ -318,6 +333,31 @@ export default function HeroColorPicker({ heroName, onAppliedChange }: HeroColor
     setBusy(true);
     setActionError(null);
     try {
+      if (onStage) {
+        // Foundry mount: stage, never apply. The bake and entry discovery run
+        // here (spinner on the button for the whole wait), the entries come
+        // from the real bake output, and nothing is installed or reordered.
+        const staged = await prepareRecolorStagedEdit({
+          heroName,
+          title: t('locker.colors.stagedEditTitle', { hero: heroName }),
+          request: currentExportRequest(),
+          discoverEntries: async (req) => (await foundryPrepareRecolorStage(req)).entries,
+          inspect: foundryInspectAssetSources,
+          confirm: (modNames) =>
+            confirm({
+              title: t('foundry.texture.stageConflictTitle', 'Stage a separate layered replacement?'),
+              message: t('locker.colors.stageLayerConfirm'),
+              items: modNames,
+              confirmLabel: t('foundry.texture.stageConflictConfirm', 'Stage anyway'),
+            }),
+          unreadableMessage: t('locker.colors.stageUnreadable'),
+        });
+        if (!mounted.current) return;
+        if (!staged) return; // user declined the enabled-owner acknowledgement
+        setStagedEdit(staged);
+        onStage(staged);
+        return;
+      }
       if (mode === 'trippy') {
         const result = await applyTrippyVfx(heroName, {
           style: trippyStyle,
@@ -659,11 +699,15 @@ export default function HeroColorPicker({ heroName, onAppliedChange }: HeroColor
                       })}
               </div>
               <div className="text-[11px] text-text-secondary">
-                {!applied
-                  ? t('locker.colors.noRecolorApplied')
-                  : !dirty
-                    ? t('locker.colors.appliedStatus')
-                    : appliedLabel}
+                {onStage
+                  ? stagedEdit
+                    ? t('locker.colors.stagedStatus')
+                    : t('locker.colors.notStaged')
+                  : !applied
+                    ? t('locker.colors.noRecolorApplied')
+                    : !dirty
+                      ? t('locker.colors.appliedStatus')
+                      : appliedLabel}
               </div>
             </div>
           </div>
@@ -890,11 +934,15 @@ export default function HeroColorPicker({ heroName, onAppliedChange }: HeroColor
               </>
             }
             status={
-              !applied
-                ? t('locker.colors.noRecolorApplied')
-                : !dirty
-                  ? t('locker.colors.appliedStatus')
-                  : appliedLabel
+              onStage
+                ? stagedEdit
+                  ? t('locker.colors.stagedStatus')
+                  : t('locker.colors.notStaged')
+                : !applied
+                  ? t('locker.colors.noRecolorApplied')
+                  : !dirty
+                    ? t('locker.colors.appliedStatus')
+                    : appliedLabel
             }
             onStyle={setTrippyStyle}
             onIntensity={setTrippyIntensity}
@@ -985,15 +1033,25 @@ export default function HeroColorPicker({ heroName, onAppliedChange }: HeroColor
           className="flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-accent-foreground transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
         >
           {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-          {applied && !dirty
-            ? t('locker.colors.appliedStatus')
-            : mode === 'prism'
-              ? t('locker.colors.applyRainbow')
-              : mode === 'gradient'
-                ? t('locker.colors.applyGradient')
-                : mode === 'trippy'
-                  ? t('locker.colors.applyTrippy')
-                  : t('locker.colors.applyColor')}
+          {onStage
+            ? busy
+              ? t('locker.colors.staging')
+              : mode === 'prism'
+                ? t('locker.colors.stageRainbow')
+                : mode === 'gradient'
+                  ? t('locker.colors.stageGradient')
+                  : mode === 'trippy'
+                    ? t('locker.colors.stageTrippy')
+                    : t('locker.colors.stageColor')
+            : applied && !dirty
+              ? t('locker.colors.appliedStatus')
+              : mode === 'prism'
+                ? t('locker.colors.applyRainbow')
+                : mode === 'gradient'
+                  ? t('locker.colors.applyGradient')
+                  : mode === 'trippy'
+                    ? t('locker.colors.applyTrippy')
+                    : t('locker.colors.applyColor')}
         </button>
         <button
           type="button"
@@ -1017,6 +1075,12 @@ export default function HeroColorPicker({ heroName, onAppliedChange }: HeroColor
           </button>
         )}
       </div>
+
+      {onStage && (
+        <p className="text-xs text-text-secondary">
+          {t('locker.colors.stagesIntoTray')}
+        </p>
+      )}
 
       {exportedPath && (
         <div className="flex items-start gap-2 rounded-md border border-border bg-bg-secondary/70 px-3 py-2 text-xs text-text-secondary">

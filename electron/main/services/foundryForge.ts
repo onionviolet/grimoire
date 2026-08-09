@@ -6,6 +6,7 @@ import type { FoundryForgeEdit, FoundryForgeRequest, VpkExportResult } from '../
 import type { FoundryBuildInfo, FoundryBuildPart } from '../../../src/types/mod';
 import { buildHeroSoundSwapVpk, cleanupHeroSoundSwapBuild } from './foundryCatalog';
 import { buildTextureReplacementVpk, cleanupTextureReplacementBuild } from './foundryTextureReplace';
+import { buildRecolorVpk } from './foundryRecolor';
 import { runVpkmerge, verifyVpkOutput } from './modMerger';
 import { parseVpkDirectory } from './vpk';
 
@@ -15,9 +16,22 @@ const soundEntry = (path: string) => normalize(path).replace(/\.vsnd(?:_c)?$/i, 
 export function reviewFoundryForge(edits: readonly FoundryForgeEdit[]) {
     const writers = new Map<string, Array<{ id: string; precedence: number; index: number }>>();
     edits.forEach((edit, index) => {
-        const entries = edit.kind === 'sound'
-            ? (edit.request.assignments ?? []).map(({ clipPath }) => soundEntry(clipPath))
-            : [normalize(edit.request.entryPath)];
+        // Explicit per-kind chain rather than a fallthrough: a fourth kind added
+        // without a branch fails `pnpm typecheck` through the `never` guard
+        // below instead of silently reading the wrong request shape. A recolor
+        // edit's entries are already on `edit.request.entries` (populated at
+        // staging time from the real bake output), so this stays synchronous.
+        let entries: string[];
+        if (edit.kind === 'sound') {
+            entries = (edit.request.assignments ?? []).map(({ clipPath }) => soundEntry(clipPath));
+        } else if (edit.kind === 'texture') {
+            entries = [normalize(edit.request.entryPath)];
+        } else if (edit.kind === 'recolor') {
+            entries = edit.request.entries.map(normalize);
+        } else {
+            const exhaustive: never = edit;
+            throw new Error(`Unsupported Foundry edit kind: ${(exhaustive as FoundryForgeEdit).kind}`);
+        }
         for (const entry of new Set(entries.filter(Boolean))) {
             writers.set(entry, [...(writers.get(entry) ?? []), { id: edit.id, precedence: edit.precedence, index }]);
         }
@@ -61,14 +75,27 @@ export function describeFoundryBuild(
                 sourceFileName: edit.request.audioPath ? baseName(edit.request.audioPath) : undefined,
             };
         }
-        return {
-            kind: 'texture',
-            title: edit.request.name?.trim() || baseName(edit.request.entryPath),
-            entries: [normalize(edit.request.entryPath)].filter(Boolean),
-            category: edit.request.category,
-            heroName: edit.request.heroName?.trim() || undefined,
-            sourceFileName: edit.request.imagePath ? baseName(edit.request.imagePath) : undefined,
-        };
+        if (edit.kind === 'texture') {
+            return {
+                kind: 'texture',
+                title: edit.request.name?.trim() || baseName(edit.request.entryPath),
+                entries: [normalize(edit.request.entryPath)].filter(Boolean),
+                category: edit.request.category,
+                heroName: edit.request.heroName?.trim() || undefined,
+                sourceFileName: edit.request.imagePath ? baseName(edit.request.imagePath) : undefined,
+            };
+        }
+        if (edit.kind === 'recolor') {
+            const heroName = edit.request.heroName?.trim() || undefined;
+            return {
+                kind: 'recolor',
+                title: heroName || 'Recolor',
+                entries: [...new Set(edit.request.entries.map(normalize))].filter(Boolean),
+                heroName,
+            };
+        }
+        const exhaustive: never = edit;
+        throw new Error(`Unsupported Foundry edit kind: ${(exhaustive as FoundryForgeEdit).kind}`);
     });
     return { writeSet: review.writeSet, parts, reforge: request };
 }
@@ -100,6 +127,12 @@ export async function buildFoundryForgeVpk(deadlockPath: string, request: Foundr
             } else if (edit.kind === 'texture') {
                 const part = await buildTextureReplacementVpk(deadlockPath, edit.request.entryPath, edit.request.imagePath);
                 built.push({ path: part.vpkPath, cleanup: () => cleanupTextureReplacementBuild(part.vpkPath) });
+            } else if (edit.kind === 'recolor') {
+                const part = await buildRecolorVpk(deadlockPath, edit.request);
+                built.push({ path: part.vpkPath, cleanup: part.cleanup });
+            } else {
+                const exhaustive: never = edit;
+                throw new Error(`Unsupported Foundry edit kind: ${(exhaustive as FoundryForgeEdit).kind}`);
             }
         }
         // vpkmerge's last writer wins. Sorting ascending therefore makes the
