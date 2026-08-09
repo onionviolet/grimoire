@@ -147,8 +147,13 @@ export function LockerHeroView({
     // `'skin'` means the base pose IS showing: that is a usable stage, not a
     // fallback trigger. Only `'unsupported'` and `'export'` leave the plate
     // with nothing.
-    setPoseFailure(kind === 'unsupported' || kind === 'export' ? kind : null);
-  }, []);
+    const definitive = kind === 'unsupported' || kind === 'export';
+    setPoseFailure(definitive ? kind : null);
+    // A definitive failure while popped out would otherwise leave the
+    // FloatingModelPanel open with a viewer that fails again on the same key:
+    // close the pop-out so the Image fallback is the only surface on screen.
+    if (definitive) setModelPanelOpen(false);
+  }, [setModelPanelOpen]);
   const displayedMode: HeroStageMode = poseFailure ? 'image' : stageMode;
   const retryModel = useCallback(() => {
     setPoseFailure(null);
@@ -420,7 +425,10 @@ export function LockerHeroView({
               floating/dockable. Exactly one instance of the viewer exists at
               any moment: it fills the plate when Model is selected and the
               panel is closed, and moves in here when the panel is open. */}
-          {modelPanelOpen && (
+          {/* Gated on the displayed mode too: a definitive pose failure flips
+              `displayedMode` to Image, and the pop-out must never keep a dead
+              3D viewer mounted under the "switched to Image" banner. */}
+          {modelPanelOpen && displayedMode !== 'image' && (
             <FloatingModelPanel
               surface="locker"
               /* Name the skin, not just the hero: while comparing skins the
