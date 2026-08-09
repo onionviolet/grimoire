@@ -15,7 +15,6 @@ import type { FoundryForgeRequest, HeroInfo } from '../../types/foundry';
 import type { Mod } from '../../types/mod';
 import type { HeroPoseSkinSource } from '../../types/portrait';
 import {
-  canonicalHeroName,
   getHeroChipIconPath,
   inferHeroFromTitle,
   isLockerManagedMod,
