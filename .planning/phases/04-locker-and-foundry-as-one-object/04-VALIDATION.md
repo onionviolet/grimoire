@@ -63,7 +63,7 @@ pattern rather than introducing a second harness.
 | REQ-locker-model-as-stage | `HeroDetailFrame` renders the caller-supplied plate override and stays free of Locker and Foundry imports | render (jsdom) | `pnpm exec vitest run src/components/common/HeroDetailFrame.test.tsx` | Wave 0 gap |
 | REQ-locker-foundry-parity-lanes | `useTrayPreview` exposes the stale window, `building` true while `previewId` is not null | unit | `pnpm exec vitest run src/components/foundry/useTrayPreview.test.ts` | Wave 0 gap |
 | REQ-locker-foundry-parity-lanes | `FoundryHeroGrid` renders the loading dot when `!modsLoaded` and the numeral when `changeCount > 0`, never both | render (jsdom) | `pnpm exec vitest run src/components/foundry/FoundryHeroGrid.test.tsx` | Wave 0 gap |
-| REQ-locker-foundry-parity-lanes | The chosen Effects dry-run option produces the correct write set for a known hero and parameter combination | unit (node env, main process) | `pnpm exec vitest run electron/main/services/heroColors.test.ts` | Wave 0 gap |
+| REQ-locker-foundry-parity-lanes | The Effects write set for a known hero and parameter combination is discoverable before the write | unit (node env, main process) | `pnpm exec vitest run electron/main/services/foundryRecolor.test.ts` | **Not a gap. Corrected 2026-08-08.** Research proposed a new `heroColors.ts` write-set function, but Phase 3 plan 01 already shipped `discoverRecolorEntries` (`electron/main/services/foundryRecolor.ts:39`), the `foundry:prepareRecolorStage` channel (`electron/main/ipc/foundry.ts:411`) and its preload binding (`electron/preload/index.ts:730`). Verified directly. The Effects disclosure is therefore a renderer-only consumer of an existing main-process fact |
 
 ---
 
@@ -72,7 +72,7 @@ pattern rather than introducing a second harness.
 - [ ] `src/components/common/HeroDetailFrame.test.tsx` — new. Covers plate-slot override rendering and the frame's continued domain ignorance (no Locker or Foundry imports)
 - [ ] `src/components/foundry/useTrayPreview.test.ts` — new. Covers the stale-window derivation
 - [ ] `src/components/foundry/FoundryHeroGrid.test.tsx` — new. Covers loading versus zero versus numeral badge states
-- [ ] `electron/main/services/heroColors.test.ts` — new. Covers the chosen dry-run write-set function
+- [x] ~~`electron/main/services/heroColors.test.ts` — new. Covers the chosen dry-run write-set function~~ **Retired 2026-08-08, not skipped.** The function this gap was written against already exists as `discoverRecolorEntries` in `foundryRecolor.ts`, shipped by Phase 3. There is no new main-process function to test here, so the disclosure work is verified through its renderer consumer instead. Recorded rather than deleted, so a later audit does not read this as an unfilled gap
 - [ ] `src/lib/heroStage.test.ts` — existing. Extend for the `'model'` branch. Verify current coverage before assuming a gap
 
 ---
