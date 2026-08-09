@@ -137,7 +137,16 @@ Plans:
   3. Foundry can source an image without requiring a file drop
   4. A hero card in the Foundry grid carries the same state a Locker hero card does: favorites, and a count of what the user has already made for that hero
 
-**Plans**: TBD
+**Plans**: 2 plans
+
+**Wave 1**
+
+- [ ] 04-01-PLAN.md - The composable replaceable stage: model as the Locker's plate, Foundry on the same opt-in slot, the tray-preview stale pill, human verification
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 04-02-PLAN.md - Locker Effects-tab pre-write disclosure with a contested-write gate, and the hero-grid loading-versus-zero change-count badge
+
 **UI hint**: yes
 
 **Open decision (do not assume an outcome)**: Contested variant 3, the Locker hero page's target state. **REQ-locker-foundry-shared-hero-frame** (delivered: `HeroDetailFrame` is extracted and both `LockerHero` and `HeroWorkshop` render it) versus **REQ-locker-model-as-stage** (make the 3D model the page, which rebuilds that chrome). Both sources are equal precedence, so precedence cannot resolve it. The prerequisite hazard has discharged itself because Lane 1 shipped, so lanes 2 to 5 are no longer blocked, but Foundry now inherits chrome that one variant wants to move away from. Route to `/gsd-discuss-phase` before planning. One documented middle path exists and is not a decision: scope the frame so the backdrop is a replaceable slot rather than a fixed image.
