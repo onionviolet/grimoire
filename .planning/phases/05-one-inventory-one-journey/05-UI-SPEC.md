@@ -1,7 +1,7 @@
 ---
 phase: 5
 slug: one-inventory-one-journey
-status: draft
+status: approved
 shadcn_initialized: false
 preset: none
 created: 2026-08-08
@@ -260,11 +260,11 @@ All copy above is written as **i18n key + English value**, per `docs/ui-conventi
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Registry Safety: PASS
+- [x] Dimension 1 Copywriting: PASS
+- [x] Dimension 2 Visuals: PASS
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS
+- [x] Dimension 5 Spacing: PASS
+- [x] Dimension 6 Registry Safety: PASS
 
-**Approval:** pending
+**Approval:** APPROVED by gsd-ui-checker on 2026-08-08. 6/6 dimensions PASS, no blocking recommendations. The scope note was independently verified against the working tree (lockerMode.ts, Locker.tsx, HeroCardPicker.tsx, translation.json) and holds. Confirmed to introduce no contradiction with the Phase 4 contract's tokens or vocabulary.

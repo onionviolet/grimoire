@@ -170,6 +170,8 @@ Plans:
 
 **Notes**: Fix the vocabulary in `src/locales/en/translation.json` before touching more components, because copy drift is cheaper to correct at the catalog than at 30 call sites. Legs B and C of the alias sweep drive the working tree over CDP, so they need a committed or stashed tree and a dev slot nobody else is attached to.
 
+**Amended 2026-08-08 (scope correction, verified twice against the working tree):** the shared Global shell, `HeroCardPicker` as the canonical per-hero portrait home, and the shuffle mechanism behind both randomization views are already delivered, so the phase is narrower than the decision list suggests. What genuinely remains: the `All content` tri-state selector, which does not exist (`lockerMode.ts` types only `'looks' | 'sounds'`); hiding empty rail categories, where the code currently renders them unconditionally on purpose; two missing portrait empty states, `failed` and `filtered to zero`, since `not indexed` and the Locker's own none-state already ship; an honest indicator for unresolved codenames; a bulk-undo toast wired onto the existing `ToastStack`; derived descriptions for paks without useful names; and copy-only fixes consolidating six divergent phrasings into `Active source` plus the singular `Portrait family`. Both open decisions resolve by keeping every useful capability and both randomization views while refusing a second inventory home, which is what the discussion recorded.
+
 ### Phase 6: Community Tools Land Inside Grimoire
 
 **Goal**: A community web tool that builds a mod inside the in-app browser hands its output to Grimoire instead of the system Downloads folder, and the destination list becomes a checked catalog rather than a hardcoded array that rots
