@@ -42,6 +42,7 @@ import { TRIPPY_ANIMATION_LABELS as ANIMATION_LABELS, TRIPPY_STYLE_LABELS } from
 import TrippyPatternPicker from './TrippyPatternPicker';
 import { recolorApplyConsequence, type RecolorApplyConsequence } from './recolorApplyConsequence';
 import AssetSourcesPanel from '../foundry/AssetSourcesPanel';
+import { useAppStore } from '../../stores/appStore';
 import {
   TRIPPY_ANIMATION_STYLES,
   type TrippyVfxChoice,
@@ -162,6 +163,11 @@ const q = (x: number): number => Math.round(x * 100) / 100;
 export default function HeroColorPicker({ heroName, onAppliedChange, onStage, stagedEdit }: HeroColorPickerProps) {
   const { t } = useTranslation();
   const confirm = useConfirm();
+  // The installed-mod list the disclosure's ownership picture is drawn from.
+  // Any enable/disable/reorder (including the toggles the disclosure's own
+  // AssetSourcesPanel renders) replaces this array, invalidating every held
+  // disclosure.
+  const mods = useAppStore((s) => s.mods);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // The target currently applied in-game (null when none), and the live picks.
@@ -585,6 +591,15 @@ export default function HeroColorPicker({ heroName, onAppliedChange, onStage, st
   useEffect(() => {
     setDisclosure((held) => (held && held.requestKey !== requestKey ? null : held));
   }, [requestKey]);
+  // T-04-10: a granted "Apply anyway" is bound to the ownership picture it was
+  // inspected against, not just to the serialized export request. Any mod
+  // enable/disable/reorder changes that picture (and can happen in place via
+  // the disclosure panel itself), so every held disclosure is stale the moment
+  // the mod list changes: clearing it re-arms the contested-write gate for the
+  // next press instead of replaying consent against a different owner set.
+  useEffect(() => {
+    setDisclosure(null);
+  }, [mods]);
 
   const animatedSuffix = (on: boolean) => (on ? ` ${t('locker.colors.animatedSuffix')}` : '');
   const appliedLabel = !applied
