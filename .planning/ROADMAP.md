@@ -109,12 +109,12 @@ Plans:
   2. A user can add or remove a hero sound from its launch shuffle pool without leaving Foundry, and can reach the Locker's view of that same pool from there
   3. Auditioning a randomizer pool plays every clip in the pool, so what the user hears before forging is what the pool actually contains
 
-**Plans**: 3 plans
+**Plans**: 1/3 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 03-01-PLAN.md - Recolor tracer: stage a recolor in Foundry and forge it into the combined VPK, with the built array alignment fixed and locked
+- [x] 03-01-PLAN.md - Recolor tracer: stage a recolor in Foundry and forge it into the combined VPK, with the built array alignment fixed and locked
 - [ ] 03-02-PLAN.md - Sound shuffle reachable from Foundry with a Locker link, plus the pool-audition traceability correction
 
 **Wave 2** *(blocked on Wave 1 completion)*
@@ -263,7 +263,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phase 6 declar
 |-------|----------------|--------|-----------|
 | 1. Verified Against The Game | 8/8 | Complete    | 2026-08-06 |
 | 2. A Supported Fork Release | 6/6 | Complete    | 2026-08-07 |
-| 3. Foundry Completes Its Build Contract | 0/TBD | Not started | - |
+| 3. Foundry Completes Its Build Contract | 1/3 | In Progress|  |
 | 4. Locker And Foundry As One Object | 0/TBD | Not started | - |
 | 5. One Inventory, One Journey | 0/5 | Not started | - |
 | 6. Community Tools Land Inside Grimoire | 7/7 | Complete    | 2026-08-08 |
