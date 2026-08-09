@@ -65,6 +65,18 @@
     "confirm": {
       "affects_one": "Affects 1 mod",
       "affects_other": "Affects {{count}} mods"
+    },
+    "bulkUndo": {
+      "message_one": "{{count}} mod updated.",
+      "message_other": "{{count}} mods updated.",
+      "action": "Undo",
+      "restored_one": "{{count}} mod restored.",
+      "restored_other": "{{count}} mods restored.",
+      "partial": "{{done}} of {{total}} mods updated. {{failed}} could not be changed."
+    },
+    "provenance": {
+      "openInInstalled": "Open in Installed",
+      "openInInstalledHint": "Open this mod in the Installed list"
     }
   },
   "sync": {
@@ -383,7 +395,9 @@
       },
       "confirmInstall": "Install to Grimoire",
       "confirmOutputs": "Export saves a VPK file you manage yourself. Install adds it to your library, where My changes can track and rebuild it.",
-      "installed": "Installed \"{{name}}\". Find it in My changes."
+      "installed": "Installed \"{{name}}\". Find it in My changes.",
+      "blockedEmpty": "Select at least one staged edit to forge.",
+      "blockedBusy": "Forging is running. This will finish in a moment."
     },
     "texture": {
       "replace": "Replace PNG",
@@ -422,8 +436,8 @@
       "annotate": "Annotate",
       "annotatedOnly": "Annotated only",
       "baseGameLabel": "Base-game label:",
-      "existingSources": "Sources & winner",
-      "existingSourcesHint": "Show installed sources and the current winner for these exact sound paths",
+  "existingSources": "Sources and active source",
+  "existingSourcesHint": "Show installed sources and the active source for these exact sound paths",
       "loading": "Reading sounds from your game files...",
       "play": "Audition",
       "poolPosition": "clip {{n}} of {{total}}",
@@ -524,7 +538,7 @@
       "inspect": "Existing sources",
       "reinspect": "Re-inspect",
       "inspectHint": "Inspect installed VPKs that write this exact asset path",
-      "winner": "Current winner: {{name}}",
+  "winner": "Active source: {{name}}",
       "none": "No installed VPK writes this path.",
       "enabled": "Enabled",
       "disabled": "Disabled",
@@ -535,7 +549,7 @@
       "enableFailed": "Could not enable {{mod}}.",
       "disableFailed": "Could not disable {{mod}}.",
       "meta": "{{provenance}} · priority {{priority}}",
-      "isWinner": "winner",
+  "isWinner": "Active source",
       "unmanaged": "not managed by Grimoire",
       "lockerManaged": "Locker-managed",
       "auditionHint": "Audition what {{mod}} writes at {{entry}}",
@@ -572,8 +586,8 @@
       "eventDetails": "Event details",
       "recordedPaths_one": "{{count}} recorded path",
       "recordedPaths_other": "{{count}} recorded paths",
-      "noWriteSet": "This change predates recorded write sets, so its live winner cannot be resolved and it cannot be re-forged. Re-author it from the Sound browser to gain both.",
-      "resolving": "Resolving the active winner...",
+  "noWriteSet": "This change predates recorded write sets, so its active source cannot be resolved and it cannot be re-forged. Re-author it from the Sound browser to gain both.",
+  "resolving": "Resolving the active source...",
       "tryAgain": "Try again",
       "incompleteInspection": "{{mods}} could not be inspected, so this picture is incomplete.",
       "kind": {
@@ -582,8 +596,8 @@
       "winsAll": "This change wins every path it writes.",
       "disabledInactive": "Disabled, so nothing here is active.",
       "overriddenAt": "Overridden at {{path}}",
-      "overriddenBy": "by {{winner}}",
-      "openWinner": "Open the winner",
+  "overriddenBy": "Active source: {{winner}}",
+  "openWinner": "Open the active source",
       "recheck": "Re-check",
       "addAnnotation": "Annotate the source sound",
       "editAnnotation": "Edit annotation",
@@ -642,7 +656,8 @@
       "reforgeConflictBody": "These installed mods are enabled and change the same thing. The rebuild is a new managed mod layered over them; the existing one is left alone.",
       "reforgeConflictConfirm": "Rebuild",
       "searchScope": "Searches change names and game paths.",
-      "resultCount": "Showing {{visible}} of {{total}} changes"
+      "resultCount": "Showing {{visible}} of {{total}} changes",
+      "shuffleScopeAllForged": "All forged portraits"
     }
   },
   "autoexec": {
@@ -1006,8 +1021,10 @@
       "ignoreModEverywhere": "Ignore this mod everywhere",
       "ignoreTitle": "Stop flagging this pair as a conflict",
       "ignoring": "Ignoring…",
-      "unignore": "Unignore"
+      "unignore": "Unignore",
+      "busyBlocker": "Finish the change that is running before starting another."
     },
+    "rescanning": "Rechecking your installed mods. The results below are from the previous check.",
     "confirm": {
       "clearIgnoredHint": "Pairs that still conflict will reappear in the active list after refresh.",
       "clearIgnoredMessage": "Every ignored pair will be restored to normal conflict detection.",
@@ -1613,7 +1630,9 @@
       "copyEnabledToast": "Enabled mods copied ({{count}})",
       "copyFailed": "Couldn't copy: {{error}}",
       "imprintInstalledMods": "Imprint installed mods",
-      "imprintInstalledModsHint": "Embed a self-identifying imprint in your installed mods so orphaned files can be recognized offline."
+      "imprintInstalledModsHint": "Embed a self-identifying imprint in your installed mods so orphaned files can be recognized offline.",
+      "bulkBusy": "Finish the current update before starting another.",
+      "bulkUndoing": "Restoring the previous state. This will finish in a moment."
     },
     "imprintAll": {
       "title": "Imprint installed mods",
@@ -2079,7 +2098,10 @@
   "sectionMembershipHint": "Counted once per section. A mod can appear in more than one.",
   "filteredZeroTitle": "No {{filter}} content installed",
   "filteredZeroBody": "Empty categories are hidden, and nothing in this section has content.",
-  "filteredZeroReset": "Show all content"
+  "filteredZeroReset": "Show all content",
+  "unnamedPakDerived": "Writes {{entryList}}",
+  "unnamedPakDerivedMore": "Writes {{entryList}} and {{count}} more",
+  "unnamedPakUnknown": "Unknown content"
 },
     "soulImport": {
       "trigger": {
@@ -2328,7 +2350,7 @@
       "heroCard": "Hero Card",
       "experimental": "Experimental",
       "intro": "Card art found in your installed mods. Each mod may ship several portrait variants; click a card to apply that mod's full set for {{hero}}, and click the applied card again to revert to default.",
-      "ownership": "Show installed sources and winners",
+      "ownership": "Show installed sources and the active source",
       "variantToken": "variant token: {{token}}",
       "overlapNote_one": "{{count}} recorded card path is claimed by more than one enabled mod. This only covers recorded paths.",
       "overlapNote_other": "{{count}} recorded card paths are claimed by more than one enabled mod. This only covers recorded paths.",
@@ -2367,7 +2389,8 @@
       "exportedToast": "Exported to {{path}}",
       "missingSources": "Some cards were dropped because their source mod's VPK is no longer installed: {{names}}",
       "partialFamily_one": "{{count}} card variant will keep its stock art: {{variants}}.",
-      "partialFamily_other": "{{count}} card variants will keep their stock art: {{variants}}."
+      "partialFamily_other": "{{count}} card variants will keep their stock art: {{variants}}.",
+      "shuffleScopeThisHero": "This hero"
     },
     "trippy": {
       "loading": "Loading...",
@@ -2608,7 +2631,8 @@
       "reapply": "Re-apply",
       "apply": "Apply",
       "update": "Update",
-      "deleting": "Deleting..."
+      "deleting": "Deleting...",
+      "busyBlocker": "Finish the profile change that is running before starting another."
     },
     "snapshots": {
       "title_zero": "Snapshots",
@@ -3708,12 +3732,12 @@
     "partialPool": "Only some members are in the pool. Opting one in already makes the whole pool exclusive at launch, so add the rest to make the choice explicit.",
     "resolving": "Resolving what wins each path",
     "incomplete": "This picture is incomplete: {{mods}} could not be read.",
-    "foreignWinner": "A mod outside this pool wins {{n}} of its paths, so shuffling will not change them.",
+    "foreignWinner": "A mod outside this pool is the active source for {{n}} of its paths, so shuffling will not change them.",
     "recheck": "Re-check",
     "showPaths": "Paths ({{n}})",
     "memberPaths": "{{n}} paths",
-    "winner": "in game now",
-    "winsPathsHint": "Currently wins: {{paths}}",
+    "winner": "Active source",
+    "winsPathsHint": "Active source for: {{paths}}",
     "enabledButLosing": "enabled, overridden",
     "notActive": "not active",
     "memberShuffleOn": "In the launch pool",
@@ -3871,7 +3895,7 @@
       "audition": "Audition from this mod",
       "takes_one": "{{count}} take",
       "takes_other": "{{count}} takes",
-      "overriddenBy": "Overridden by {{winner}}",
+  "overriddenBy": "Active source: {{winner}}",
       "openWinner": "open"
     }
   },
@@ -3902,6 +3926,10 @@
       "loading": "Reading the base game portrait family...",
       "noneTitle": "No base game portrait family",
       "noneBody": "Grimoire could not read a base game portrait family for {{hero}} from your installed game files, so there is nothing to compare a replacement against. Browsing the full catalog lives in Foundry.",
+      "unresolvedTag": "Unresolved",
+      "unresolvedHint": "Grimoire could not match these to a known hero. Their raw names are shown exactly as they appear in your game files.",
+      "failedTitle": "Portrait family could not be read",
+      "failedBody": "Grimoire could not read {{hero}}'s portrait family from your installed game files, so it cannot show what a replacement would change. Retry, or check the game path in Settings.",
       "expand": "Expand {{hero}} {{variant}} at full size",
       "showingStock": "Base game art",
       "showingCurrent": "What the game draws now",
@@ -3915,7 +3943,7 @@
       "moreWinners_other": "{{count}} more variants are replaced",
       "thumbIsStock": "Showing base game art. A mod replaces this in game.",
       "overriddenWithoutArt": "{{name}} replaces this in game. This screen cannot decode that mod's art, so the base game art is shown instead: it is not what you will see in game.",
-      "sourcesTitle": "Sources and winner",
+      "sourcesTitle": "Sources and active source",
       "replaceVariant": "Replace {{variant}}",
       "editVariant": "Open {{variant}} in the portrait editor",
       "createInFoundry": "Create replacement in Foundry",

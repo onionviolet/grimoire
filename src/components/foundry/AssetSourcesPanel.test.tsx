@@ -111,7 +111,7 @@ describe('AssetSourcesPanel audition-preview lane', () => {
 
     expect(document.body.textContent).toContain('Abrams VO Pack');
     expect(document.body.textContent).toContain('Alt VO Pack');
-    expect(document.body.textContent).toContain('Current winner: Abrams VO Pack');
+    expect(document.body.textContent).toContain('Active source: Abrams VO Pack');
 
     const auditionButton = findAuditionButton('Abrams VO Pack');
     expect(auditionButton).toBeDefined();

@@ -101,7 +101,7 @@ function buildInspection(
     ],
     // Only the shared path resolves to a pool member. The minimap path
     // resolves to no owner (base game wins), so exactly one member shows the
-    // "in game now" winner label and the assertion below is unambiguous.
+    // "Active source" label and the assertion below is unambiguous.
     winners: {
       [SHARED_PATH]: 'portrait-a',
       [MINIMAP_PATH]: null,
@@ -171,7 +171,7 @@ describe('FoundryPoolList pool cards lane', () => {
 
     // Only portrait-a wins a path in this fixture, so the label appears once,
     // on the winning member's own row.
-    expect(document.body.textContent).toContain('in game now');
+    expect(document.body.textContent).toContain('Active source');
 
     const memberRows = Array.from(document.querySelectorAll('p')).filter((p) =>
       p.textContent === 'Neon portrait' || p.textContent === 'Chrome portrait'
@@ -183,8 +183,8 @@ describe('FoundryPoolList pool cards lane', () => {
       ?.parentElement;
     const chromeRow = memberRows.find((p) => p.textContent === 'Chrome portrait')?.parentElement
       ?.parentElement;
-    expect(neonRow?.textContent).toContain('in game now');
-    expect(chromeRow?.textContent).not.toContain('in game now');
+    expect(neonRow?.textContent).toContain('Active source');
+    expect(chromeRow?.textContent).not.toContain('Active source');
     expect(chromeRow?.textContent).toContain('enabled, overridden');
   });
 
