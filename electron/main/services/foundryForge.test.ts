@@ -1,9 +1,11 @@
 import { promises as fs } from 'fs';
+import { join } from 'path';
 import { tmpdir } from 'os';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildFoundryForgeVpk, describeFoundryBuild, forgeAndExportFoundryVpk, reviewFoundryForge } from './foundryForge';
 import type { FoundryForgeEdit, FoundryForgeRequest } from '../../../src/types/foundry';
 import { runVpkmerge } from './modMerger';
+import { parseVpkDirectory } from './vpk';
 import { buildRecolorVpk } from './foundryRecolor';
 
 // The end-to-end three-kind case drives every builder through the merged
@@ -33,6 +35,10 @@ vi.mock('./vpk', () => ({
         'textures/hero/dash.vtex_c',
     ]),
 }));
+
+beforeEach(() => {
+    vi.clearAllMocks();
+});
 
 /** Foundry build temps are named so they can be counted; a leaked directory is
  *  the exact residue "atomic cancel" promises never to leave behind. */
@@ -68,6 +74,29 @@ describe('reviewFoundryForge', () => {
 
         expect(review.writeSet).toEqual(['sounds/dash.vsnd_c']);
         expect(review.collisionWinners).toEqual([{ file: 'sounds/dash.vsnd_c', editId: 'sound' }]);
+    });
+
+    it("derives a recolor edit's entries from request.entries and normalizes them", () => {
+        const review = reviewFoundryForge([recolorEdit]);
+
+        expect(review.writeSet).toEqual(['materials/hero/ult.vtex_c', 'particles/hero/ult.vpcf_c']);
+        expect(review.collisionWinners).toEqual([]);
+    });
+
+    it('resolves a recolor/texture collision by precedence, then by stage order', () => {
+        const textureAtSamePath = {
+            ...textureEdit,
+            request: { ...textureEdit.request, entryPath: 'particles/HERO/ult.vpcf_c', name: 'Ult texture' },
+        };
+
+        // Higher precedence wins regardless of kind.
+        expect(reviewFoundryForge([recolorEdit, { ...textureAtSamePath, precedence: 4 }]).collisionWinners)
+            .toEqual([{ file: 'particles/hero/ult.vpcf_c', editId: 'visual' }]);
+        expect(reviewFoundryForge([{ ...textureAtSamePath, precedence: 1 }, recolorEdit]).collisionWinners)
+            .toEqual([{ file: 'particles/hero/ult.vpcf_c', editId: 'recolor' }]);
+        // Equal precedence: the later staged edit is the deliberate last writer.
+        expect(reviewFoundryForge([recolorEdit, { ...textureAtSamePath, precedence: 3 }]).collisionWinners)
+            .toEqual([{ file: 'particles/hero/ult.vpcf_c', editId: 'visual' }]);
     });
 });
 
@@ -114,6 +143,26 @@ describe('describeFoundryBuild', () => {
 
     it('retains the request so the build can be rebuilt without re-authoring', () => {
         expect(describeFoundryBuild(request).reforge).toEqual(request);
+    });
+
+    it('describes a recolor part with its own normalized entries and no category or source file', () => {
+        const recolorRequest: FoundryForgeRequest = {
+            name: 'Recolor only',
+            edits: [recolorEdit],
+            confirmation: {
+                writeSet: ['materials/hero/ult.vtex_c', 'particles/hero/ult.vpcf_c'],
+                collisionWinners: [],
+            },
+        };
+
+        expect(describeFoundryBuild(recolorRequest).parts).toEqual([
+            {
+                kind: 'recolor',
+                title: 'Hero',
+                entries: ['particles/hero/ult.vpcf_c', 'materials/hero/ult.vtex_c'],
+                heroName: 'Hero',
+            },
+        ]);
     });
 });
 
@@ -180,6 +229,71 @@ describe('buildFoundryForgeVpk', () => {
         ]);
         expect(buildRecolorVpk).toHaveBeenCalledWith('C:/game', request.edits[2].request);
         await result.cleanup();
+    });
+
+    it('keeps built aligned with the request across every edit kind, so a fourth kind added without a built push goes red here', async () => {
+        // One edit for every member of the FoundryForgeEdit union today, on
+        // distinct paths so the count below is about alignment (one source per
+        // edit), never collision resolution.
+        const request: FoundryForgeRequest = {
+            name: 'Alignment',
+            edits: [
+                soundEdit,
+                { ...textureEdit, request: { ...textureEdit.request, entryPath: 'textures/hero/dash.vtex_c', name: 'Dash texture' } },
+                recolorEdit,
+            ],
+            confirmation: {
+                writeSet: [
+                    'materials/hero/ult.vtex_c',
+                    'particles/hero/ult.vpcf_c',
+                    'sounds/dash.vsnd_c',
+                    'textures/hero/dash.vtex_c',
+                ],
+                collisionWinners: [],
+            },
+        };
+
+        await buildFoundryForgeVpk('C:/game', request);
+
+        // If a future kind were added without a `built` push, built[index]
+        // would desync from request.edits[index] below and either throw before
+        // the merge or hand the engine the wrong sources. The exact array is
+        // the alignment check: one real source per edit, in precedence order.
+        expect(runVpkmerge).toHaveBeenCalledTimes(1);
+        const sources = vi.mocked(runVpkmerge).mock.calls[0][0].slice(1);
+        expect(sources).toHaveLength(request.edits.length);
+        expect(sources).toEqual(['/tmp/texture.vpk', '/tmp/sound.vpk', '/tmp/recolor.vpk']);
+    });
+
+    it('invokes the recolor part cleanup and leaves the shared bake cache file in place', async () => {
+        const bakeDir = await fs.mkdtemp(join(tmpdir(), 'grimoire-recolor-bake-'));
+        const bakePath = join(bakeDir, 'bake_dir.vpk');
+        await fs.writeFile(bakePath, 'recolored bytes');
+        const cleanup = vi.fn(async () => {});
+        vi.mocked(buildRecolorVpk).mockResolvedValueOnce({ vpkPath: bakePath, cleanup });
+        try {
+            const request: FoundryForgeRequest = {
+                name: 'Recolor cache',
+                edits: [recolorEdit],
+                confirmation: {
+                    writeSet: ['materials/hero/ult.vtex_c', 'particles/hero/ult.vpcf_c'],
+                    collisionWinners: [],
+                },
+            };
+            vi.mocked(parseVpkDirectory).mockReturnValueOnce(['materials/hero/ult.vtex_c', 'particles/hero/ult.vpcf_c']);
+
+            const result = await buildFoundryForgeVpk('C:/game', request);
+
+            // The forge runs every part cleanup in `finally`...
+            expect(cleanup).toHaveBeenCalledTimes(1);
+            await result.cleanup();
+            // ...and that cleanup must not delete the shared per-hero bake:
+            // the Locker Apply and Export buttons read this exact file, and a
+            // recolor forge must leave it in place for them.
+            expect(await fs.stat(bakePath).catch(() => null)).not.toBeNull();
+        } finally {
+            await fs.rm(bakeDir, { recursive: true, force: true }).catch(() => {});
+        }
     });
 });
 

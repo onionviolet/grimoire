@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   affectedFileCount,
   analyzeStagedEdits,
+  isStagedRecolorEdit,
+  normalizeEntryPath,
   normalizeOutputName,
   missingSourceFiles,
   reviewStagedEdits,
@@ -67,6 +69,24 @@ describe('one reviewed write set across both live authoring flows', () => {
     name: 'Dash icon',
     category: 'ability-icon',
   });
+  // A staged recolor exactly as prepareRecolorStagedEdit hands the tray: the
+  // request carries the discovered bake entries, and the affected files are
+  // their normalized form.
+  const recolor = {
+    id: 'recolor:Mina',
+    kind: 'recolor' as const,
+    title: 'Mina recolor',
+    affectedFiles: ['Materials\\Hero\\Ult.VTEX_C', 'particles/hero/ult.vpcf_c'],
+    precedence: 3,
+    request: {
+      heroName: 'Mina',
+      mode: 'hue' as const,
+      hue: 280,
+      saturation: 1,
+      brightness: 1,
+      entries: ['Materials\\Hero\\Ult.VTEX_C', 'particles/hero/ult.vpcf_c'],
+    },
+  };
 
   it('merges sound and visual edits into one normalized write set', () => {
     const review = reviewStagedEdits([visual, sound], new Set([visual.id, sound.id]));
@@ -117,5 +137,41 @@ describe('one reviewed write set across both live authoring flows', () => {
     expect(unsupportedStagedEditKind([visual, sound])).toBeNull();
     expect(unsupportedStagedEditKind([visual, recolor])).toBe('recolor');
     expect(() => toForgeRequest('x', reviewStagedEdits([recolor], new Set([recolor.id])))).toThrow('Unsupported staged edit kind');
+  });
+
+  it('recognizes a staged recolor edit and rejects sound and texture edits', () => {
+    expect(isStagedRecolorEdit(recolor)).toBe(true);
+    expect(isStagedRecolorEdit(sound)).toBe(false);
+    expect(isStagedRecolorEdit(visual)).toBe(false);
+  });
+
+  it('accepts all three supported kinds and names a staged model edit as unsupported', () => {
+    expect(unsupportedStagedEditKind([visual, sound, recolor])).toBeNull();
+    const model = {
+      id: 'model', kind: 'model' as const, title: 'Model', affectedFiles: ['models/hero.vmdl_c'], precedence: 1,
+    };
+    expect(unsupportedStagedEditKind([visual, recolor, model])).toBe('model');
+  });
+
+  it('serializes a recolor edit into a kind recolor forge member matching the review', () => {
+    const review = reviewStagedEdits([visual, sound, recolor], new Set([visual.id, sound.id, recolor.id]));
+    const request = toForgeRequest('Recolor build', review);
+
+    expect(request.edits.map((edit) => edit.kind)).toEqual(['texture', 'sound', 'recolor']);
+    expect(request.edits.find((edit) => edit.kind === 'recolor')).toMatchObject({
+      id: 'recolor:Mina',
+      kind: 'recolor',
+      precedence: 3,
+      request: { entries: ['Materials\\Hero\\Ult.VTEX_C', 'particles/hero/ult.vpcf_c'] },
+    });
+    expect(request.confirmation.writeSet).toEqual(review.writeSet);
+    expect(request.confirmation.collisionWinners).toEqual(
+      review.collisions.map(({ file, winner }) => ({ file: normalizeEntryPath(file), editId: winner.id })),
+    );
+  });
+
+  it('adds no source file for a recolor edit, whose inputs are picker parameters', () => {
+    expect(stagedEditSourceFiles([recolor])).toEqual([]);
+    expect(stagedEditSourceFiles([visual, sound, recolor])).toEqual(['C:/art/dash.png', 'C:/audio/dash.mp3']);
   });
 });
