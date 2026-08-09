@@ -24,6 +24,7 @@ function source(over: Partial<FoundryAssetSource> & Pick<FoundryAssetSource, 'mo
         wins: [],
         managed: true,
         auditionable: [],
+        lockerManaged: false,
         ...over,
     };
 }

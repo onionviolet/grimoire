@@ -15,6 +15,10 @@ export interface InstalledAssetSourceCandidate {
         textureReplacement?: unknown;
         soundSwap?: unknown;
         foundryBuild?: unknown;
+        lockerCosmetics?: unknown;
+        lockerSounds?: unknown;
+        lockerColors?: unknown;
+        lockerTrippySkins?: unknown;
         sourceSection?: string;
         chatWheel?: boolean;
         merged?: unknown;
@@ -36,6 +40,13 @@ export interface FoundryAssetSource {
      *  honestly as superseding a known change. A third-party VPK is opaque: it
      *  is never edited in place, only layered over. */
     managed: boolean;
+    /** Grimoire rebuilds this artifact itself from the Locker's own selections
+     *  (the managed ability-colours VPK and its siblings), so it is not a mod
+     *  the user installed and must never be reported as contesting a Locker
+     *  write against the user. Kept separate from `provenance`: a user-forged
+     *  mod is also `Forged` and SHOULD contest, so the two concepts cannot
+     *  share a classifier. */
+    lockerManaged: boolean;
     /** The matched entries a player can actually hear, so the panel offers an
      *  audition only where extraction can succeed. */
     auditionable: string[];
@@ -121,6 +132,10 @@ export function inspectFoundryAssetSources(
             entries,
             wins: [],
             managed: kind !== 'Third-party',
+            lockerManaged: !!(candidate.metadata?.lockerCosmetics ||
+                candidate.metadata?.lockerSounds ||
+                candidate.metadata?.lockerColors ||
+                candidate.metadata?.lockerTrippySkins),
             auditionable: entries.filter((entry) => entry.endsWith('.vsnd_c')),
         });
     }

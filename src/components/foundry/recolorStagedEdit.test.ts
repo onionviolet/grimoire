@@ -12,6 +12,7 @@ const source = (overrides: Partial<FoundryAssetSource>): FoundryAssetSource => (
   wins: [],
   managed: false,
   auditionable: [],
+  lockerManaged: false,
   ...overrides,
 });
 

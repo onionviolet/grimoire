@@ -377,6 +377,13 @@ export interface FoundryAssetSource {
     /** Grimoire minted or downloaded this VPK. A third-party VPK is opaque and
      *  is only ever layered over, never edited in place. */
     managed: boolean;
+    /** Grimoire rebuilds this artifact itself from the Locker's own selections
+     *  (the managed ability-colours VPK and its siblings), so it is not a mod
+     *  the user installed and must never be reported as contesting a Locker
+     *  write against the user. Kept separate from `provenance`: a user-forged
+     *  mod is also `Forged` and SHOULD contest, so the two concepts cannot
+     *  share a classifier. */
+    lockerManaged: boolean;
     /** Matched entries that can actually be extracted and played. */
     auditionable: string[];
 }

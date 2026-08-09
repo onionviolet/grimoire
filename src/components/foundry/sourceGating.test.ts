@@ -12,6 +12,7 @@ const source = (overrides: Partial<FoundryAssetSource> = {}): FoundryAssetSource
   wins: ['panorama/images/hud/x.vtex_c'],
   managed: true,
   auditionable: [],
+  lockerManaged: false,
   ...overrides,
 });
 

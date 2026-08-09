@@ -84,6 +84,7 @@ function buildInspection(
         wins: [SHARED_PATH],
         managed: true,
         auditionable: [],
+        lockerManaged: false,
       },
       {
         modId: 'portrait-b',
@@ -95,6 +96,7 @@ function buildInspection(
         wins: [MINIMAP_PATH],
         managed: true,
         auditionable: [],
+        lockerManaged: false,
       },
     ],
     // Only the shared path resolves to a pool member. The minimap path

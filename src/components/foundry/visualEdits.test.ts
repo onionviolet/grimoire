@@ -4,7 +4,7 @@ import type { FoundryAssetSource, FoundryAssetSourcesInspection } from '../../ty
 
 const source = (overrides: Partial<FoundryAssetSource>): FoundryAssetSource => ({
   modId: 'mod', modName: 'Some mod', enabled: true, priority: 1, provenance: 'Downloaded',
-  entries: [], wins: [], managed: false, auditionable: [], ...overrides,
+  entries: [], wins: [], managed: false, lockerManaged: false, auditionable: [], ...overrides,
 });
 
 const inspection = (overrides: Partial<FoundryAssetSourcesInspection> = {}): FoundryAssetSourcesInspection => ({

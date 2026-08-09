@@ -29,6 +29,7 @@ const inspection: FoundryAssetSourcesInspection = {
       entries: [ENTRY_PATH],
       wins: [ENTRY_PATH],
       managed: false,
+      lockerManaged: false,
       auditionable: [ENTRY_PATH],
     },
     {
@@ -40,6 +41,7 @@ const inspection: FoundryAssetSourcesInspection = {
       entries: [ENTRY_PATH],
       wins: [],
       managed: false,
+      lockerManaged: false,
       auditionable: [ENTRY_PATH],
     },
   ],

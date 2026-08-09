@@ -72,6 +72,7 @@ describe('Foundry asset sources', () => {
                 entries: ['materials/icons/a.vtex_c', 'materials/icons/b.vtex_c'],
                 wins: ['materials/icons/a.vtex_c', 'materials/icons/b.vtex_c'],
                 managed: false,
+                lockerManaged: false,
                 auditionable: [],
             }],
             winners: {
@@ -82,5 +83,26 @@ describe('Foundry asset sources', () => {
         });
         // The IPC payload contains no Maps, Sets, Errors, or class instances.
         expect(JSON.parse(JSON.stringify(result))).toEqual(result);
+    });
+
+    it('marks Locker-managed artifacts without reclassifying their provenance', () => {
+        const result = inspectFoundryAssetSources(['panorama/images/heroes/bull.png'], [
+            { mod: mod('colors', true, 1), entries: ['panorama/images/heroes/bull.png'], metadata: { lockerColors: {} } },
+            { mod: mod('cosmetics', true, 2), entries: ['panorama/images/heroes/bull.png'], metadata: { lockerCosmetics: {} } },
+            { mod: mod('third-party', true, 3), entries: ['panorama/images/heroes/bull.png'] },
+            { mod: mod('forged-build', true, 4), entries: ['panorama/images/heroes/bull.png'], metadata: { foundryBuild: {} } },
+        ]);
+        const byId = new Map(result.sources.map((source) => [source.modId, source]));
+        expect(byId.get('colors')?.lockerManaged).toBe(true);
+        expect(byId.get('cosmetics')?.lockerManaged).toBe(true);
+        expect(byId.get('third-party')?.lockerManaged).toBe(false);
+        // A user-forged mod must stay contesting, so it is never lockerManaged.
+        expect(byId.get('forged-build')?.lockerManaged).toBe(false);
+        // The new flag must not be mistaken for a reclassification: provenance
+        // is unchanged for every candidate.
+        expect(byId.get('colors')?.provenance).toBe('Third-party');
+        expect(byId.get('cosmetics')?.provenance).toBe('Third-party');
+        expect(byId.get('third-party')?.provenance).toBe('Third-party');
+        expect(byId.get('forged-build')?.provenance).toBe('Forged');
     });
 });

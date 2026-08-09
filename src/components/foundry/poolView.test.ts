@@ -168,8 +168,8 @@ describe('resolvePoolWinners', () => {
   const inspection: FoundryAssetSourcesInspection = {
     paths: ['panorama/images/heroes/bull.png', 'panorama/images/heroes/bull_minimap.png'],
     sources: [
-      { modId: 'portrait-a', modName: 'Neon Abrams', enabled: true, priority: 1, provenance: 'Forged', entries: ['panorama/images/heroes/bull.png'], wins: ['panorama/images/heroes/bull.png'], managed: true, auditionable: [] },
-      { modId: 'stranger', modName: 'Some downloaded pack', enabled: true, priority: 0, provenance: 'Downloaded', entries: ['panorama/images/heroes/bull_minimap.png'], wins: ['panorama/images/heroes/bull_minimap.png'], managed: false, auditionable: [] },
+      { modId: 'portrait-a', modName: 'Neon Abrams', enabled: true, priority: 1, provenance: 'Forged', entries: ['panorama/images/heroes/bull.png'], wins: ['panorama/images/heroes/bull.png'], managed: true, lockerManaged: false, auditionable: [] },
+      { modId: 'stranger', modName: 'Some downloaded pack', enabled: true, priority: 0, provenance: 'Downloaded', entries: ['panorama/images/heroes/bull_minimap.png'], wins: ['panorama/images/heroes/bull_minimap.png'], managed: false, lockerManaged: false, auditionable: [] },
     ],
     winners: {
       'panorama/images/heroes/bull.png': 'portrait-a',
