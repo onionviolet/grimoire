@@ -7,6 +7,7 @@ import { useSoundAnnotations } from './useSoundAnnotations';
 import { useClipPlayer } from '../foundry/useClipPlayer';
 import { useAppStore } from '../../stores/appStore';
 import { globalSoundSectionLabel } from '../../lib/globalSoundSections';
+import { focusModPath } from '../../lib/provenance';
 import type {
   SoundCategory,
   SoundClassificationBasis,
@@ -53,7 +54,7 @@ export default function GlobalSoundShelf({ category, shown }: GlobalSoundShelfPr
   }, [mods]);
 
   const openInInstalled = useCallback(
-    (modId: string) => navigate(`/?focusMod=${encodeURIComponent(modId)}`),
+    (modId: string) => navigate(focusModPath(modId)),
     [navigate]
   );
   // The store reports whether the toggle stuck; the shelf renders from the mod

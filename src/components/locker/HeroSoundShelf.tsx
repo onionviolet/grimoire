@@ -13,6 +13,7 @@ import {
   overlappingClaims,
   type SoundCategory,
 } from '../../lib/soundInventory';
+import { focusModPath } from '../../lib/provenance';
 import type { Mod } from '../../types/mod';
 
 /**
@@ -160,7 +161,7 @@ export default function HeroSoundShelf({ heroName, soundList, onSelect }: HeroSo
               audioUrl={audioUrls[entry.modId]}
               player={player}
               onToggleEnabled={onSelect}
-              onOpenInInstalled={(modId) => navigate(`/?focusMod=${encodeURIComponent(modId)}`)}
+              onOpenInInstalled={(modId) => navigate(focusModPath(modId))}
             />
           ))}
         </div>

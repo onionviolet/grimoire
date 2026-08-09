@@ -19,6 +19,7 @@ import {
 import { foundryAuditionSourceClip } from '../../lib/api';
 import { useAssetClaims } from '../../lib/useAssetClaims';
 import { computeSourceGating } from './sourceGating';
+import { focusModPath } from '../../lib/provenance';
 import { useAppStore } from '../../stores/appStore';
 import { showToast } from '../../stores/toastStore';
 import type {
@@ -260,7 +261,7 @@ export default function AssetSourcesPanel({
                       </span>
                       <button
                         type="button"
-                        onClick={() => navigate(`/?focusMod=${encodeURIComponent(mod.modId)}`)}
+                        onClick={() => navigate(focusModPath(mod.modId))}
                         title={t('sourceBlocking.openMod', { mod: mod.modName })}
                         className="flex items-center gap-1 rounded-sm border border-amber-400/40 px-1.5 py-0.5 hover:text-amber-200"
                       >
@@ -315,12 +316,12 @@ export default function AssetSourcesPanel({
                   ))}
                   <button
                     type="button"
-                    onClick={() => navigate(`/?focusMod=${encodeURIComponent(source.modId)}`)}
-                    title={t('foundry.sources.openInInstalledHint')}
+                    onClick={() => navigate(focusModPath(source.modId))}
+                    title={t('common.provenance.openInInstalledHint', 'Open this mod in the Installed list')}
                     className="flex items-center gap-1 rounded-sm border border-border px-1.5 py-0.5 hover:text-text-primary"
                   >
                     <ExternalLink size={10} />
-                    {t('foundry.sources.openInInstalled')}
+                    {t('common.provenance.openInInstalled', 'Open in Installed')}
                   </button>
                   <button
                     type="button"

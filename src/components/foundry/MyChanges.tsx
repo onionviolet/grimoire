@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 import { showToast } from '../../stores/toastStore';
+import { focusModPath } from '../../lib/provenance';
 import { Tag } from '../common/ui';
 import {
   foundryCheckAudioPaths,
@@ -172,7 +173,7 @@ export default function MyChanges({ onAddNew, heroName }: MyChangesProps) {
     });
   }, []);
 
-  const openInInstalled = useCallback((modId: string) => navigate(`/?focusMod=${encodeURIComponent(modId)}`), [navigate]);
+  const openInInstalled = useCallback((modId: string) => navigate(focusModPath(modId)), [navigate]);
 
   // Which changes contend for the same game paths. The shuffle only means
   // something inside such a group, so the UI is built from the same grouping
@@ -678,7 +679,7 @@ function ChangeDetails({
               onClick={() => onOpenInInstalled(entry.mod.id)}
               className="flex items-center gap-1 rounded-sm border border-border px-1.5 py-0.5 hover:text-text-primary"
             >
-              <ExternalLink size={10} /> {t('foundry.myChanges.openInInstalled', 'Open in Installed')}
+              <ExternalLink size={10} /> {t('common.provenance.openInInstalled', 'Open in Installed')}
             </button>
             <button
               type="button"

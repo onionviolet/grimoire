@@ -398,7 +398,7 @@ export function PoolMemberCell({
       <button
         type="button"
         onClick={() => onOpenInInstalled(member.mod.id)}
-        title={t('poolView.openInInstalled', 'Open in Installed')}
+        title={t('common.provenance.openInInstalled', 'Open in Installed')}
         className="shrink-0 rounded-sm border border-border p-1.5 text-text-secondary hover:text-text-primary"
       >
         <ExternalLink size={12} />

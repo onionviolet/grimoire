@@ -171,7 +171,7 @@ export default function SoundEntryRow({
         <button
           type="button"
           onClick={() => onOpenInInstalled(entry.modId)}
-          title={t('soundLocker.row.openInInstalled', 'Open in Installed')}
+          title={t('common.provenance.openInInstalled', 'Open in Installed')}
           className="shrink-0 rounded-sm border border-border px-1.5 py-1 text-text-secondary transition-colors hover:text-text-primary cursor-pointer"
         >
           <ExternalLink className="h-3 w-3" />
