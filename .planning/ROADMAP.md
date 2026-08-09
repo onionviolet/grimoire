@@ -169,7 +169,7 @@ Plans:
   5. Any bulk action can be undone without rebuilding the selection by hand, and no disabled control leaves its blocker to be guessed
   6. The same state is never given two names on two pages, and every empty state names what is missing, why, and the next action
 
-**Plans**: 4/6 plans executed
+**Plans**: 5/6 plans executed
 
 Plans:
 **Wave 1**
@@ -184,7 +184,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 05-05-PLAN.md - Legs B and C of the alias sweep driven over CDP, with a per-hero verdict recorded either way
+- [x] 05-05-PLAN.md - Legs B and C of the alias sweep driven over CDP, with a per-hero verdict recorded either way
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
@@ -265,5 +265,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phase 6 declar
 | 2. A Supported Fork Release | 6/6 | Complete    | 2026-08-07 |
 | 3. Foundry Completes Its Build Contract | 3/3 | In Progress|  |
 | 4. Locker And Foundry As One Object | 2/2 | In Progress|  |
-| 5. One Inventory, One Journey | 4/6 | In Progress|  |
+| 5. One Inventory, One Journey | 5/6 | In Progress|  |
 | 6. Community Tools Land Inside Grimoire | 7/7 | Complete    | 2026-08-08 |

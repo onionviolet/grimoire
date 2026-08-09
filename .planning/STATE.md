@@ -4,17 +4,17 @@ milestone: v1.26.20
 milestone_name: milestone
 current_phase: 5
 current_phase_name: one-inventory-one-journey
-current_plan: 5
+current_plan: 6
 status: executing
-stopped_at: Completed 05-04-PLAN.md
-last_updated: "2026-08-09T08:19:46.415Z"
+stopped_at: Completed 05-05-PLAN.md
+last_updated: "2026-08-09T08:40:37.357Z"
 last_activity: 2026-08-09
 last_activity_desc: Phase 4 execution started
 progress:
   total_phases: 6
   completed_phases: 5
   total_plans: 32
-  completed_plans: 30
+  completed_plans: 31
 ---
 
 # Project State
@@ -29,13 +29,13 @@ See: .planning/PROJECT.md (updated 2026-08-05)
 ## Current Position
 
 Phase: 5 (one-inventory-one-journey) — EXECUTING
-Current Plan: 5
+Current Plan: 6
 Total Plans in Phase: 6
-Plan: 5 of 6
+Plan: 6 of 6
 Status: Ready to execute
 Last activity: 2026-08-09 — Phase 5 execution started
 
-Progress: [█████████░] 94%
+Progress: [██████████] 97%
 
 ## Performance Metrics
 
@@ -74,6 +74,7 @@ Progress: [█████████░] 94%
 | Phase 05 P02 | 10 min | 3 tasks | 6 files |
 | Phase 05-one-inventory-one-journey P03 | 12min | 3 tasks | 3 files |
 | Phase 05 P04 | 8min | 3 tasks | 5 files |
+| Phase 05-one-inventory-one-journey P05 | 20 | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -127,6 +128,9 @@ Recent decisions affecting current work:
 - [Phase 05]: The derived entry list caps at three leaf names plus a remainder count, with the cap a parameter the render site never hardcodes
 - [Phase 05]: Unreadable and empty VPKs produce the same unknown label per D-19, because the user can act on neither differently
 - [Phase 05]: REQ-sound-locker-surface recorded as resolved by D-01/D-02 with the evidence cited: GlobalSoundShelf carries the preserved capabilities, legacySoundTarget/resolveLockerRoute keep the shipped URLs alive, lockerMode.test.ts proves it
+- [Phase ?]: 2026-08-09 (05-05): Committed the pre-existing auto-advance config change as housekeeping so the alias sweep ran on a clean tree; git stash is prohibited in this environment
+- [Phase ?]: 2026-08-09 (05-05): The portrait alias sweep verdict record uses 'family present' as the documented healthy case the four-way table has no defect row for
+- [Phase ?]: 2026-08-09 (05-05): Rendered family counts and Locker hero-id rewrites are stability-checked because a raw first DOM match can catch the previous route's stale line
 
 ### Pending Todos
 
@@ -170,6 +174,6 @@ Real-game verification is deferred to the end of this milestone run per explicit
 
 ## Session Continuity
 
-Last session: 2026-08-09T08:19:34.204Z
-Stopped at: Completed 05-04-PLAN.md
+Last session: 2026-08-09T08:40:37.340Z
+Stopped at: Completed 05-05-PLAN.md
 Resume file: None
