@@ -2,10 +2,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Images, Loader2, Users, Wand2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { EmptyState } from '../common/PageComponents';
+import { Tag } from '../common/ui';
+import { HeroSelect } from '../common/HeroSelect';
 import CatalogDiagnostics from './CatalogDiagnostics';
 import Tx from '../translation/Tx';
 import { foundryInspectAssetSources, foundryThumbnails } from '../../lib/api';
-import { resolvePortraitHero } from '../../lib/heroPortraitIdentity';
+import { displayNameForHeroCodename, resolvePortraitHero } from '../../lib/heroPortraitIdentity';
+import { buildHeroFilterOptions } from './heroFilterOptions';
 import { VEILED_CONTENT_CLASS } from '../../lib/heroStage';
 import {
   buildPortraitFamilyViews,
@@ -89,14 +92,24 @@ export default function PortraitBrowse({ heroNames, hero, onStage, initialFamily
 
   const families = useMemo(() => groupPortraitFamilies(items), [items]);
 
-  // Hero dropdown scoped to codenames that actually have a family here.
-  const presentHeroes = useMemo(() => {
-    const codes = new Set<string>();
-    for (const family of families) if (family.hero) codes.add(family.hero);
-    return [...codes]
-      .map((code) => ({ code, name: resolvePortraitHero(code)?.displayName ?? heroNames.get(code) ?? code }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }, [families, heroNames]);
+  // Hero dropdown scoped to codenames that actually have a family here. The
+  // options resolve through the same buildHeroFilterOptions path the Library
+  // catalog uses: the old silent fallback to the raw codename is what let an
+  // unplaceable codename pose as a hero, and the shared helper already draws
+  // the distinction that heroPortraitIdentity is the single source for.
+  const heroOptions = useMemo(
+    () =>
+      buildHeroFilterOptions({
+        codenames: families.flatMap((family) => (family.hero ? [family.hero] : [])),
+        heroNames,
+        labels: {
+          all: t('foundry.filters.allHeroes', 'All heroes'),
+          unresolved: t('foundry.filters.unreleasedGroup', 'Unreleased or internal'),
+        },
+      }),
+    [families, heroNames, t],
+  );
+  const hasHeroOptions = heroOptions.some((option) => option.value !== 'all');
 
   // A hero workshop has a roster codename, while the texture catalog has a
   // panorama codename. They only meet through the shared portrait resolver.
@@ -141,6 +154,19 @@ export default function PortraitBrowse({ heroNames, hero, onStage, initialFamily
     );
     return [...new Set(labels)].sort((a, b) => a.localeCompare(b));
   }, [scopedFamilies, t]);
+
+  // Codenames a completed read left unplaceable: no alias-table entry and no
+  // roster name. Each keeps its raw token in a neutral tag rather than posing
+  // as a hero. This derives from the visible set only, so it never renders
+  // while the catalog is still loading and never for a read that failed (both
+  // branches render before this one).
+  const unresolvedCodenames = useMemo(
+    () =>
+      [...new Set(visible.flatMap((family) => (family.hero ? [family.hero] : [])))]
+        .filter((code) => displayNameForHeroCodename(code) === null)
+        .sort(),
+    [visible],
+  );
 
   /**
    * Ownership, but only where asking is bounded.
@@ -240,23 +266,36 @@ export default function PortraitBrowse({ heroNames, hero, onStage, initialFamily
     <>
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-3">
-        {!hero && presentHeroes.length > 0 && (
-          <div className="flex items-center gap-1.5 rounded-sm border border-border bg-bg-tertiary px-2 py-1.5">
-            <Users size={14} className="text-text-secondary" />
-            <select
+        {!hero && hasHeroOptions && (
+          <div className="flex items-center gap-1.5">
+            <Users size={14} className="flex-shrink-0 text-text-secondary" aria-hidden="true" />
+            {/* Not a native select: each row carries a hero name over its engine
+                codename, which `<option>` cannot lay out. The shared resolver
+                replaces the old silent codename fallback: a codename the table
+                cannot place keeps its raw token and reads as unresolved rather
+                than posing as a hero. */}
+            <HeroSelect
               value={heroFilter}
-              onChange={(e) => setHeroFilter(e.target.value)}
-              className="bg-transparent text-sm text-text-primary focus:outline-none"
-            >
-              <option value="all" className="bg-bg-secondary">
-                {t('foundry.filters.allHeroes', 'All heroes')}
-              </option>
-              {presentHeroes.map((h) => (
-                <option key={h.code} value={h.code} className="bg-bg-secondary">
-                  {h.name}
-                </option>
-              ))}
-            </select>
+              options={heroOptions}
+              onChange={setHeroFilter}
+              ariaLabel={t('foundry.filters.heroLabel', 'Filter assets by hero')}
+              placeholder={t('foundry.filters.allHeroes', 'All heroes')}
+              size="sm"
+              className="w-56"
+              search={{
+                ariaLabel: t('foundry.filters.heroSearchLabel', 'Search heroes'),
+                placeholder: t('foundry.filters.heroSearchPlaceholder', 'Hero or codename...'),
+                getEmptyMessage: (query) =>
+                  t('foundry.filters.heroSearchEmpty', 'No hero matches "{{query}}".', { query }),
+                clearLabel: t('foundry.filters.heroSearchClear', 'Clear hero search'),
+                scope: t('foundry.filters.heroSearchScope', 'Searches hero names and engine codenames.'),
+                getResultCount: (visible, total) =>
+                  t('foundry.filters.heroSearchCount', 'Showing {{visible}} of {{total}} heroes', {
+                    visible,
+                    total,
+                  }),
+              }}
+            />
           </div>
         )}
         <SearchInput
@@ -373,6 +412,20 @@ export default function PortraitBrowse({ heroNames, hero, onStage, initialFamily
               variants: targetVariants.join(', '),
             })}
           </p>}
+          {/* An unplaceable family is a fact, not a card with a blank hero:
+              one hint for the group and one neutral tag per raw codename. The
+              raw token lives in each tag's title, so length never widens the
+              layout. */}
+          {unresolvedCodenames.length > 0 && !hero && (
+            <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11px] leading-snug text-text-secondary">
+              <span>{t('portrait.family.unresolvedHint')}</span>
+              {unresolvedCodenames.map((code) => (
+                <Tag key={code} tone="neutral" title={code}>
+                  {t('portrait.family.unresolvedTag')}
+                </Tag>
+              ))}
+            </p>
+          )}
         <div className="grid grid-cols-[repeat(auto-fill,minmax(168px,1fr))] gap-3">
           {visible.map((family) => {
             const view = viewByKey.get(family.key);

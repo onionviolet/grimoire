@@ -95,6 +95,9 @@ export default function HeroCardPicker({ heroName }: HeroCardPickerProps) {
   const [portraits, setPortraits] = useState<HeroPortrait[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Bumping this re-runs the catalog read, the same reload pattern the Foundry
+  // portrait catalog uses for its failed-state retry.
+  const [reloadNonce, setReloadNonce] = useState(0);
   // The source VPK filename whose card is currently applied for this hero.
   const [activeSource, setActiveSource] = useState<string | null>(null);
   // The source filename mid-apply/revert (drives the per-tile spinner).
@@ -193,7 +196,7 @@ export default function HeroCardPicker({ heroName }: HeroCardPickerProps) {
     return () => {
       active = false;
     };
-  }, [heroName]);
+  }, [heroName, reloadNonce]);
 
   /** A rebuild drops any selection whose source VPK has since been uninstalled.
    *  The service reports those names; without this the card just vanishes with
@@ -367,13 +370,6 @@ export default function HeroCardPicker({ heroName }: HeroCardPickerProps) {
         </div>
       )}
 
-      {error && (
-        <div className="flex items-start gap-2 py-2 text-xs text-state-danger">
-          <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-          <span className="break-words">{error}</span>
-        </div>
-      )}
-
       {actionError && (
         <div className="flex items-start gap-2 py-2 text-xs text-state-danger">
           <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
@@ -385,16 +381,22 @@ export default function HeroCardPicker({ heroName }: HeroCardPickerProps) {
           and where each variant came from. Everything below this is the
           existing install-and-upload flow, which starts from a mod or a file
           rather than from the portrait. */}
-      {!error && (
-        <HeroPortraitFamilies
-          heroName={heroName}
-          slots={slots}
-          portraits={portraits}
-          mods={mods}
-          loading={loading}
-          onReplaceVariant={handlePickVariant}
-        />
-      )}
+      {/* A failed read renders inside the family surface as its own state with
+          a retry, rather than blanking the surface out behind a raw error. */}
+      <HeroPortraitFamilies
+        heroName={heroName}
+        slots={slots}
+        portraits={portraits}
+        mods={mods}
+        loading={loading}
+        error={error}
+        onRetry={() => {
+          setError(null);
+          setLoading(true);
+          setReloadNonce((nonce) => nonce + 1);
+        }}
+        onReplaceVariant={handlePickVariant}
+      />
 
       {!loading && !error && fileGroups.length === 0 && (
         <p className="py-2 text-xs text-text-secondary">

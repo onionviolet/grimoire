@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Images, Loader2, Wand2 } from 'lucide-react';
+import { AlertCircle, Images, Loader2, Wand2 } from 'lucide-react';
 import AssetSourcesPanel from '../foundry/AssetSourcesPanel';
 import PortraitFamilyCard from '../common/PortraitFamilyCard';
 import PortraitFamilyPreview from '../common/PortraitFamilyPreview';
@@ -49,6 +49,11 @@ interface HeroPortraitFamiliesProps {
   portraits: readonly HeroPortrait[];
   mods: readonly Mod[];
   loading?: boolean;
+  /** A catalog read that did not complete, with the raw diagnostic string.
+   *  Distinct from `none`: that says the read finished and found nothing. */
+  error?: string | null;
+  /** Re-run the same load the surface mounted with, after a failed read. */
+  onRetry?: () => void;
   /** Open the per-variant upload for this slot: the Locker's crop target. */
   onReplaceVariant?: (slot: CustomCardSlot) => void;
 }
@@ -59,6 +64,8 @@ export default function HeroPortraitFamilies({
   portraits,
   mods,
   loading = false,
+  error = null,
+  onRetry,
   onReplaceVariant,
 }: HeroPortraitFamiliesProps) {
   const { t } = useTranslation();
@@ -145,6 +152,33 @@ export default function HeroPortraitFamilies({
     return (
       <div className="flex items-center gap-2 py-4 text-xs text-text-secondary">
         <Loader2 className="h-4 w-4 animate-spin" /> {t('portrait.family.loading')}
+      </div>
+    );
+  }
+
+  // A read that did not complete is its own state, never "no assets": the
+  // surface stays visible and names what is missing, why, and the way out
+  // instead of blanking out or printing a bare error string.
+  if (error) {
+    return (
+      <div className="rounded-[10px] border border-border/70 bg-bg-sunken/55 p-3">
+        <p className="flex items-center gap-2 text-xs font-semibold text-state-danger">
+          <AlertCircle className="h-3.5 w-3.5" />
+          {t('portrait.family.failedTitle')}
+        </p>
+        <p className="mt-1 text-[11px] leading-snug text-text-secondary">
+          {t('portrait.family.failedBody', { hero: heroName })}
+        </p>
+        <p className="mt-1 text-[11px] leading-snug text-text-secondary/70">{error}</p>
+        {onRetry && (
+          <button
+            type="button"
+            onClick={onRetry}
+            className="mt-2 inline-flex cursor-pointer items-center rounded-md border border-border/60 px-3 py-1.5 text-xs font-medium text-text-secondary transition-colors hover:border-white/20 hover:text-text-primary"
+          >
+            {t('common.actions.retry')}
+          </button>
+        )}
       </div>
     );
   }
