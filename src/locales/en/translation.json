@@ -2072,10 +2072,15 @@
       "disabledBadgeTitle": "This mod is disabled and not loaded in-game",
       "deleteMod": "Delete {{name}}",
       "propEmpty": "No {{type}} installed yet. Import one from a 3D model (.glb) to get started.",
-      "typeEmpty": "No {{type}} installed yet. Find some in Browse and they'll show up here.",
-      "sectionLabel": "Global Locker section",
-      "visuals": "Visuals"
-    },
+  "typeEmpty": "No {{type}} installed yet. Find some in Browse and they'll show up here.",
+  "sectionLabel": "Global Locker section",
+  "visuals": "Visuals",
+  "sectionAll": "All content",
+  "sectionMembershipHint": "Counted once per section. A mod can appear in more than one.",
+  "filteredZeroTitle": "No {{filter}} content installed",
+  "filteredZeroBody": "Empty categories are hidden, and nothing in this section has content.",
+  "filteredZeroReset": "Show all content"
+},
     "soulImport": {
       "trigger": {
         "label": "Import Soul Container (GLB)",

@@ -81,6 +81,9 @@ import {
 import {
   countGlobalInventoryCategories,
   countGlobalInventoryMods,
+  firstGlobalRailRowKey,
+  globalInventoryRailRows,
+  type GlobalRailRowInput,
 } from '../lib/globalInventory';
 import { useDiscoveredSoundPaths } from '../components/locker/useDiscoveredSoundPaths';
 import {
@@ -1509,7 +1512,13 @@ export default function Locker() {
             onAddGlobal={() => setGlobalPickerOpen(true)}
             section={globalSection ?? 'looks'}
             onSelectSection={(next) =>
-              navigate(next === 'sounds' ? '/locker/global?mode=sounds' : '/locker/global')
+              navigate(
+                next === 'sounds'
+                  ? '/locker/global?mode=sounds'
+                  : next === 'looks'
+                    ? '/locker/global?mode=looks'
+                    : '/locker/global'
+              )
             }
           />
         </div>
@@ -1695,25 +1704,27 @@ interface LockerGlobalViewProps {
 }
 
 /** Section tabs, in tablist order. Drives arrow-key movement. */
-const GLOBAL_SECTION_TABS: readonly LockerMode[] = ['looks', 'sounds'];
+const GLOBAL_SECTION_TABS: readonly LockerMode[] = ['all', 'looks', 'sounds'];
 
 /**
  * Drill-in panel for the Global card: a Deadlock environment backdrop under a
  * frosted-glass carousel of cosmetic types (echoing the LockerHeroView shell's
  * art + blur language). Selecting a tile reveals that type's toggleable mods.
  *
- * Two sections, Visuals and Sounds, share this one shell. The rail is the same
- * affordance in both: it lists cosmetic types with counts under Visuals, and
- * global sound categories with counts under Sounds. That is why the sound
- * shelf carries no category filter of its own; a second inline filter next to
- * an idle rail was the shape being fixed.
+ * Three sections, All content, Visuals and Sounds, share this one shell. The
+ * rail is the same affordance in all three: All content merges both
+ * vocabularies, Visuals lists cosmetic types, and Sounds lists global sound
+ * categories. That is why the sound shelf carries no category filter of its
+ * own; a second inline filter next to an idle rail was the shape being fixed.
  */
 function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType, onRequestDelete, onImportSoul, onImportUrn, onAddGlobal, section, onSelectSection }: LockerGlobalViewProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const soundVolume = useAppStore((s) => s.soundVolume);
   const mods = useAppStore((s) => s.mods);
-  const isSounds = section === 'sounds';
+  // Last row clicked while All content is showing. Only consulted in that
+  // section, so a stale value cannot leak into Visuals or Sounds.
+  const [selectedAllKey, setSelectedAllKey] = useState<string | null>(null);
   // Every tab is selectable, empty or not, but the landing tab is the first one
   // that actually has content. Null until the user picks, for the same reason
   // the sound rail below is: the mod list arrives after mount, so a landing tab
@@ -1727,7 +1738,7 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
   // SoundCategory under Sounds, so the indicator glides in both sections.
   const tabRefs = useRef<Map<string, HTMLButtonElement | null>>(new Map());
   const [tabIndicator, setTabIndicator] = useState<{ top: number; height: number } | null>(null);
-  // Refs for the two section tabs, so arrow-key movement can follow focus.
+  // Refs for the section tabs, so arrow-key movement can follow focus.
   const sectionTabRefs = useRef<Map<LockerMode, HTMLButtonElement | null>>(new Map());
   const sectionTabsId = useId();
   // Open retag menu, anchored in viewport coords (fixed-positioned) so it never
@@ -1778,10 +1789,9 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
     [globalSoundEntries]
   );
   // Null until the user picks, so the landing category can track the first
-  // populated one as the mod list loads. Once picked it sticks, empty or not:
-  // every category is listed with its count exactly as the visual rail lists
-  // empty types, and an empty one must open its own empty state rather than
-  // silently bounce back, which would make the row a dead control.
+  // populated one as the mod list loads. Once picked it sticks even if that
+  // category later empties: the pane keeps its own empty state rather than
+  // silently bouncing back to a different category mid-session.
   const [selectedSoundCategory, setSelectedSoundCategory] = useState<SoundCategory | null>(null);
   const activeSoundCategory: SoundCategory =
     selectedSoundCategory ??
@@ -1792,8 +1802,39 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
     [globalSoundEntries, activeSoundCategory]
   );
 
+  // One merged rail projection for whichever section is showing. Zero-count
+  // rows are hidden by the projection (D-04), and the header total above is
+  // the one denominator: these rows are section membership, never a sum.
+  const railRows = useMemo(() => {
+    const visualRowInputs: GlobalRailRowInput[] = GLOBAL_VISUAL_MOD_TYPE_ORDER.map((type) => ({
+      key: type as string,
+      label: GLOBAL_MOD_TYPE_LABELS[type],
+      count: groups[type].length,
+    }));
+    const soundRowInputs: GlobalRailRowInput[] = soundCounts.map(({ id, count }) => ({
+      key: `sound:${id}`,
+      label: globalSoundSectionLabel(t, id),
+      count,
+    }));
+    return globalInventoryRailRows(section, visualRowInputs, soundRowInputs);
+  }, [groups, section, soundCounts, t]);
+
   // Which rail row is highlighted, and which key the right pane is fading on.
-  const activeRailKey: string = isSounds ? `sound:${activeSoundCategory}` : activeType;
+  // In All content the last clicked row wins; before the user clicks, the
+  // first populated row does, so the highlight always names a rendered row and
+  // never drifts to a hidden one.
+  const activeRailKey: string =
+    section === 'sounds'
+      ? `sound:${activeSoundCategory}`
+      : section === 'looks'
+        ? activeType
+        : selectedAllKey && railRows.some((row) => row.key === selectedAllKey)
+          ? selectedAllKey
+          : firstGlobalRailRowKey(railRows) ?? activeType;
+  // Which body the right pane renders: the sound shelf for the Sounds section
+  // and for a sound row inside All content, the visual cards otherwise.
+  const paneIsSounds =
+    section === 'sounds' || (section === 'all' && activeRailKey.startsWith('sound:'));
   // Track the active row's box so the highlight can glide to it. Measured in a
   // layout effect (pre-paint) to avoid a one-frame jump on first mount.
   useLayoutEffect(() => {
@@ -1941,9 +1982,11 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
                   selected ? 'bg-accent/15 text-white' : 'text-text-secondary hover:text-white'
                 }`}
               >
-                {tab === 'sounds'
-                  ? t('locker.mode.sounds', 'Sounds')
-                  : t('locker.global.visuals', 'Visuals')}
+                {tab === 'all'
+                  ? t('locker.global.sectionAll', 'All content')
+                  : tab === 'sounds'
+                    ? t('locker.mode.sounds', 'Sounds')
+                    : t('locker.global.visuals', 'Visuals')}
               </button>
             );
           })}
@@ -1962,46 +2005,67 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
               }}
             />
           )}
-          {/* One rail, two vocabularies: cosmetic types under Visuals, global
-              sound categories under Sounds. Both list every entry with its
-              count, empty ones included, and every row is clickable: an empty
-              row opens its own empty state, which is more discoverable than a
-              dead disabled row. */}
-          {(isSounds
-            ? soundCounts.map(({ id, count }) => ({
-                key: `sound:${id}`,
-                label: globalSoundSectionLabel(t, id),
-                count,
-                onSelect: () => setSelectedSoundCategory(id),
-              }))
-            : GLOBAL_VISUAL_MOD_TYPE_ORDER.map((type) => ({
-                key: type as string,
-                label: GLOBAL_MOD_TYPE_LABELS[type],
-                count: groups[type].length,
-                onSelect: () => setSelectedType(type),
-              }))
-          ).map((row) => {
-            const isActive = row.key === activeRailKey;
-            const isEmpty = row.count === 0;
-            return (
+          {/* One rail, one merged projection. Zero-count rows no longer render
+              (D-04 reversed the as-shipped decision to list empty categories),
+              so a narrower section that filters everything out shows the reset
+              state below instead. Clicking a row moves both the highlight and
+              the body pane through the selection state the two existing
+              sections already use: no third source of truth for what is
+              selected. */}
+          {section === 'all' && (
+            <p className="text-[11px] text-text-secondary">
+              {t('locker.global.sectionMembershipHint')}
+            </p>
+          )}
+          {railRows.length === 0 && section !== 'all' ? (
+            <div className="p-4">
+              <h3 className="text-sm font-semibold text-white">
+                {t('locker.global.filteredZeroTitle', {
+                  filter:
+                    section === 'sounds'
+                      ? t('locker.mode.sounds', 'Sounds')
+                      : t('locker.global.visuals', 'Visuals'),
+                })}
+              </h3>
+              <p className="text-sm text-text-secondary">{t('locker.global.filteredZeroBody')}</p>
               <button
-                key={row.key}
-                ref={(el) => {
-                  tabRefs.current.set(row.key, el);
-                }}
                 type="button"
-                onClick={row.onSelect}
-                className={`relative z-10 flex cursor-pointer items-center gap-3 rounded-lg border border-transparent px-3 py-2.5 text-left transition-colors ${
-                  isActive ? '' : 'hover:bg-white/10'
-                }`}
+                onClick={() => onSelectSection('all')}
+                className="mt-2 inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-accent/40 bg-accent/10 px-2.5 py-1.5 text-xs font-medium text-white transition-colors hover:border-accent/60 hover:bg-accent/20"
               >
-                <span className={`flex-1 truncate text-sm font-medium text-white ${isEmpty && !isActive ? 'opacity-50' : ''}`}>
-                  {row.label}
-                </span>
-                <span className="text-xs tabular-nums text-white/50">{row.count}</span>
+                {t('locker.global.filteredZeroReset')}
               </button>
-            );
-          })}
+            </div>
+          ) : (
+            railRows.map((row) => {
+              const isActive = row.key === activeRailKey;
+              return (
+                <button
+                  key={row.key}
+                  ref={(el) => {
+                    tabRefs.current.set(row.key, el);
+                  }}
+                  type="button"
+                  onClick={() => {
+                    if (row.kind === 'sound') {
+                      setSelectedSoundCategory(row.key.slice('sound:'.length) as SoundCategory);
+                    } else {
+                      setSelectedType(row.key as GlobalModType);
+                    }
+                    setSelectedAllKey(row.key);
+                  }}
+                  className={`relative z-10 flex cursor-pointer items-center gap-3 rounded-lg border border-transparent px-3 py-2.5 text-left transition-colors ${
+                    isActive ? '' : 'hover:bg-white/10'
+                  }`}
+                >
+                  <span className="flex-1 truncate text-sm font-medium text-white">
+                    {row.label}
+                  </span>
+                  <span className="text-xs tabular-nums text-white/50">{row.count}</span>
+                </button>
+              );
+            })
+          )}
         </nav>
       </div>
 
@@ -2017,7 +2081,7 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
         className="relative z-10 flex-1 overflow-y-auto scrollbar-glass focus:outline-none"
       >
         <div key={activeRailKey} className={`space-y-4 p-6 ${isPropContainer ? '' : 'animate-fade-in'}`}>
-          {isSounds ? (
+          {paneIsSounds ? (
             <>
               {/* Same heading treatment as a visual type: the two sections of
                   this drill-in should differ only in their content region. */}
@@ -2057,7 +2121,7 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
                 <span className="text-xs tabular-nums text-white/60">
                   {t('locker.page.modCount', { count: activeMods.length })}
                 </span>
-                {!isSounds && (
+                {!paneIsSounds && (
                   <button
                     type="button"
                     onClick={onAddGlobal}

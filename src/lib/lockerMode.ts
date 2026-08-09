@@ -3,14 +3,16 @@
  *
  * This was briefly a top-level Looks/Sounds mode over two hero grids. Per-hero
  * sounds now live on the hero's own Locker page as a tab, so the only thing
- * still selected by `?mode=` is the Global drill-in's Visuals/Sounds section.
- * The name is kept because the query parameter is already in shipped links.
+ * still selected by `?mode=` is the Global drill-in's section. The query
+ * parameter selects one of three sections, and a bare path means all content
+ * (D-05). The name is kept because the query parameter is already in shipped
+ * links.
  */
-export type LockerMode = 'looks' | 'sounds';
+export type LockerMode = 'all' | 'looks' | 'sounds';
 
 export function lockerModeFromSearch(search: string): LockerMode | null {
   const mode = new URLSearchParams(search).get('mode');
-  return mode === 'looks' || mode === 'sounds' ? mode : null;
+  return mode === 'all' || mode === 'looks' || mode === 'sounds' ? mode : null;
 }
 
 /** Where a shipped `/locker/sounds*` link should end up now that per-hero
@@ -67,7 +69,7 @@ export function resolveLockerRoute(pathname: string, search: string): LockerRout
   }
 
   if (/^\/locker\/global\/?$/.test(pathname)) {
-    return { drillIn: 'global', section: lockerModeFromSearch(search) ?? 'looks' };
+    return { drillIn: 'global', section: lockerModeFromSearch(search) ?? 'all' };
   }
 
   const hero = /^\/locker\/hero\/([^/]+)\/?$/.exec(pathname);

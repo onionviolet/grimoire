@@ -3,6 +3,7 @@ import { legacySoundTarget, lockerModeFromSearch, resolveLockerRoute } from './l
 
 describe('Global Locker section from the URL', () => {
   it('accepts only supported URL modes', () => {
+    expect(lockerModeFromSearch('?mode=all')).toBe('all');
     expect(lockerModeFromSearch('?mode=sounds')).toBe('sounds');
     expect(lockerModeFromSearch('?mode=looks')).toBe('looks');
     expect(lockerModeFromSearch('?mode=other')).toBeNull();
@@ -52,18 +53,18 @@ describe('resolveLockerRoute', () => {
     });
   });
 
-  it('opens a bare Global drill-in on Visuals', () => {
+  it('opens a bare Global drill-in on All content', () => {
     expect(resolveLockerRoute('/locker/global', '')).toEqual({
       drillIn: 'global',
-      section: 'looks',
+      section: 'all',
     });
     expect(resolveLockerRoute('/locker/global/', '')).toEqual({
       drillIn: 'global',
-      section: 'looks',
+      section: 'all',
     });
   });
 
-  it('keeps the Global sounds section addressable', () => {
+  it('keeps the Global looks and sounds sections addressable', () => {
     expect(resolveLockerRoute('/locker/global', '?mode=sounds')).toEqual({
       drillIn: 'global',
       section: 'sounds',
@@ -72,10 +73,14 @@ describe('resolveLockerRoute', () => {
       drillIn: 'global',
       section: 'looks',
     });
+    expect(resolveLockerRoute('/locker/global', '?mode=all')).toEqual({
+      drillIn: 'global',
+      section: 'all',
+    });
     // An unrecognised mode is the default section, not a broken drill-in.
     expect(resolveLockerRoute('/locker/global', '?mode=nonsense')).toEqual({
       drillIn: 'global',
-      section: 'looks',
+      section: 'all',
     });
   });
 
@@ -135,7 +140,7 @@ describe('resolveLockerRoute', () => {
     // may leak into the other, or a stale query would select a phantom tab.
     expect(resolveLockerRoute('/locker/global', '?section=cards')).toEqual({
       drillIn: 'global',
-      section: 'looks',
+      section: 'all',
     });
     expect(resolveLockerRoute('/locker/hero/33306', '?mode=sounds')).toEqual({
       drillIn: 'hero',
