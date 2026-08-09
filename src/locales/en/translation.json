@@ -232,11 +232,10 @@
         "body": "Per-ability icon and VFX color editing will land here next, one row per ability. For now, recolor all ability VFX at once under Appearance, and browse ability icons under Icons & Textures."
       },
       "myChanges": "My changes",
-      "show3dPreview": "Preview the build tray on the 3D model",
-      "hide3dPreview": "Hide the 3D preview",
       "preview3dTitle": "{{hero}} preview",
       "previewBuilding": "Building preview",
       "previewFailed": "Preview build failed: {{error}}",
+      "previewStale": "Preview may be out of date",
       "createNewMod": "Create a new mod",
       "stagedEdits": "{{count}} staged edit ready for the Build tray",
       "stagedEditsEmpty": "Stage an edit, then review it in the Build tray."
@@ -2521,8 +2520,6 @@
       "noSkins": "No skins",
       "noSounds": "No sounds",
       "downloadASkinForThisHero": "Download a skin for this hero to manage it here.",
-      "hide3dModel": "Hide 3D model",
-      "showLive3dModel": "Show live 3D model",
       "stageMode": {
         "model": "Model",
         "image": "Image"

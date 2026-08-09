@@ -1,6 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Box,
   Layers3,
   Loader2,
   Sparkles,
@@ -9,6 +8,7 @@ import {
   Image as ImageIcon,
   Images,
   ListChecks,
+  PictureInPicture2,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { FoundryForgeRequest, HeroInfo } from '../../types/foundry';
@@ -20,10 +20,14 @@ import {
   isLockerManagedMod,
 } from '../../lib/lockerUtils';
 import HeroDetailFrame, { type HeroDetailSection } from '../common/HeroDetailFrame';
+import { IconButton, SegmentedControl } from '../common/ui';
+import { useSegmentedTabs } from '../common/useSegmentedTabs';
 import HeroEffectsPanel from '../locker/HeroEffectsPanel';
 import HeroSoundPicker from '../locker/HeroSoundPicker';
 import FloatingModelPanel from '../locker/FloatingModelPanel';
 import { useModelPanelOpen } from '../locker/useModelPanelOpen';
+import { useHeroStageMode, type HeroStageMode } from '../locker/heroStageMode';
+import { heroPlateComposition } from '../../lib/heroStage';
 import SoundBrowse from './SoundBrowse';
 import TextureBrowse from './TextureBrowse';
 import LibraryBrowse from './LibraryBrowse';
@@ -114,8 +118,11 @@ export default function HeroWorkshop({
   const [trayOpen, setTrayOpen] = useState(false);
   // The other half of the trade with the Locker: Foundry could review a write
   // set but never look at it. Authoring a visual edit blind is the largest
-  // quality gap in the app, so the workshop gets the Locker's 3D panel.
-  const [view3d, setView3d] = useModelPanelOpen('foundry');
+  // quality gap in the app, so the workshop gets the same 3D stage. Foundry
+  // defaults to Image so the preview stays lazy and opt-in (D-02).
+  const [modelPanelOpen, setModelPanelOpen] = useModelPanelOpen('foundry');
+  const [stageMode, setStageMode] = useHeroStageMode('foundry');
+  const tabs = useSegmentedTabs<HeroStageMode>();
   const stage = useCallback((edit: FoundryStagedEdit) => {
     onStage(edit);
     setTrayOpen(true);
@@ -151,7 +158,11 @@ export default function HeroWorkshop({
     [enabledHeroSkins]
   );
 
-  const trayPreview = useTrayPreview(stagedEdits, view3d);
+  // The preview build follows the model wherever it renders: on the plate when
+  // Model is selected, or in the floating panel when popped out. It must not
+  // start merely because the workshop is open (D-05, D-06).
+  const modelVisible = stageMode === 'model' || modelPanelOpen;
+  const trayPreview = useTrayPreview(stagedEdits, modelVisible);
 
   // The Abilities picker's status line derives from the tray's recolor edit
   // for this hero (id `recolor:<canonical>`), so it can never claim a state
@@ -204,6 +215,38 @@ export default function HeroWorkshop({
     { id: 'myChanges', label: t('foundry.workshop.myChanges', 'My changes'), icon: ListChecks },
   ];
 
+  // Preview state chrome: the pills float over whichever surface currently
+  // holds the model (the plate or the popped-out panel). The stale pill sits
+  // beside the building pill because the two describe different facts: what
+  // you are looking at, and what is happening. A current, unblemished model
+  // renders no pill at all, deliberately.
+  const previewStatusPills = (
+    <>
+      {trayPreview.building && (
+        <div className="pointer-events-none absolute inset-x-0 top-0 flex items-center justify-center gap-2 p-2">
+          <span className="flex items-center gap-2 rounded-full bg-black/60 px-3 py-1 text-xs text-white/80 backdrop-blur">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            {t('foundry.workshop.previewBuilding', 'Building preview')}
+          </span>
+          {trayPreview.previewId && (
+            <span className="rounded-full bg-black/60 px-3 py-1 text-xs text-white/80 backdrop-blur">
+              {t('foundry.workshop.previewStale')}
+            </span>
+          )}
+        </div>
+      )}
+      {trayPreview.error && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 p-2 text-center">
+          <span className="rounded-full bg-red-500/20 px-3 py-1 text-xs text-red-200 backdrop-blur">
+            {t('foundry.workshop.previewFailed', 'Preview build failed: {{error}}', {
+              error: trayPreview.error,
+            })}
+          </span>
+        </div>
+      )}
+    </>
+  );
+
   return (
     <HeroDetailFrame
       surface="foundry"
@@ -229,25 +272,46 @@ export default function HeroWorkshop({
         </div>
       }
       topRight={
-        <button
-          type="button"
-          onClick={() => setView3d(!view3d)}
-          aria-pressed={view3d}
-          title={
-            view3d
-              ? t('foundry.workshop.hide3dPreview', 'Hide the 3D preview')
-              : t('foundry.workshop.show3dPreview', 'Preview the build tray on the 3D model')
-          }
-          className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
-            view3d
-              ? 'border-accent/60 bg-accent/20 text-text-primary'
-              : 'border-border/70 bg-bg-secondary/70 text-text-secondary hover:text-text-primary backdrop-blur'
-          }`}
-        >
-          <Box className="h-3.5 w-3.5" />
-          3D
-        </button>
+        <>
+          <SegmentedControl
+            options={[
+              { value: 'model', label: t('locker.hero.stageMode.model') },
+              { value: 'image', label: t('locker.hero.stageMode.image') },
+            ]}
+            value={stageMode}
+            onChange={setStageMode}
+            tabs={tabs}
+            label={t('locker.hero.stageModeLabel')}
+          />
+          <IconButton
+            icon={PictureInPicture2}
+            label={t('locker.hero.popOutModel')}
+            onClick={() => setModelPanelOpen(!modelPanelOpen)}
+            disabled={stageMode !== 'model'}
+          />
+        </>
       }
+      platePreview={
+        stageMode === 'model' && !modelPanelOpen ? (
+          <div className={heroPlateComposition({ kind: 'model' }).className}>
+            <Suspense
+              fallback={
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <Loader2 className="h-6 w-6 animate-spin text-white/80" />
+                </div>
+              }
+            >
+              <HeroPoseViewer
+                key={`${hero.name}:${poseSourceKey}`}
+                heroName={hero.name}
+                skinSources={poseSkinSources}
+              />
+            </Suspense>
+            {previewStatusPills}
+          </div>
+        ) : undefined
+      }
+      platePanel={tabs.panelProps(stageMode)}
       railExtra={
         <button
           type="button"
@@ -282,13 +346,13 @@ export default function HeroWorkshop({
           )}
 
           {/* The staged edits, built into a throwaway VPK and stacked over the
-              user's own enabled skins. Mounted only while open so the heavy
-              three.js chunk loads on demand. */}
-          {view3d && (
+              user's own enabled skins. The same single viewer instance moves
+              between the plate and this popped-out panel. */}
+          {modelPanelOpen && (
             <FloatingModelPanel
               surface="foundry"
               title={t('foundry.workshop.preview3dTitle', '{{hero}} preview', { hero: hero.name })}
-              onClose={() => setView3d(false)}
+              onClose={() => setModelPanelOpen(false)}
             >
               <Suspense
                 fallback={
@@ -303,23 +367,7 @@ export default function HeroWorkshop({
                   skinSources={poseSkinSources}
                 />
               </Suspense>
-              {trayPreview.building && (
-                <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-center p-2">
-                  <span className="flex items-center gap-2 rounded-full bg-black/60 px-3 py-1 text-xs text-white/80 backdrop-blur">
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                    {t('foundry.workshop.previewBuilding', 'Building preview')}
-                  </span>
-                </div>
-              )}
-              {trayPreview.error && (
-                <div className="pointer-events-none absolute inset-x-0 bottom-0 p-2 text-center">
-                  <span className="rounded-full bg-red-500/20 px-3 py-1 text-xs text-red-200 backdrop-blur">
-                    {t('foundry.workshop.previewFailed', 'Preview build failed: {{error}}', {
-                      error: trayPreview.error,
-                    })}
-                  </span>
-                </div>
-              )}
+              {previewStatusPills}
             </FloatingModelPanel>
           )}
         </>
