@@ -4,17 +4,17 @@ milestone: v1.26.20
 milestone_name: milestone
 current_phase: 5
 current_phase_name: one-inventory-one-journey
-current_plan: 4
+current_plan: 5
 status: executing
-stopped_at: Completed 05-03-PLAN.md
-last_updated: "2026-08-09T08:09:58.450Z"
+stopped_at: Completed 05-04-PLAN.md
+last_updated: "2026-08-09T08:19:46.415Z"
 last_activity: 2026-08-09
 last_activity_desc: Phase 4 execution started
 progress:
   total_phases: 6
   completed_phases: 5
   total_plans: 32
-  completed_plans: 29
+  completed_plans: 30
 ---
 
 # Project State
@@ -29,13 +29,13 @@ See: .planning/PROJECT.md (updated 2026-08-05)
 ## Current Position
 
 Phase: 5 (one-inventory-one-journey) — EXECUTING
-Current Plan: 4
+Current Plan: 5
 Total Plans in Phase: 6
-Plan: 4 of 6
+Plan: 5 of 6
 Status: Ready to execute
 Last activity: 2026-08-09 — Phase 5 execution started
 
-Progress: [█████████░] 91%
+Progress: [█████████░] 94%
 
 ## Performance Metrics
 
@@ -73,6 +73,7 @@ Progress: [█████████░] 91%
 | Phase 05 P01 | 8 | 2 tasks | 9 files |
 | Phase 05 P02 | 10 min | 3 tasks | 6 files |
 | Phase 05-one-inventory-one-journey P03 | 12min | 3 tasks | 3 files |
+| Phase 05 P04 | 8min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -122,6 +123,10 @@ Recent decisions affecting current work:
 - [Phase ?]: The blocker line lives in the action bar's existing in-flight span with a stable id; the undo case wins when both a batch and a restore could apply, so exactly one reason shows at a time
 - [Phase ?]: Bulk delete keeps its confirmation and gains no undo: a deleted VPK is not recoverable from a snapshot of store state
 - [Phase ?]: Restore counts distinct mods actually restored, not operations applied, matching bulkChangedCount's user-facing semantics
+- [Phase 05]: Unnamed-pak detection matches the exact extractModName output shape (the word pak followed by digits), so a real mod named Pak Rat stays untouched
+- [Phase 05]: The derived entry list caps at three leaf names plus a remainder count, with the cap a parameter the render site never hardcodes
+- [Phase 05]: Unreadable and empty VPKs produce the same unknown label per D-19, because the user can act on neither differently
+- [Phase 05]: REQ-sound-locker-surface recorded as resolved by D-01/D-02 with the evidence cited: GlobalSoundShelf carries the preserved capabilities, legacySoundTarget/resolveLockerRoute keep the shipped URLs alive, lockerMode.test.ts proves it
 
 ### Pending Todos
 
@@ -165,6 +170,6 @@ Real-game verification is deferred to the end of this milestone run per explicit
 
 ## Session Continuity
 
-Last session: 2026-08-09T08:09:51.583Z
-Stopped at: Completed 05-03-PLAN.md
+Last session: 2026-08-09T08:19:34.204Z
+Stopped at: Completed 05-04-PLAN.md
 Resume file: None
