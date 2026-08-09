@@ -2368,6 +2368,7 @@
       "body": "Body",
       "gun": "Gun",
       "applyPaint": "Apply Paint",
+      "appliesImmediately": "This applies immediately and does not go through the build tray.",
       "baking": "Baking the paint. The first time for a given combination can take a while (it re-encodes the affected textures); the same combination is instant after that.",
       "restartRequired": "Restart Deadlock for this change to take effect (addons mount at game start).",
       "saved": "Saved. This paint mounts the next time you Launch Modded."
@@ -2383,7 +2384,8 @@
       "loading": "Loading...",
       "unavailable": "Effects aren't available for {{hero}} yet (no pinned recipe in the bundled vpkmerge). More heroes are coming.",
       "abilities": "Abilities",
-      "bodyGun": "Body + Gun"
+      "bodyGun": "Body + Gun",
+      "abilitiesStageNote": "This stages into the Foundry build tray. It will not take effect until you forge."
     },
     "skins": {
       "noPreview": "No preview",

@@ -316,7 +316,7 @@ export default function HeroWorkshop({
       }
     >
       {section === 'appearance' ? (
-        <HeroEffectsPanel key={hero.name} heroName={hero.name} />
+        <HeroEffectsPanel key={hero.name} heroName={hero.name} onStageRecolor={stage} />
       ) : section === 'abilities' ? (
         <div className="space-y-6">
           <HeroSoundPicker

@@ -107,6 +107,18 @@ export default function HeroEffectsPanel({ heroName, onStageRecolor }: HeroEffec
             </button>
           </div>
 
+          {/* Only the Foundry mounts stage; the Locker hero page still applies
+              immediately. The caption exists so a user can tell which of the
+              two slots wrote bytes and which one only staged, and is omitted
+              entirely on the Locker mount rather than told otherwise. */}
+          {onStageRecolor && (
+            <p className="text-xs text-text-secondary">
+              {surface === 'abilities'
+                ? t('locker.effects.abilitiesStageNote')
+                : t('locker.trippy.appliesImmediately')}
+            </p>
+          )}
+
           {/* Both stay mounted so applied dots track without refetch churn and
               in-flight slider state survives flipping between surfaces. */}
           <div className={surface === 'abilities' ? 'space-y-3' : 'hidden'}>
