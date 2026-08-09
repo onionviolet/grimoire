@@ -309,6 +309,12 @@ export default function MyChanges({ onAddNew, heroName }: MyChangesProps) {
           {t('foundry.myChanges.emptyFiltered', 'No change matches this filter. {{total}} in total.', { total: all.length })}
         </p>
       ) : viewMode === 'pools' ? (
+        <>
+          {/* The scope caption belongs at this call site rather than inside
+              ChangePools.tsx: the pool list also embeds inside HeroCardPicker,
+              where its shuffle control scopes to one hero. Here, in My changes,
+              it scopes to every forged portrait pool across heroes. */}
+          <p className="text-[11px] text-text-secondary">{t('foundry.myChanges.shuffleScopeAllForged')}</p>
         <FoundryPoolList
           mods={mods}
           changes={visible}
@@ -322,6 +328,7 @@ export default function MyChanges({ onAddNew, heroName }: MyChangesProps) {
           // pool card and the mod store.
           renderMemberPreview={(member) => <AlternativePreview member={member} />}
         />
+        </>
       ) : (
         groups.map(([scope, entries]) => (
           <section key={scope || '__global'} className="rounded-sm border border-border">

@@ -409,11 +409,21 @@ export default function HeroCardPicker({ heroName }: HeroCardPickerProps) {
         <div className="rounded-[10px] border border-border/70 bg-bg-sunken/55 p-3">
           <p className="text-xs font-semibold text-text-primary">{t('locker.cards.forgedPools')}</p>
           <p className="mt-1 text-[11px] text-text-secondary">{t('locker.cards.forgedPoolsNote')}</p>
+          {/* The scope caption belongs at this call site rather than inside
+              ChangePools.tsx: that component also renders in the cross-hero
+              Foundry view, where the pool list scopes to all forged portraits,
+              not to this hero. One key, one wording for the same shared pool. */}
+          <p className="mt-1 text-[11px] text-text-secondary">{t('foundry.myChanges.shuffleScopeAllForged')}</p>
           <div className="mt-2"><FoundryPoolList mods={portraitFoundryMods} changes={portraitFoundryChanges} included={foundryShuffleIncluded} onToggleShuffleKey={toggleFoundryShuffleIncluded} onToggleMod={(modId) => void toggleMod(modId)} onOpenInInstalled={(modId) => { window.location.hash = `#/?focusMod=${encodeURIComponent(modId)}`; }} /></div>
         </div>
       )}
       {fileGroups.length > 0 && (
         <div className="space-y-2.5">
+          {/* One caption for the whole per-hero shuffle control group, not one
+              per card row: every row's shuffle button toggles the same per-hero
+              shuffle set, keyed by hero and mod file, so they are one mechanism
+              with one scope. */}
+          <p className="text-[11px] text-text-secondary">{t('locker.cards.shuffleScopeThisHero')}</p>
           {fileGroups.map((group) => {
             const isApplied = activeSource === group.modFileName;
             const isBusy = busySource === group.modFileName;
