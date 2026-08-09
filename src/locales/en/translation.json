@@ -211,6 +211,7 @@
       "inDevelopment": "In development",
       "changeCount_one": "{{count}} change you made for this hero",
       "changeCount_other": "{{count}} changes you made for this hero",
+      "changeCountLoading": "Change count is loading",
       "favorite": "Favorite this hero",
       "unfavorite": "Remove from favorites",
       "searchScope": "Searches hero names and codenames.",

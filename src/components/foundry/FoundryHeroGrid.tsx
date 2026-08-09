@@ -125,6 +125,7 @@ export default function FoundryHeroGrid({ heroes, onPick }: FoundryHeroGridProps
             favorite={isFavorite(hero.name)}
             onToggleFavorite={() => toggleFavorite(hero.name)}
             onPick={() => onPick(hero)}
+            modsLoaded={modsLoaded}
           />
         ))}
       </div>
@@ -142,12 +143,14 @@ function HeroCard({
   hero,
   changeCount,
   favorite,
+  modsLoaded,
   onToggleFavorite,
   onPick,
 }: {
   hero: HeroInfo;
   changeCount: number;
   favorite: boolean;
+  modsLoaded: boolean;
   onToggleFavorite: () => void;
   onPick: () => void;
 }) {
@@ -207,15 +210,24 @@ function HeroCard({
       </button>
 
       {/* What you have already made for this hero. Absent rather than "0": an
-          empty badge would be noise on most of the roster. */}
-      {changeCount > 0 && (
+          empty badge would be noise on most of the roster. While the mod list
+          has not loaded yet the count is unknown, which is not the same as
+          zero: a small neutral dot fills the badge position instead, so a hero
+          with no authored changes and a hero whose count is still loading do
+          not render identically. */}
+      {!modsLoaded ? (
+        <span
+          aria-label={t('foundry.heroes.changeCountLoading', 'Change count is loading')}
+          className="pointer-events-none absolute left-1.5 top-1.5 z-10 h-2 w-2 rounded-full bg-white/40 animate-pulse"
+        />
+      ) : changeCount > 0 ? (
         <span
           title={t('foundry.heroes.changeCount', { count: changeCount })}
           className="pointer-events-none absolute left-1.5 top-1.5 z-10 rounded-full bg-accent/90 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-accent-foreground"
         >
           {changeCount}
         </span>
-      )}
+      ) : null}
 
       <button
         type="button"
