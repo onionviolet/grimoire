@@ -5,16 +5,16 @@ milestone_name: milestone
 current_phase: 4
 current_phase_name: locker-and-foundry-as-one-object
 current_plan: 2
-status: executing
-stopped_at: Completed 04-01-PLAN.md
-last_updated: "2026-08-09T06:58:44.550Z"
+status: verifying
+stopped_at: Completed 04-02-PLAN.md
+last_updated: "2026-08-09T07:13:46.251Z"
 last_activity: 2026-08-09
 last_activity_desc: Phase 4 execution started
 progress:
   total_phases: 6
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 32
-  completed_plans: 25
+  completed_plans: 26
 ---
 
 # Project State
@@ -32,10 +32,10 @@ Phase: 4 (locker-and-foundry-as-one-object) — EXECUTING
 Current Plan: 2
 Total Plans in Phase: 2
 Plan: 2 of 2
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-08-09 — Phase 4 execution started
 
-Progress: [████████░░] 78%
+Progress: [████████░░] 81%
 
 ## Performance Metrics
 
@@ -69,6 +69,7 @@ Progress: [████████░░] 78%
 | Phase 03 P02 | 7 | 3 tasks | 6 files |
 | Phase 03 P03 | 5 | 3 tasks | 7 files |
 | Phase 04 P01 | 12 | 3 tasks | 10 files |
+| Phase 04 P02 | 12 | 3 tasks | 18 files |
 
 ## Accumulated Context
 
@@ -100,6 +101,10 @@ Recent decisions affecting current work:
 - [Phase ?]: Locker defaults optimistically to Model per D-02; a definitive pose failure flips only the displayed mode for that mount and is never persisted
 - [Phase ?]: Foundry gets no auto-fallback banner: an opted-in preview keeps the model and shows HeroPoseViewer's own failure state
 - [Phase ?]: Four obsolete 3D-toggle i18n keys removed once i18n:check proved no references remained
+- [Phase ?]: lockerManaged is a separate boolean, never a provenance reclassification: a user-forged mod is also Forged and SHOULD contest, so the two concepts cannot share a classifier
+- [Phase ?]: The recolor disclosure is keyed to the exact serialized export request it described; a confirmation granted for one write set cannot be replayed after any parameter change (T-04-10)
+- [Phase ?]: An unreadable VPK blocks only that one ambiguous recolor apply and mutates nothing (D-08)
+- [Phase ?]: The uncontested recolor disclosure is deliberately not a warning: routine applies keep one-press speed with the disclosure inline, never behind a modal (D-07)
 
 ### Pending Todos
 
@@ -142,6 +147,6 @@ Real-game verification is deferred to the end of this milestone run per explicit
 
 ## Session Continuity
 
-Last session: 2026-08-09T06:58:30.405Z
-Stopped at: Completed 04-01-PLAN.md
+Last session: 2026-08-09T07:13:46.232Z
+Stopped at: Completed 04-02-PLAN.md
 Resume file: None

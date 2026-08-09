@@ -68,7 +68,7 @@ Shipped work, confirmed against the working tree at v1.26.20 on 2026-08-05. **Th
 
 ### Locker and Foundry parity
 
-- [ ] **REQ-locker-foundry-parity-lanes**: Lanes 2 to 5 of the parity plan, on the thesis that Locker and Foundry are one object at two moments and each learned only half of the same lesson. Lane 2: Foundry gets the Locker's 3D preview over ad-hoc VPK pose sources, so a staged visual edit is visible on the model before forging. Lane 3: Locker gets Foundry's pre-write disclosure, so an action that overwrites says so first. Lane 4: Foundry image sourcing without a file drop. Lane 5: `FoundryHeroGrid` gets the Locker grid's state (favorites, per-hero change counts).
+- [x] **REQ-locker-foundry-parity-lanes**: Lanes 2 to 5 of the parity plan, on the thesis that Locker and Foundry are one object at two moments and each learned only half of the same lesson. Lane 2: Foundry gets the Locker's 3D preview over ad-hoc VPK pose sources, so a staged visual edit is visible on the model before forging. Lane 3: Locker gets Foundry's pre-write disclosure, so an action that overwrites says so first. Lane 4: Foundry image sourcing without a file drop. Lane 5: `FoundryHeroGrid` gets the Locker grid's state (favorites, per-hero change counts).
 - [x] **REQ-locker-model-as-stage**: Opening a hero makes the model the page rather than a widget in the corner, and the user can make it do things: play an ability, see the particles that ship with that skin, hear the sound that skin replaces. Everything needed is in the tree and mostly switched off: `ParticleEffect.tsx` renders particle layers behind `USE_EFFECT_PREVIEW = false`, the viewer's `AnimationMixer` plays exactly one clip, and the backend can already enumerate a model's clips. **Competing variant with REQ-locker-foundry-shared-hero-frame** (delivered): making the model the page rebuilds the chrome that frame just froze. Do not assume an outcome.
 
 ### Inventory and journey coherence
@@ -161,7 +161,7 @@ Variant 3's declared sequencing hazard has partly resolved itself: `HeroDetailFr
 | REQ-foundry-forge-edit-kinds | Phase 3 | Complete |
 | REQ-foundry-sound-shuffle-surfacing | Phase 3 | Complete |
 | REQ-foundry-pool-audition-fidelity | Delivered before Phase 3 | Complete: shipped 2026-07-26 in 9b01c63, re-confirmed against src/components/foundry/useClipPlayer.ts (per-press pool cycling) and src/components/settings/ForkBuildCard.tsx (default-on forkPoolCycling); see 03-CONTEXT.md D-06..D-08 |
-| REQ-locker-foundry-parity-lanes | Phase 4 | Pending |
+| REQ-locker-foundry-parity-lanes | Phase 4 | Complete |
 | REQ-locker-model-as-stage | Phase 4 | Complete |
 | REQ-global-inventory-coherence | Phase 5 | Pending |
 | REQ-sound-locker-surface | Phase 5 | Pending |
