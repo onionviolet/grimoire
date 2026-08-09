@@ -419,19 +419,25 @@ for (const hero of ALL_HEROES) {
 
 **If this table is empty:** N/A, six assumptions recorded above.
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+All three were answered during planning on 2026-08-08. Each carries the plan and the recorded
+decision that settled it directly beneath the question.
 
 1. **Which bulk mutations does this phase actually add, and does D-14 apply retroactively to any pre-existing single-mod actions treated as a batch (e.g., "disable all mods in a filtered-to-zero category")?**
+   - **Resolved by plan 05-03**, `planner_decisions` bullet "Which bulk mutations D-14 and D-15 apply to, decided": the five reversible bulk handlers already in `src/pages/Installed.tsx` (enable, disable, hero tag, clear tag, global tag). Bulk delete is excluded as destructive. Building a new bulk surface into the Global shell was considered and rejected in the same bullet.
    - What we know: no bulk UI exists in `Locker.tsx` today; `Installed.tsx` has the only existing bulk pattern in the app, with no undo.
    - What's unclear: whether this phase is expected to build bulk enable/disable into the Global shell for the first time, or whether "bulk mutation" should be read narrowly.
    - Recommendation: the plan should explicitly enumerate the bulk actions in scope before writing undo/blocker tasks against them (see Pitfall 4, Assumption A5).
 
 2. **Does the Abrams alias defect (issue #4) actually involve the `HERO_DISPLAY_ALIASES` vs `heroIdentity.ts` dual-table structure, or is it a red herring since the defect currently does not reproduce?**
+   - **Resolved by plans 05-02 and 05-05**: 05-02 task 3 runs Leg A as a whole-roster derived cross-check of the two tables, and 05-05 runs Legs B and C over CDP and records a four-way verdict per hero either way, including an honest negative. 05-05's `must_haves` state plainly that the outcome must say whether the dual-table structure is implicated or ruled out.
    - What we know: Leg A (static, this session) shows `heroIdentity.ts` resolves Abrams correctly and 3 of 4 D-11 call sites consult it; the 4th call site (`Foundry.tsx` route matching) uses a different table entirely.
    - What's unclear: whether the two tables can produce different answers for any hero, and whether that divergence, if it exists, is actually reachable from the Abrams-portraits user flow (route matching feeds which hero's workshop opens, not directly which portrait family resolves inside it).
    - Recommendation: run the Leg A fixture extension (Code Examples) first, cheaply, alongside other phase work. If it finds no divergence, Legs B/C (execution-time, CDP-driven) become lower priority and the alias-sweep requirement may close as "checked, no defect found, verdict: not-in-catalog-and-resolved is the honest empty state" rather than a code fix.
 
 3. **What exactly triggers the Foundry "failed" portrait-catalog state (E5), given no such signal currently exists?**
+   - **Resolved by plan 05-02**, task 2: the existing rejection path is sufficient and no new main-process signal is added. The failed state is renderer wiring over the `error` state that `PortraitBrowse.tsx:60-88` already sets, and the Locker's `HeroPortraitFamilies` gains the parallel branch it lacks.
    - What we know: `foundryThumbnails('hero-image')` in `PortraitBrowse.tsx:73-88` already has a `.catch` that sets an `error` string state; the missing piece is distinguishing "the catalog build itself failed" from "the catalog built successfully but is empty."
    - What's unclear: whether the existing `error` state (already caught) is sufficient to drive E5's "failed" `EmptyState`, or whether a new main-process signal is needed.
    - Recommendation: check whether `foundryThumbnails`'s existing rejection path already carries enough information (verified: `PortraitBrowse.tsx:60-88` already sets `error` on catch) before assuming new IPC/main-process work is needed; this may be a pure renderer wiring task (render `EmptyState variant="error"` when `error` is non-null, rather than the current unstyled fallback), not a new capability.

@@ -169,7 +169,7 @@ Plans:
   5. Any bulk action can be undone without rebuilding the selection by hand, and no disabled control leaves its blocker to be guessed
   6. The same state is never given two names on two pages, and every empty state names what is missing, why, and the next action
 
-**Plans**: 5 plans
+**Plans**: 6 plans
 
 Plans:
 **Wave 1**
@@ -186,7 +186,18 @@ Plans:
 
 - [ ] 05-05-PLAN.md - Legs B and C of the alias sweep driven over CDP, with a per-hero verdict recorded either way
 
-**Waves**: 1 = {05-01}; 2 = {05-02, 05-03, 05-04}; 3 = {05-05}
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 05-06-PLAN.md - The disabled-blocker contract extended to Profiles apply, Conflicts resolve and the Foundry forge and install path, a conflict recheck that keeps its answer, and provenance consolidated to one phrase and one target
+
+**Waves**: 1 = {05-01}; 2 = {05-02, 05-03, 05-04}; 3 = {05-05}; 4 = {05-06}
+
+Plan 05-06 gets a wave of its own for two reasons, both structural rather than stylistic. It
+touches `HeroCardPicker.tsx` and `MyChanges.tsx`, which are in plan 05-02's `files_modified`,
+so it cannot share wave 2. Plan 05-05 drives the working tree over CDP and needs a tree nobody
+else is editing, so it cannot share wave 3 either. It adds no i18n key of its own: plan 05-01
+owns the entire phase catalog change in wave 1 and carries 05-06's seven keys, which is why
+05-06 depends on 05-01.
 
 **UI hint**: yes
 

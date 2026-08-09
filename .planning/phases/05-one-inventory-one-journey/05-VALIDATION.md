@@ -63,6 +63,9 @@ manifest after any catalog change and `gen-locale-manifest.mjs --check` fails if
 | 05-04 T3 | 05-04 | 2 | REQ-sound-locker-surface | T-05-17 | The legacy-URL claim is backed by a passing test at the moment it is written | unit + gate | `pnpm exec vitest run src/lib/lockerMode.test.ts && pnpm encoding:check` | Exists | ⬜ pending |
 | 05-05 T1 | 05-05 | 3 | REQ-portrait-alias-sweep | T-05-18, T-05-19, T-05-20 | Never slot 0, never unslotted, never a dirty tree; the live slot is confirmed before any reading is trusted | manual, CDP-driven | `node scripts/dev-driver.mjs eval "window.__GRIMOIRE_DEV_SLOT"` | Not a Vitest-shaped check | ⬜ pending |
 | 05-05 T2 | 05-05 | 3 | REQ-portrait-alias-sweep | T-05-21 | Every verdict cell holds a four-way value or the literal blocked with a reason | doc assertion + unit | `node -e "<verdict-row assertion>" && pnpm encoding:check && pnpm exec vitest run src/lib/heroPortraitIdentity.test.ts` | Doc plus existing test | ⬜ pending |
+| 05-06 T1 | 05-06 | 4 | REQ-ui-consequence-and-vocabulary | T-05-22, T-05-25 | A crafted mod id cannot inject a second query parameter or become an off-app navigation; the new affordance navigates only, for a mod already on the card | unit | `pnpm exec vitest run src/lib/provenance.test.ts && pnpm typecheck && pnpm lint` | New file | ⬜ pending |
+| 05-06 T2 | 05-06 | 4 | REQ-ui-consequence-and-vocabulary | T-05-22 | One producer for the destination, proven by a repo-wide grep that finds no other builder | full suite + gates | `pnpm exec vitest run && pnpm typecheck && pnpm lint && pnpm i18n:check && pnpm encoding:check` | Existing plus new | ⬜ pending |
+| 05-06 T3 | 05-06 | 4 | REQ-ui-consequence-and-vocabulary | T-05-23, T-05-24, T-05-26, T-05-27 | A retained conflict answer is always labelled as from the previous check; each blocker ranges over its own control's disabled terms; the recheck line cannot outlive the scan | full suite + gates | `pnpm exec vitest run && pnpm typecheck && pnpm lint && pnpm i18n:check && pnpm encoding:check` | Existing | ⬜ pending |
 
 *Filled by the planner from PLAN.md task IDs. Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -78,6 +81,10 @@ manifest after any catalog change and `gen-locale-manifest.mjs --check` fails if
 | REQ-portrait-journey-consolidation-gated | `foundryShuffleIncluded` and `cardShuffleIncluded` remain one shared pool identity after the caption changes. Regression guard, no behavior change expected | unit | `pnpm exec vitest run src/lib/foundryChanges.test.ts src/components/foundry/poolView.test.ts` | Exists. Research flagged this as a Wave 0 unknown; resolved 2026-08-08, `src/lib/foundryChanges.test.ts`, `src/components/foundry/poolView.test.ts` and `src/components/foundry/ChangePools.test.tsx` all reference `groupFoundryShufflePools` or `foundryShuffleKey` |
 | REQ-ui-consequence-and-vocabulary | Catalog completeness after the vocabulary value changes and the new keys | repo gate, not Vitest | `pnpm i18n:check && pnpm i18n:manifest` | Existing gate script |
 | REQ-ui-consequence-and-vocabulary | Bulk-undo snapshot capture and restore, pure logic | unit | New test file, named by the planner once the bulk-mutation scope is decided | Wave 0 gap |
+| REQ-ui-consequence-and-vocabulary | One provenance target: `focusModPath` encodes its id, cannot inject a second query parameter, and never emits a scheme or host | unit | `pnpm exec vitest run src/lib/provenance.test.ts` | New file, added by plan 05-06 |
+| REQ-ui-consequence-and-vocabulary | One provenance producer repo-wide: no file outside `src/lib/provenance.ts` and the Installed consumer spells the destination | repo grep, not Vitest | `grep -rn "focusMod=" src/ --include=*.tsx --include=*.ts \| grep -v 'src/lib/provenance' \| grep -v 'src/pages/Installed.tsx'` returns no match | No file needed |
+| REQ-ui-consequence-and-vocabulary | Every control disabled by a Profiles apply, a Conflicts resolve or a Foundry forge carries an accessible description pointing at rendered text | repo grep + gates, not Vitest | `grep -c 'aria-describedby'` on `src/pages/Profiles.tsx`, `src/pages/Conflicts.tsx` and `src/components/foundry/FoundryBuildTray.tsx`, then `pnpm typecheck && pnpm lint && pnpm i18n:check` | Existing gate scripts |
+| REQ-ui-consequence-and-vocabulary | A conflict recheck preserves the prior answer and labels it as prior; a first load still shows the skeleton | manual, driven | `node scripts/dev-driver.mjs route conflicts` then `click "button:has-text(Refresh)"` and `text` the list, per CLAUDE.md | Not a Vitest-shaped check |
 | REQ-portrait-alias-sweep | Legs B and C, live catalog cross-check | manual, CDP-driven | `node scripts/dev-driver.mjs` per CLAUDE.md's "Driving a Running Dev Build" | Not a Vitest-shaped check |
 
 ---
@@ -113,6 +120,7 @@ manifest after any catalog change and `gen-locale-manifest.mjs --check` fails if
 | Behavior | Requirement | Why Manual | Test Instructions |
 |----------|-------------|------------|-------------------|
 | Legs B and C of the alias sweep: whether the centralized resolution is actually consulted at every call site, against the live loaded catalog | REQ-portrait-alias-sweep | A static read cannot see which codenames the loaded catalog actually contains. The requirement's four-way verdict needs both facts side by side per hero | Drive the working tree over CDP per CLAUDE.md. Needs a committed or stashed tree and a dev slot nobody else is attached to, because the driver drives the working tree. Never slot 0 |
+| Whether a conflict recheck visibly preserves the prior answer rather than blanking it | REQ-ui-consequence-and-vocabulary | The defect is that a region is replaced by a skeleton, which is a rendering fact no unit test on this page can see; `Conflicts.tsx` has no component test today and adding a jsdom harness for one branch costs more than the branch | Drive the working tree per CLAUDE.md, never slot 0. Route to conflicts with at least two conflicting mods installed, capture an identifying row with `text`, press Refresh, and confirm the same row is still present alongside the recheck line. If it vanished, the answer was blanked |
 | Whether the Abrams defect is reachable through the dual alias-table structure | REQ-portrait-alias-sweep | The defect is not currently reproducing, so this is a hunt for a root cause rather than a repro | Research's most concrete lead: Foundry's `?hero=` route matching at `Foundry.tsx:161-162` uses `HERO_DISPLAY_ALIASES` from `lockerUtils.ts`, a different table from the `heroIdentity.ts` one the other three D-11 call sites consult. Prove or eliminate that path first |
 
 ---
@@ -126,8 +134,20 @@ manifest after any catalog change and `gen-locale-manifest.mjs --check` fails if
 - [x] Feedback latency acceptable on the scoped command
 - [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** planner, 2026-08-08. Thirteen tasks across five plans, every one carrying an
+**Approval:** planner, 2026-08-08. Sixteen tasks across six plans, every one carrying an
 `<automated>` verify. The one non-Vitest-shaped pair is plan 05-05's driven legs, which are
 CDP-driven by nature and whose automated gate is the slot confirmation plus a doc assertion
 that every hero holds a verdict; a run that cannot obtain a slot records blocked rather than
 passing, so the gate cannot be satisfied by silence.
+
+**Amended 2026-08-08 (revision, plan 05-06 added).** Plan 05-06 closes the three sub-items of
+REQ-ui-consequence-and-vocabulary that plan 05-03 did not reach: the disabled-blocker contract
+on Profiles apply, Conflicts resolve and the Foundry forge and install path; pending work
+preserving the prior answer; and provenance consolidated to one phrase and one target. Its
+three tasks each carry an `<automated>` verify, one of them backed by a new pure-logic test
+file (`src/lib/provenance.test.ts`) and two by repo greps plus the existing gate scripts. The
+one behavioural claim that no gate can settle, whether a conflict recheck visibly preserves
+its answer, is recorded in the Manual-Only table below rather than asserted by a green suite.
+Three of the surfaces the requirement names were verified as already satisfying it and are
+recorded as verdicts in 05-06's `planner_decisions` with file and line evidence, so no task
+was written against work that already exists.
