@@ -909,6 +909,7 @@ export default function HeroPoseViewer({
   skinSources = [],
   fallbackSkinMetaKey,
   trippyPreview,
+  onFailureChange,
 }: {
   heroName: string;
   /** Active visual VPK stack for this hero, ordered by the main process before export. */
@@ -918,8 +919,20 @@ export default function HeroPoseViewer({
   /** Live Body + Gun trippy params to paint on the body in real time, or
    *  undefined for the plain skin. */
   trippyPreview?: TrippyPreview;
+  /** Reports the failure kind outward whenever the internal failure state
+   *  changes (including a reset to null), so a caller can raise its own
+   *  auto-fallback surface without owning the viewer's state. */
+  onFailureChange?: (kind: HeroPoseFailureKind | null) => void;
 }) {
   const { t } = useTranslation();
+  // The callback is deliberately held in a ref and kept out of the loading
+  // effect's dependency array: a caller passing an inline arrow must not
+  // restart the loader on every render. The ref is refreshed on every render
+  // (before any effect reads it, effects run in declaration order).
+  const onFailureChangeRef = useRef(onFailureChange);
+  useEffect(() => {
+    onFailureChangeRef.current = onFailureChange;
+  });
   // Grabbed off the store rather than through a hook subscription: these are
   // stable actions, and the viewer only ever writes this state.
   const markBroken = usePoseFailureStore((s) => s.markBroken);
@@ -1007,6 +1020,7 @@ export default function HeroPoseViewer({
     let cancelled = false;
     let loaded: THREE.Object3D | null = null;
     setFailure(null);
+    onFailureChangeRef.current?.(null);
     setScene(null);
     setClips([]);
     setRigged(false);
@@ -1081,6 +1095,7 @@ export default function HeroPoseViewer({
                 info = await exportHeroPose(heroName, []);
                 if (!cancelled) {
                   setFailure('skin');
+                  onFailureChangeRef.current?.('skin');
                   // Name the culprit so the grid can badge it. Detached from the
                   // render path: the base pose is already showing, and narrowing
                   // a stack costs an export per member.
@@ -1096,12 +1111,18 @@ export default function HeroPoseViewer({
               } catch (baseError) {
                 if (!cancelled) {
                   setFailure(isUnsupportedPoseError(baseError) ? 'unsupported' : 'export');
+                  onFailureChangeRef.current?.(
+                    isUnsupportedPoseError(baseError) ? 'unsupported' : 'export'
+                  );
                 }
                 return;
               }
             } else {
               if (!cancelled) {
                 setFailure(isUnsupportedPoseError(skinError) ? 'unsupported' : 'export');
+                onFailureChangeRef.current?.(
+                  isUnsupportedPoseError(skinError) ? 'unsupported' : 'export'
+                );
               }
               return;
             }
@@ -1110,7 +1131,10 @@ export default function HeroPoseViewer({
           setGenerating(false);
         }
         if (!info.hasModel) {
-          if (!cancelled) setFailure('export');
+          if (!cancelled) {
+            setFailure('export');
+            onFailureChangeRef.current?.('export');
+          }
           return;
         }
         // The stack posed, so nothing in it is broken: heal any card badge left
@@ -1133,6 +1157,7 @@ export default function HeroPoseViewer({
         if (!cancelled) {
           setGenerating(false);
           setFailure('export');
+          onFailureChangeRef.current?.('export');
         }
       }
     })();

@@ -2523,6 +2523,13 @@
       "downloadASkinForThisHero": "Download a skin for this hero to manage it here.",
       "hide3dModel": "Hide 3D model",
       "showLive3dModel": "Show live 3D model",
+      "stageMode": {
+        "model": "Model",
+        "image": "Image"
+      },
+      "stageModeLabel": "Hero stage view",
+      "popOutModel": "Open as floating panel",
+      "stageAutoFallback": "3D preview isn't available for this hero right now. Showing the image instead.",
       "lockerImages": "Locker images",
       "back": "Back",
       "favorite": "Favorite",

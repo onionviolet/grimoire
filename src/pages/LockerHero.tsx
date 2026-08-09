@@ -1,4 +1,4 @@
-import { lazy, Suspense, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Star,
@@ -6,12 +6,16 @@ import {
   Music,
   Shirt,
   Images,
-  Box,
   Loader2,
   Sparkles,
   ImageIcon,
+  PictureInPicture2,
+  AlertTriangle,
+  RotateCw,
 } from 'lucide-react';
 import HeroDetailFrame, { type HeroDetailSection } from '../components/common/HeroDetailFrame';
+import { IconButton, SegmentedControl } from '../components/common/ui';
+import { useSegmentedTabs } from '../components/common/useSegmentedTabs';
 import HeroSkinsPanel, { SkinLoadOrderStrip } from '../components/locker/HeroSkinsPanel';
 import HeroSkinOverlapPanel from '../components/locker/HeroSkinOverlapPanel';
 import { LockerModImagePicker } from '../components/locker/LockerModImagePicker';
@@ -20,8 +24,10 @@ import HeroSoundShelf from '../components/locker/HeroSoundShelf';
 import HeroEffectsPanel from '../components/locker/HeroEffectsPanel';
 import FloatingModelPanel from '../components/locker/FloatingModelPanel';
 import { useModelPanelOpen } from '../components/locker/useModelPanelOpen';
+import { useHeroStageMode, type HeroStageMode } from '../components/locker/heroStageMode';
 // three.js viewer is heavy; only pull the chunk when the user flips to 3D.
 const HeroPoseViewer = lazy(() => import('../components/locker/HeroPoseViewer'));
+import type { HeroPoseFailureKind } from '../components/locker/HeroPoseViewer';
 import { useAppStore } from '../stores/appStore';
 import { useTrippyPreviewStore } from '../stores/trippyPreviewStore';
 import type { Mod } from '../types/mod';
@@ -32,6 +38,7 @@ import {
   getLockerSkinKey,
   type HeroCategory,
 } from '../lib/lockerUtils';
+import { heroPlateComposition } from '../lib/heroStage';
 import type { VariantChoice } from '../lib/lockerRandomizer';
 
 interface LockerHeroViewProps {
@@ -122,8 +129,31 @@ export function LockerHeroView({
   // name (only meaningful when a custom backdrop is in play).
   const hideHeroName = activeSkinKey ? Boolean(lockerBgHideHeroName[activeSkinKey]) : false;
   const [pickerOpen, setPickerOpen] = useState(false);
-  // Remembered across visits: see useModelPanelOpen.
-  const [view3d, setView3d] = useModelPanelOpen('locker');
+  // Remembered across visits: see useModelPanelOpen. This is the floating
+  // panel's open state, which under the stage design means "popped out".
+  const [modelPanelOpen, setModelPanelOpen] = useModelPanelOpen('locker');
+  // Remembered per surface under its own key (heroStage.mode), not a
+  // reinterpretation of the panel-open boolean above.
+  const [stageMode, setStageMode] = useHeroStageMode('locker');
+  const tabs = useSegmentedTabs<HeroStageMode>();
+  // A definitive pose failure (unsupported hero or failed export) forces the
+  // displayed mode to Image for this mount only. Never persisted: one
+  // unposable hero must not demote the standing choice for the whole roster.
+  const [poseFailure, setPoseFailure] = useState<Exclude<HeroPoseFailureKind, 'skin'> | null>(
+    null
+  );
+  const [retryNonce, setRetryNonce] = useState(0);
+  const handlePoseFailureChange = useCallback((kind: HeroPoseFailureKind | null) => {
+    // `'skin'` means the base pose IS showing: that is a usable stage, not a
+    // fallback trigger. Only `'unsupported'` and `'export'` leave the plate
+    // with nothing.
+    setPoseFailure(kind === 'unsupported' || kind === 'export' ? kind : null);
+  }, []);
+  const displayedMode: HeroStageMode = poseFailure ? 'image' : stageMode;
+  const retryModel = useCallback(() => {
+    setPoseFailure(null);
+    setRetryNonce((n) => n + 1);
+  }, []);
   // `?section=sounds` opens straight into the Sounds tab. It is only the
   // initial value: once the user picks a section, the rail owns the choice.
   const [section, setSection] = useState<SectionId>(initialSection ?? 'skins');
@@ -157,6 +187,16 @@ export function LockerHeroView({
   const activeSkinSourceKey =
     activeSkinSources.map((source) => `${source.priority}:${source.metaKey}`).join('|') ||
     'vanilla';
+  // A hero or active-skin-stack change is a fresh attempt: the failure was for
+  // the previous mount, not this one. Reset during render (React's documented
+  // "adjust state when props change" pattern) rather than in an effect, so a
+  // stale failure can never paint a newer hero or stack.
+  const poseMountKey = `${hero.name}:${activeSkinSourceKey}`;
+  const [poseMountKeyState, setPoseMountKeyState] = useState(poseMountKey);
+  if (poseMountKeyState !== poseMountKey) {
+    setPoseMountKeyState(poseMountKey);
+    setPoseFailure(null);
+  }
 
   // Live Body + Gun trippy params, pushed by TrippySkinPanel. Only feed the
   // viewer when it targets the hero currently shown so a stale entry from
@@ -315,10 +355,11 @@ export function LockerHeroView({
           />
         ) : null
       }
-      /* Adjust the hero-detail backdrop image, and the live 3D model toggle.
-         The 3D toggle opens/closes the floating model panel rather than
-         swapping the backdrop, so the 2D portrait stays put and the model can
-         float over it at any window size. */
+      /* Adjust the hero-detail backdrop image, choose the stage view (live
+         model on the plate vs the 2D chain), and pop the model out into the
+         floating panel. The stage-mode control decides what fills the plate;
+         the pop-out moves the model into FloatingModelPanel while keeping the
+         Model segment selected, so closing the panel returns it to the stage. */
       topRight={
         <>
           {activeSkin && activeSkinKey && (
@@ -332,28 +373,54 @@ export function LockerHeroView({
               <ImageIcon className="h-3.5 w-3.5" />
             </button>
           )}
-          <button
-            type="button"
-            onClick={() => setView3d(!view3d)}
-            aria-pressed={view3d}
-            title={view3d ? t('locker.hero.hide3dModel') : t('locker.hero.showLive3dModel')}
-            className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
-              view3d
-                ? 'border-accent/60 bg-accent/20 text-text-primary'
-                : 'border-border/70 bg-bg-secondary/70 text-text-secondary hover:text-text-primary backdrop-blur'
-            }`}
-          >
-            <Box className="h-3.5 w-3.5" />
-            3D
-          </button>
+          <SegmentedControl
+            options={[
+              { value: 'model', label: t('locker.hero.stageMode.model') },
+              { value: 'image', label: t('locker.hero.stageMode.image') },
+            ]}
+            value={displayedMode}
+            onChange={setStageMode}
+            tabs={tabs}
+            label={t('locker.hero.stageModeLabel')}
+          />
+          <IconButton
+            icon={PictureInPicture2}
+            label={t('locker.hero.popOutModel')}
+            onClick={() => setModelPanelOpen(!modelPanelOpen)}
+            disabled={displayedMode !== 'model'}
+          />
         </>
       }
+      platePreview={
+        displayedMode === 'model' && !modelPanelOpen ? (
+          <div className={heroPlateComposition({ kind: 'model' }).className}>
+            <Suspense
+              fallback={
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <Loader2 className="h-6 w-6 animate-spin text-white/80" />
+                </div>
+              }
+            >
+              <HeroPoseViewer
+                key={`${hero.name}:${activeSkinSourceKey}:${fallbackPoseSkinMetaKey ?? ''}:${retryNonce}`}
+                heroName={hero.name}
+                skinSources={activeSkinSources}
+                fallbackSkinMetaKey={fallbackPoseSkinMetaKey}
+                trippyPreview={matchedTrippyPreview}
+                onFailureChange={handlePoseFailureChange}
+              />
+            </Suspense>
+          </div>
+        ) : undefined
+      }
+      platePanel={tabs.panelProps(displayedMode)}
       after={
         <>
-          {/* Live 3D model: a floating, draggable panel over the portrait
-              backdrop. Mounted only while open so the heavy three.js chunk
-              loads on demand. */}
-          {view3d && (
+          {/* Live 3D model, popped out of the stage: the same viewer, now
+              floating/dockable. Exactly one instance of the viewer exists at
+              any moment: it fills the plate when Model is selected and the
+              panel is closed, and moves in here when the panel is open. */}
+          {modelPanelOpen && (
             <FloatingModelPanel
               surface="locker"
               /* Name the skin, not just the hero: while comparing skins the
@@ -364,7 +431,7 @@ export function LockerHeroView({
                   ? t('locker.hero.hero3dModelSkin', { hero: hero.name, skin: activeSkin.name })
                   : t('locker.hero.hero3dModel', { hero: hero.name })
               }
-              onClose={() => setView3d(false)}
+              onClose={() => setModelPanelOpen(false)}
             >
               <Suspense
                 fallback={
@@ -374,11 +441,12 @@ export function LockerHeroView({
                 }
               >
                 <HeroPoseViewer
-                  key={`${hero.name}:${activeSkinSourceKey}:${fallbackPoseSkinMetaKey ?? ''}`}
+                  key={`${hero.name}:${activeSkinSourceKey}:${fallbackPoseSkinMetaKey ?? ''}:${retryNonce}`}
                   heroName={hero.name}
                   skinSources={activeSkinSources}
                   fallbackSkinMetaKey={fallbackPoseSkinMetaKey}
                   trippyPreview={matchedTrippyPreview}
+                  onFailureChange={handlePoseFailureChange}
                 />
               </Suspense>
             </FloatingModelPanel>
@@ -399,6 +467,28 @@ export function LockerHeroView({
         </>
       }
     >
+      {/* Auto-fallback banner (UI-SPEC E4): a definitive pose failure defaults
+          the stage to Image for this hero, and says so. Rendered above the
+          overlap panel; Retry clears the recorded failure and remounts the
+          viewer so the model is re-attempted. */}
+      {poseFailure && (
+        <div className="flex items-start gap-2 rounded-sm border border-yellow-500/30 bg-yellow-500/10 p-4 text-xs text-text-secondary">
+          <AlertTriangle
+            size={13}
+            className="mt-0.5 shrink-0 text-state-warning"
+            aria-hidden
+          />
+          <p className="min-w-0 flex-1">{t('locker.hero.stageAutoFallback')}</p>
+          <button
+            type="button"
+            onClick={retryModel}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs font-medium text-text-primary transition-colors hover:border-accent/60 hover:text-text-primary cursor-pointer"
+          >
+            <RotateCw className="h-3 w-3" aria-hidden />
+            {t('locker.pose.retry')}
+          </button>
+        </div>
+      )}
       {/* Say what the stack overwrites before the user has to go looking for it
           on Conflicts. Self-hides below two enabled skins. */}
       {activeSection === 'skins' && <HeroSkinOverlapPanel mods={skinList} />}

@@ -65,6 +65,18 @@ interface HeroDetailFrameProps<Id extends string> {
   /** Absolutely positioned controls in the top-right corner. */
   topRight?: ReactNode;
   /**
+   * Caller-supplied node rendered in place of the plate's `img` element when
+   * supplied (a live 3D model). The frame stays ignorant of what it is: it is
+   * simply the plate's content, and the lazy three.js chunk stays owned by
+   * the calling page.
+   */
+  platePreview?: ReactNode;
+  /**
+   * ARIA bag spread onto the plate wrapper, so a caller's segmented control
+   * can name a real element in both modes. Plain props only, no domain type.
+   */
+  platePanel?: { id: string; role: 'tabpanel'; 'aria-labelledby': string };
+  /**
    * `capped` keeps the hero visible to the right of the content (Locker, where
    * the backdrop is the subject). `fluid` lets the content take the remaining
    * width (Foundry, whose tray docks beside it).
@@ -92,6 +104,8 @@ export default function HeroDetailFrame<Id extends string>({
   railTop,
   railExtra,
   topRight,
+  platePreview,
+  platePanel,
   contentWidth = 'capped',
   children,
   after,
@@ -115,20 +129,24 @@ export default function HeroDetailFrame<Id extends string>({
           frosted-glass rail + selection column. Its anchoring comes from the
           plate kind, so each occupant declares its own contract instead of the
           slot guessing one. */}
-      <div className="hidden lg:block absolute inset-0 bg-bg-primary animate-hero-zoom-in overflow-hidden">
-        {plate && plateComposition ? (
-          <img
-            src={plate.src}
-            alt={heroName}
-            className={plateComposition.className}
-            style={plateComposition.style}
-            onError={plateComposition.usesRenderFallback ? handleRenderError : undefined}
-          />
-        ) : (
-          <div className="absolute inset-0 flex items-center justify-center text-text-secondary text-2xl">
-            {heroName}
-          </div>
-        )}
+      <div
+        className="hidden lg:block absolute inset-0 bg-bg-primary animate-hero-zoom-in overflow-hidden"
+        {...platePanel}
+      >
+        {platePreview ??
+          (plate && plateComposition ? (
+            <img
+              src={plate.src}
+              alt={heroName}
+              className={plateComposition.className}
+              style={plateComposition.style}
+              onError={plateComposition.usesRenderFallback ? handleRenderError : undefined}
+            />
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center text-text-secondary text-2xl">
+              {heroName}
+            </div>
+          ))}
         {/* Bottom gradient for depth. */}
         <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-black/50 to-transparent" />
       </div>
