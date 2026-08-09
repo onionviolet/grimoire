@@ -69,3 +69,17 @@ export async function prepareRecolorStagedEdit(ctx: RecolorStageContext): Promis
     request: { ...ctx.request, entries },
   };
 }
+
+/** The tray's staged recolor for one hero, if any. The picker's status line
+ *  derives from this rather than a local copy, so it can never claim a state
+ *  the tray does not hold: removing the edit, clearing the tray after a forge
+ *  or install, or remounting the picker all read the tray's current truth. The
+ *  id is the same `recolor:<canonical>` form `prepareRecolorStagedEdit`
+ *  assigns, so the lookup cannot drift from the staging path. */
+export function findStagedRecolorForHero(
+  edits: readonly FoundryStagedEdit[],
+  heroName: string,
+): RecolorStagedEdit | undefined {
+  const wanted = `recolor:${canonicalHeroName(heroName)}`;
+  return edits.find((edit): edit is RecolorStagedEdit => edit.kind === 'recolor' && edit.id === wanted);
+}

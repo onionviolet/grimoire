@@ -57,6 +57,10 @@ interface HeroColorPickerProps {
    *  immediate-apply path, its Applied status, and the revert button are
    *  unchanged. */
   onStage?: (edit: RecolorStagedEdit) => void;
+  /** The tray's staged recolor for this hero (Foundry mounts). The status line
+   *  derives from this so it always reports what the build tray actually
+   *  holds; absent on the Locker mount. */
+  stagedEdit?: RecolorStagedEdit | null;
 }
 
 /** Default target when nothing is applied yet: 280 (purple) at source
@@ -153,7 +157,7 @@ const q = (x: number): number => Math.round(x * 100) / 100;
  * Locker-managed VPK that wins by load order; remove it to revert to vanilla.
  * Rendered only when the parent has confirmed hero support (pinned recipe).
  */
-export default function HeroColorPicker({ heroName, onAppliedChange, onStage }: HeroColorPickerProps) {
+export default function HeroColorPicker({ heroName, onAppliedChange, onStage, stagedEdit }: HeroColorPickerProps) {
   const { t } = useTranslation();
   const confirm = useConfirm();
   const [loading, setLoading] = useState(true);
@@ -190,10 +194,10 @@ export default function HeroColorPicker({ heroName, onAppliedChange, onStage }: 
   const [activeTrippy, setActiveTrippy] = useState<TrippyVfxChoice | null>(null);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  // Foundry staging mode: the recolor staged for this hero (null when nothing
-  // is staged). Drives the "Staged, not yet forged" / "Not staged" status
-  // line; the tray itself stays the authority on what is actually staged.
-  const [stagedEdit, setStagedEdit] = useState<RecolorStagedEdit | null>(null);
+  // Foundry staging mode: the "Staged, not yet forged" / "Not staged" status
+  // line below is driven by the tray's recolor edit for this hero (the
+  // `stagedEdit` prop), never a local copy — the tray stays the single
+  // authority on what is actually staged.
   const [changed, setChanged] = useState(false);
   // Path of the most recently exported VPK file (null until an export succeeds).
   const [exportedPath, setExportedPath] = useState<string | null>(null);
@@ -354,7 +358,6 @@ export default function HeroColorPicker({ heroName, onAppliedChange, onStage }: 
         });
         if (!mounted.current) return;
         if (!staged) return; // user declined the enabled-owner acknowledgement
-        setStagedEdit(staged);
         onStage(staged);
         return;
       }

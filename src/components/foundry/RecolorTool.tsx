@@ -6,12 +6,16 @@ import Tx from '../translation/Tx';
 import HeroEffectsPanel from '../locker/HeroEffectsPanel';
 import type { HeroInfo } from '../../types/foundry';
 import type { FoundryStagedEdit } from './buildTray';
+import { findStagedRecolorForHero } from './recolorStagedEdit';
 
 interface RecolorToolProps {
   /** Full roster; the recolor surface is keyed by hero display name. */
   heroes: HeroInfo[];
   /** The build tray's staging callback; the panel's Apply becomes Stage. */
   onStage: (edit: FoundryStagedEdit) => void;
+  /** The shared tray, so the picker's status line can derive from what is
+   *  actually staged instead of a local copy. */
+  stagedEdits?: readonly FoundryStagedEdit[];
 }
 
 /**
@@ -22,9 +26,14 @@ interface RecolorToolProps {
  * hero without a recipe shows its own "unavailable" note. The bake lands in the
  * same one-recolor-per-hero Locker slot, so a pick made here shows up there too.
  */
-export default function RecolorTool({ heroes, onStage }: RecolorToolProps) {
+export default function RecolorTool({ heroes, onStage, stagedEdits }: RecolorToolProps) {
   const { t } = useTranslation();
   const [heroName, setHeroName] = useState('');
+
+  const stagedRecolorEdit = useMemo(
+    () => (heroName ? findStagedRecolorForHero(stagedEdits ?? [], heroName) : undefined),
+    [stagedEdits, heroName],
+  );
 
   // Selectable heroes first (the ones with a real recipe live here); de-dup by
   // display name since the panel keys on it.
@@ -68,7 +77,12 @@ export default function RecolorTool({ heroes, onStage }: RecolorToolProps) {
         />
       ) : (
         // Keyed by hero so a hero switch remounts the panel with fresh state.
-        <HeroEffectsPanel key={heroName} heroName={heroName} onStageRecolor={onStage} />
+        <HeroEffectsPanel
+          key={heroName}
+          heroName={heroName}
+          onStageRecolor={onStage}
+          stagedRecolorEdit={stagedRecolorEdit}
+        />
       )}
     </div>
   );

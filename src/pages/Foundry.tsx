@@ -397,7 +397,7 @@ export default function Foundry() {
           ) : activeTool === 'portraits' ? (
             <PortraitBrowse heroNames={heroNames} hero={null} onStage={stageEdit} />
           ) : activeTool === 'recolor' ? (
-            <RecolorTool heroes={heroes} onStage={stageEdit} />
+            <RecolorTool heroes={heroes} onStage={stageEdit} stagedEdits={stagedEdits} />
           ) : activeTool === 'items' ? (
             <LibraryBrowse heroNames={heroNames} initialCategory="item-icon" hero={null} onStage={stageEdit} />
           ) : (

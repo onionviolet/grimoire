@@ -11,6 +11,9 @@ interface HeroEffectsPanelProps {
   /** Foundry mount: forwards to the Abilities picker so Apply becomes Stage.
    *  Absent (the Locker), the picker keeps its immediate-apply path. */
   onStageRecolor?: (edit: RecolorStagedEdit) => void;
+  /** The tray's staged recolor for this hero (Foundry mounts), so the picker's
+   *  status line derives from the tray instead of a local copy. */
+  stagedRecolorEdit?: RecolorStagedEdit | null;
 }
 
 /**
@@ -23,7 +26,7 @@ interface HeroEffectsPanelProps {
  * Both surfaces share the same per-hero support gate (pinned vpkmerge recipes),
  * checked once here so the children can assume support.
  */
-export default function HeroEffectsPanel({ heroName, onStageRecolor }: HeroEffectsPanelProps) {
+export default function HeroEffectsPanel({ heroName, onStageRecolor, stagedRecolorEdit }: HeroEffectsPanelProps) {
   const { t } = useTranslation();
   const [supported, setSupported] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -126,6 +129,7 @@ export default function HeroEffectsPanel({ heroName, onStageRecolor }: HeroEffec
               heroName={heroName}
               onAppliedChange={setAbilitiesApplied}
               onStage={onStageRecolor}
+              stagedEdit={stagedRecolorEdit}
             />
           </div>
           <div className={surface === 'skin' ? 'space-y-3' : 'hidden'}>

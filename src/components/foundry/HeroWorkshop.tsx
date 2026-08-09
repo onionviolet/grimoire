@@ -15,6 +15,7 @@ import type { FoundryForgeRequest, HeroInfo } from '../../types/foundry';
 import type { Mod } from '../../types/mod';
 import type { HeroPoseSkinSource } from '../../types/portrait';
 import {
+  canonicalHeroName,
   getHeroChipIconPath,
   inferHeroFromTitle,
   isLockerManagedMod,
@@ -31,6 +32,7 @@ import PortraitBrowse from './PortraitBrowse';
 import FoundryBuildTray from './FoundryBuildTray';
 import MyChanges from './MyChanges';
 import type { FoundryStagedEdit } from './buildTray';
+import { findStagedRecolorForHero } from './recolorStagedEdit';
 import { useTrayPreview } from './useTrayPreview';
 import Tx from '../translation/Tx';
 import { useAppStore } from '../../stores/appStore';
@@ -151,6 +153,15 @@ export default function HeroWorkshop({
   );
 
   const trayPreview = useTrayPreview(stagedEdits, view3d);
+
+  // The Abilities picker's status line derives from the tray's recolor edit
+  // for this hero (id `recolor:<canonical>`), so it can never claim a state
+  // the tray does not hold — a forge/install clears, Remove drops, and a hero
+  // switch all reflect immediately instead of leaving stale local state.
+  const stagedRecolorEdit = useMemo(
+    () => findStagedRecolorForHero(stagedEdits, hero.name),
+    [stagedEdits, hero.name],
+  );
 
   const poseSkinSources = useMemo<HeroPoseSkinSource[]>(() => {
     const sources: HeroPoseSkinSource[] = enabledHeroSkins.map((mod: Mod) => ({
@@ -316,7 +327,12 @@ export default function HeroWorkshop({
       }
     >
       {section === 'appearance' ? (
-        <HeroEffectsPanel key={hero.name} heroName={hero.name} onStageRecolor={stage} />
+        <HeroEffectsPanel
+          key={hero.name}
+          heroName={hero.name}
+          onStageRecolor={stage}
+          stagedRecolorEdit={stagedRecolorEdit}
+        />
       ) : section === 'abilities' ? (
         <div className="space-y-6">
           <HeroSoundPicker
