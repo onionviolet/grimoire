@@ -144,6 +144,7 @@ Real-game verification is deferred to the end of this milestone run per explicit
 | Phase | State | Resume |
 |-------|-------|--------|
 | 3 | verification_deferred_human | $gsd-verify-work 3 |
+| 4 | verification_deferred_human | $gsd-verify-work 4 |
 
 ## Session Continuity
 
