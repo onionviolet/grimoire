@@ -4,17 +4,17 @@ milestone: v1.26.20
 milestone_name: milestone
 current_phase: 5
 current_phase_name: one-inventory-one-journey
-current_plan: 2
+current_plan: 3
 status: executing
-stopped_at: Completed 05-01-PLAN.md
-last_updated: "2026-08-09T07:46:54.907Z"
+stopped_at: Completed 05-02-PLAN.md
+last_updated: "2026-08-09T07:59:52.971Z"
 last_activity: 2026-08-09
 last_activity_desc: Phase 4 execution started
 progress:
   total_phases: 6
   completed_phases: 5
   total_plans: 32
-  completed_plans: 27
+  completed_plans: 28
 ---
 
 # Project State
@@ -29,13 +29,13 @@ See: .planning/PROJECT.md (updated 2026-08-05)
 ## Current Position
 
 Phase: 5 (one-inventory-one-journey) — EXECUTING
-Current Plan: 2
+Current Plan: 3
 Total Plans in Phase: 6
-Plan: 2 of 6
+Plan: 3 of 6
 Status: Ready to execute
 Last activity: 2026-08-09 — Phase 5 execution started
 
-Progress: [████████░░] 84%
+Progress: [█████████░] 88%
 
 ## Performance Metrics
 
@@ -71,6 +71,7 @@ Progress: [████████░░] 84%
 | Phase 04 P01 | 12 | 3 tasks | 10 files |
 | Phase 04 P02 | 12 | 3 tasks | 18 files |
 | Phase 05 P01 | 8 | 2 tasks | 9 files |
+| Phase 05 P02 | 10 min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -110,6 +111,11 @@ Recent decisions affecting current work:
 - [Phase 05]: Hide-empty is a fixed always-on rule with no preference control (D-04, planner assumption settled)
 - [Phase 05]: Active source consolidation is a value edit at existing key names, excluding the build-time collision family and the three excluded keys
 - [Phase 05]: Task 2 updated two renderer tests asserting the old winner wording; the full-suite-green acceptance criterion took precedence over the catalog-only diff guardrail (Rule 1)
+- [Phase ?]: The two randomization views keep one pool identity and gain scope labels only; ChangePools.tsx is untouched and captions live at the call sites that choose the scope
+- [Phase ?]: PortraitBrowse adopts buildHeroFilterOptions without scopedHero: the surface hides its filter when hero-pinned, so every option value stays a plain codename
+- [Phase ?]: The unresolved disclosure derives from the visible set and only renders after a completed read, so a failed catalog routes to the failed state, never to the unresolved label
+- [Phase ?]: A partial portrait-family read is treated as failed (the conservative, honest reading) rather than as a partial success
+- [Phase ?]: Leg A proves the two live alias tables agree wherever both have an opinion; completeness against the shipped build remains Legs B and C
 
 ### Pending Todos
 
@@ -153,6 +159,6 @@ Real-game verification is deferred to the end of this milestone run per explicit
 
 ## Session Continuity
 
-Last session: 2026-08-09T07:46:54.890Z
-Stopped at: Completed 05-01-PLAN.md
+Last session: 2026-08-09T07:59:52.954Z
+Stopped at: Completed 05-02-PLAN.md
 Resume file: None
