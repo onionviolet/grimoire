@@ -169,7 +169,25 @@ Plans:
   5. Any bulk action can be undone without rebuilding the selection by hand, and no disabled control leaves its blocker to be guessed
   6. The same state is never given two names on two pages, and every empty state names what is missing, why, and the next action
 
-**Plans**: TBD
+**Plans**: 5 plans
+
+Plans:
+**Wave 1**
+
+- [ ] 05-01-PLAN.md - Tracer: `All content` selectable end to end through route, merged projection, tablist and pane, empty categories hidden, plus the whole phase's catalog change in one place
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 05-02-PLAN.md - Randomization scope captions, an honest unresolved-codename disclosure, the Locker's failed portrait state under render coverage, and Leg A across the whole roster and both alias tables
+- [ ] 05-03-PLAN.md - Snapshot-and-undo for every reversible bulk action, supersession, one-message partial failure, and a stated blocker on every control it disables
+- [ ] 05-04-PLAN.md - Derived descriptions for paks with no useful name, and the recorded answer to the contested global sound inventory variant
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 05-05-PLAN.md - Legs B and C of the alias sweep driven over CDP, with a per-hero verdict recorded either way
+
+**Waves**: 1 = {05-01}; 2 = {05-02, 05-03, 05-04}; 3 = {05-05}
+
 **UI hint**: yes
 
 **Open decisions (do not assume an outcome)**: Two, and this phase should not start until both are discussed.
@@ -236,5 +254,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phase 6 declar
 | 2. A Supported Fork Release | 6/6 | Complete    | 2026-08-07 |
 | 3. Foundry Completes Its Build Contract | 0/TBD | Not started | - |
 | 4. Locker And Foundry As One Object | 0/TBD | Not started | - |
-| 5. One Inventory, One Journey | 0/TBD | Not started | - |
+| 5. One Inventory, One Journey | 0/5 | Not started | - |
 | 6. Community Tools Land Inside Grimoire | 7/7 | Complete    | 2026-08-08 |
