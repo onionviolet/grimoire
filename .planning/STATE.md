@@ -127,6 +127,14 @@ Items acknowledged and carried forward:
 | Merge | REQ-vpk-composition-review-and-recipes milestones 3 to 5 | v2, least important on the board | 2026-08-05 |
 | Performance | REQ-performance-convar-profiles-and-recovery | v2, open review questions | 2026-08-05 |
 
+## Deferred Verification
+
+Real-game verification is deferred to the end of this milestone run per explicit user decision. Resume commands are recorded per phase.
+
+| Phase | State | Resume |
+|-------|-------|--------|
+| 3 | verification_deferred_human | $gsd-verify-work 3 |
+
 ## Session Continuity
 
 Last session: 2026-08-09T06:09:48.337Z
