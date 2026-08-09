@@ -178,6 +178,7 @@ export default function Conflicts() {
   const [ignoredMods, setIgnoredMods] = useState<string[]>([]);
   const [pendingIgnoredMod, setPendingIgnoredMod] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [disableTarget, setDisableTarget] = useState<ModWithThumbnail | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>(() => readPref('conflictsViewMode'));
@@ -277,6 +278,7 @@ export default function Conflicts() {
       setIgnoredFiles(ignoredFilesResult);
       setIgnoredFilesGlobal(ignoredFilesGlobalResult);
       setIgnoredMods(ignoredModsResult);
+      setHasLoaded(true);
     } catch (err) {
       setError(String(err));
     } finally {
@@ -588,7 +590,7 @@ export default function Conflicts() {
     });
   }, [conflicts, modsMap, debouncedSearch]);
 
-  if (loading) {
+  if (loading && !hasLoaded) {
     return <ConflictsSkeleton />;
   }
 
@@ -698,6 +700,13 @@ export default function Conflicts() {
         className="mb-6"
       />
 
+      {loading && hasLoaded && (
+        <p className="mb-3 flex items-center gap-1.5 text-xs text-text-secondary" aria-live="polite">
+          <RefreshCw size={12} className="animate-spin" />
+          <Tx k="conflicts.rescanning" fallback="Rechecking your installed mods. The results below are from the previous check." />
+        </p>
+      )}
+
       {conflicts.length > 0 && (
         <div className="mb-5 rounded-xl border border-border bg-bg-secondary p-3">
           <SearchInput
@@ -756,6 +765,7 @@ export default function Conflicts() {
             const modB = getModInfo(conflict.modB, conflict.modBName);
             const variantA = getVariantLabel(modA);
             const variantB = getVariantLabel(modB);
+            const pairKey = getConflictIgnoreKey(conflict);
 
             const renderListSide = (mod: ModWithThumbnail, variant: string | null, identity: string) => (
               <div className="min-w-0 flex items-center gap-3">
@@ -826,6 +836,7 @@ export default function Conflicts() {
                     type="button"
                     onClick={() => handleIgnore(conflict)}
                     disabled={pendingPair === getConflictIgnoreKey(conflict)}
+                    aria-describedby={pendingPair === pairKey ? `conflicts-card-${pairKey}` : undefined}
                     title={t('conflicts.actions.ignoreTitle')}
                     className="inline-flex flex-shrink-0 items-center gap-1 rounded px-2 py-1 text-xs text-text-secondary transition-colors hover:bg-bg-tertiary hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
                   >
@@ -833,6 +844,11 @@ export default function Conflicts() {
                     <Tx k="conflicts.actions.ignore" fallback="Ignore" />
                   </button>
                 </div>
+                {pendingPair === pairKey && (
+                  <p id={`conflicts-card-${pairKey}`} className="px-4 py-2 text-xs text-text-secondary" aria-live="polite">
+                    <Tx k="conflicts.actions.busyBlocker" fallback="Finish the change that is running before starting another." />
+                  </p>
+                )}
                 <div className="grid grid-cols-[minmax(0,1fr)_2rem_minmax(0,1fr)] items-center gap-3 p-4">
                   {renderListSide(modA, variantA, conflict.modAIdentity)}
                   <span className="text-center text-sm font-bold text-text-tertiary">
@@ -868,6 +884,7 @@ export default function Conflicts() {
             const modB = getModInfo(conflict.modB, conflict.modBName);
             const variantA = getVariantLabel(modA);
             const variantB = getVariantLabel(modB);
+            const pairKey = getConflictIgnoreKey(conflict);
 
             return (
               <div
@@ -884,6 +901,7 @@ export default function Conflicts() {
                     type="button"
                     onClick={() => handleIgnore(conflict)}
                     disabled={pendingPair === getConflictIgnoreKey(conflict)}
+                    aria-describedby={pendingPair === pairKey ? `conflicts-card-${pairKey}` : undefined}
                     title={t('conflicts.actions.ignoreTitle')}
                     className="flex-shrink-0 inline-flex items-center gap-1 px-2 py-1 text-xs text-text-secondary hover:text-text-primary hover:bg-bg-tertiary rounded transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                   >
@@ -891,6 +909,12 @@ export default function Conflicts() {
                     <Tx k="conflicts.actions.ignore" fallback="Ignore" />
                   </button>
                 </div>
+
+                {pendingPair === pairKey && (
+                  <p id={`conflicts-card-${pairKey}`} className="px-4 py-2 text-xs text-text-secondary" aria-live="polite">
+                    <Tx k="conflicts.actions.busyBlocker" fallback="Finish the change that is running before starting another." />
+                  </p>
+                )}
 
                 {/* Two mod cards */}
                 <div className="p-4 grid grid-cols-[minmax(0,1fr)_2rem_minmax(0,1fr)] gap-3 items-start">
@@ -1073,12 +1097,18 @@ export default function Conflicts() {
                     type="button"
                     onClick={() => handleUnignore(key)}
                     disabled={pendingPair === key}
+                    aria-describedby={pendingPair === key ? `conflicts-ignored-pair-${key}` : undefined}
                     className="flex-shrink-0 inline-flex items-center gap-1 px-2.5 py-1 text-xs text-text-secondary hover:text-text-primary hover:bg-bg-tertiary rounded transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     title={t('conflicts.ignored.unignoreTitle')}
                   >
                     <Eye className="w-3.5 h-3.5" />
                     <Tx k="conflicts.actions.unignore" fallback="Unignore" />
                   </button>
+                  {pendingPair === key && (
+                    <p id={`conflicts-ignored-pair-${key}`} className="text-xs text-text-secondary" aria-live="polite">
+                      <Tx k="conflicts.actions.busyBlocker" fallback="Finish the change that is running before starting another." />
+                    </p>
+                  )}
                 </div>
               );
             })}
@@ -1117,6 +1147,7 @@ export default function Conflicts() {
                       type="button"
                       onClick={() => handleUnignoreFile(key, null)}
                       disabled={pendingPair === key}
+                      aria-describedby={pendingPair === key ? `conflicts-ignored-files-${key}` : undefined}
                       title={t('conflicts.ignoredFiles.restoreAllTitle')}
                       className="flex-shrink-0 inline-flex items-center gap-1 rounded px-2.5 py-1 text-xs text-text-secondary transition-colors hover:bg-bg-tertiary hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
                     >
@@ -1124,6 +1155,11 @@ export default function Conflicts() {
                       <Tx k="conflicts.ignoredFiles.restoreAll" fallback="Restore all" />
                     </button>
                   </div>
+                  {pendingPair === key && (
+                    <p id={`conflicts-ignored-files-${key}`} className="border-b border-border px-4 py-2 text-xs text-text-secondary" aria-live="polite">
+                      <Tx k="conflicts.actions.busyBlocker" fallback="Finish the change that is running before starting another." />
+                    </p>
+                  )}
                   <ul className="divide-y divide-border/60">
                     {paths.map((p) => (
                       <li key={p} className="flex items-center gap-2 px-4 py-2">
@@ -1134,6 +1170,7 @@ export default function Conflicts() {
                           type="button"
                           onClick={() => handleUnignoreFile(key, p)}
                           disabled={pendingPair === key}
+                          aria-describedby={pendingPair === key ? `conflicts-ignored-files-${key}` : undefined}
                           title={t('conflicts.ignoredFiles.unignoreFileTitle')}
                           className="flex-shrink-0 inline-flex items-center gap-1 rounded px-2 py-0.5 text-[11px] text-text-secondary transition-colors hover:bg-bg-tertiary hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
                         >
@@ -1169,12 +1206,18 @@ export default function Conflicts() {
                   type="button"
                   onClick={() => handleUnignoreFileGlobal(file)}
                   disabled={pendingGlobalFile === file}
+                  aria-describedby={pendingGlobalFile === file ? `conflicts-ignored-global-${file}` : undefined}
                   title={t('conflicts.ignoredFilesGlobal.unignoreTitle')}
                   className="flex-shrink-0 inline-flex items-center gap-1 rounded px-2.5 py-1 text-xs text-text-secondary transition-colors hover:bg-bg-tertiary hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
                 >
                   <Eye className="h-3.5 w-3.5" />
                   <Tx k="conflicts.actions.unignore" fallback="Unignore" />
                 </button>
+                {pendingGlobalFile === file && (
+                  <p id={`conflicts-ignored-global-${file}`} className="text-xs text-text-secondary" aria-live="polite">
+                    <Tx k="conflicts.actions.busyBlocker" fallback="Finish the change that is running before starting another." />
+                  </p>
+                )}
               </div>
             ))}
           </div>
@@ -1224,12 +1267,18 @@ export default function Conflicts() {
                     type="button"
                     onClick={() => handleUnignoreMod(identity)}
                     disabled={pendingIgnoredMod === identity}
+                    aria-describedby={pendingIgnoredMod === identity ? `conflicts-ignored-mod-${identity}` : undefined}
                     title={t('conflicts.ignoredMods.unignoreTitle')}
                     className="flex-shrink-0 inline-flex items-center gap-1 rounded px-2.5 py-1 text-xs text-text-secondary transition-colors hover:bg-bg-tertiary hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
                   >
                     <Eye className="h-3.5 w-3.5" />
                     <Tx k="conflicts.actions.unignore" fallback="Unignore" />
                   </button>
+                  {pendingIgnoredMod === identity && (
+                    <p id={`conflicts-ignored-mod-${identity}`} className="text-xs text-text-secondary" aria-live="polite">
+                      <Tx k="conflicts.actions.busyBlocker" fallback="Finish the change that is running before starting another." />
+                    </p>
+                  )}
                 </div>
               );
             })}

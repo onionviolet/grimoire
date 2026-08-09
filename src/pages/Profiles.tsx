@@ -711,6 +711,7 @@ export default function Profiles() {
               {profiles.map((profile) => {
                 const isApplying = applyingId === profile.id;
                 const isUpdating = updatingId === profile.id;
+                const busyBlockerId = `profile-busy-${profile.id}`;
                 const isActive = activeProfileId === profile.id;
                 const isExpanded = expandedProfiles.has(profile.id);
                 const profileModGroups = getProfileModGroups(profile.mods, modByFileName);
@@ -751,6 +752,7 @@ export default function Profiles() {
                             type="button"
                             onClick={() => startRename(profile)}
                             disabled={isApplying || isUpdating}
+                            aria-describedby={isApplying || isUpdating ? busyBlockerId : undefined}
                             aria-label={t('profiles.actions.renameProfile')}
                             title={t('profiles.actions.renameProfile')}
                             className="p-1 text-text-secondary hover:text-text-primary hover:bg-white/5 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -822,6 +824,7 @@ export default function Profiles() {
                             className="flex-1 min-w-0"
                             onClick={() => handleApplyProfile(profile.id)}
                             disabled={isApplying || isUpdating}
+                            aria-describedby={isApplying || isUpdating ? busyBlockerId : undefined}
                             isLoading={isApplying}
                             icon={isActive ? RotateCcw : Play}
                             variant={isActive ? 'secondary' : 'primary'}
@@ -847,6 +850,7 @@ export default function Profiles() {
                                 : handleUpdateProfile(profile.id)
                             }
                             disabled={isUpdating || isApplying}
+                            aria-describedby={isUpdating || isApplying ? busyBlockerId : undefined}
                             isLoading={isUpdating}
                             icon={Save}
                             title={t('profiles.actions.updateTitle')}
@@ -860,6 +864,7 @@ export default function Profiles() {
                             variant="ghost"
                             onClick={() => setExportingProfileId(profile.id)}
                             disabled={isApplying || isUpdating}
+                            aria-describedby={isApplying || isUpdating ? busyBlockerId : undefined}
                             icon={Share2}
                             title={t('profiles.actions.exportTitle')}
                             aria-label={t('profiles.actions.exportProfile')}
@@ -871,6 +876,7 @@ export default function Profiles() {
                               variant="ghost"
                               onClick={() => setPublishingProfileId(profile.id)}
                               disabled={isApplying || isUpdating}
+                              aria-describedby={isApplying || isUpdating ? busyBlockerId : undefined}
                               icon={Globe}
                               title={t('profiles.actions.publishToDiscover')}
                               aria-label={t('profiles.actions.publishToDiscover')}
@@ -891,12 +897,18 @@ export default function Profiles() {
                             variant="danger"
                             onClick={() => setDeleteConfirmId(profile.id)}
                             disabled={isApplying || isUpdating}
+                            aria-describedby={isApplying || isUpdating ? busyBlockerId : undefined}
                             icon={Trash2}
                             title={t('profiles.actions.deleteProfile')}
                             aria-label={t('profiles.actions.deleteProfile')}
                             className="px-1.5"
                           />
                         </div>
+                        {(isApplying || isUpdating) && (
+                          <p id={busyBlockerId} className="basis-full text-xs text-text-secondary" aria-live="polite">
+                            <Tx k="profiles.actions.busyBlocker" fallback="Finish the profile change that is running before starting another." />
+                          </p>
+                        )}
                       </div>
 
                       {/* Expanded Content */}
@@ -968,6 +980,7 @@ export default function Profiles() {
                                   variant="ghost"
                                   onClick={() => handleRemoveCrosshair(profile.id)}
                                   disabled={isApplying || isUpdating || removingCrosshairId === profile.id}
+                                  aria-describedby={isApplying || isUpdating ? busyBlockerId : undefined}
                                   icon={X}
                                   title={t('profiles.crosshair.removeTitle')}
                                   aria-label={t('profiles.crosshair.remove')}

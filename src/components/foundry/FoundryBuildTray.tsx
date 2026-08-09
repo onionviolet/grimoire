@@ -191,7 +191,14 @@ export default function FoundryBuildTray({ edits, outputName, onOutputNameChange
           <span className="min-w-0 break-words">{blocked}</span>
         </p>
       )}
-      <button type="button" onClick={() => void requestConfirmation()} disabled={!review.selected.length || busy} className="mt-4 flex w-full items-center justify-center gap-2 rounded-sm bg-accent px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50">
+      {(!review.selected.length || busy) && (
+        <p id="foundry-forge-blocker" className="mt-3 text-xs text-text-secondary" aria-live="polite">
+          {busy
+            ? t('foundry.buildTray.blockedBusy', 'Forging is running. This will finish in a moment.')
+            : t('foundry.buildTray.blockedEmpty', 'Select at least one staged edit to forge.')}
+        </p>
+      )}
+      <button type="button" onClick={() => void requestConfirmation()} disabled={!review.selected.length || busy} aria-describedby="foundry-forge-blocker" className="mt-4 flex w-full items-center justify-center gap-2 rounded-sm bg-accent px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50">
         {busy ? <Loader2 size={15} className="animate-spin" /> : <Hammer size={15} />}
         {forging ? t('foundry.buildTray.forging', 'Forging...') : t('foundry.buildTray.forge', 'Confirm and forge VPK')}
       </button>
