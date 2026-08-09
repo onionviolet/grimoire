@@ -4,17 +4,17 @@ milestone: v1.26.20
 milestone_name: milestone
 current_phase: 5
 current_phase_name: one-inventory-one-journey
-current_plan: 3
+current_plan: 4
 status: executing
-stopped_at: Completed 05-02-PLAN.md
-last_updated: "2026-08-09T07:59:52.971Z"
+stopped_at: Completed 05-03-PLAN.md
+last_updated: "2026-08-09T08:09:58.450Z"
 last_activity: 2026-08-09
 last_activity_desc: Phase 4 execution started
 progress:
   total_phases: 6
   completed_phases: 5
   total_plans: 32
-  completed_plans: 28
+  completed_plans: 29
 ---
 
 # Project State
@@ -29,13 +29,13 @@ See: .planning/PROJECT.md (updated 2026-08-05)
 ## Current Position
 
 Phase: 5 (one-inventory-one-journey) — EXECUTING
-Current Plan: 3
+Current Plan: 4
 Total Plans in Phase: 6
-Plan: 3 of 6
+Plan: 4 of 6
 Status: Ready to execute
 Last activity: 2026-08-09 — Phase 5 execution started
 
-Progress: [█████████░] 88%
+Progress: [█████████░] 91%
 
 ## Performance Metrics
 
@@ -72,6 +72,7 @@ Progress: [█████████░] 88%
 | Phase 04 P02 | 12 | 3 tasks | 18 files |
 | Phase 05 P01 | 8 | 2 tasks | 9 files |
 | Phase 05 P02 | 10 min | 3 tasks | 6 files |
+| Phase 05-one-inventory-one-journey P03 | 12min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -116,6 +117,11 @@ Recent decisions affecting current work:
 - [Phase ?]: The unresolved disclosure derives from the visible set and only renders after a completed read, so a failed catalog routes to the failed state, never to the unresolved label
 - [Phase ?]: A partial portrait-family read is treated as failed (the conservative, honest reading) rather than as a partial success
 - [Phase ?]: Leg A proves the two live alias tables agree wherever both have an opinion; completeness against the shipped build remains Legs B and C
+- [Phase ?]: Undo replays a live diff, not the whole snapshot: an operation is emitted only where the current value still differs, so a field the user changed by hand between batch and undo is preserved
+- [Phase ?]: A partial failure produces one toast (counts + Undo action, warning tone, dismissable) rather than stacking a second toast for the failure
+- [Phase ?]: The blocker line lives in the action bar's existing in-flight span with a stable id; the undo case wins when both a batch and a restore could apply, so exactly one reason shows at a time
+- [Phase ?]: Bulk delete keeps its confirmation and gains no undo: a deleted VPK is not recoverable from a snapshot of store state
+- [Phase ?]: Restore counts distinct mods actually restored, not operations applied, matching bulkChangedCount's user-facing semantics
 
 ### Pending Todos
 
@@ -159,6 +165,6 @@ Real-game verification is deferred to the end of this milestone run per explicit
 
 ## Session Continuity
 
-Last session: 2026-08-09T07:59:52.954Z
-Stopped at: Completed 05-02-PLAN.md
+Last session: 2026-08-09T08:09:51.583Z
+Stopped at: Completed 05-03-PLAN.md
 Resume file: None

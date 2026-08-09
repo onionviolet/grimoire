@@ -169,7 +169,7 @@ Plans:
   5. Any bulk action can be undone without rebuilding the selection by hand, and no disabled control leaves its blocker to be guessed
   6. The same state is never given two names on two pages, and every empty state names what is missing, why, and the next action
 
-**Plans**: 2/6 plans executed
+**Plans**: 3/6 plans executed
 
 Plans:
 **Wave 1**
@@ -179,7 +179,7 @@ Plans:
 **Wave 2** *(blocked on Wave 1 completion)*
 
 - [x] 05-02-PLAN.md - Randomization scope captions, an honest unresolved-codename disclosure, the Locker's failed portrait state under render coverage, and Leg A across the whole roster and both alias tables
-- [ ] 05-03-PLAN.md - Snapshot-and-undo for every reversible bulk action, supersession, one-message partial failure, and a stated blocker on every control it disables
+- [x] 05-03-PLAN.md - Snapshot-and-undo for every reversible bulk action, supersession, one-message partial failure, and a stated blocker on every control it disables
 - [ ] 05-04-PLAN.md - Derived descriptions for paks with no useful name, and the recorded answer to the contested global sound inventory variant
 
 **Wave 3** *(blocked on Wave 2 completion)*
@@ -265,5 +265,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phase 6 declar
 | 2. A Supported Fork Release | 6/6 | Complete    | 2026-08-07 |
 | 3. Foundry Completes Its Build Contract | 3/3 | In Progress|  |
 | 4. Locker And Foundry As One Object | 2/2 | In Progress|  |
-| 5. One Inventory, One Journey | 2/6 | In Progress|  |
+| 5. One Inventory, One Journey | 3/6 | In Progress|  |
 | 6. Community Tools Land Inside Grimoire | 7/7 | Complete    | 2026-08-08 |
