@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import { Images, Loader2, AlertCircle, Check, Upload, X, Download, Shuffle } from 'lucide-react';
 import {
   applyCustomHeroCard,
@@ -29,6 +30,7 @@ import FoundryPoolList from '../foundry/ChangePools';
 import { collectFoundryChanges } from '../foundry/changeList';
 import { foundryChangeEntries } from '../../lib/foundryChanges';
 import { buildPortraitInventory, overlappingClaims, portraitProvenanceOf } from '../../lib/portraitInventory';
+import { focusModPath } from '../../lib/provenance';
 import { variantPreviewClass } from './cardSlotStyles';
 import HeroPortraitFamilies from './HeroPortraitFamilies';
 import {
@@ -68,6 +70,7 @@ interface PortraitFileGroup {
  */
 export default function HeroCardPicker({ heroName }: HeroCardPickerProps) {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   // Labels and ordering come from the shared portrait view model, so the base
   // card manifest's `minimap`/`small` and the compiled catalog's `mm`/`sm` are
   // one variant with one name wherever they are shown (#10 Part 2 item 9).
@@ -416,7 +419,7 @@ export default function HeroCardPicker({ heroName }: HeroCardPickerProps) {
               Foundry view, where the pool list scopes to all forged portraits,
               not to this hero. One key, one wording for the same shared pool. */}
           <p className="mt-1 text-[11px] text-text-secondary">{t('foundry.myChanges.shuffleScopeAllForged')}</p>
-          <div className="mt-2"><FoundryPoolList mods={portraitFoundryMods} changes={portraitFoundryChanges} included={foundryShuffleIncluded} onToggleShuffleKey={toggleFoundryShuffleIncluded} onToggleMod={(modId) => void toggleMod(modId)} onOpenInInstalled={(modId) => { window.location.hash = `#/?focusMod=${encodeURIComponent(modId)}`; }} /></div>
+          <div className="mt-2"><FoundryPoolList mods={portraitFoundryMods} changes={portraitFoundryChanges} included={foundryShuffleIncluded} onToggleShuffleKey={toggleFoundryShuffleIncluded} onToggleMod={(modId) => void toggleMod(modId)} onOpenInInstalled={(modId) => navigate(focusModPath(modId))} /></div>
         </div>
       )}
       {fileGroups.length > 0 && (

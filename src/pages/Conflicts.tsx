@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, CheckCircle, RefreshCw, X, EyeOff, Eye, List, LayoutGrid, Trash2, Globe, Ban, Search } from 'lucide-react';
+import { AlertTriangle, CheckCircle, ExternalLink, RefreshCw, X, EyeOff, Eye, List, LayoutGrid, Trash2, Globe, Ban, Search } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import {
   getConflicts,
   disableMod,
@@ -31,6 +32,7 @@ import ConflictFileList from '../components/conflicts/ConflictFileList';
 import { MenuRoot, MenuTrigger, MenuContent, MenuItem, MenuLabel } from '../components/common/menu';
 import Tx from '../components/translation/Tx';
 import { searchConflict } from '../lib/conflictSearch';
+import { focusModPath } from '../lib/provenance';
 import { readPref, writePref } from '../lib/uiPrefs';
 import SearchInput from '../components/common/SearchInput';
 import { useScrollRestore } from '../lib/useScrollRestore';
@@ -152,6 +154,7 @@ function ConflictsSkeleton() {
 
 export default function Conflicts() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const [conflicts, setConflicts] = useState<ModConflict[]>([]);
   const [modsMap, setModsMap] = useState<Map<string, ModWithThumbnail>>(new Map());
   // Enabled mod ids in true load order (index 0 loads first). Drives the
@@ -795,6 +798,17 @@ export default function Conflicts() {
                 >
                   <X className="h-4 w-4" />
                 </button>
+                {modsMap.has(mod.id) && (
+                  <button
+                    type="button"
+                    onClick={() => navigate(focusModPath(mod.id))}
+                    aria-label={t('common.provenance.openInInstalled', 'Open in Installed')}
+                    title={t('common.provenance.openInInstalledHint', 'Open this mod in the Installed list')}
+                    className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md border border-border/60 bg-bg-tertiary/40 text-text-secondary transition-colors hover:bg-bg-tertiary hover:text-text-primary cursor-pointer"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                  </button>
+                )}
               </div>
             );
 
