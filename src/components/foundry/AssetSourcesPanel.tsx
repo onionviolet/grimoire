@@ -291,6 +291,10 @@ export default function AssetSourcesPanel({
                       provenance: t(PROVENANCE_LABEL_KEYS[source.provenance], source.provenance),
                       priority: source.priority,
                     }),
+                    // A Locker-managed VPK is Grimoire's own rebuilt artifact,
+                    // not something the user installed: say so instead of
+                    // leaving the "Third-party" provenance to read as opaque.
+                    ...(source.lockerManaged ? [t('foundry.sources.lockerManaged')] : []),
                     ...(source.wins.length ? [t('foundry.sources.isWinner')] : []),
                     ...(source.managed ? [] : [t('foundry.sources.unmanaged')]),
                   ].join(' · ')}

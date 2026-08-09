@@ -537,6 +537,7 @@
       "meta": "{{provenance}} · priority {{priority}}",
       "isWinner": "winner",
       "unmanaged": "not managed by Grimoire",
+      "lockerManaged": "Locker-managed",
       "auditionHint": "Audition what {{mod}} writes at {{entry}}",
       "auditionFailed": "{{mod}} does not decode to an auditionable clip at {{entry}}.",
       "openInInstalled": "Open in Installed",

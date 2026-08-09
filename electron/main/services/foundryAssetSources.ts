@@ -123,6 +123,10 @@ export function inspectFoundryAssetSources(
         )].sort((a, b) => a.localeCompare(b));
         if (!entries.length) continue;
         const kind = provenance(candidate);
+        const lockerManaged = !!(candidate.metadata?.lockerCosmetics ||
+            candidate.metadata?.lockerSounds ||
+            candidate.metadata?.lockerColors ||
+            candidate.metadata?.lockerTrippySkins);
         sources.push({
             modId: candidate.mod.id,
             modName: candidate.mod.name,
@@ -131,11 +135,8 @@ export function inspectFoundryAssetSources(
             provenance: kind,
             entries,
             wins: [],
-            managed: kind !== 'Third-party',
-            lockerManaged: !!(candidate.metadata?.lockerCosmetics ||
-                candidate.metadata?.lockerSounds ||
-                candidate.metadata?.lockerColors ||
-                candidate.metadata?.lockerTrippySkins),
+            managed: kind !== 'Third-party' || lockerManaged,
+            lockerManaged,
             auditionable: entries.filter((entry) => entry.endsWith('.vsnd_c')),
         });
     }
