@@ -139,7 +139,7 @@ All copy above is written as **i18n key + English value**, per `docs/ui-conventi
 > Populated by the ui-phase UI-consideration probe (Step 9.5). Shape-rooted UI *state*
 > coverage (empty / loading / error / populated / partial / overflow / zero-one-many / long-text).
 
-**Probe run:** 8 elements (the genuinely new/changed surface only — see Scope note for what is already delivered and out of scope), 45 applicable considerations — **31 covered, 12 backstop, 2 unresolved.**
+**Probe run:** 8 elements (the genuinely new or changed surface only, see the Scope note for what is already delivered and out of scope), 65 rows across the element tables: **48 covered, 9 backstop, 6 not applicable, 2 unresolved.** Corrected 2026-08-08: the original header read 45 applicable with 31 covered, 12 backstop and 2 unresolved, which did not match the tables below it. The plan checker recomputed the eight element tables directly and confirmed 48/9/6/2. The tables were always the authority and all 64 applicable rows are represented in the plans' must_haves, with both unresolved rows surfaced as named planner assumptions in 05-01.
 
 ### E1 — Global section selector: `All content | Visuals | Sounds`
 
