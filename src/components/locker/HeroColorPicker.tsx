@@ -40,6 +40,8 @@ import {
 } from '../../lib/abilityColorPreview';
 import { TRIPPY_ANIMATION_LABELS as ANIMATION_LABELS, TRIPPY_STYLE_LABELS } from '../../lib/trippy';
 import TrippyPatternPicker from './TrippyPatternPicker';
+import { recolorApplyConsequence, type RecolorApplyConsequence } from './recolorApplyConsequence';
+import AssetSourcesPanel from '../foundry/AssetSourcesPanel';
 import {
   TRIPPY_ANIMATION_STYLES,
   type TrippyVfxChoice,
@@ -194,6 +196,16 @@ export default function HeroColorPicker({ heroName, onAppliedChange, onStage, st
   const [activeTrippy, setActiveTrippy] = useState<TrippyVfxChoice | null>(null);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  // Pre-write disclosure for the Locker's immediate-apply path: the pure
+  // consequence computed for one exact serialized export request, held with
+  // that request's key so a parameter change re-arms the contested-write gate.
+  const [disclosure, setDisclosure] = useState<{
+    requestKey: string;
+    consequence: RecolorApplyConsequence;
+  } | null>(null);
+  // True only while the disclosure's bake + inspection round trip is in
+  // flight, so the busy hint names the pause instead of a bare spinner.
+  const [checking, setChecking] = useState(false);
   // Foundry staging mode: the "Staged, not yet forged" / "Not staged" status
   // line below is driven by the tray's recolor edit for this hero (the
   // `stagedEdit` prop), never a local copy — the tray stays the single
@@ -360,6 +372,34 @@ export default function HeroColorPicker({ heroName, onAppliedChange, onStage, st
         if (!staged) return; // user declined the enabled-owner acknowledgement
         onStage(staged);
         return;
+      }
+      // Locker mount: disclose before the write. The exact entries come from
+      // the same cache-keyed bake the apply is about to perform, and the
+      // owners from the shared inspection; the consequence is pure over both.
+      // A contested write was already disclosed and the user pressed "Apply
+      // anyway" for this exact write set, so skip straight to the apply.
+      const request = currentExportRequest();
+      const requestKey = JSON.stringify(request);
+      const held = disclosure && disclosure.requestKey === requestKey ? disclosure : null;
+      if (!held?.consequence.contested) {
+        setChecking(true);
+        try {
+          const { entries } = await foundryPrepareRecolorStage(request);
+          const inspection = await foundryInspectAssetSources(entries);
+          const consequence = recolorApplyConsequence(entries, inspection);
+          if (consequence.unreadable.length > 0) {
+            // D-08: an unreadable VPK blocks only this one ambiguous apply.
+            // Nothing is written, enabled, disabled or reordered.
+            setActionError(
+              t('locker.colors.applyUnreadable', { mods: consequence.unreadable.join(', ') }),
+            );
+            return;
+          }
+          setDisclosure({ requestKey, consequence });
+          if (consequence.contested) return; // the button now reads "Apply anyway"
+        } finally {
+          if (mounted.current) setChecking(false);
+        }
       }
       if (mode === 'trippy') {
         const result = await applyTrippyVfx(heroName, {
@@ -533,6 +573,18 @@ export default function HeroColorPicker({ heroName, onAppliedChange, onStage, st
             activeHue !== hue ||
             activeSaturation !== saturation ||
             activeBrightness !== brightness;
+
+  // The disclosure is keyed to one exact serialized export request: the write
+  // set it describes is only the write set that would be written while the
+  // picker selection is unchanged. Any parameter change produces a different
+  // key, so the held disclosure (and any granted confirmation) is stale and
+  // must clear, re-arming the contested-write gate.
+  const requestKey = JSON.stringify(currentExportRequest());
+  const heldContested =
+    disclosure !== null && disclosure.requestKey === requestKey && disclosure.consequence.contested;
+  useEffect(() => {
+    setDisclosure((held) => (held && held.requestKey !== requestKey ? null : held));
+  }, [requestKey]);
 
   const animatedSuffix = (on: boolean) => (on ? ` ${t('locker.colors.animatedSuffix')}` : '');
   const appliedLabel = !applied
@@ -1050,6 +1102,8 @@ export default function HeroColorPicker({ heroName, onAppliedChange, onStage, st
                   : mode === 'trippy'
                     ? t('locker.colors.stageTrippy')
                     : t('locker.colors.stageColor')
+            : heldContested
+              ? t('locker.colors.applyAnyway')
             : applied && !dirty
               ? t('locker.colors.appliedStatus')
               : mode === 'prism'
@@ -1083,6 +1137,34 @@ export default function HeroColorPicker({ heroName, onAppliedChange, onStage, st
         )}
       </div>
 
+      {/* Pre-write disclosure: inline directly under the apply control, never
+          a modal. The exact write set comes from the real bake output and the
+          shared ownership inspection, so the Locker and Foundry resolve
+          ownership through one implementation (AssetSourcesPanel). */}
+      {disclosure && disclosure.requestKey === requestKey && (
+        <div className="rounded-md border border-border bg-bg-secondary/70 p-3 backdrop-blur-sm">
+          <h4 className="text-xs font-semibold text-text-primary">
+            {t('locker.colors.disclosureTitle')}
+          </h4>
+          <p className="mt-0.5 text-[11px] text-text-secondary">
+            {t('locker.colors.disclosureIntro', { count: disclosure.consequence.paths.length })}
+          </p>
+          {disclosure.consequence.contested ? (
+            <p className="mt-1 text-[11px] text-amber-300">
+              {t('locker.colors.disclosureContested', {
+                mods: disclosure.consequence.owners.map((owner) => owner.modName).join(', '),
+                count: disclosure.consequence.contestedPaths.length,
+              })}
+            </p>
+          ) : (
+            <p className="mt-1 text-[11px] text-text-secondary">
+              {t('locker.colors.disclosureUncontested')}
+            </p>
+          )}
+          <AssetSourcesPanel paths={disclosure.consequence.paths} />
+        </div>
+      )}
+
       {onStage && (
         <p className="text-xs text-text-secondary">
           {t('locker.colors.stagesIntoTray')}
@@ -1100,7 +1182,7 @@ export default function HeroColorPicker({ heroName, onAppliedChange, onStage, st
 
       {busy && (
         <p className="text-[11px] text-text-secondary/80">
-          {t('locker.colors.bakingHint')}
+          {checking ? t('locker.colors.checkingOverwrite') : t('locker.colors.bakingHint')}
         </p>
       )}
 
