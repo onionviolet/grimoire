@@ -62,7 +62,7 @@ Shipped work, confirmed against the working tree at v1.26.20 on 2026-08-05. **Th
 
 ### Foundry build contract
 
-- [ ] **REQ-foundry-forge-edit-kinds**: `FoundryForgeEdit` admits recolor and model edits, so a recolor can enter a combined build instead of being refused by the tray. Today the union is `sound | texture` only. `foundryForge.ts` would also misalign its `built` array against `request.edits` if a third kind were added, because only sound and texture push; fix the loop when the union widens, or keep the type preventing it.
+- [x] **REQ-foundry-forge-edit-kinds**: `FoundryForgeEdit` admits recolor and model edits, so a recolor can enter a combined build instead of being refused by the tray. Today the union is `sound | texture` only. `foundryForge.ts` would also misalign its `built` array against `request.edits` if a third kind were added, because only sound and texture push; fix the loop when the union widens, or keep the type preventing it.
 - [x] **REQ-foundry-sound-shuffle-surfacing**: The existing hero sound launch-shuffle controls are reachable from Foundry with a link back to the Locker, so a user is not sent to a different page to manage a pool they are looking at. Global-sound shuffle is already safe: the event-level persisted pool that was its precondition now generalizes to any asset path.
 - [x] **REQ-foundry-pool-audition-fidelity**: Auditioning a randomizer pool plays every clip in the pool. Delivered before this phase: `useClipPlayer`'s `advancePoolCursor` walks the whole pool one press at a time (wraps at the end, normalizes stale and negative cursors, stays at index 0 for a single-clip or empty pool), gated by the default-on `forkPoolCycling` setting. Shipped 2026-07-26 in commit `9b01c63` and re-confirmed against `src/components/foundry/useClipPlayer.ts` and `src/components/settings/ForkBuildCard.tsx` (see 03-CONTEXT.md D-06 through D-08). The swap itself is unaffected: it runs `--pool all`.
 
@@ -158,7 +158,7 @@ Variant 3's declared sequencing hazard has partly resolved itself: `HeroDetailFr
 | REQ-upstream-merge-aug-2026 | Phase 2 | Complete |
 | REQ-social-service-disposition | Phase 2 | Complete |
 | REQ-experimental-gate-and-doc-drift | Phase 2 | Complete |
-| REQ-foundry-forge-edit-kinds | Phase 3 | Pending |
+| REQ-foundry-forge-edit-kinds | Phase 3 | Complete |
 | REQ-foundry-sound-shuffle-surfacing | Phase 3 | Complete |
 | REQ-foundry-pool-audition-fidelity | Delivered before Phase 3 | Complete: shipped 2026-07-26 in 9b01c63, re-confirmed against src/components/foundry/useClipPlayer.ts (per-press pool cycling) and src/components/settings/ForkBuildCard.tsx (default-on forkPoolCycling); see 03-CONTEXT.md D-06..D-08 |
 | REQ-locker-foundry-parity-lanes | Phase 4 | Pending |
