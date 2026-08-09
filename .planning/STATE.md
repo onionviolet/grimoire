@@ -5,16 +5,16 @@ milestone_name: milestone
 current_phase: 5
 current_phase_name: one-inventory-one-journey
 current_plan: 6
-status: executing
-stopped_at: Completed 05-05-PLAN.md
-last_updated: "2026-08-09T08:40:37.357Z"
+status: verifying
+stopped_at: Completed 05-06-PLAN.md
+last_updated: "2026-08-09T08:53:29.576Z"
 last_activity: 2026-08-09
 last_activity_desc: Phase 4 execution started
 progress:
   total_phases: 6
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 32
-  completed_plans: 31
+  completed_plans: 32
 ---
 
 # Project State
@@ -32,10 +32,10 @@ Phase: 5 (one-inventory-one-journey) — EXECUTING
 Current Plan: 6
 Total Plans in Phase: 6
 Plan: 6 of 6
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-08-09 — Phase 5 execution started
 
-Progress: [██████████] 97%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -75,6 +75,7 @@ Progress: [██████████] 97%
 | Phase 05-one-inventory-one-journey P03 | 12min | 3 tasks | 3 files |
 | Phase 05 P04 | 8min | 3 tasks | 5 files |
 | Phase 05-one-inventory-one-journey P05 | 20 | 2 tasks | 2 files |
+| Phase 05-one-inventory-one-journey P06 | 12 | 3 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -131,6 +132,10 @@ Recent decisions affecting current work:
 - [Phase ?]: 2026-08-09 (05-05): Committed the pre-existing auto-advance config change as housekeeping so the alias sweep ran on a clean tree; git stash is prohibited in this environment
 - [Phase ?]: 2026-08-09 (05-05): The portrait alias sweep verdict record uses 'family present' as the documented healthy case the four-way table has no defect row for
 - [Phase ?]: 2026-08-09 (05-05): Rendered family counts and Locker hero-id rewrites are stability-checked because a raw first DOM match can catch the previous route's stale line
+- [Phase ?]: 2026-08-09 (05-06): Per-site blocker-line ids in Conflicts.tsx (conflicts-card-, conflicts-ignored-pair-, conflicts-ignored-files-, conflicts-ignored-global-, conflicts-ignored-mod-) keep one visible blocker line per disabled control without duplicate HTML ids when a pending pair appears in more than one panel
+- [Phase ?]: 2026-08-09 (05-06): The conflict first-load flag (hasLoaded) is set only on successful scans, so a failed first load's retry still shows the skeleton because no prior answer exists to preserve
+- [Phase ?]: 2026-08-09 (05-06): The rescanning line renders in the main list return only; the empty and error branches stay untouched per the plan
+- [Phase ?]: 2026-08-09 (05-06): The four superseded provenance label keys plus openInInstalledHint are now unread and deferred to the catalog owner (plan 05-01) for deliberate removal
 
 ### Pending Todos
 
@@ -174,6 +179,6 @@ Real-game verification is deferred to the end of this milestone run per explicit
 
 ## Session Continuity
 
-Last session: 2026-08-09T08:40:37.340Z
-Stopped at: Completed 05-05-PLAN.md
+Last session: 2026-08-09T08:53:29.265Z
+Stopped at: Completed 05-06-PLAN.md
 Resume file: None

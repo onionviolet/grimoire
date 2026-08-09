@@ -169,7 +169,7 @@ Plans:
   5. Any bulk action can be undone without rebuilding the selection by hand, and no disabled control leaves its blocker to be guessed
   6. The same state is never given two names on two pages, and every empty state names what is missing, why, and the next action
 
-**Plans**: 5/6 plans executed
+**Plans**: 6/6 plans executed
 
 Plans:
 **Wave 1**
@@ -188,7 +188,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 05-06-PLAN.md - The disabled-blocker contract extended to Profiles apply, Conflicts resolve and the Foundry forge and install path, a conflict recheck that keeps its answer, and provenance consolidated to one phrase and one target
+- [x] 05-06-PLAN.md - The disabled-blocker contract extended to Profiles apply, Conflicts resolve and the Foundry forge and install path, a conflict recheck that keeps its answer, and provenance consolidated to one phrase and one target
 
 **Waves**: 1 = {05-01}; 2 = {05-02, 05-03, 05-04}; 3 = {05-05}; 4 = {05-06}
 
@@ -265,5 +265,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phase 6 declar
 | 2. A Supported Fork Release | 6/6 | Complete    | 2026-08-07 |
 | 3. Foundry Completes Its Build Contract | 3/3 | In Progress|  |
 | 4. Locker And Foundry As One Object | 2/2 | In Progress|  |
-| 5. One Inventory, One Journey | 5/6 | In Progress|  |
+| 5. One Inventory, One Journey | 6/6 | In Progress|  |
 | 6. Community Tools Land Inside Grimoire | 7/7 | Complete    | 2026-08-08 |
