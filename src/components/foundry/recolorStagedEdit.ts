@@ -45,7 +45,16 @@ export async function prepareRecolorStagedEdit(ctx: RecolorStageContext): Promis
   const entries = await ctx.discoverEntries(ctx.request);
   if (!entries.length) throw new Error('The recolor bake produced no VPK entries; nothing can be staged.');
   const sources = await ctx.inspect(entries);
-  if (sources.unreadableMods.length > 0) throw new Error(ctx.unreadableMessage);
+  if (sources.unreadableMods.length > 0) {
+    // The caller's message may carry a {{mods}} placeholder naming the
+    // unreadable VPKs; the mod list is only known here, after inspection.
+    throw new Error(
+      ctx.unreadableMessage.replace(
+        /\{\{mods\}\}/g,
+        sources.unreadableMods.map((mod) => mod.modName).join(', '),
+      ),
+    );
+  }
   const enabled = sources.sources.filter((source) => source.enabled);
   if (enabled.length > 0 && !(await ctx.confirm(enabled.map((source) => source.modName)))) return null;
   return {
