@@ -4,17 +4,17 @@ milestone: v1.26.20
 milestone_name: milestone
 current_phase: 3
 current_phase_name: Foundry Completes Its Build Contract
-current_plan: 2
+current_plan: 3
 status: executing
-stopped_at: Completed 03-01-PLAN.md
-last_updated: "2026-08-09T05:43:45.811Z"
+stopped_at: Completed 03-02-PLAN.md
+last_updated: "2026-08-09T05:54:33.865Z"
 last_activity: 2026-08-08
 last_activity_desc: Phase 06 complete, transitioned to Phase 3
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 32
-  completed_plans: 22
+  completed_plans: 23
 ---
 
 # Project State
@@ -29,13 +29,13 @@ See: .planning/PROJECT.md (updated 2026-08-05)
 ## Current Position
 
 Phase: 3 — Foundry Completes Its Build Contract
-Current Plan: 2
+Current Plan: 3
 Total Plans in Phase: 3
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
 Last activity: 2026-08-08 — Phase 06 complete, transitioned to Phase 3
 
-Progress: [███████░░░] 69%
+Progress: [███████░░░] 72%
 
 ## Performance Metrics
 
@@ -66,6 +66,7 @@ Progress: [███████░░░] 69%
 | Phase 02 P04 | 40min | 3 tasks | 36 files |
 | Phase 02 P05 | 20min | 2 tasks | 1 files |
 | Phase 03 P01 | 10 | 2 tasks | 22 files |
+| Phase 03 P02 | 7 | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -84,6 +85,11 @@ Recent decisions affecting current work:
 - [Phase ?]: Recolor staged-edit id is recolor:<canonical hero name> so re-staging replaces in place through Foundry.tsx's id filter (03-01)
 - [Phase ?]: Recolor forge cleanup is a no-op: the bake path is the shared per-hero ability-colors cache the Locker Apply and Export also read (03-01)
 - [Phase ?]: Staging-time entry discovery and the forge share one cached bake, so the tray write set cannot drift from the merged VPK (03-01)
+- [Phase ?]: Extract the shuffle toggle into one component (isIncluded/onToggle/name/armed/className); each Locker call site keeps its positioning and hover-reveal group variant via className
+- [Phase ?]: Foundry pool membership reads/writes appStore existing soundShuffleIncluded Set through toggleSoundShuffleIncluded; no second key or store (D-10, D-11)
+- [Phase ?]: The Foundry shuffle block renders only for hero-scoped views (scopedHero resolves through heroNames); zero-mod heroes render nothing (D-11 absence)
+- [Phase ?]: REQ-foundry-pool-audition-fidelity recorded as delivered before this phase, citing commit 9b01c63 and the source files read to confirm (D-06..D-08)
+- [Phase ?]: Row-toggle unpressed background normalized from bg-black/55 to bg-black/65 so the shared component owns the colour states
 
 ### Pending Todos
 
@@ -118,6 +124,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-08-09T05:43:39.713Z
-Stopped at: Completed 03-01-PLAN.md
+Last session: 2026-08-09T05:54:25.523Z
+Stopped at: Completed 03-02-PLAN.md
 Resume file: None
