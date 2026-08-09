@@ -467,7 +467,11 @@ export default function HeroColorPicker({ heroName, onAppliedChange, onStage }: 
   };
 
   const handleRemove = async () => {
-    if (busy) return;
+    // The immediate revert is a Locker-mount action: on the Foundry staging
+    // mount, Apply stages into the tray and the Remove button is not rendered
+    // (see below). This guard keeps a programmatic/legacy call from silently
+    // deleting the Locker's applied recolor from a Foundry surface.
+    if (busy || onStage) return;
     setBusy(true);
     setActionError(null);
     try {
@@ -1063,7 +1067,7 @@ export default function HeroColorPicker({ heroName, onAppliedChange, onStage }: 
           <Download className="h-3.5 w-3.5" />
           {t('locker.colors.exportVpk')}
         </button>
-        {applied && (
+        {!onStage && applied && (
           <button
             type="button"
             onClick={handleRemove}
