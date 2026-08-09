@@ -9,7 +9,8 @@
     "executed_but_verification_deferred": ["3", "4", "5"]
   },
   "remaining": [
-    "finish phase 5 code review (05-REVIEW.md in flight) and commit artifacts",
+    "fix phase 5 review findings: CR-01 bulk-undo stale-closure bug (offerBulkUndo), WR-01 undo blocker line unmounted, WR-02 raw-path html ids; see 05-REVIEW.md",
+    "commit phase 5 review/fix artifacts",
     "run deferred real-game verification: $gsd-verify-work 3, 4, 5",
     "milestone lifecycle: $gsd-audit-milestone -> $gsd-complete-milestone v1.26.20 -> $gsd-cleanup"
   ],
