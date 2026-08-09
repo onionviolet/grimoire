@@ -25,7 +25,7 @@ The Locker portrait-family work formerly bundled into parity lane 4 is not in th
 
 ### Foundry tray preview
 
-- **D-04:** Preview the complete reviewed tray result stacked above the hero's currently enabled skins. Do not preview only the most recent edit. The result must answer what the user will see after forging against their current installed state.
+- **D-04 [informational]:** Already delivered by commit `f614bb7`, verified against the working tree three times. Retained as the standing contract the shipped code must keep honouring, not as work for this phase. Preview the complete reviewed tray result stacked above the hero's currently enabled skins. Do not preview only the most recent edit. The result must answer what the user will see after forging against their current installed state.
 - **D-05:** A preview build is temporary in the strong sense: it uses an explicit path-based pose source, never installs, never changes load order, never writes to the addons folder, and is cleaned up when replaced, closed, navigated away from, or when the owning window exits.
 - **D-06:** Build only while the preview is open. Debounce tray changes, cancel or supersede stale builds, retain the last valid preview while the replacement is building, and label stale, loading, failed, and current states distinctly. A failed preview does not invalidate the reviewed forge request.
 
@@ -37,15 +37,15 @@ The Locker portrait-family work formerly bundled into parity lane 4 is not in th
 
 ### Foundry image sourcing
 
-- **D-10:** `PortraitEditor` offers three sources through one intake surface: file drop or picker, images found in the selected mod, and recently used images. The crop frame remains locked to the selected template's native aspect ratio.
-- **D-11:** Recent-image entries are references to existing user-selected sources or safe app-owned derivatives, not a new opaque image library. Missing sources remain visible with a clear recovery action instead of silently disappearing.
-- **D-12:** Image intake may be shared, but `PortraitEditor` and Locker image components remain separate authoring surfaces. Staging continues through `prepareVisualStagedEdit` unchanged.
+- **D-10 [informational]:** Already delivered by commit `f614bb7`, verified against the working tree three times. Retained as the standing contract the shipped code must keep honouring, not as work for this phase. `PortraitEditor` offers three sources through one intake surface: file drop or picker, images found in the selected mod, and recently used images. The crop frame remains locked to the selected template's native aspect ratio.
+- **D-11 [informational]:** Already delivered by commit `f614bb7`, verified against the working tree three times. Retained as the standing contract the shipped code must keep honouring, not as work for this phase. Recent-image entries are references to existing user-selected sources or safe app-owned derivatives, not a new opaque image library. Missing sources remain visible with a clear recovery action instead of silently disappearing.
+- **D-12 [informational]:** Already delivered by commit `f614bb7`, verified against the working tree three times. Retained as the standing contract the shipped code must keep honouring, not as work for this phase. Image intake may be shared, but `PortraitEditor` and Locker image components remain separate authoring surfaces. Staging continues through `prepareVisualStagedEdit` unchanged.
 
 ### Foundry hero grid state
 
-- **D-13:** Favorites are one shared hero preference across Locker and Foundry. Do not introduce a Foundry-only favorite store.
+- **D-13 [informational]:** Already delivered by commit `f614bb7`, verified against the working tree three times. Retained as the standing contract the shipped code must keep honouring, not as work for this phase. Favorites are one shared hero preference across Locker and Foundry. Do not introduce a Foundry-only favorite store.
 - **D-14:** The authored-change badge counts the same per-hero entries used by `MyChanges`. The badge opens that hero's workshop and should distinguish zero from unavailable or still-loading data.
-- **D-15:** The grid follows the same image fallback behavior as the detail frame and removes hardcoded visible English while this file is already being changed.
+- **D-15 [informational]:** Already delivered by commit `f614bb7`, verified against the working tree three times. Retained as the standing contract the shipped code must keep honouring, not as work for this phase. The grid follows the same image fallback behavior as the detail frame and removes hardcoded visible English while this file is already being changed.
 
 ### the agent's Discretion
 

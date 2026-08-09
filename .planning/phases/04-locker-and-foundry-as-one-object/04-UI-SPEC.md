@@ -118,7 +118,7 @@ All copy above is written as **i18n key + English value**, per `docs/ui-conventi
 > Populated by the ui-phase UI-consideration probe (Step 9.5). Shape-rooted UI *state*
 > coverage (empty / loading / error / populated / partial / overflow / zero-one-many / long-text).
 
-**Probe run:** 6 elements (the genuinely new/changed surface only — see Scope note for what is already delivered and out of scope), 33 applicable considerations — **21 covered, 11 backstop, 1 unresolved.**
+**Probe run:** 6 elements (the genuinely new or changed surface only, see the Scope note for what is already delivered and out of scope), 41 applicable considerations: **34 covered, 6 backstop, 1 unresolved.** Corrected 2026-08-08: the original header read 33/21/11, which did not match the tables below it. The plan checker recomputed the six element tables directly and confirmed 41/34/6/1. The tables were always the authority and all 41 rows are represented in the plans' must_haves.
 
 ### E1 — Stage-mode control (`SegmentedControl`, `topRight`, both surfaces)
 
