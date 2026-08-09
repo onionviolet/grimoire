@@ -28,6 +28,7 @@ import AudioPreviewPlayer from '../AudioPreviewPlayer';
 import DownloadableSkinsSection from './DownloadableSkinsSection';
 import { LockerModImagePicker } from './LockerModImagePicker';
 import { Select } from '../common/forms';
+import ShuffleToggleButton from '../foundry/ShuffleToggleButton';
 
 interface SkinGroup {
   key: string;
@@ -644,31 +645,13 @@ function SkinGroupCard({
           when included, shown on every card while the shuffle switch is armed) -
           the hover-only image/delete buttons extend leftward from it. */}
       {onToggleIncluded && (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggleIncluded();
-          }}
-          aria-pressed={isIncluded}
-          aria-label={
-            isIncluded
-              ? t('locker.randomize.removeFromShuffle', { name: primary.name })
-              : t('locker.randomize.addToShuffle', { name: primary.name })
-          }
-          title={
-            isIncluded
-              ? t('locker.randomize.removeFromShuffle', { name: primary.name })
-              : t('locker.randomize.addToShuffle', { name: primary.name })
-          }
-          className={`absolute right-1.5 top-1.5 z-30 flex h-7 w-7 items-center justify-center rounded-full backdrop-blur-sm transition-[opacity,background-color,color] duration-150 focus-visible:opacity-100 group-hover/card:opacity-100 ${
-            isIncluded
-              ? 'opacity-100 bg-accent text-accent-foreground hover:bg-accent/80'
-              : `${shuffleArmed ? 'opacity-100' : 'opacity-0'} bg-black/65 text-white/90 hover:bg-accent/70 hover:text-accent-foreground`
-          }`}
-        >
-          <Shuffle className="h-3.5 w-3.5" />
-        </button>
+        <ShuffleToggleButton
+          isIncluded={isIncluded ?? false}
+          onToggle={onToggleIncluded}
+          name={primary.name}
+          armed={shuffleArmed}
+          className="absolute right-1.5 top-1.5 z-30 group-hover/card:opacity-100"
+        />
       )}
 
       {/* Sound preview. All variants of one GameBanana submission share the
@@ -844,31 +827,13 @@ function SkinGroupRow({
       {/* Add to shuffle (see SkinGroupCard). Anchors the top-right corner; the
           hover-only image/delete buttons extend leftward from it. */}
       {onToggleIncluded && (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggleIncluded();
-          }}
-          aria-pressed={isIncluded}
-          aria-label={
-            isIncluded
-              ? t('locker.randomize.removeFromShuffle', { name: primary.name })
-              : t('locker.randomize.addToShuffle', { name: primary.name })
-          }
-          title={
-            isIncluded
-              ? t('locker.randomize.removeFromShuffle', { name: primary.name })
-              : t('locker.randomize.addToShuffle', { name: primary.name })
-          }
-          className={`absolute right-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full backdrop-blur-sm transition-[opacity,background-color,color] duration-150 focus-visible:opacity-100 group-hover/row:opacity-100 ${
-            isIncluded
-              ? 'opacity-100 bg-accent text-accent-foreground hover:bg-accent/80'
-              : `${shuffleArmed ? 'opacity-100' : 'opacity-0'} bg-black/55 text-white/90 hover:bg-accent/70 hover:text-accent-foreground`
-          }`}
-        >
-          <Shuffle className="h-3.5 w-3.5" />
-        </button>
+        <ShuffleToggleButton
+          isIncluded={isIncluded ?? false}
+          onToggle={onToggleIncluded}
+          name={primary.name}
+          armed={shuffleArmed}
+          className="absolute right-2 top-2 z-10 group-hover/row:opacity-100"
+        />
       )}
       <button
         type="button"
