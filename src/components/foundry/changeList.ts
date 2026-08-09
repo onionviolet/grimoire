@@ -172,6 +172,10 @@ export function changeFilterOf(entry: FoundryChangeEntry): FoundryChangeFilter {
       // a runtime-forged value shelves under `other` like the UI fallback
       // (FileQuestion icon / neutral Change label in My changes).
       const impossible: never = entry.kind;
+      // Read the guard so noUnusedLocals stays satisfied: the assignment above
+      // is what makes a fourth kind a compile error; the runtime value never
+      // reaches this point through a typed call.
+      void impossible;
       return 'other';
     }
   }
