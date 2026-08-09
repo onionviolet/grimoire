@@ -86,6 +86,8 @@ import {
   type GlobalRailRowInput,
 } from '../lib/globalInventory';
 import { useDiscoveredSoundPaths } from '../components/locker/useDiscoveredSoundPaths';
+import { useUnnamedPakEntries } from '../components/locker/useUnnamedPakEntries';
+import { derivePakDescription, isUnnamedPakName } from '../lib/derivedPakName';
 import {
   appendHeroTypeaheadCharacter,
   backspaceHeroTypeahead,
@@ -1776,6 +1778,9 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
   // on the mod's own VPK entries instead of the category its author picked on
   // GameBanana. This is what moves item sounds off the Announcer shelf.
   const discoveredPaths = useDiscoveredSoundPaths(mods);
+  // What each unnamed pak writes, so a card whose name is only a pak slot can
+  // lead with a description derived from the mod's own entries (D-19).
+  const unnamedPakEntries = useUnnamedPakEntries(mods);
   const globalSoundEntries = useMemo(
     () => buildSoundInventory(mods, { discoveredPaths }).global,
     [mods, discoveredPaths]
@@ -2183,6 +2188,30 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
                   // hidden imagery into the glass tint, even blurred.
                   const glassBackdropUrl =
                     mod.thumbnailUrl && !(mod.nsfw && hideNsfw) ? mod.thumbnailUrl : null;
+                  // A mod whose name is only a pak slot has no useful name to
+                  // show, so its card leads with what it writes once the entry
+                  // read has landed. While the read is in flight the raw name
+                  // stays, and an unreadable or empty VPK falls through to the
+                  // unknown label rather than a guessed description (D-19).
+                  const unnamedPakPaths = isUnnamedPakName(mod.name)
+                    ? unnamedPakEntries[mod.id]
+                    : undefined;
+                  let unnamedPakLabel: string | null = null;
+                  if (unnamedPakPaths !== undefined) {
+                    const derived = derivePakDescription(unnamedPakPaths);
+                    if (derived.kind === 'unknown') {
+                      unnamedPakLabel = t('locker.global.unnamedPakUnknown');
+                    } else {
+                      const entryList = derived.entries.join(', ');
+                      unnamedPakLabel =
+                        derived.extra === 0
+                          ? t('locker.global.unnamedPakDerived', { entryList })
+                          : t('locker.global.unnamedPakDerivedMore', {
+                              entryList,
+                              count: derived.extra,
+                            });
+                    }
+                  }
                   return (
                     <div
                       // Prop containers key on the content-stable sha256: their
@@ -2373,12 +2402,31 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
 
                       {/* Title only — the whole card is the enable/disable control. */}
                       <div className="mt-auto px-0.5">
-                        <h3
-                          className="min-w-0 truncate text-[15px] font-semibold leading-[19px] text-text-primary"
-                          title={mod.name}
-                        >
-                          {mod.name}
-                        </h3>
+                        {unnamedPakLabel === null ? (
+                          <h3
+                            className="min-w-0 truncate text-[15px] font-semibold leading-[19px] text-text-primary"
+                            title={mod.name}
+                          >
+                            {mod.name}
+                          </h3>
+                        ) : (
+                          <>
+                            {/* An unnamed pak keeps its raw name as a secondary
+                                identity line beneath the derived description. */}
+                            <h3
+                              className="min-w-0 truncate text-[15px] font-semibold leading-[19px] text-text-primary"
+                              title={unnamedPakLabel}
+                            >
+                              {unnamedPakLabel}
+                            </h3>
+                            <p
+                              className="truncate text-[11px] text-text-secondary"
+                              title={mod.name}
+                            >
+                              {mod.name}
+                            </p>
+                          </>
+                        )}
                       </div>
 
                       {/* Audio preview for sound-backed global mods (Killstreak
