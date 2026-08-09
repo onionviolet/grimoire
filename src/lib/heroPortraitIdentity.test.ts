@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { allHeroIdentities } from './heroIdentity';
+import { allHeroIdentities, resolveHeroByName } from './heroIdentity';
+import { canonicalHeroName, HERO_NAMES_SORTED } from './lockerUtils';
 import {
   displayNameForHeroCodename,
   heroCodenameScope,
@@ -158,6 +159,48 @@ describe('alias table consistency', () => {
         expect(existing ?? hero).toBe(hero);
         owner.set(code, hero);
       }
+    }
+  });
+
+  it('never maps one codename to two heroes across the whole roster', () => {
+    // The spelled-out MISMATCHED case above catches a codename silently
+    // disappearing; this derived case catches a collision anywhere, including
+    // between two heroes neither list names. Because it iterates the roster
+    // directly, a hero added later is checked automatically instead of
+    // escaping the fixture.
+    const owner = new Map<string, string>();
+    for (const hero of allHeroIdentities()) {
+      for (const code of heroCodenameScope(hero.displayName)) {
+        const existing = owner.get(code);
+        expect(existing ?? hero.displayName).toBe(hero.displayName);
+        owner.set(code, hero.displayName);
+      }
+    }
+  });
+
+  // The second live table is lockerUtils.ts's HERO_DISPLAY_ALIASES collapse
+  // (canonicalHeroName / HERO_NAMES_SORTED). These cases prove the two tables
+  // agree wherever both have an opinion; they cannot prove either table is
+  // complete, and completeness against the shipped build is what Legs B and C
+  // measure.
+  it('collapsing a display duplicate never changes which hero the roster resolves', () => {
+    for (const hero of allHeroIdentities()) {
+      const canonical = canonicalHeroName(hero.displayName);
+      expect(resolveHeroByName(canonical)).not.toBeNull();
+      expect(resolveHeroByName(canonical)).toBe(resolveHeroByName(hero.displayName));
+      for (const alias of hero.displayAliases ?? []) {
+        const aliasCanonical = canonicalHeroName(alias);
+        expect(resolveHeroByName(aliasCanonical)).not.toBeNull();
+        expect(resolveHeroByName(aliasCanonical)).toBe(resolveHeroByName(alias));
+      }
+    }
+  });
+
+  it('resolves every sorted shared-roster name through the display-alias collapse', () => {
+    for (const name of HERO_NAMES_SORTED) {
+      const canonical = canonicalHeroName(name);
+      expect(resolveHeroByName(canonical)).not.toBeNull();
+      expect(resolveHeroByName(canonical)).toBe(resolveHeroByName(name));
     }
   });
 
