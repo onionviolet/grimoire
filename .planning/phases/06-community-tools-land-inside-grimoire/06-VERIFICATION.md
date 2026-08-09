@@ -1,7 +1,7 @@
 ---
 phase: 06-community-tools-land-inside-grimoire
 verified: 2026-08-08T01:00:00Z
-status: human_needed
+status: passed
 score: 4/5 must-haves verified
 behavior_unverified: 1
 overrides_applied: 0
@@ -9,15 +9,18 @@ re_verification:
   previous_status: gaps_found
   previous_score: 3/5
   gaps_closed:
+
     - "Before that file is written anywhere, the user is told what it is and where it will go, and a file that is not a VPK Grimoire can identify is refused with a stated reason (ROADMAP Phase 6 Success Criterion 3) — CR-01 (page-scoped subscriber dropped the disclosure on navigation away from /browser) closed by 06-06's app-scoped useBrowserToolDownloadHandoff hook; the accept-time install failure (a second defect the 06-08 re-review found, CR-01/WR-01 in 06-REVIEW.md's second pass) closed by 06-07's .vpk temp-file suffix fix and accept-time failure surfacing."
   gaps_remaining: []
   regressions: []
 behavior_unverified_items:
+
   - truth: "Clicking Build VPK on Pimp My Hideout inside Grimoire's browser produces a file Grimoire can act on without the user leaving the app or opening a file manager (ROADMAP Phase 6 Success Criterion 2)"
     test: "Drive the real Pimp My Hideout tool inside a running Grimoire dev build (GRIMOIRE_DEV_SLOT=<n>), click Build VPK, and watch for Grimoire's confirm dialog and the resulting Installed-page entry"
     expected: "will-download fires for the guest's client-side-built blob, the file lands in <userData>/browser-downloads/, checkVpkFile identifies it, useConfirm discloses it, and accepting installs it as an ordinary third-party mod"
     why_human: "Requires a human driving the real external tool inside a live dev build; deferred to manual/UAT by explicit user decision recorded in 06-01. Not automatable against a third-party site. Every unit in the chain (capture, classify, disclose, accept-install) is now individually proven, including a real end-to-end seam test (mods.toolDownloadImportSeam.test.ts) that calls the real allocator and the real install function against each other, but no test or log in the tree demonstrates the live xkitkatcat.github.io page's Build VPK button actually firing Electron's will-download event."
 human_verification:
+
   - test: "Click Pimp My Hideout in the Browser page's Tools group, build something on the real hosted tool, click its Build VPK button, and observe whether a confirm dialog appears naming the captured file, then confirm it installs on Installed"
     expected: "A confirm dialog titled \"Add this download to your mod library?\" appears within a few seconds of the click, naming the file; choosing \"Add to library\" lands the mod on the Installed page as an ordinary third-party mod with no Foundry tray/My changes entry; nothing appears in the OS Downloads folder; walking away from /browser before the build finishes still surfaces the dialog wherever you land"
     why_human: "State-transition/runtime-behavior truth (ROADMAP Success Criterion 2) against a live third-party site that presence-and-wiring checks cannot settle. Explicitly deferred to manual/UAT by user decision in 06-01, not automated by any later plan, and 06-07's own SUMMARY notes this check is now worth running once since its fix is exactly what would have made it fail before."

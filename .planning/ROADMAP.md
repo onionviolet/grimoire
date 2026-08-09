@@ -134,7 +134,7 @@ Plans:
 
   1. A staged visual edit is visible on the 3D model before the user forges it
   2. A Locker action that will overwrite something says what it will overwrite before it runs
-  3. The Locker knows a portrait has variants, and Foundry can source an image without requiring a file drop
+  3. Foundry can source an image without requiring a file drop
   4. A hero card in the Foundry grid carries the same state a Locker hero card does: favorites, and a count of what the user has already made for that hero
 
 **Plans**: TBD
@@ -153,9 +153,10 @@ Plans:
 
   1. Opening Global never strands the user in an empty category while installed global content sits hidden behind another tab, and the mod counts its sections report agree with each other
   2. Portrait management has one stated journey, and where two controls do the same thing that is a recorded decision rather than an accident
-  3. Abrams and every other hero whose codename mismatches resolve to the same portrait family whether reached from the Locker or from Foundry, and an empty portrait view says which of "not indexed", "loading", or "failed" is true
-  4. Any bulk action can be undone without rebuilding the selection by hand, and no disabled control leaves its blocker to be guessed
-  5. The same state is never given two names on two pages, and every empty state names what is missing, why, and the next action
+  3. The Locker knows a portrait has variants
+  4. Abrams and every other hero whose codename mismatches resolve to the same portrait family whether reached from the Locker or from Foundry, and an empty portrait view says which of "not indexed", "loading", or "failed" is true
+  5. Any bulk action can be undone without rebuilding the selection by hand, and no disabled control leaves its blocker to be guessed
+  6. The same state is never given two names on two pages, and every empty state names what is missing, why, and the next action
 
 **Plans**: TBD
 **UI hint**: yes
