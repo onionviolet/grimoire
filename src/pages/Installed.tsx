@@ -2532,12 +2532,19 @@ export default function Installed() {
   // Dismisses any previous offer first so a newer batch supersedes it rather
   // than stacking a second toast, skips the toast entirely when nothing
   // actually changed, and otherwise offers Undo with the captured snapshot and
-  // the selection a restore should bring back.
+  // the selection a restore should bring back. When `partial` is given, the
+  // single message reports both counts and keeps the same Undo action, so a
+  // batch that could not change every target still offers its changed subset
+  // for rollback (D-15).
   const offerBulkUndo = useCallback(
-    (snapshot: BulkModSnapshot[], selection: string[]) => {
+    (
+      snapshot: BulkModSnapshot[],
+      selection: string[],
+      partial?: { done: number; total: number },
+    ) => {
       if (undoOffer) dismissToast(undoOffer.toastId);
       const changed = bulkChangedCount(snapshot, mods);
-      if (changed === 0) return;
+      if (changed === 0 && !partial) return;
 
       const runRestore = async () => {
         setUndoBusy(true);
@@ -2577,12 +2584,28 @@ export default function Installed() {
         }
       };
 
-      const toastId = showToast(t('common.bulkUndo.message', { count: changed }), {
-        actionLabel: t('common.bulkUndo.action'),
-        onAction: () => {
-          void runRestore();
-        },
-      });
+      const toastId = partial
+        ? showToast(
+            t('common.bulkUndo.partial', {
+              done: partial.done,
+              total: partial.total,
+              failed: Math.max(0, partial.total - partial.done),
+            }),
+            {
+              tone: 'warning',
+              dismissable: true,
+              actionLabel: t('common.bulkUndo.action'),
+              onAction: () => {
+                void runRestore();
+              },
+            },
+          )
+        : showToast(t('common.bulkUndo.message', { count: changed }), {
+            actionLabel: t('common.bulkUndo.action'),
+            onAction: () => {
+              void runRestore();
+            },
+          });
       setUndoOffer({ toastId, snapshot, selection });
     },
     [mods, t, undoOffer, toggleMod, setModLockerHero, setModGlobalType, loadMods],
@@ -2600,16 +2623,22 @@ export default function Installed() {
     // this snapshot and re-selects these ids.
     const selection = selectedMods.map((m) => m.id);
     const snapshot = captureBulkSnapshot(mods, selection);
+    let succeeded = 0;
     setBulkProgress({ verb: 'Enabling', done: 0, total: targets.length });
     for (let i = 0; i < targets.length; i++) {
       const ok = await toggleMod(targets[i].id);
+      if (ok) succeeded += 1;
       setBulkProgress({ verb: 'Enabling', done: i + 1, total: targets.length });
       // Stop the batch as soon as we hit the 99-enabled cap rather than firing
       // a failing enable for every remaining selection.
       if (!ok) break;
     }
     setBulkProgress(null);
-    offerBulkUndo(snapshot, selection);
+    if (succeeded < targets.length) {
+      offerBulkUndo(snapshot, selection, { done: succeeded, total: targets.length });
+    } else {
+      offerBulkUndo(snapshot, selection);
+    }
     exitSelectMode();
   };
 
@@ -2621,14 +2650,20 @@ export default function Installed() {
     }
     const selection = selectedMods.map((m) => m.id);
     const snapshot = captureBulkSnapshot(mods, selection);
+    let succeeded = 0;
     setBulkProgress({ verb: 'Disabling', done: 0, total: targets.length });
     for (let i = 0; i < targets.length; i++) {
       const ok = await toggleMod(targets[i].id);
+      if (ok) succeeded += 1;
       setBulkProgress({ verb: 'Disabling', done: i + 1, total: targets.length });
       if (!ok) break;
     }
     setBulkProgress(null);
-    offerBulkUndo(snapshot, selection);
+    if (succeeded < targets.length) {
+      offerBulkUndo(snapshot, selection, { done: succeeded, total: targets.length });
+    } else {
+      offerBulkUndo(snapshot, selection);
+    }
     exitSelectMode();
   };
 
@@ -2643,16 +2678,25 @@ export default function Installed() {
     if (selectedMods.length === 0) return;
     setTagMenuOpen(false);
     const targets = [...selectedMods];
+    const selection = targets.map((m) => m.id);
+    const snapshot = captureBulkSnapshot(mods, selection);
+    let succeeded = 0;
     setBulkProgress({ verb: 'Tagging', done: 0, total: targets.length });
     try {
       for (let i = 0; i < targets.length; i++) {
         await setModLockerHero(targets[i].id, heroName);
+        succeeded += 1;
         setBulkProgress({ verb: 'Tagging', done: i + 1, total: targets.length });
       }
     } catch (err) {
       console.error('[Installed] Bulk tag failed:', err);
     } finally {
       setBulkProgress(null);
+      if (succeeded < targets.length) {
+        offerBulkUndo(snapshot, selection, { done: succeeded, total: targets.length });
+      } else {
+        offerBulkUndo(snapshot, selection);
+      }
       exitSelectMode();
     }
   };
@@ -2661,11 +2705,15 @@ export default function Installed() {
     if (selectedMods.length === 0) return;
     setTagMenuOpen(false);
     const targets = [...selectedMods];
+    const selection = targets.map((m) => m.id);
+    const snapshot = captureBulkSnapshot(mods, selection);
+    let succeeded = 0;
     setBulkProgress({ verb: 'Tagging', done: 0, total: targets.length });
     try {
       for (let i = 0; i < targets.length; i++) {
         await setModLockerHero(targets[i].id, null);
         await setModGlobalType(targets[i].id, null);
+        succeeded += 1;
         setBulkProgress({ verb: 'Tagging', done: i + 1, total: targets.length });
       }
       await loadMods();
@@ -2673,6 +2721,11 @@ export default function Installed() {
       console.error('[Installed] Bulk tag clear failed:', err);
     } finally {
       setBulkProgress(null);
+      if (succeeded < targets.length) {
+        offerBulkUndo(snapshot, selection, { done: succeeded, total: targets.length });
+      } else {
+        offerBulkUndo(snapshot, selection);
+      }
       exitSelectMode();
     }
   };
@@ -2684,10 +2737,14 @@ export default function Installed() {
     if (selectedMods.length === 0) return;
     setTagMenuOpen(false);
     const targets = [...selectedMods];
+    const selection = targets.map((m) => m.id);
+    const snapshot = captureBulkSnapshot(mods, selection);
+    let succeeded = 0;
     setBulkProgress({ verb: 'Tagging', done: 0, total: targets.length });
     try {
       for (let i = 0; i < targets.length; i++) {
         await setModGlobalType(targets[i].id, globalType);
+        succeeded += 1;
         setBulkProgress({ verb: 'Tagging', done: i + 1, total: targets.length });
       }
       await loadMods();
@@ -2695,6 +2752,11 @@ export default function Installed() {
       console.error('[Installed] Bulk global tag failed:', err);
     } finally {
       setBulkProgress(null);
+      if (succeeded < targets.length) {
+        offerBulkUndo(snapshot, selection, { done: succeeded, total: targets.length });
+      } else {
+        offerBulkUndo(snapshot, selection);
+      }
       exitSelectMode();
     }
   };
@@ -4372,6 +4434,7 @@ export default function Installed() {
               onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
               icon={CheckSquare}
               disabled={!!bulkProgress || !!undoBusy}
+              aria-describedby={bulkProgress || undoBusy ? 'installed-bulk-blocker' : undefined}
               className="!px-2.5"
               aria-label={selectMode ? t('installed.actions.exitSelectionMode') : t('installed.actions.selectMultiple')}
               title={selectMode ? t('installed.actions.exitSelectionMode') : t('installed.actions.selectMultipleHint')}
@@ -5119,10 +5182,25 @@ export default function Installed() {
           >
             <GripVertical className="w-4 h-4" />
           </span>
-          {bulkProgress ? (
-            <span className="text-sm text-text-primary tabular-nums px-2 flex items-center gap-2">
+          {(bulkProgress || undoBusy) ? (
+            // One inline blocker line with a stable id, referenced by
+            // aria-describedby on every control this state disables (D-16).
+            // The counter says how far along; the line says why the other
+            // controls are unavailable. The undo case wins when both could
+            // apply, so exactly one reason shows at a time.
+            <span
+              id="installed-bulk-blocker"
+              className="text-sm text-text-primary tabular-nums px-2 flex items-center gap-2"
+            >
               <Loader2 className="w-4 h-4 animate-spin text-accent" />
-              {bulkProgress.verb} {bulkProgress.done}/{bulkProgress.total}…
+              {undoBusy ? (
+                t('installed.actions.bulkUndoing')
+              ) : (
+                <>
+                  {bulkProgress?.verb} {bulkProgress?.done}/{bulkProgress?.total}…
+                  <span className="text-text-secondary">{t('installed.actions.bulkBusy')}</span>
+                </>
+              )}
             </span>
           ) : (
             <>
