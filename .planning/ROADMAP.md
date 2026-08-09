@@ -169,12 +169,12 @@ Plans:
   5. Any bulk action can be undone without rebuilding the selection by hand, and no disabled control leaves its blocker to be guessed
   6. The same state is never given two names on two pages, and every empty state names what is missing, why, and the next action
 
-**Plans**: 6 plans
+**Plans**: 1/6 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 05-01-PLAN.md - Tracer: `All content` selectable end to end through route, merged projection, tablist and pane, empty categories hidden, plus the whole phase's catalog change in one place
+- [x] 05-01-PLAN.md - Tracer: `All content` selectable end to end through route, merged projection, tablist and pane, empty categories hidden, plus the whole phase's catalog change in one place
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -265,5 +265,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phase 6 declar
 | 2. A Supported Fork Release | 6/6 | Complete    | 2026-08-07 |
 | 3. Foundry Completes Its Build Contract | 3/3 | In Progress|  |
 | 4. Locker And Foundry As One Object | 2/2 | In Progress|  |
-| 5. One Inventory, One Journey | 0/5 | Not started | - |
+| 5. One Inventory, One Journey | 1/6 | In Progress|  |
 | 6. Community Tools Land Inside Grimoire | 7/7 | Complete    | 2026-08-08 |

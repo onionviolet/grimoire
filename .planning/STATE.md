@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.26.20
 milestone_name: milestone
-current_phase: 4
-current_phase_name: locker-and-foundry-as-one-object
+current_phase: 5
+current_phase_name: one-inventory-one-journey
 current_plan: 2
-status: verifying
-stopped_at: Completed 04-02-PLAN.md
-last_updated: "2026-08-09T07:13:46.251Z"
+status: executing
+stopped_at: Completed 05-01-PLAN.md
+last_updated: "2026-08-09T07:46:54.907Z"
 last_activity: 2026-08-09
 last_activity_desc: Phase 4 execution started
 progress:
   total_phases: 6
   completed_phases: 5
   total_plans: 32
-  completed_plans: 26
+  completed_plans: 27
 ---
 
 # Project State
@@ -24,18 +24,18 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-05)
 
 **Core value:** A Deadlock player can change their game and always know exactly what changed, who owns it, and how to undo it.
-**Current focus:** Phase 4 — locker-and-foundry-as-one-object
+**Current focus:** Phase 5 — one-inventory-one-journey
 
 ## Current Position
 
-Phase: 4 (locker-and-foundry-as-one-object) — EXECUTING
+Phase: 5 (one-inventory-one-journey) — EXECUTING
 Current Plan: 2
-Total Plans in Phase: 2
-Plan: 2 of 2
-Status: Phase complete — ready for verification
-Last activity: 2026-08-09 — Phase 4 execution started
+Total Plans in Phase: 6
+Plan: 2 of 6
+Status: Ready to execute
+Last activity: 2026-08-09 — Phase 5 execution started
 
-Progress: [████████░░] 81%
+Progress: [████████░░] 84%
 
 ## Performance Metrics
 
@@ -70,6 +70,7 @@ Progress: [████████░░] 81%
 | Phase 03 P03 | 5 | 3 tasks | 7 files |
 | Phase 04 P01 | 12 | 3 tasks | 10 files |
 | Phase 04 P02 | 12 | 3 tasks | 18 files |
+| Phase 05 P01 | 8 | 2 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -105,6 +106,10 @@ Recent decisions affecting current work:
 - [Phase ?]: The recolor disclosure is keyed to the exact serialized export request it described; a confirmation granted for one write set cannot be replayed after any parameter change (T-04-10)
 - [Phase ?]: An unreadable VPK blocks only that one ambiguous recolor apply and mutates nothing (D-08)
 - [Phase ?]: The uncontested recolor disclosure is deliberately not a warning: routine applies keep one-press speed with the disclosure inline, never behind a modal (D-07)
+- [Phase 05]: The third LockerMode member is named 'all'; bare /locker/global defaults to All content and the canonical URL for the default carries no query (D-05)
+- [Phase 05]: Hide-empty is a fixed always-on rule with no preference control (D-04, planner assumption settled)
+- [Phase 05]: Active source consolidation is a value edit at existing key names, excluding the build-time collision family and the three excluded keys
+- [Phase 05]: Task 2 updated two renderer tests asserting the old winner wording; the full-suite-green acceptance criterion took precedence over the catalog-only diff guardrail (Rule 1)
 
 ### Pending Todos
 
@@ -148,6 +153,6 @@ Real-game verification is deferred to the end of this milestone run per explicit
 
 ## Session Continuity
 
-Last session: 2026-08-09T07:13:46.232Z
-Stopped at: Completed 04-02-PLAN.md
+Last session: 2026-08-09T07:46:54.890Z
+Stopped at: Completed 05-01-PLAN.md
 Resume file: None
