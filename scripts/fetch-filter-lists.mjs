@@ -10,6 +10,11 @@
 // Runs on postinstall when the files are missing and with `--refresh` as part
 // of packaging so every release ships current lists.
 //
+// Deliberately dependency-free: it runs from postinstall, before/without a
+// guaranteed resolution of transitive packages in every pnpm layout, so rule
+// counts come from a small local line classifier mirroring the adblocker's
+// own filter-type detection rather than from the package itself.
+//
 // Output (gitignored, shipped via electron-builder extraResources):
 //   resources/filters/filters.txt     - concatenated EasyList/EasyPrivacy/uBO lists
 //   resources/filters/resources.json  - uBlock scriptlet resources
@@ -19,7 +24,6 @@ import { mkdir, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { get as httpsGet } from 'node:https';
-import { parseFilters } from '@ghostery/adblocker';
 
 // Keep in sync with the installed @ghostery/adblocker version: bump both
 // together so the runtime engine and the bundled lists come from the same
@@ -98,6 +102,42 @@ async function exists(path) {
     }
 }
 
+/** Approximate mirror of @ghostery/adblocker's detectFilterType: comments and
+ *  AdGuard-only syntax are ignored, `##`/`#@#`/`#?#` lines count as cosmetic,
+ *  and everything else counts as a network filter. Close enough for the
+ *  Settings-card rule count without depending on the package at install time. */
+function classifyFilterLine(rawLine) {
+    const line = rawLine.trim();
+    if (line.length === 0 || line.length === 1) return 'ignore';
+    const first = line.charCodeAt(0);
+    const second = line.charCodeAt(1);
+    if (first === 33 /* ! */) return 'ignore';
+    if (first === 35 /* # */ && second <= 32) return 'ignore';
+    if (line.startsWith('[Adblock')) return 'ignore';
+    const sharp = line.indexOf('#');
+    if (sharp !== -1 && sharp !== line.length - 1) {
+        const after = line.charCodeAt(sharp + 1);
+        // Cosmetic (## or #@#).
+        if (after === 35 /* # */) return 'cosmetic';
+        if (after === 64 /* @ */ && line.startsWith('@#', sharp + 1)) return 'cosmetic';
+        // AdGuard-only cosmetic syntax the parser does not support.
+        if (after === 63 /* ? */ || after === 37 /* % */ || after === 36 /* $ */) return 'ignore';
+        if (after === 64 /* @ */) return 'ignore';
+    }
+    return 'network';
+}
+
+function countFilterRules(filtersText) {
+    let networkFilters = 0;
+    let cosmeticFilters = 0;
+    for (const line of filtersText.split(/\r?\n/)) {
+        const kind = classifyFilterLine(line);
+        if (kind === 'network') networkFilters += 1;
+        else if (kind === 'cosmetic') cosmeticFilters += 1;
+    }
+    return { networkFilters, cosmeticFilters };
+}
+
 async function main() {
     const filtersPath = join(OUT_DIR, 'filters.txt');
     const resourcesPath = join(OUT_DIR, 'resources.json');
@@ -143,13 +183,13 @@ async function main() {
         throw new Error(`Concatenated filters look truncated (${filtersText.length} bytes).`);
     }
 
-    const { networkFilters, cosmeticFilters } = parseFilters(filtersText);
+    const { networkFilters, cosmeticFilters } = countFilterRules(filtersText);
     const meta = {
         tag: GHOSTERY_TAG,
         fetchedAt: new Date().toISOString(),
         sources: [...LISTS.map((rel) => `${PREFIX}/${rel}`), RESOURCES_URL],
-        networkFilters: networkFilters.length,
-        cosmeticFilters: cosmeticFilters.length,
+        networkFilters,
+        cosmeticFilters,
     };
 
     await Promise.all([
