@@ -1197,29 +1197,37 @@ export default function Conflicts() {
             <Tx k="conflicts.ignoredFilesGlobal.title" fallback="Ignored in all mods" />
           </h3>
           <div className="rounded-xl border border-border bg-bg-secondary divide-y divide-border">
-            {ignoredFilesGlobal.map((file) => (
-              <div key={file} className="flex items-center gap-3 px-4 py-2.5">
-                <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-text-tertiary" title={file}>
-                  {file}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => handleUnignoreFileGlobal(file)}
-                  disabled={pendingGlobalFile === file}
-                  aria-describedby={pendingGlobalFile === file ? `conflicts-ignored-global-${file}` : undefined}
-                  title={t('conflicts.ignoredFilesGlobal.unignoreTitle')}
-                  className="flex-shrink-0 inline-flex items-center gap-1 rounded px-2.5 py-1 text-xs text-text-secondary transition-colors hover:bg-bg-tertiary hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
-                >
-                  <Eye className="h-3.5 w-3.5" />
-                  <Tx k="conflicts.actions.unignore" fallback="Unignore" />
-                </button>
-                {pendingGlobalFile === file && (
-                  <p id={`conflicts-ignored-global-${file}`} className="text-xs text-text-secondary" aria-live="polite">
-                    <Tx k="conflicts.actions.busyBlocker" fallback="Finish the change that is running before starting another." />
-                  </p>
-                )}
-              </div>
-            ))}
+            {ignoredFilesGlobal.map((file) => {
+              // The raw Windows path is not a valid HTML id (spaces, slashes,
+              // parens) and aria-describedby tokenizes on whitespace, so the
+              // reference resolves to nothing exactly when the blocker line is
+              // active (WR-02). Encode it for the id and reuse the same value
+              // in both places.
+              const blockerId = `conflicts-ignored-global-${encodeURIComponent(file)}`;
+              return (
+                <div key={file} className="flex items-center gap-3 px-4 py-2.5">
+                  <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-text-tertiary" title={file}>
+                    {file}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleUnignoreFileGlobal(file)}
+                    disabled={pendingGlobalFile === file}
+                    aria-describedby={pendingGlobalFile === file ? blockerId : undefined}
+                    title={t('conflicts.ignoredFilesGlobal.unignoreTitle')}
+                    className="flex-shrink-0 inline-flex items-center gap-1 rounded px-2.5 py-1 text-xs text-text-secondary transition-colors hover:bg-bg-tertiary hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+                  >
+                    <Eye className="h-3.5 w-3.5" />
+                    <Tx k="conflicts.actions.unignore" fallback="Unignore" />
+                  </button>
+                  {pendingGlobalFile === file && (
+                    <p id={blockerId} className="text-xs text-text-secondary" aria-live="polite">
+                      <Tx k="conflicts.actions.busyBlocker" fallback="Finish the change that is running before starting another." />
+                    </p>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

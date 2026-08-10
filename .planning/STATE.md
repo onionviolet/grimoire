@@ -1,6 +1,6 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.26.20
+milestone: v1.27
 milestone_name: milestone
 current_phase: 5
 current_phase_name: one-inventory-one-journey

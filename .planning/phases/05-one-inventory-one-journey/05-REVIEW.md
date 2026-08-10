@@ -40,7 +40,7 @@ findings:
   warning: 2
   info: 4
   total: 7
-status: issues_found
+status: fixed
 ---
 
 # Phase 5: Code Review Report
@@ -48,7 +48,27 @@ status: issues_found
 **Reviewed:** 2026-08-09T09:10:00Z
 **Depth:** standard
 **Files Reviewed:** 31
-**Status:** issues_found
+**Status:** fixed
+
+> **Resolution (2026-08-10):** all findings were fixed before the milestone
+> audit and shipped in one commit:
+>
+> - CR-01: bulk-undo offer/restore moved to `src/lib/useBulkUndoOffer.ts`, which
+>   reads the live store at offer time (changed count) and at click time
+>   (restore plan); regression coverage in `useBulkUndoOffer.test.tsx`.
+> - WR-01: the `installed-bulk-blocker` line now renders in the toolbar while
+>   the floating select bar is unmounted (undo restore), so the Select button's
+>   aria-describedby always resolves.
+> - WR-02: the global ignored-file aria id is derived from
+>   `encodeURIComponent(file)` in both `id` and `aria-describedby`.
+> - IN-01: Locker global overlay section fallback is `'all'`, matching the
+>   resolver default.
+> - IN-02: `src/locales/en/translation.json` re-formatted with prettier
+>   (21 under-indented lines corrected; key set unchanged).
+> - IN-03: Foundry tray Forge button only emits aria-describedby while the
+>   blocker element exists.
+> - IN-04: partial-batch toasts receive the actually-failed count, so skipped
+>   targets are no longer reported as failed.
 
 ## Summary
 

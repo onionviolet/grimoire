@@ -85,7 +85,7 @@ import {
   MenuSubTrigger,
   MenuTrigger,
 } from '../components/common/menu';
-import { dismissToast, showToast } from '../stores/toastStore';
+import { showToast } from '../stores/toastStore';
 import { useAppStore, type BrowseArtistRef } from '../stores/appStore';
 import { getActiveDeadlockPath } from '../lib/appSettings';
 import { isImprintPending } from '../lib/imprintPending';
@@ -118,7 +118,8 @@ import { canOpenImageSource, copyImageToClipboard, resolveImageSource } from '..
 import { resolveUpdateTarget } from '../lib/updateFileMatch';
 import { createEnabledVpkRestoreSnapshot, shouldRestoreVpkEnabled, type EnabledVpkRestoreSnapshot } from '../lib/vpkRestore';
 import { modRestoreKey } from '../lib/soloRestore';
-import { bulkChangedCount, bulkUndoPlan, captureBulkSnapshot, type BulkModSnapshot } from '../lib/bulkUndo';
+import { captureBulkSnapshot } from '../lib/bulkUndo';
+import { useBulkUndoOffer } from '../lib/useBulkUndoOffer';
 import { buildCachedModDetails, canUseCachedModDetails } from '../lib/cachedModDetails';
 import {
   createDisabledEntryComparator,
@@ -1127,20 +1128,15 @@ export default function Installed() {
     done: number;
     total: number;
   } | null>(null);
-  // Pending undo offer for the most recent reversible bulk mutation. Holds
-  // the snapshot captured before the batch, the ids to restore the selection
-  // from, and the toast id so a newer batch can supersede the previous offer
-  // (D-15). Null when no undo is outstanding; the offer is one-shot and drops
-  // when its toast goes away.
-  const [undoOffer, setUndoOffer] = useState<{
-    toastId: number;
-    snapshot: BulkModSnapshot[];
-    selection: string[];
-  } | null>(null);
-  // True while a restore is replaying. Disables the same controls a batch
-  // does, and is cleared in a finally so a failed restore never strands the
-  // page (T-05-11).
-  const [undoBusy, setUndoBusy] = useState(false);
+  // One-shot undo for the most recent reversible bulk mutation (D-14, D-15).
+  // The hook owns the offer toast and the busy flag (CR-01: both the changed
+  // count and the restore plan read the LIVE store, never the handler's render
+  // closure); the component supplies the selection restore so Undo re-enters
+  // select mode with the batch's selection.
+  const { offerBulkUndo, undoBusy } = useBulkUndoOffer((selection) => {
+    setSelectedIds(new Set(selection));
+    setSelectMode(true);
+  });
   // Persisted screen position of the floating select bar. `null` means
   // "use the default top-center anchor"; once the user drags it we store the
   // top-left corner in px and reuse it next time the bar appears.
@@ -2528,89 +2524,6 @@ export default function Installed() {
   const selectedEnabledCount = selectedMods.filter((m) => m.enabled).length;
   const selectedDisabledCount = selectedMods.length - selectedEnabledCount;
 
-  // One-shot undo for a completed reversible bulk mutation (D-14, D-15).
-  // Dismisses any previous offer first so a newer batch supersedes it rather
-  // than stacking a second toast, skips the toast entirely when nothing
-  // actually changed, and otherwise offers Undo with the captured snapshot and
-  // the selection a restore should bring back. When `partial` is given, the
-  // single message reports both counts and keeps the same Undo action, so a
-  // batch that could not change every target still offers its changed subset
-  // for rollback (D-15).
-  const offerBulkUndo = useCallback(
-    (
-      snapshot: BulkModSnapshot[],
-      selection: string[],
-      partial?: { done: number; total: number },
-    ) => {
-      if (undoOffer) dismissToast(undoOffer.toastId);
-      const changed = bulkChangedCount(snapshot, mods);
-      if (changed === 0 && !partial) return;
-
-      const runRestore = async () => {
-        setUndoBusy(true);
-        try {
-          // Build the plan against the LIVE list: a field the user changed by
-          // hand since the batch is only restored if it still differs from the
-          // snapshot, and a mod that was uninstalled in between is skipped.
-          const ops = bulkUndoPlan(snapshot, mods);
-          const restoredIds = new Set<string>();
-          for (const op of ops) {
-            try {
-              if (op.kind === 'toggle') {
-                const ok = await toggleMod(op.modId);
-                if (ok) restoredIds.add(op.modId);
-              } else if (op.kind === 'lockerHero') {
-                await setModLockerHero(op.modId, op.value);
-                restoredIds.add(op.modId);
-              } else {
-                await setModGlobalType(op.modId, op.value);
-                restoredIds.add(op.modId);
-              }
-            } catch (err) {
-              // One failed op does not abort the rest of the restore; the
-              // finally below still clears the busy state either way.
-              console.error('[Installed] Bulk undo op failed:', err);
-            }
-          }
-          await loadMods();
-          // D-14: restore the selection too, so the user is not left to
-          // rebuild it by hand.
-          setSelectedIds(new Set(selection));
-          setSelectMode(true);
-          showToast(t('common.bulkUndo.restored', { count: restoredIds.size }));
-        } finally {
-          setUndoOffer(null);
-          setUndoBusy(false);
-        }
-      };
-
-      const toastId = partial
-        ? showToast(
-            t('common.bulkUndo.partial', {
-              done: partial.done,
-              total: partial.total,
-              failed: Math.max(0, partial.total - partial.done),
-            }),
-            {
-              tone: 'warning',
-              dismissable: true,
-              actionLabel: t('common.bulkUndo.action'),
-              onAction: () => {
-                void runRestore();
-              },
-            },
-          )
-        : showToast(t('common.bulkUndo.message', { count: changed }), {
-            actionLabel: t('common.bulkUndo.action'),
-            onAction: () => {
-              void runRestore();
-            },
-          });
-      setUndoOffer({ toastId, snapshot, selection });
-    },
-    [mods, t, undoOffer, toggleMod, setModLockerHero, setModGlobalType, loadMods],
-  );
-
   const handleBulkEnable = async () => {
     // Snapshot the work list before the loop so the progress total stays
     // stable even as `mods` updates after each toggle.
@@ -2635,7 +2548,13 @@ export default function Installed() {
     }
     setBulkProgress(null);
     if (succeeded < targets.length) {
-      offerBulkUndo(snapshot, selection, { done: succeeded, total: targets.length });
+      offerBulkUndo(snapshot, selection, {
+        done: succeeded,
+        total: targets.length,
+        // The loop stops at the first failure, so exactly one target was
+        // attempted and failed; the rest were skipped, not failed (IN-04).
+        failed: succeeded < targets.length ? 1 : 0,
+      });
     } else {
       offerBulkUndo(snapshot, selection);
     }
@@ -2660,7 +2579,11 @@ export default function Installed() {
     }
     setBulkProgress(null);
     if (succeeded < targets.length) {
-      offerBulkUndo(snapshot, selection, { done: succeeded, total: targets.length });
+      offerBulkUndo(snapshot, selection, {
+        done: succeeded,
+        total: targets.length,
+        failed: succeeded < targets.length ? 1 : 0,
+      });
     } else {
       offerBulkUndo(snapshot, selection);
     }
@@ -2693,7 +2616,11 @@ export default function Installed() {
     } finally {
       setBulkProgress(null);
       if (succeeded < targets.length) {
-        offerBulkUndo(snapshot, selection, { done: succeeded, total: targets.length });
+        offerBulkUndo(snapshot, selection, {
+          done: succeeded,
+          total: targets.length,
+          failed: succeeded < targets.length ? 1 : 0,
+        });
       } else {
         offerBulkUndo(snapshot, selection);
       }
@@ -2722,7 +2649,11 @@ export default function Installed() {
     } finally {
       setBulkProgress(null);
       if (succeeded < targets.length) {
-        offerBulkUndo(snapshot, selection, { done: succeeded, total: targets.length });
+        offerBulkUndo(snapshot, selection, {
+          done: succeeded,
+          total: targets.length,
+          failed: succeeded < targets.length ? 1 : 0,
+        });
       } else {
         offerBulkUndo(snapshot, selection);
       }
@@ -2753,7 +2684,11 @@ export default function Installed() {
     } finally {
       setBulkProgress(null);
       if (succeeded < targets.length) {
-        offerBulkUndo(snapshot, selection, { done: succeeded, total: targets.length });
+        offerBulkUndo(snapshot, selection, {
+          done: succeeded,
+          total: targets.length,
+          failed: succeeded < targets.length ? 1 : 0,
+        });
       } else {
         offerBulkUndo(snapshot, selection);
       }
@@ -4439,6 +4374,29 @@ export default function Installed() {
               aria-label={selectMode ? t('installed.actions.exitSelectionMode') : t('installed.actions.selectMultiple')}
               title={selectMode ? t('installed.actions.exitSelectionMode') : t('installed.actions.selectMultipleHint')}
             />
+
+            {/* D-16 blocker line while the floating select bar is unmounted
+                (WR-01): a batch already exited select mode before its Undo
+                offer, so during a restore the only disabled control is this
+                toolbar Select button and its aria-describedby target must
+                exist right here. The select bar owns the id while selectMode
+                is on; this span owns it whenever the bar cannot be mounted. */}
+            {!selectMode && (bulkProgress || undoBusy) && (
+              <span
+                id="installed-bulk-blocker"
+                className="inline-flex items-center gap-2 text-sm text-text-primary tabular-nums"
+              >
+                <Loader2 className="h-4 w-4 animate-spin text-accent" />
+                {undoBusy ? (
+                  t('installed.actions.bulkUndoing')
+                ) : (
+                  <>
+                    {bulkProgress?.verb} {bulkProgress?.done}/{bulkProgress?.total}…
+                    <span className="text-text-secondary">{t('installed.actions.bulkBusy')}</span>
+                  </>
+                )}
+              </span>
+            )}
 
             {/* Locker overrides: hero cards + ability sounds + ability colors
                 applied off the mod list. The badge shows how many are active;

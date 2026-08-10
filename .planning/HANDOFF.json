@@ -1,7 +1,7 @@
 {
   "context": "phase",
   "phase": "05-one-inventory-one-journey",
-  "milestone": "v1.26.20",
+  "milestone": "v1.27",
   "status": "in_progress",
   "last_updated": "2026-08-09T09:00:55.150Z",
   "completed": {
@@ -12,7 +12,7 @@
     "fix phase 5 review findings: CR-01 bulk-undo stale-closure bug (offerBulkUndo), WR-01 undo blocker line unmounted, WR-02 raw-path html ids; see 05-REVIEW.md",
     "commit phase 5 review/fix artifacts",
     "run deferred real-game verification: $gsd-verify-work 3, 4, 5",
-    "milestone lifecycle: $gsd-audit-milestone -> $gsd-complete-milestone v1.26.20 -> $gsd-cleanup"
+    "milestone lifecycle: $gsd-audit-milestone -> $gsd-complete-milestone v1.27 -> $gsd-cleanup"
   ],
   "deferred_verification": {
     "3": "verification_deferred_human -> $gsd-verify-work 3",

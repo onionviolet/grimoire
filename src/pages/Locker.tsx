@@ -1496,6 +1496,9 @@ export default function Locker() {
         </div>
       )}
       {globalOverlay.item && (
+        // resolveLockerRoute now defaults a bare /locker/global to 'all'
+        // (lockerModeFromSearch ?? 'all'), so the dead 'looks' fallback would
+        // mislead readers into thinking a bare path opens Visuals (IN-01).
         <div
           className={`fixed bottom-0 right-0 top-0 z-30 overflow-hidden bg-bg-primary sidebar-offset-transition ${
             globalOverlay.closing ? 'animate-fade-out pointer-events-none' : 'animate-fade-in'
@@ -1512,7 +1515,7 @@ export default function Locker() {
             onImportSoul={() => setSoulImportOpen(true)}
             onImportUrn={() => setUrnImportOpen(true)}
             onAddGlobal={() => setGlobalPickerOpen(true)}
-            section={globalSection ?? 'looks'}
+            section={globalSection ?? 'all'}
             onSelectSection={(next) =>
               navigate(
                 next === 'sounds'
