@@ -2,6 +2,49 @@
 
 All notable changes to this project are documented here. Format is loosely based on [Keep a Changelog](https://keepachangelog.com/), and the project adheres to semantic versioning.
 
+## [1.27.1] - 2026-08-10
+
+The fork's own release following the verbatim absorption of upstream v1.27:
+the version scheme moves to 1.27.1 (upstream 1.27.0 plus this fork's
+divergence) and the fork ships its first fully supported GitHub Release.
+
+### Added
+- **DeadlockForge 1-click installs over a loopback bridge.** An opt-in
+  127.0.0.1 listener accepts freshly forged VPKs straight from
+  deadlockforge.net. Off by default; trust comes from an Origin allowlist and
+  a forced CORS preflight; the body is capped at 512 MB and the VPK magic is
+  verified before anything touches the game folder; every install still goes
+  through a confirmation with an armed-delay confirm button.
+- **GameBanana mirror routing with fileserver failover.** Downloads route
+  through the mirror servers and fall over to the next healthy server when one
+  is unavailable, with a per-PC local speed test.
+- **Download-servers diagnostics card in Settings.** Server health, the
+  selected server, local test results, and a refresh action are shown in one
+  place.
+- **Crosshair preview rasterized the way the game does.** The preview now draws
+  with the same vector math and stage backgrounds the engine uses, replacing
+  the previous approximation.
+
+### Security
+- **VPK header size clamping.** The `treeSize` field in a VPK header is an
+  untrusted uint32; a crafted 12-byte VPK could previously make the main
+  process zero-fill up to 4 GiB during conflict detection. The value is now
+  clamped at all four parse call sites plus the worker's duplicated parser.
+
+### Fixed
+- **Bulk undo reads live store state.** The one-shot Undo offered after a bulk
+  enable/disable/retag now diffs the snapshot against the live mod list at
+  offer time and at click time, so a full batch shows its toast and a partial
+  batch's Undo actually restores what changed. Regression-covered by a new
+  hook-level test.
+- **The undo blocker line renders where it is referenced.** The toolbar Select
+  button's accessible description no longer dangles during a restore, and the
+  path-derived aria ids in Conflicts are encoded so Windows paths with spaces
+  resolve.
+- **Portrait catalog failure is its own state.** A failed catalog read is now
+  clearly distinct from "not indexed", with dedicated copy and the raw error
+  retained beneath it.
+
 ## [1.26.20] - 2026-08-01
 
 ### Fixed
