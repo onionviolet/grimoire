@@ -139,7 +139,7 @@ Recent decisions affecting current work:
 
 ### Pending Todos
 
-None yet.
+- 2026-08-10 absorb-upstream-v1-27-verbatim — Absorb upstream v1.27 verbatim (major)
 
 ### Blockers/Concerns
 
