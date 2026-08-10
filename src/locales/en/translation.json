@@ -277,6 +277,10 @@
         "title": "No base-game portrait family found",
         "description": "This hero has no indexed editable portrait family in this game build. Browse the global catalog or report the missing mapping."
       },
+      "catalogFailed": {
+        "title": "Portrait catalog could not be read",
+        "description": "Something went wrong reading your installed game files. Try again, or check the game path in Settings."
+      },
       "browseGlobal": "Browse global catalog",
       "filtered": {
         "title": "Nothing matches this search",
@@ -2132,13 +2136,13 @@
       "deleteMod": "Delete {{name}}",
       "propEmpty": "No {{type}} installed yet. Import one from a 3D model (.glb) to get started.",
       "typeEmpty": "No {{type}} installed yet. Find some in Browse and they'll show up here.",
-      "sectionLabel": "Global Locker section",
+      "sectionLabel": "Global inventory view",
       "visuals": "Visuals",
       "sectionAll": "All content",
       "sectionMembershipHint": "Counted once per section. A mod can appear in more than one.",
-      "filteredZeroTitle": "No {{filter}} content installed",
-      "filteredZeroBody": "Empty categories are hidden, and nothing in this section has content.",
-      "filteredZeroReset": "Show all content",
+      "filteredZeroTitle": "No results for {{filter}}.",
+      "filteredZeroBody": "Nothing in this view matches the current filter.",
+      "filteredZeroReset": "Clear filter",
       "unnamedPakDerived": "Writes {{entryList}}",
       "unnamedPakDerivedMore": "Writes {{entryList}} and {{count}} more",
       "unnamedPakUnknown": "Unknown content"
@@ -4021,3 +4025,5 @@
     }
   }
 }
+
+

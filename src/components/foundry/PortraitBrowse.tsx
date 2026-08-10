@@ -326,8 +326,16 @@ export default function PortraitBrowse({ heroNames, hero, onStage, initialFamily
           <EmptyState
             icon={AlertTriangle}
             variant="error"
-            title={<Tx k="foundry.error.title" fallback="Couldn't read the catalog" />}
-            description={error}
+            title={<Tx k="foundry.portraits.catalogFailed.title" fallback="Portrait catalog could not be read" />}
+            description={
+              <>
+                <Tx
+                  k="foundry.portraits.catalogFailed.description"
+                  fallback="Something went wrong reading your installed game files. Try again, or check the game path in Settings."
+                />
+                {error && <span className="mt-1 block font-mono text-xs text-text-secondary/70">{error}</span>}
+              </>
+            }
           />
           <button
             type="button"
