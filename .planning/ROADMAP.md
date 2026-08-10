@@ -10,7 +10,7 @@
 **Phase Numbering:** continues from v1.27 (7, 8). Decimal phases (7.1, 8.1) are urgent insertions marked INSERTED.
 
 - [x] **Phase 7: UI Review Of Shipped Frontend** - Run the retroactive six-pillar visual audit on the four shipped frontend phases (03-06), produce the first UI-REVIEW files ever created for them, and fix code-fixable findings before release (completed 2026-08-10)
-- [ ] **Phase 8: Release Engineering** - Ship v1.27.1: CHANGELOG entry, tag `v1.27.1` matching `package.json`, push to `origin`, and confirm the GitHub Release (installer, checksums, attestations) with notes from the changelog
+- [x] **Phase 8: Release Engineering** - Ship v1.27.1: CHANGELOG entry, tag `v1.27.1` matching `package.json`, push to `origin`, and confirm the GitHub Release (installer, checksums, attestations) with notes from the changelog (completed 2026-08-10)
 
 ## Phase Details
 
