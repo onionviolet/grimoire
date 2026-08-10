@@ -10,6 +10,29 @@ This repository is an independent product fork of Slush97/grimoire, maintained a
 
 A Deadlock player can change their game and always know exactly what changed, who owns it, and how to undo it.
 
+## Current State
+
+**Shipped: v1.27 "verified, supported, coherent" (2026-08-10).** Six phases and
+32 plans landed and were archived: the fork's game-facing paths now carry an
+automated verification record (23 rows settled by a CDP runner, 18 engine-tier
+rows deferred with reasons), the fork ships as a supported release with a
+pinned engine and decided social disposition, the Foundry build contract is
+complete (recolor/model edits join combined builds), Locker and Foundry share
+one object model, global inventory reads as one inventory, and community tools
+hand their built VPKs into the app. Human in-game verification for phases 3-5
+is deferred by explicit user decision (out-of-game tool; VPK-level work is
+deterministic); the milestone audit records the accepted gaps.
+
+## Next Milestone Goals
+
+**v1.27.1** (planned, pre-approved scope):
+
+- Absorb upstream v1.27 verbatim (forge bridge, mirror routing, diagnostics card, crosshair rasterization) and resolve the fork version to 1.27.1
+- Retroactive UI review of the shipped frontend phases (03-06) with fixes for findings
+- Release engineering: version bump, CHANGELOG entry, tag v1.27.1, push to origin, confirm the GitHub Release (installer, checksums, attestations)
+
+SEED-001 (generic local-install protocol) is a v1.28 seed and stays dormant.
+
 ## Requirements
 
 ### Validated
@@ -23,17 +46,20 @@ Shipped and confirmed in the codebase. Full evidence per item is in `.planning/R
 - 3D hero preview: static posed export, Source 2 material and lighting parity, NPR, cloth, and a rigged sibling export (dev-gated)
 - Social phase 1 and 1.5 client, plus the Worker-side revalidation cron and view counter (built, undeployed)
 - UI consistency pass lanes 1 through 8 (shell rule, route resolver, `uiPrefs`, `useConfirm`, `SearchInput`, `useScrollRestore`, keyboard and assistive-tech floor)
-- A supported fork release: pinned-SHA fork engine build with a release-workflow guard, support destinations moved to the fork's own issue tracker, `structural-refactor-7` merged and the branch set consolidated to `main` only, a decided (dormant) social service disposition recorded in ADR-018, and the last ungated experimental surface (Chat Wheel) closed. The in-game colour half of the engine-pin criterion stays an explicitly accepted `blocked` row (IG-23) pending a packaged build and a live Deadlock session — validated in Phase 2 (2026-08-07)
+- A supported fork release: pinned-SHA fork engine build with a release-workflow guard, support destinations moved to the fork's own issue tracker, `structural-refactor-7` merged and the branch set consolidated to `main` only, a decided (dormant) social service disposition recorded in ADR-018, and the last ungated experimental surface (Chat Wheel) closed. The in-game colour half of the engine-pin criterion stays an explicitly accepted `blocked` row (IG-23) pending a packaged build and a live Deadlock session - validated in Phase 2 (2026-08-07)
+- Verified against the game: 23 app-tier verification rows settled by `pnpm verify:in-app`, 18 engine-tier rows deferred with per-row reasons, and the six Foundry render lanes under jsdom render tests - v1.27
+- Foundry completes its build contract: recolor and model edits enter the combined reviewed build, sound shuffle is reachable from Foundry, pools audition every clip - v1.27
+- Locker and Foundry as one object: 3D model stage with pop-out, pre-write disclosure that names owners, portrait variant awareness, hero-grid authored-state badges - v1.27
+- One inventory, one journey: Global reads as one inventory with a tri-state view, the portrait alias sweep verdicts are recorded for all 15 mismatch heroes, every reversible bulk action offers one-shot undo with a rendered blocker line, and provenance is one phrase and one target - v1.27
+- Community tools land inside Grimoire: a checked browser destination catalog, disclose-before-write tool-download handoff with VPK identity gating, and an unchanged webview hardening floor - v1.27
 
 ### Active
 
-The current milestone converts a large body of landed but unproven work into a verified, supported, coherent product.
+The v1.27.1 milestone (pre-approved scope):
 
-- [x] Close the verification debt: prove the Foundry, merge, rigged-preview, and performance paths against a running Deadlock build, and give the untested renderer lanes a test that actually renders them (Phase 1, 2026-08-06)
-- [x] Ship a supported fork release: a checksum-pinned fork engine, a packaged Windows smoke record, a fork-owned support destination, a consolidated branch set, and a decided social service target (Phase 2, 2026-08-07)
-- [ ] Complete the Foundry build contract: recolor and model edits can enter a combined build, sound shuffle is reachable from Foundry, and a pool auditions every clip
-- [ ] Close the Locker and Foundry parity gap: Foundry gets preview, Locker gets pre-write disclosure, portraits get variant awareness, and the hero grid shows what the user has made
-- [ ] Give global inventory one home and portraits one journey, then finish the consistency floor (undo, blockers, and one vocabulary)
+- [ ] Absorb upstream v1.27 verbatim and resolve the fork version to 1.27.1
+- [ ] Retroactive UI review of shipped frontend phases 03-06 with fixes
+- [ ] Release engineering: version bump, CHANGELOG, tag, push, GitHub Release
 
 ### Out of Scope
 
@@ -52,7 +78,7 @@ The current milestone converts a large body of landed but unproven work into a v
 
 **Doc status headers in this repo have drifted badly behind the code, repeatedly and in both directions.** The 2026-07-28 spec audit found four claims wrong in the code's favour (combined output, audio transcoding, the VFX recolor roster, the rigged 3D spine) and one wrong in the doc's favour. Work has been started three times on things that already shipped. Verify against the tree before planning anything, and prefer `.planning/REQUIREMENTS.md` "Delivered" over any doc's own status line.
 
-**The dominant risk is verification debt, not missing features.** Four waves of work landed with a green repository gate (typecheck, lint, 983 tests across 91 files, i18n check, locale manifest) and effectively zero in-game validation. Nobody has started Deadlock and confirmed that the engine loads what the app says it will. Vitest runs in a node environment with no DOM, so none of the six 2026-07-29 lanes has a render test: their pure models are covered, their rendering is not.
+**Verification debt was the dominant risk and is now a recorded, accepted one.** The v1.27 milestone drove 23 app-tier rows over CDP against a live dev build (`pnpm verify:in-app`), added jsdom render coverage to the six Foundry lanes, and deferred the 18 engine-tier rows plus the phases 3-5 human checks by explicit user decision (out-of-game tool; VPK-level work is deterministic). The full suite now stands at 1931 tests across 175 files. Nobody has yet started Deadlock and confirmed the engine loads what the app says it will; that remains deferred by decision and is tracked in the milestone audit.
 
 **Three product decisions are open and must not be settled by an implementer.** Where installed global sound inventory lives; whether the portrait and Cards journey is defined before its code consolidates; and what the Locker hero page's target state is. All three are recorded in `.planning/INGEST-CONFLICTS.md` and carried as competing requirement variants; they route to `/gsd-discuss-phase`.
 
@@ -126,6 +152,7 @@ Written policy that constrains how and where work is done. Recorded with the sou
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
+| Defer human in-game verification for phases 3-5 (2026-08-09, confirmed 2026-08-10) | Grimoire is an out-of-game tool; VPK work done correctly is deterministic, so in-game verification can be deferred by decision rather than blocking the milestone | ✓ Accepted - recorded in `.planning/milestones/v1.27-MILESTONE-AUDIT.md`; resume via `$gsd-verify-work 3/4/5` |
 | The packaged Windows smoke record does not block a release (2026-07-28) | It is a human sitting in front of the game; gating on it stalled every release. Tracked as post-release verification, fix forward | Pending |
 | This fork relies on the upstream social deployment (2026-07-29) | Forking `grimoire-social` means repointing the sibling remote, CI's hardcoded checkout, and the baked release URL, then deploying with migration 0005 | ✓ Revisited in Phase 2 (ADR-018, 2026-08-07): stays on the upstream Worker, wave-3 features (cron, view counter) stay dormant, client already degrades correctly |
 | Availability fields absent means "this service does not report it", null means "not checked yet" | Without the split, every Discover card carried a permanent "not checked yet" badge advertising a check that was never coming | ✓ Good |
@@ -137,4 +164,4 @@ Written policy that constrains how and where work is done. Recorded with the sou
 | The Sound Locker route was built, then folded back into the Locker shell | Two hero grids for one hero's content was the distance the lane set out to remove; legacy `/locker/sounds*` URLs are rewritten | ⚠️ Revisit (contested variant 1) |
 
 ---
-*Last updated: 2026-08-07 after Phase 2 completion*
+*Last updated: 2026-08-10 after v1.27 milestone*

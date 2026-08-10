@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.27
 milestone_name: milestone
-current_phase: 5
-current_phase_name: one-inventory-one-journey
-current_plan: 6
-status: verifying
-stopped_at: Completed 05-06-PLAN.md
-last_updated: "2026-08-09T08:53:29.576Z"
-last_activity: 2026-08-09
-last_activity_desc: Phase 4 execution started
+status: Awaiting next milestone
+stopped_at: All milestone phases executed (3, 4, 5 verification deferred to end-of-run testing); lifecycle not yet run
+last_updated: "2026-08-10T19:37:13.485Z"
+last_activity: 2026-08-10
+last_activity_desc: Milestone v1.27 completed and archived
 progress:
   total_phases: 6
   completed_phases: 6
   total_plans: 32
   completed_plans: 32
+current_phase: 5
+current_phase_name: one-inventory-one-journey
+current_plan: 6
 ---
 
 # Project State
@@ -28,14 +28,10 @@ See: .planning/PROJECT.md (updated 2026-08-05)
 
 ## Current Position
 
-Phase: 5 (one-inventory-one-journey) — EXECUTING
-Current Plan: 6
-Total Plans in Phase: 6
-Plan: 6 of 6
-Status: Phase complete — ready for verification
-Last activity: 2026-08-09 — Phase 5 execution started
-
-Progress: [██████████] 100%
+Phase: Milestone v1.27 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-08-10 — Milestone v1.27 completed and archived
 
 ## Performance Metrics
 
@@ -184,3 +180,7 @@ Real-game verification is deferred to the end of this milestone run per explicit
 Last session: 2026-08-09T09:00:55.150Z
 Stopped at: All milestone phases executed (3, 4, 5 verification deferred to end-of-run testing); lifecycle not yet run
 Resume file: .planning/phases/05-one-inventory-one-journey/.continue-here.md
+
+## Operator Next Steps
+
+- Start the next milestone with /gsd-new-milestone
