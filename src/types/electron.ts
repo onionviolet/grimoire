@@ -495,6 +495,31 @@ export interface DownloadProgressData {
     total: number;
 }
 
+export interface DownloadServerStatusData {
+    modId: number;
+    fileId: number;
+    server: string;
+    phase: 'selected' | 'switching';
+    previousServer?: string;
+}
+
+export interface GameBananaFileServerDiagnostics {
+    status: 'healthy' | 'degraded' | 'unavailable';
+    availableServers: number;
+    totalServers: number;
+    directoryCheckedAt?: number;
+    directoryExpiresAt?: number;
+    preferredServer?: string;
+    needsProbe: boolean;
+    localProbeCheckedAt?: number;
+    testedServers: Array<{
+        server: string;
+        bytesPerSecond?: number;
+        available: boolean;
+    }>;
+    error?: string;
+}
+
 export interface DownloadEventData {
     modId: number;
     fileId: number;
@@ -540,6 +565,29 @@ export interface OneClickSuspiciousFilesData {
     requestId: string;
     modName: string;
     files: string[];
+}
+
+/**
+ * An install offered by deadlockforge.net over the local bridge, awaiting the
+ * user's confirmation.
+ *
+ * Every field here has already been validated or sanitized in the main process.
+ * `sizeBytes` is what the bridge actually received, never a caller-supplied
+ * figure, and `origin` is an allowlisted origin rather than anything the page
+ * chose to call itself.
+ */
+export interface ForgeInstallRequestData {
+    requestId: string;
+    name: string;
+    author?: string;
+    type?: string;
+    sizeBytes: number;
+    origin: string;
+}
+
+export interface ForgeBridgeStatus {
+    listening: boolean;
+    port: number | null;
 }
 
 export interface MultiVpkPickData {
@@ -878,6 +926,9 @@ export interface ElectronAPI {
     exportHeroEffect: (heroName: string) => Promise<HeroEffectInfo>;
     getPreviewCacheSize: () => Promise<{ bytes: number }>;
     clearPreviewCache: () => Promise<{ bytesFreed: number }>;
+    getGameBananaFileServerDiagnostics: () => Promise<GameBananaFileServerDiagnostics>;
+    refreshGameBananaFileServerCache: () => Promise<GameBananaFileServerDiagnostics>;
+    testGameBananaFileServers: () => Promise<GameBananaFileServerDiagnostics>;
     applyHeroSound: (
         heroName: string,
         slot: AbilitySlot,
@@ -1128,6 +1179,7 @@ export interface ElectronAPI {
     // Events
     onGameBananaRateLimited: (callback: () => void) => () => void;
     onDownloadProgress: (callback: (data: DownloadProgressData) => void) => () => void;
+    onDownloadServerStatus: (callback: (data: DownloadServerStatusData) => void) => () => void;
     onDownloadExtracting: (callback: (data: DownloadEventData) => void) => () => void;
     onDownloadComplete: (callback: (data: DownloadEventData) => void) => () => void;
     onDownloadError: (callback: (data: DownloadErrorData) => void) => () => void;
@@ -1154,6 +1206,17 @@ export interface ElectronAPI {
         requestId: string,
         selected: string[] | null
     ) => Promise<void>;
+
+    // DeadlockForge local install bridge
+    onForgeInstallRequest: (
+        callback: (data: ForgeInstallRequestData) => void
+    ) => () => void;
+    respondToForgeInstall: (requestId: string, accepted: boolean) => Promise<void>;
+    /** Fired when the site asked Grimoire to start and the bridge is still off,
+     *  so the user can opt in without hunting through Settings. */
+    onForgeEnableRequest: (callback: () => void) => () => void;
+    respondToForgeEnable: (accepted: boolean) => Promise<void>;
+    getForgeBridgeStatus: () => Promise<ForgeBridgeStatus>;
 
     // Conflicts
     getConflicts: () => Promise<ModConflict[]>;

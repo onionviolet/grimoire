@@ -63,6 +63,7 @@ import type {
     VanillaRestoreResult,
     ProfileCrosshairSettings,
     DownloadProgressData,
+    DownloadServerStatusData,
     DownloadEventData,
     DownloadErrorData,
     ModsAutoDisabledData,
@@ -70,6 +71,8 @@ import type {
     OneClickInstallData,
     OneClickSuspiciousFilesData,
     MultiVpkPickData,
+    ForgeInstallRequestData,
+    ForgeBridgeStatus,
     SyncProgressData,
     UpdateStatus,
     LockerImageVariant,
@@ -213,6 +216,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
         ipcRenderer.invoke('get-preview-cache-size'),
     clearPreviewCache: () =>
         ipcRenderer.invoke('clear-preview-cache'),
+    getGameBananaFileServerDiagnostics: () =>
+        ipcRenderer.invoke('gamebanana-fileservers:getDiagnostics'),
+    refreshGameBananaFileServerCache: () =>
+        ipcRenderer.invoke('gamebanana-fileservers:refreshCache'),
+    testGameBananaFileServers: () =>
+        ipcRenderer.invoke('gamebanana-fileservers:testServers'),
     applyHeroSound: (heroName: string, slot: AbilitySlot, sourceFileName: string, params?: AbilitySoundParams) =>
         ipcRenderer.invoke('apply-hero-sound', heroName, slot, sourceFileName, params),
     revertHeroSound: (heroName: string, slot: AbilitySlot) =>
@@ -463,6 +472,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
         ipcRenderer.on('download-progress', handler);
         return () => ipcRenderer.removeListener('download-progress', handler);
     },
+    onDownloadServerStatus: (callback: (data: DownloadServerStatusData) => void) => {
+        const handler = (_event: Electron.IpcRendererEvent, data: DownloadServerStatusData) =>
+            callback(data);
+        ipcRenderer.on('download-server-status', handler);
+        return () => ipcRenderer.removeListener('download-server-status', handler);
+    },
     onDownloadExtracting: (callback: (data: DownloadEventData) => void) => {
         const handler = (_event: Electron.IpcRendererEvent, data: DownloadEventData) => callback(data);
         ipcRenderer.on('download-extracting', handler);
@@ -509,6 +524,30 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     respondToOneClickSuspiciousFiles: (requestId: string, accepted: boolean) =>
         ipcRenderer.invoke('one-click-suspicious-response', { requestId, accepted }),
+
+    // DeadlockForge local install bridge. The renderer only ever sees the
+    // sanitized description of a pending install and hands back a yes/no; the
+    // VPK bytes and temp path never leave the main process.
+    onForgeInstallRequest: (callback: (data: ForgeInstallRequestData) => void) => {
+        const handler = (_event: Electron.IpcRendererEvent, data: ForgeInstallRequestData) => callback(data);
+        ipcRenderer.on('forge-install-request', handler);
+        return () => ipcRenderer.removeListener('forge-install-request', handler);
+    },
+
+    respondToForgeInstall: (requestId: string, accepted: boolean) =>
+        ipcRenderer.invoke('forge-install-response', { requestId, accepted }),
+
+    onForgeEnableRequest: (callback: () => void) => {
+        const handler = () => callback();
+        ipcRenderer.on('forge-enable-request', handler);
+        return () => ipcRenderer.removeListener('forge-enable-request', handler);
+    },
+
+    respondToForgeEnable: (accepted: boolean) =>
+        ipcRenderer.invoke('forge-enable-response', { accepted }),
+
+    getForgeBridgeStatus: (): Promise<ForgeBridgeStatus> =>
+        ipcRenderer.invoke('forge-bridge-status'),
 
     onMultiVpkPick: (callback: (data: MultiVpkPickData) => void) => {
         const handler = (_event: Electron.IpcRendererEvent, data: MultiVpkPickData) => callback(data);

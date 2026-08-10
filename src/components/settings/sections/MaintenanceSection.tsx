@@ -8,6 +8,7 @@ import { changedPrefCount, resetAllPrefs } from '../../../lib/uiPrefs';
 import { Badge, Button, Card } from '../../common/ui';
 import { ConfirmModal } from '../../common/PageComponents';
 import Tx from '../../translation/Tx';
+import DownloadServersCard from '../DownloadServersCard';
 
 /** Human-readable byte size (MB below a GB, GB above). */
 function formatBytes(bytes: number): string {
@@ -258,6 +259,8 @@ export default function MaintenanceSection() {
           </div>
         </div>
       </Card>
+
+      <DownloadServersCard />
 
       <Card title={<Tx k="settings.sections.modDatabaseCache" fallback="Mod Database Cache" />} icon={Database}>
         <div className="flex flex-col sm:flex-row items-center justify-between gap-6">

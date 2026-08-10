@@ -4,6 +4,7 @@ import { detectDeadlockPath, looksLikeDeadlockPath } from '../services/deadlock'
 import { ensureDevDeadlockPath } from '../services/dev';
 import { configureFilter, filterStats } from '../services/browserContentFilter';
 import type { BrowserFilterStats } from '../../../src/types/foundry';
+import { syncForgeBridgeWithSettings } from '../services/forgeBridge';
 
 // detect-deadlock
 ipcMain.handle('detect-deadlock', (): string | null => {
@@ -37,6 +38,9 @@ ipcMain.handle('set-settings', (_, settings: AppSettings): void => {
         enabled: settings.browserBlockTrackers !== false,
         userListPath: settings.browserBlockListPath,
     });
+    // Bring the DeadlockForge bridge up or down to match. Toggling it off must
+    // actually close the socket, not just start refusing requests on it.
+    void syncForgeBridgeWithSettings();
 });
 
 // browser:filterStats
