@@ -2,6 +2,32 @@
 
 All notable changes to this project are documented here. Format is loosely based on [Keep a Changelog](https://keepachangelog.com/), and the project adheres to semantic versioning.
 
+## [1.27.2] - 2026-08-10
+
+### Fixed
+- **The in-app ad blocker now actually blocks.** Two compounding defects kept
+  it from doing its job:
+  - **Real filter lists are bundled with the app.** The blocker previously
+    fetched EasyList/EasyPrivacy/uBO lists from the network on first run and
+    silently degraded to a ~40-domain list when that fetch failed. The lists
+    are now fetched at build time by `scripts/fetch-filter-lists.mjs`, shipped
+    in every installer, and parsed locally, so the packaged app has full
+    coverage with no runtime network dependency. The serialized engine cache is
+    keyed to the list contents and stale caches are pruned, so a refreshed
+    bundle can never reuse an engine built from an older one.
+  - **Reopening the Browser page no longer silently disables blocking.**
+    Electron keeps a single webRequest listener per event per session, and the
+    fallback listener was re-registered on every webview attach, replacing the
+    engine's own listener. Because the engine's enable call is idempotent, the
+    replacement then deferred to an engine listener that no longer existed.
+    The fallback now registers once per session.
+
+### Added
+- **The custom blocklist accepts real filter syntax.** Alongside hosts-file and
+  plain-domain entries, the custom list now accepts uBlock Origin / EasyList
+  rules (network and cosmetic), so pointing it at a real filter list does
+  something instead of silently ignoring every line.
+
 ## [1.27.1] - 2026-08-10
 
 The fork's own release following the verbatim absorption of upstream v1.27:

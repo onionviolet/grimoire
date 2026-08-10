@@ -4,9 +4,9 @@ milestone: v1.27.1
 milestone_name: "\"absorb, review, ship\""
 status: Awaiting next milestone
 stopped_at: Milestone v1.27.1 complete and archived; awaiting v1.28
-last_updated: "2026-08-10T20:08:38.775Z"
+last_updated: "2026-08-10T21:30:00.000Z"
 last_activity: 2026-08-10
-last_activity_desc: Milestone v1.27.1 completed and archived
+last_activity_desc: v1.27.2 released: bundled filter lists, webview re-attach blocker fix, uBO/EasyList custom list syntax
 progress:
   total_phases: 2
   completed_phases: 2
