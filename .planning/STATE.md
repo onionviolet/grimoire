@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v1.27.1
 milestone_name: "\"absorb, review, ship\""
 status: Awaiting next milestone
-stopped_at: All milestone phases executed (3, 4, 5 verification deferred to end-of-run testing); lifecycle not yet run
+stopped_at: Milestone v1.27.1 complete and archived; awaiting v1.28
 last_updated: "2026-08-10T20:08:38.775Z"
 last_activity: 2026-08-10
-last_activity_desc: Phase 7 complete, transitioned to Phase 8
+last_activity_desc: Milestone v1.27.1 completed and archived
 progress:
   total_phases: 2
   completed_phases: 2
@@ -20,10 +20,10 @@ current_phase_name: Release Engineering
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-08-05)
+See: .planning/PROJECT.md (updated 2026-08-10)
 
 **Core value:** A Deadlock player can change their game and always know exactly what changed, who owns it, and how to undo it.
-**Current focus:** Phase 5 — one-inventory-one-journey
+**Current focus:** Next milestone (v1.28)
 
 ## Current Position
 
