@@ -465,10 +465,13 @@ export interface EngineInfo {
 }
 
 /** What the in-app browser's ad/tracker filter is doing, for the Settings card.
- *  `domains` counts blocklist entries (built-in plus any user list); `blocked`
- *  counts requests cancelled since launch; `error` reports an unreadable user
- *  list, which would otherwise fail silently and look like weak blocking. */
+ *  `filters` is the active rule count (bundled lists plus any custom list);
+ *  `domains` counts host entries from the built-in and custom lists; `blocked`
+ *  counts requests cancelled since launch; `error` reports a list that failed
+ *  to load (bundled or custom), which would otherwise fail silently and look
+ *  like weak blocking. */
 export interface BrowserFilterStats {
+    filters: number;
     domains: number;
     blocked: number;
     error: string | null;

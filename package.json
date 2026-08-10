@@ -1,7 +1,7 @@
 {
   "name": "grimoire",
   "private": true,
-  "version": "1.27.1",
+  "version": "1.27.2",
   "description": "Grimoire - A Deadlock mod manager and customization workshop",
   "license": "MIT",
   "author": {
@@ -19,7 +19,7 @@
   "scripts": {
     "prepare": "husky",
     "preinstall": "node scripts/check-sibling-repos.mjs",
-    "postinstall": "node scripts/fetch-vpkmerge.mjs",
+    "postinstall": "node scripts/fetch-vpkmerge.mjs && node scripts/fetch-filter-lists.mjs",
     "check-siblings": "node scripts/check-sibling-repos.mjs",
     "fetch-vpkmerge": "node scripts/fetch-vpkmerge.mjs",
     "use-local-vpkmerge": "node scripts/use-local-vpkmerge.mjs",
@@ -40,10 +40,10 @@
     "perf:presets": "node scripts/gen-performance-presets.mjs",
     "i18n:extract-unwired": "node scripts/extract-unwired-i18n.mjs",
     "verify:in-app": "node scripts/verify-in-app.mjs",
-    "package": "electron-vite build && electron-builder",
-    "package:linux": "electron-vite build && electron-builder --linux",
-    "package:win": "electron-vite build && electron-builder --win",
-    "package:mac": "electron-vite build && electron-builder --mac --arm64"
+    "package": "node scripts/fetch-filter-lists.mjs --refresh && electron-vite build && electron-builder",
+    "package:linux": "node scripts/fetch-filter-lists.mjs --refresh && electron-vite build && electron-builder --linux",
+    "package:win": "node scripts/fetch-filter-lists.mjs --refresh && electron-vite build && electron-builder --win",
+    "package:mac": "node scripts/fetch-filter-lists.mjs --refresh && electron-vite build && electron-builder --mac --arm64"
   },
   "dependencies": {
     "7zip-bin": "^5.2.0",

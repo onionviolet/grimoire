@@ -4,7 +4,13 @@
 // UI still says "blocking on"), which is why they are pinned.
 
 import { describe, expect, it } from 'vitest';
-import { isBlockedHost, parseBlocklist } from './browserContentFilter';
+import { parseFilters } from '@ghostery/adblocker-electron';
+import {
+    isBlockedHost,
+    isDomainEntryLine,
+    parseBlocklist,
+    splitUserList,
+} from './browserContentFilter';
 
 describe('parseBlocklist', () => {
     it('accepts a plain domain list', () => {
@@ -59,5 +65,54 @@ describe('isBlockedHost', () => {
 
     it('is case-insensitive', () => {
         expect(isBlockedHost('STATS.DoubleClick.NET', domains)).toBe(true);
+    });
+});
+
+describe('isDomainEntryLine', () => {
+    it('accepts bare domains and hosts entries', () => {
+        expect(isDomainEntryLine('ads.example.com')).toBe(true);
+        expect(isDomainEntryLine('0.0.0.0 ads.example.com')).toBe(true);
+        expect(isDomainEntryLine('127.0.0.1 t.example.org # comment')).toBe(true);
+    });
+
+    it('rejects uBO/EasyList syntax, cosmetic rules, and localhost', () => {
+        expect(isDomainEntryLine('||ads.example.com^')).toBe(false);
+        expect(isDomainEntryLine('@@||ads.example.com^')).toBe(false);
+        // `example.com##.ad` must not be read as the bare domain `example.com`:
+        // that would block the entire site instead of one ad element.
+        expect(isDomainEntryLine('example.com##.ad-banner')).toBe(false);
+        expect(isDomainEntryLine('example.com#@#.ad')).toBe(false);
+        expect(isDomainEntryLine('! uBO comment')).toBe(false);
+        expect(isDomainEntryLine('0.0.0.0 localhost')).toBe(false);
+    });
+});
+
+describe('splitUserList', () => {
+    it('separates hosts/domain entries from full filter syntax', () => {
+        const text = [
+            '# a hosts comment',
+            '0.0.0.0 ads.example.com',
+            'plain.tracker.org',
+            '||ads.example.org^',
+            'example.com##.ad-banner',
+            '! uBO comment',
+            'example.net##+js(aeld, abort-on-property-read, someProp)',
+            '',
+        ].join('\n');
+        const { domains, filterLines } = splitUserList(text);
+        expect(domains).toEqual(['ads.example.com', 'plain.tracker.org']);
+        expect(filterLines).toEqual([
+            '||ads.example.org^',
+            'example.com##.ad-banner',
+            '! uBO comment',
+            'example.net##+js(aeld, abort-on-property-read, someProp)',
+        ]);
+    });
+
+    it('full-syntax lines parse into network and cosmetic filters', () => {
+        const { filterLines } = splitUserList('||ads.example.org^\nexample.com##.ad-banner');
+        const { networkFilters, cosmeticFilters } = parseFilters(filterLines.join('\n'));
+        expect(networkFilters.length).toBe(1);
+        expect(cosmeticFilters.length).toBe(1);
     });
 });

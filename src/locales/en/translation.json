@@ -1438,11 +1438,11 @@
     "browser": {
       "blockTrackers": "Block ads and trackers",
       "blockTrackersDetail": "Cancels requests to known ad and tracker domains inside the in-app browser. The page still loads; the ad request never leaves your machine.",
-      "blockStats": "{{domains}} domains blocked, {{blocked}} requests stopped this session",
+      "blockStats": "{{filters}} filter rules active, {{blocked}} requests stopped this session",
       "blockListChoose": "Choose a blocklist file",
       "blockListClear": "Use built-in list only",
-      "blockListError": "Custom list failed to load: ",
-      "blockListHint": "Any hosts file or plain list of domains, one per line. The built-in list is deliberately small; point this at a real filter list for full coverage."
+      "blockListError": "Filter lists failed to load: ",
+      "blockListHint": "Any hosts file, plain domain list, or uBlock Origin / EasyList filter list, one entry per line. The app bundles real filter lists and refreshes them with each release."
     },
     "viewPrefs": {
       "title": "Reset view preferences",

@@ -53,6 +53,13 @@ extraResources:
     filter:
       - "**/*"
       - "!*.bak"
+  # Ad/tracker filter lists fetched at build time by
+  # scripts/fetch-filter-lists.mjs; the blocker reads them from
+  # process.resourcesPath/filters so the packaged app needs no runtime fetch.
+  - from: resources/filters
+    to: filters
+    filter:
+      - "**/*"
 linux:
   target:
     - AppImage

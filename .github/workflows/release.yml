@@ -101,6 +101,14 @@ jobs:
         working-directory: grimoire
         run: node scripts/verify-release-version.mjs
 
+      # Refresh the ad/tracker filter lists so the shipped installer carries
+      # current EasyList/EasyPrivacy/uBO rules. postinstall already fetched
+      # them; --refresh makes the release build fail loudly rather than ship
+      # stale or truncated lists.
+      - name: Fetch bundled filter lists
+        working-directory: grimoire
+        run: node scripts/fetch-filter-lists.mjs --refresh
+
       - name: Clean previous builds
         working-directory: grimoire
         shell: bash

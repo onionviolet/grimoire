@@ -10,11 +10,15 @@ import type { BrowserFilterStats } from '../../types/foundry';
 /**
  * Ad/tracker blocking for the in-app browser.
  *
- * The embedded browser cannot load extensions, so a user who runs uBlock in
- * their real browser is LESS protected inside Grimoire than outside it, purely
- * because they came in through the app. That asymmetry is the whole reason this
- * exists. Blocking is domain-level and on by default; the custom list is the
- * escape hatch, since a short built-in set is not a real filter list.
+ * Electron can load some unpacked extensions, but not uBlock Origin: the full
+ * extension needs extension APIs Electron does not implement, and uBO Lite
+ * (MV3) is built entirely on declarativeNetRequest, which Electron does not
+ * implement at all. So a user who runs uBlock in their real browser would
+ * otherwise be LESS protected inside Grimoire than outside it. That asymmetry
+ * is the whole reason this exists. The Ghostery engine is uBO/EasyList
+ * compatible, so the app bundles real filter lists (EasyList, EasyPrivacy, uBO
+ * filters) at build time and ships them with every release; the custom list is
+ * the escape hatch for anything extra.
  *
  * Permission denial (camera, mic, location, notifications) is not exposed here
  * on purpose: it is a floor, not a preference, and there is no UI in an embedded
@@ -69,13 +73,13 @@ export default function BrowserFilterControls() {
           <p className="text-xs text-text-secondary">
             {stats?.error ? (
               <span className="text-warning">
-                {t('settings.browser.blockListError', 'Custom list failed to load: ')}
+                {t('settings.browser.blockListError', 'Filter lists failed to load: ')}
                 {stats.error}
               </span>
             ) : (
               t('settings.browser.blockStats', {
-                defaultValue: '{{domains}} domains blocked, {{blocked}} requests stopped this session',
-                domains: stats?.domains ?? 0,
+                defaultValue: '{{filters}} filter rules active, {{blocked}} requests stopped this session',
+                filters: stats?.filters ?? 0,
                 blocked: stats?.blocked ?? 0,
               })
             )}
@@ -99,7 +103,7 @@ export default function BrowserFilterControls() {
           <p className="text-[11px] text-text-secondary/70">
             <Tx
               k="settings.browser.blockListHint"
-              fallback="Any hosts file or plain list of domains, one per line. The built-in list is deliberately small; point this at a real filter list for full coverage."
+              fallback="Any hosts file, plain domain list, or uBlock Origin / EasyList filter list, one entry per line. The app bundles real filter lists and refreshes them with each release."
             />
           </p>
         </>

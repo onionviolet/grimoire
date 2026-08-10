@@ -21,6 +21,9 @@ bin/
 # Fetched at install time by scripts/fetch-vpkmerge.mjs
 resources/vpkmerge/
 
+# Fetched at install/package time by scripts/fetch-filter-lists.mjs
+resources/filters/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
