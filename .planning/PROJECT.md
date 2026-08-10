@@ -33,6 +33,21 @@ deterministic); the milestone audit records the accepted gaps.
 
 SEED-001 (generic local-install protocol) is a v1.28 seed and stays dormant.
 
+## Current Milestone: v1.27.1 "absorb, review, ship"
+
+**Goal:** Ship the fork's own v1.27.1 release: upstream v1.27 absorbed verbatim,
+the first retroactive UI reviews of the shipped frontend phases with fixes, and
+release engineering through the GitHub Release.
+
+**Target features:**
+- Absorb upstream v1.27 verbatim (done pre-milestone: merge `7e933b8`, version resolved to 1.27.1, gates green)
+- Retroactive six-pillar UI review of shipped frontend phases 03-06 with code fixes for findings
+- Release engineering: CHANGELOG entry, tag v1.27.1 pushed to origin, GitHub Release with installer, checksums, attestations
+
+**Key context:** SEED-001 stays dormant (v1.28 seed); deferred in-game
+verification from v1.27 stays tracked, not re-scoped; upstream stays read-only
+and commit messages never carry bare upstream PR numbers.
+
 ## Requirements
 
 ### Validated
@@ -57,9 +72,9 @@ Shipped and confirmed in the codebase. Full evidence per item is in `.planning/R
 
 The v1.27.1 milestone (pre-approved scope):
 
-- [ ] Absorb upstream v1.27 verbatim and resolve the fork version to 1.27.1
-- [ ] Retroactive UI review of shipped frontend phases 03-06 with fixes
-- [ ] Release engineering: version bump, CHANGELOG, tag, push, GitHub Release
+- [x] Absorb upstream v1.27 verbatim and resolve the fork version to 1.27.1 (merge `7e933b8`)
+- [ ] Retroactive six-pillar UI review of shipped frontend phases 03-06 with fixes
+- [ ] Release engineering: CHANGELOG, tag v1.27.1, push, GitHub Release
 
 ### Out of Scope
 
@@ -164,4 +179,4 @@ Written policy that constrains how and where work is done. Recorded with the sou
 | The Sound Locker route was built, then folded back into the Locker shell | Two hero grids for one hero's content was the distance the lane set out to remove; legacy `/locker/sounds*` URLs are rewritten | ⚠️ Revisit (contested variant 1) |
 
 ---
-*Last updated: 2026-08-10 after v1.27 milestone*
+*Last updated: 2026-08-10 after v1.27.1 milestone start*

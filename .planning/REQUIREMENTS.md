@@ -1,0 +1,38 @@
+# Requirements: Grimoire
+
+**Defined:** 2026-08-10
+**Core Value:** A Deadlock player can change their game and always know exactly what changed, who owns it, and how to undo it.
+
+## Delivered
+
+Shipped before this milestone's phases began, confirmed against the working tree at the v1.27.1 merge.
+
+| Requirement | Evidence |
+|-------------|----------|
+| **REQ-absorb-upstream-v1.27** | Merge `7e933b8` absorbed the 10 upstream commits verbatim (DeadlockForge loopback bridge, GameBanana mirror routing + fileserver failover, download-servers diagnostics card, crosshair rasterization, VPK `treeSize` clamp at four call sites plus the worker parser). All six conflicts resolved additively; `package.json` version resolved to **1.27.1**. Runtime agreements verified: `forgeLocalInstallEnabled` is required in `AppSettings`, defaults to `false` in the main-process settings, and survives the fork's settings migration; Deadworks downloads use their own `downloadToFile` and are untouched by the GameBanana failover. Gates green: typecheck, lint, i18n:check, encoding:check, 2076 tests, and `verify:in-app` re-ran against the merged tree (IG-01 upgraded to pass; blocked rows unchanged and accepted) |
+
+## v1 Requirements
+
+### UI review
+
+- [ ] **REQ-ui-review-shipped-frontend**: The shipped frontend phases 03-06 each get a retroactive six-pillar visual audit (a `{phase}-UI-REVIEW.md` file, the first ever produced for these phases), and every code-fixable finding is fixed before release. Zero UI-REVIEW files existed at milestone start; the audits run against the phases' UI-SPECs and the live components.
+
+### Release engineering
+
+- [ ] **REQ-release-v1.27.1**: The fork ships v1.27.1 as a GitHub Release on `onionviolet/grimoire`: `package.json` version 1.27.1 (already merged), a CHANGELOG entry for the fork release, tag `v1.27.1` pushed to `origin` (the tag must match `package.json`; `scripts/verify-release-version.mjs` must pass), the `release.yml` workflow builds the installer, checksums, and attestations, and the GitHub Release is created with notes from the changelog.
+
+## Out of Scope
+
+| Feature | Reason |
+|---------|--------|
+| SEED-001 generic local-install protocol for browser-built VPKs | A v1.28 seed; must stay dormant |
+| Nyquist validation reconciliation (`*-VALIDATION.md` draft files) | Backlog coverage TODO, not part of this release milestone |
+| Deferred human in-game verification (v1.27 phases 3-5) | Tracked; resume via `$gsd-verify-work 3/4/5` |
+
+## Traceability
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| REQ-absorb-upstream-v1.27 | delivered (pre-milestone) | [x] |
+| REQ-ui-review-shipped-frontend | 7 | [ ] |
+| REQ-release-v1.27.1 | 8 | [ ] |
