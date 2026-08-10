@@ -40,6 +40,38 @@
 - Sessions: continuous run 2026-08-10
 - Notable: the repository gate (1931 tests, typecheck, lint, i18n, encoding) stayed green through the review-fix commit; verification debt, not test debt, was the cost driver
 
+## Milestone: v1.27.1 - "absorb, review, ship"
+
+**Shipped:** 2026-08-10
+**Phases:** 2 | **Plans:** 2
+
+### What Was Built
+- Upstream v1.27 absorbed verbatim in one merge (forge bridge, mirror routing + failover, diagnostics card, crosshair rasterization, VPK size clamp), with the fork version resolved to 1.27.1 and every gate re-run against the merged tree, including the full in-app verification sweep
+- The first retroactive six-pillar UI reviews for shipped frontend phases 03-06 (22/24, 23/24, 22/24, 24/24), with the Phase 5 copy-contract drift fixed and gated
+- The fork's own published GitHub Release with installers, SHA256SUMS, and provenance attestations
+
+### What Worked
+- The pre-merge conflict map from the absorb todo was accurate (6 files / additive), so resolution was mechanical and byte-identical where it mattered
+- Re-running verify:in-app against the merged tree caught nothing broken and upgraded IG-01 to pass (local vpkmerge engine available)
+- The code-only UI audits with targeted greps found real contract drift (Phase 5 copy) without needing a browser session
+
+### What Was Inefficient
+- CRLF line endings made apply_patch fail on translation.json, forcing scripted exact-string edits; the first catalogFailed insertion landed in the wrong object and needed a corrective pass
+- The CI test job on main is red on two pre-existing Linux-only issues (encoding-check fixture decoding; download-capture symlink sweep) that only surfaced on the first CI run to include them; the release itself was unaffected
+
+### Patterns Established
+- Verify release-notes extraction locally before tagging: `node scripts/release-notes.mjs <version>`
+- Regenerate the locale manifest and re-run i18n:check after any catalog edit; validate JSON structure with a targeted path assertion, not just parse
+
+### Key Lessons
+1. When editing a CRLF JSON catalog, do exact-string replacements with a script and assert the target path afterward; a parse-valid JSON can still hold the new object in the wrong place.
+2. A tag push is the moment CI exercises Linux-only test paths for the first time; run the suite on the CI OS before releasing if any test is platform-guarded.
+
+### Cost Observations
+- Model mix: single-model autonomous run
+- Sessions: continuous run 2026-08-10
+- Notable: the release workflow completed in ~7 minutes; the long pole was verification, not release
+
 ---
 
 ## Cross-Milestone Trends
@@ -49,12 +81,14 @@
 | Milestone | Sessions | Phases | Key Change |
 |-----------|----------|--------|------------|
 | v1.27 | 1 run | 6 | Review-before-audit, CDP-driven verification rows, accepted deferred verification recorded |
+| v1.27.1 | 1 run | 2 | Verbatim upstream absorb + retroactive UI review + first fork GitHub Release |
 
 ### Cumulative Quality
 
 | Milestone | Tests | Zero-Dep Additions |
 |-----------|-------|-------------------|
 | v1.27 | 1931 | jsdom render harness (raw react-dom/client + act) |
+| v1.27.1 | 2076 | Hook-level bulk-undo regression test; four UI-REVIEW files |
 
 ### Top Lessons (Verified Across Milestones)
 

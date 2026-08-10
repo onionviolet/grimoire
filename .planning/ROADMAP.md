@@ -3,36 +3,37 @@
 ## Milestones
 
 - ✅ **v1.27 "verified, supported, coherent"** - Phases 1-6 (shipped 2026-08-10)
-- 🚧 **v1.27.1 "absorb, review, ship"** - Phases 7-8 (in progress)
+- ✅ **v1.27.1 "absorb, review, ship"** - Phases 7-8 (shipped 2026-08-10)
+- 🚧 **v1.28** - planned (SEED-001 generic local-install protocol is a v1.28 seed and stays dormant until then)
 
 ## Phases
 
-**Phase Numbering:** continues from v1.27 (7, 8). Decimal phases (7.1, 8.1) are urgent insertions marked INSERTED.
+<details>
+<summary>✅ v1.27.1 "absorb, review, ship" (Phases 7-8) - SHIPPED 2026-08-10</summary>
 
-- [x] **Phase 7: UI Review Of Shipped Frontend** - Run the retroactive six-pillar visual audit on the four shipped frontend phases (03-06), produce the first UI-REVIEW files ever created for them, and fix code-fixable findings before release (completed 2026-08-10)
-- [x] **Phase 8: Release Engineering** - Ship v1.27.1: CHANGELOG entry, tag `v1.27.1` matching `package.json`, push to `origin`, and confirm the GitHub Release (installer, checksums, attestations) with notes from the changelog (completed 2026-08-10)
+- [x] Phase 7: UI Review Of Shipped Frontend (1/1 plans) - completed 2026-08-10
+- [x] Phase 8: Release Engineering (1/1 plans) - completed 2026-08-10
 
-## Phase Details
+Full phase details are archived in `.planning/milestones/v1.27.1-ROADMAP.md`;
+the milestone audit (tech debt accepted) is in
+`.planning/milestones/v1.27.1-MILESTONE-AUDIT.md`.
 
-### Phase 7: UI Review Of Shipped Frontend
+</details>
 
-**Goal**: The four shipped frontend phases (03 Foundry build contract, 04 Locker/Foundry parity, 05 one-inventory-one-journey, 06 community tools) each receive a graded six-pillar visual audit against their UI-SPECs, and every code-fixable finding is fixed and covered before the release tag.
-**Depends on**: Nothing (retroactive on shipped phases)
-**Requirements**: REQ-ui-review-shipped-frontend
-**Success Criteria** (what must be TRUE):
+<details>
+<summary>✅ v1.27 "verified, supported, coherent" (Phases 1-6) - SHIPPED 2026-08-10</summary>
 
-  1. A `{phase}-UI-REVIEW.md` exists for each of phases 03-06 with the six pillar scores (1-4) and an explicit list of findings
-  2. Every code-fixable finding (visual, accessibility, layout, contrast, responsiveness, state feedback) is fixed and the repository gate is green (typecheck, lint, full test suite, i18n, encoding)
-  3. Findings that are not code-fixable (e.g. requiring live in-game validation) are recorded with an owner and a resume command, consistent with the project's accepted deferred-verification position
+- [x] Phase 1: Verified Against The Game (8/8 plans) - completed 2026-08-06
+- [x] Phase 2: A Supported Fork Release (6/6 plans) - completed 2026-08-07
+- [x] Phase 3: Foundry Completes Its Build Contract (3/3 plans) - completed 2026-08-09
+- [x] Phase 4: Locker And Foundry As One Object (2/2 plans) - completed 2026-08-09
+- [x] Phase 5: One Inventory, One Journey (6/6 plans) - completed 2026-08-09
+- [x] Phase 6: Community Tools Land Inside Grimoire (7/7 plans) - completed 2026-08-08
 
-### Phase 8: Release Engineering
+</details>
 
-**Goal**: The fork ships v1.27.1 as a GitHub Release on `onionviolet/grimoire`, produced by the release workflow and verified end to end.
-**Depends on**: Phase 7
-**Requirements**: REQ-release-v1.27.1
-**Success Criteria** (what must be TRUE):
+## Next Milestone
 
-  1. `package.json` version is 1.27.1 and `scripts/verify-release-version.mjs` passes against the tag
-  2. A CHANGELOG entry records the fork's v1.27.1 release (upstream v1.27 absorbed + fork divergence), free of bare upstream PR-number references
-  3. Tag `v1.27.1` is created and pushed to `origin` (`onionviolet/grimoire` only); `release.yml` builds the installer, checksums, and attestations
-  4. The GitHub Release exists with release notes from the changelog, and the release URL is reported
+The v1.28 roadmap is produced by `$gsd-new-milestone v1.28` when the repository
+owner starts it. SEED-001 (generic local-install protocol for browser-built
+VPKs) is the seed scheduled for that milestone.

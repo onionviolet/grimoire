@@ -2,10 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.27.1
 milestone_name: "\"absorb, review, ship\""
-current_phase: 8
-status: completed
+status: Awaiting next milestone
 stopped_at: All milestone phases executed (3, 4, 5 verification deferred to end-of-run testing); lifecycle not yet run
-last_updated: "2026-08-10T20:08:16.214Z"
+last_updated: "2026-08-10T20:08:38.775Z"
 last_activity: 2026-08-10
 last_activity_desc: Phase 7 complete, transitioned to Phase 8
 progress:
@@ -13,6 +12,7 @@ progress:
   completed_phases: 2
   total_plans: 2
   completed_plans: 2
+current_phase: 8
 current_phase_name: Release Engineering
 ---
 
@@ -27,10 +27,10 @@ See: .planning/PROJECT.md (updated 2026-08-05)
 
 ## Current Position
 
-Phase: 8
-Plan: Not started
-Status: All phases complete
-Last activity: 2026-08-10 — Phase 8 complete
+Phase: Milestone v1.27.1 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-08-10 — Milestone v1.27.1 completed and archived
 
 ## Performance Metrics
 

@@ -23,21 +23,28 @@ hand their built VPKs into the app. Human in-game verification for phases 3-5
 is deferred by explicit user decision (out-of-game tool; VPK-level work is
 deterministic); the milestone audit records the accepted gaps.
 
+**Shipped: v1.27.1 "absorb, review, ship" (2026-08-10).** The fork absorbed
+upstream v1.27 verbatim (DeadlockForge 1-click installs over a loopback bridge,
+GameBanana mirror routing with fileserver failover, the download-servers
+diagnostics card, crosshair rasterization like the game, and the VPK
+`treeSize` clamp), resolved its version scheme to 1.27.1, produced the first
+retroactive six-pillar UI reviews of the shipped frontend phases (03-06) with
+the copy-contract fixes, and shipped the fork's own GitHub Release with
+installer, checksums, and provenance attestations.
+
 ## Next Milestone Goals
 
-**v1.27.1** (planned, pre-approved scope):
-
-- Absorb upstream v1.27 verbatim (forge bridge, mirror routing, diagnostics card, crosshair rasterization) and resolve the fork version to 1.27.1
-- Retroactive UI review of the shipped frontend phases (03-06) with fixes for findings
-- Release engineering: version bump, CHANGELOG entry, tag v1.27.1, push to origin, confirm the GitHub Release (installer, checksums, attestations)
-
-SEED-001 (generic local-install protocol) is a v1.28 seed and stays dormant.
+**v1.28** (planned): SEED-001 (generic local-install protocol for browser-built
+VPKs) is the scheduled seed; the roadmap is produced by `$gsd-new-milestone
+v1.28`. Carried debt includes the two pre-existing Linux-CI test issues
+(encoding-check fixture decoding; download-capture symlink sweep), the standing
+deferred in-game verification rows, and the Nyquist VALIDATION.md reconciliation
+TODO.
 
 ## Current Milestone: v1.27.1 "absorb, review, ship"
 
-**Goal:** Ship the fork's own v1.27.1 release: upstream v1.27 absorbed verbatim,
-the first retroactive UI reviews of the shipped frontend phases with fixes, and
-release engineering through the GitHub Release.
+**Goal:** SHIPPED 2026-08-10. The fork's own v1.27.1 GitHub Release is live at
+https://github.com/onionviolet/grimoire/releases/tag/v1.27.1.
 
 **Target features:**
 - Absorb upstream v1.27 verbatim (done pre-milestone: merge `7e933b8`, version resolved to 1.27.1, gates green)
@@ -73,8 +80,8 @@ Shipped and confirmed in the codebase. Full evidence per item is in `.planning/R
 The v1.27.1 milestone (pre-approved scope):
 
 - [x] Absorb upstream v1.27 verbatim and resolve the fork version to 1.27.1 (merge `7e933b8`)
-- [ ] Retroactive six-pillar UI review of shipped frontend phases 03-06 with fixes
-- [ ] Release engineering: CHANGELOG, tag v1.27.1, push, GitHub Release
+- [x] Retroactive six-pillar UI review of shipped frontend phases 03-06 with fixes
+- [x] Release engineering: CHANGELOG, tag v1.27.1, push, GitHub Release
 
 ### Out of Scope
 
@@ -179,4 +186,4 @@ Written policy that constrains how and where work is done. Recorded with the sou
 | The Sound Locker route was built, then folded back into the Locker shell | Two hero grids for one hero's content was the distance the lane set out to remove; legacy `/locker/sounds*` URLs are rewritten | ⚠️ Revisit (contested variant 1) |
 
 ---
-*Last updated: 2026-08-10 after v1.27.1 milestone start*
+*Last updated: 2026-08-10 after v1.27.1 milestone*

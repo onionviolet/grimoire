@@ -1,5 +1,15 @@
 # Milestones
 
+## v1.27.1 absorb, review, ship (Shipped: 2026-08-10)
+
+**Phases completed:** 2 phases, 2 plans, 0 tasks
+
+**Key accomplishments:**
+
+- (none recorded)
+
+---
+
 ## v1.27 verified, supported, coherent (Shipped: 2026-08-10)
 
 **Phases completed:** 6 phases, 32 plans, 76 tasks
