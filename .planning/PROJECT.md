@@ -34,26 +34,34 @@ installer, checksums, and provenance attestations.
 
 ## Next Milestone Goals
 
-**v1.28** (planned): SEED-001 (generic local-install protocol for browser-built
-VPKs) is the scheduled seed; the roadmap is produced by `$gsd-new-milestone
-v1.28`. Carried debt includes the two pre-existing Linux-CI test issues
+**v1.27.5 "Chat Wheel parity"** (in progress): bring the embedded Chat Wheel
+editor to parity with the original ChatLane tool. SEED-001 (generic
+local-install protocol for browser-built VPKs) stays dormant for a future
+milestone. Carried debt includes the two pre-existing Linux-CI test issues
 (encoding-check fixture decoding; download-capture symlink sweep), the standing
 deferred in-game verification rows, and the Nyquist VALIDATION.md reconciliation
 TODO.
 
-## Current Milestone: v1.27.1 "absorb, review, ship"
+## Current Milestone: v1.27.5 "Chat Wheel parity"
 
-**Goal:** SHIPPED 2026-08-10. The fork's own v1.27.1 GitHub Release is live at
-https://github.com/onionviolet/grimoire/releases/tag/v1.27.1.
+**Goal:** The embedded Chat Wheel editor reaches parity with the original
+ChatLane: users can browse and toggle the base-game voice command catalogue
+(both override maps), see the game's documented limitations where they bite,
+build and reorder menus by drag-and-drop, get warned before removing an add-on
+that must be unbound first, and optionally dress the preview with the game's
+own art. The untested VPK read/starter paths close, and the fork ships v1.27.5.
 
 **Target features:**
-- Absorb upstream v1.27 verbatim (done pre-milestone: merge `7e933b8`, version resolved to 1.27.1, gates green)
-- Retroactive six-pillar UI review of shipped frontend phases 03-06 with code fixes for findings
-- Release engineering: CHANGELOG entry, tag v1.27.1 pushed to origin, GitHub Release with installer, checksums, attestations
+- Base command catalogue (`src/lib/chatWheelCommands.ts`) + override-editing UI for `override_bindable` / `override_ping_wheel_bindable`
+- Known-limitations disclosures, radial-preview arrow-key nav, drag-and-drop menu building
+- Unbind-before-delete safety warning; game-asset wheel dressing spike (SVG stays the fallback)
+- Close the `chat-wheel:read`/`starter` test gap; release v1.27.5
 
-**Key context:** SEED-001 stays dormant (v1.28 seed); deferred in-game
-verification from v1.27 stays tracked, not re-scoped; upstream stays read-only
-and commit messages never carry bare upstream PR numbers.
+**Key context:** SEED-001 stays dormant (future milestone seed); deferred
+in-game verification from v1.27 stays tracked, not re-scoped; upstream stays
+read-only and commit messages never carry bare upstream PR numbers. Versioning
+stays below upstream (1.27.5, not 1.28) so a fork patch can never overtake the
+upstream version line.
 
 ## Requirements
 
@@ -77,11 +85,16 @@ Shipped and confirmed in the codebase. Full evidence per item is in `.planning/R
 
 ### Active
 
-The v1.27.1 milestone (pre-approved scope):
+The v1.27.5 milestone (confirmed scope):
 
-- [x] Absorb upstream v1.27 verbatim and resolve the fork version to 1.27.1 (merge `7e933b8`)
-- [x] Retroactive six-pillar UI review of shipped frontend phases 03-06 with fixes
-- [x] Release engineering: CHANGELOG, tag v1.27.1, push, GitHub Release
+- [ ] Base command catalogue: typed readonly `chatWheelCommands.ts`, provenance-pinned to the bundled ChatLane release
+- [ ] Override-editing UI for `override_bindable` and `override_ping_wheel_bindable` (search/filter/browse; unknown entries preserved byte-for-byte)
+- [ ] Known-limitations disclosures near the relevant controls; radial-preview arrow-key nav
+- [ ] Drag-and-drop menu building and wheel reordering (keyboard alternatives preserved)
+- [ ] Unbind-before-delete safety warning on Chat Wheel removal
+- [ ] Game-asset wheel dressing spike (SVG stays the permanent fallback)
+- [ ] Close the `chat-wheel:read`/`starter` main-process test gap
+- [ ] Release engineering: package.json 1.27.5, CHANGELOG, tag v1.27.5, GitHub Release
 
 ### Out of Scope
 
@@ -186,4 +199,4 @@ Written policy that constrains how and where work is done. Recorded with the sou
 | The Sound Locker route was built, then folded back into the Locker shell | Two hero grids for one hero's content was the distance the lane set out to remove; legacy `/locker/sounds*` URLs are rewritten | ⚠️ Revisit (contested variant 1) |
 
 ---
-*Last updated: 2026-08-10 after v1.27.1 milestone*
+*Last updated: 2026-08-11 at the start of v1.27.5 "Chat Wheel parity"*
