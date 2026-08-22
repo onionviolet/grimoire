@@ -1,18 +1,18 @@
 {
   "context": "phase",
-  "phase": "05-one-inventory-one-journey",
-  "milestone": "v1.27",
-  "status": "in_progress",
-  "last_updated": "2026-08-09T09:00:55.150Z",
+  "phase": "09-the-base-command-catalogue",
+  "milestone": "v1.27.5",
+  "status": "planning",
+  "last_updated": "2026-08-21T00:00:00.000Z",
+  "machine_note": "Handed off from Windows to macOS on 2026-08-21. See .planning/notes/2026-08-21-mac-handoff.md",
   "completed": {
     "phases": ["1", "2", "6"],
     "executed_but_verification_deferred": ["3", "4", "5"]
   },
   "remaining": [
-    "fix phase 5 review findings: CR-01 bulk-undo stale-closure bug (offerBulkUndo), WR-01 undo blocker line unmounted, WR-02 raw-path html ids; see 05-REVIEW.md",
-    "commit phase 5 review/fix artifacts",
-    "run deferred real-game verification: $gsd-verify-work 3, 4, 5",
-    "milestone lifecycle: $gsd-audit-milestone -> $gsd-complete-milestone v1.27 -> $gsd-cleanup"
+    "phase 9: plan it — 09-CONTEXT.md, 09-DISCUSSION-LOG.md, 09-RESEARCH.md, 09-UI-SPEC.md all exist; no PLAN.md yet. Run $gsd-plan-phase 9",
+    "carried over from v1.27: run deferred real-game verification $gsd-verify-work 3, 4, 5 (needs a Deadlock install)",
+    "carried over from v1.27: broken windows 1 and 2 are still open (.planning/WINDOWS.md); both are unrun in-app verifications"
   ],
   "deferred_verification": {
     "3": "verification_deferred_human -> $gsd-verify-work 3",
