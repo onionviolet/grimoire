@@ -348,5 +348,36 @@ the sound taxonomy, by mod id, so a click through cannot change the number.
   separate change, not this repair's to make.
 - `GLOBAL_VISUAL_MOD_TYPE_ORDER` in `lockerUtils` now has `globalInventory` as
   its only consumer and would go the same way.
-- No manual smoke record. The Locker surfaces this touches are listed in the
-  release's smoke-record section as unverified.
+- No manual smoke record. See the section below.
+
+## Smoke record: 2026-08-24, not collected
+
+Step 5 of the sequence is a human step. This absorption was finished by an
+unattended agent on macOS with no game install to drive, so no smoke evidence
+was collected. Per Rule 6a that reads as **unverified manually**, not blocked,
+and it is not a reason to strand the reviewed change.
+
+Automated evidence that *was* collected, on commit `8c90c37` at version
+`1.28.1`: all six gates pass (`tsc -b`, `eslint .`, `check-i18n`,
+`check-encoding`, `check-upstream-refs` all exit 0), and `vitest run` sits on
+the documented pre-merge baseline of 9 failing files and 26 failing tests, the
+same nine files listed in step 4. No new failure.
+
+Surfaces still owed a pass on real hardware:
+
+- **Locker**, the surface this absorption's repair rewrote, and the one most
+  worth a pass: the General drill-in's rail (the seven type tabs, Global, the
+  restored sound rows, and user categories in one rail), the sound rows'
+  shelf and Forge button, the General shuffle including the bulk pool button
+  on a category tab, and the sound and card pools.
+- **Locker routing**, which no unit test covers end to end: a Foundry
+  `?hero=<name>` handoff, a legacy Sound Locker URL, and a
+  `/locker/global?mode=sounds` link landing on the first populated sound row.
+- **Installed**: variants, and the inline profiles menu.
+- **Settings**: the promoted performance configs beside Game ConVars.
+- **The performance card**: staged edits over the version picker.
+- **Dialogs stacked on dialogs**, which is where upstream's modal stack and
+  the fork's single Escape contract meet.
+
+A specific failed record creates a focused follow-up; it does not reopen this
+absorption.
