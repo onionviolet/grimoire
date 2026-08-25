@@ -6,7 +6,7 @@ import log from 'electron-log';
 import { isValidSemver } from './version';
 import { pruneUpdaterCache } from './updaterCache';
 
-export type InstallSource = 'managed' | 'appimage' | 'standard' | 'fork';
+export type InstallSource = 'managed' | 'appimage' | 'standard' | 'fork' | 'manual';
 
 // Detect installs owned by a system package manager (apt/AUR/snap/flatpak).
 // In-app updates would fail on these because /opt and /usr are root-owned, so
@@ -19,6 +19,14 @@ export type InstallSource = 'managed' | 'appimage' | 'standard' | 'fork';
 // self-update.
 export function getInstallSource(): InstallSource {
     if (process.env.GRIMOIRE_FORK_BUILD) return 'fork';
+    // The macOS build is ad-hoc signed: there is no Developer ID certificate,
+    // so the bundle carries no signing identity (`TeamIdentifier=not set`).
+    // Squirrel.Mac refuses to swap in an update whose identity does not match
+    // the running app's, so an in-app update would download and then fail at
+    // the install step. Checking still works and is worth doing, so this is a
+    // separate source from 'managed': we tell the user a version exists and
+    // send them to the download page. See docs/macos.md.
+    if (process.platform === 'darwin') return 'manual';
     if (process.platform === 'linux') {
         if (process.env.APPIMAGE) return 'appimage';
         const exec = process.execPath;
@@ -37,9 +45,23 @@ export function getInstallSource(): InstallSource {
 }
 
 const installSource = getInstallSource();
-// 'managed': in-app updates would fail (root-owned install dir).
-// 'fork': safe now — publish feed targets onionviolet/grimoire, not upstream.
+// 'managed' is fully hands-off: the package manager owns the whole lifecycle,
+// so we do not even check. 'manual' can still check and report a new version,
+// it just cannot apply one in place.
+// 'fork' is safe to check and fetch: the publish feed targets
+// onionviolet/grimoire, not upstream.
+// Stays `let`: an invalid app version disables the updater at runtime below.
 let updaterDisabled = installSource === 'managed';
+// A fork build on macOS is reported as 'fork' (the channel guard wins over
+// platform detection), so the ad-hoc-signing limitation is tested directly
+// here rather than inferred from the source alone.
+const canInstallInPlace =
+    installSource !== 'managed' && installSource !== 'manual' && process.platform !== 'darwin';
+
+/** Whether the in-app updater can actually apply an update on this install. */
+export function canSelfInstall(): boolean {
+    return canInstallInPlace;
+}
 
 // Configure logging
 autoUpdater.logger = log;
@@ -183,7 +205,10 @@ export async function checkForUpdates(): Promise<UpdateInfo | null> {
 }
 
 export async function downloadUpdate(): Promise<void> {
-    if (updaterDisabled) return;
+    // Not just updaterDisabled: downloading on a 'manual' install would hand
+    // Squirrel.Mac a payload it will refuse to install, so stop earlier and
+    // let the UI point at the download page instead.
+    if (!canInstallInPlace) return;
     try {
         await autoUpdater.downloadUpdate();
     } catch (error) {
@@ -193,7 +218,7 @@ export async function downloadUpdate(): Promise<void> {
 }
 
 export function quitAndInstall(): void {
-    if (updaterDisabled) return;
+    if (!canInstallInPlace) return;
     autoUpdater.quitAndInstall(false, true);
 }
 

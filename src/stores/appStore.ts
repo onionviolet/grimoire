@@ -1,29 +1,32 @@
 import { create } from 'zustand';
 import type { Mod, AppSettings, AppearanceSurface, EditLocalModArgs, GlobalModType } from '../types/mod';
-import type { ImportCustomModArgs, ImportCustomModResult } from '../types/electron';
+import type { ImportCustomModArgs, ImportCustomModResult, LocalVariantGroupTarget } from '../types/electron';
 import { getActiveDeadlockPath } from '../lib/appSettings';
 import { readPref, writePref } from '../lib/uiPrefs';
 import { setDateFormat } from '../lib/dateFormat';
 import i18n, { applyLanguagePreference } from '../i18n';
 import * as api from '../lib/api';
 import { showToast } from './toastStore';
-import { buildHeroList } from '../lib/lockerUtils';
+import { buildHeroList, getLockerSkinKey } from '../lib/lockerUtils';
 import { invalidateAssetClaims } from '../lib/inspectedAssetClaims';
+import { modPreferenceKey } from '../lib/disabledModPrefs';
 import { modRestoreKey, planSoloByKeys, planRestore } from '../lib/soloRestore';
 import {
-  SHUFFLE_INCLUDED_KEY,
   SHUFFLE_ON_LAUNCH_KEY,
   SHUFFLE_INCLUDE_VANILLA_KEY,
   SOUND_SHUFFLE_INCLUDED_KEY,
   CARD_SHUFFLE_INCLUDED_KEY,
   planCardShuffle,
   planLaunchShuffle,
+  prunePoolKeysForMod,
   readStoredShuffleIncluded,
   readStoredShuffleOnLaunch,
   readStoredShuffleIncludeVanilla,
   readStoredSoundShuffleIncluded,
   readStoredCardShuffleIncluded,
   readStoredShuffleVariants,
+  shufflePoolKey,
+  writeStoredShuffleIncluded,
   writeStoredShuffleVariants,
   type VariantChoice,
 } from '../lib/lockerRandomizer';
@@ -32,6 +35,12 @@ import {
   planFoundryShuffle,
   readStoredFoundryShuffleIncluded,
 } from '../lib/foundryChanges';
+import {
+  createStableKeyMigrationPlan,
+  migrateStoredStableKeyPreferences,
+  type StableKeyMigrationPlan,
+} from '../lib/stableKeyMigration';
+import { migrateLockerImageSurface } from '../lib/lockerImageMigration';
 
 // Cache entry with timestamp for TTL support
 interface CacheEntry<T> {
@@ -49,6 +58,13 @@ const DOWNLOAD_COUNTS_TTL = 60 * 60 * 1000;
 // resolving late and clobbering a just-completed mutation with a stale scan
 // (the "added a custom mod but can't act on it until I refresh" bug).
 let modsGeneration = 0;
+
+// A download completion event and the renderer action that awaited that same
+// download can both request a rescan in the same instant. Share the scan while
+// it is current so one install does not publish the same library state twice.
+// Mutations bump modsGeneration, which deliberately makes an older in-flight
+// scan ineligible for reuse.
+let modsLoadInFlight: { generation: number; promise: Promise<void> } | null = null;
 
 // Serialize mod enable/disable toggles. A mod's id is its filename, which the
 // main process renames on every enable/disable, so two toggles fired in the same
@@ -90,6 +106,97 @@ function reconcileMods(prev: Mod[], next: Mod[]): Mod[] {
   return unchanged ? prev : merged;
 }
 
+function formerStandalonePreferenceKey(mod: Mod): string[] {
+  return mod.localGroupId ? [modPreferenceKey({ ...mod, localGroupId: undefined })] : [];
+}
+
+function formerStandaloneLockerKey(mod: Mod): string[] {
+  return mod.localGroupId ? [getLockerSkinKey({ ...mod, localGroupId: undefined })] : [];
+}
+
+function stablePreferencePlans(before: readonly Mod[], after: readonly Mod[]) {
+  const preferencePlan = createStableKeyMigrationPlan({
+    before,
+    after,
+    keyOf: modPreferenceKey,
+    legacyKeysOf: formerStandalonePreferenceKey,
+  });
+  const shufflePlan = createStableKeyMigrationPlan({
+    before,
+    after,
+    keyOf: shufflePoolKey,
+    legacyKeysOf: (mod) =>
+      mod.localGroupId
+        ? [shufflePoolKey({ ...mod, localGroupId: undefined })]
+        : [],
+  });
+  return { preferencePlan, shufflePlan };
+}
+
+function lockerImagePlan(before: readonly Mod[], after: readonly Mod[]) {
+  return createStableKeyMigrationPlan({
+    before,
+    after,
+    keyOf: getLockerSkinKey,
+    legacyKeysOf: formerStandaloneLockerKey,
+  });
+}
+
+function hasKeyMoves(plan: StableKeyMigrationPlan): boolean {
+  return [...plan.destinationsBySource].some(([source, destinations]) =>
+    destinations.some((destination) => destination !== source)
+  );
+}
+
+async function migrateLockerImagePreferences(
+  plan: StableKeyMigrationPlan,
+  options: { preserveSource?: (source: string) => boolean } = {}
+): Promise<void> {
+  if (!hasKeyMoves(plan)) return;
+  await migrateLockerImageSurface(
+    'card',
+    plan,
+    {
+      loadImages: api.getLockerModImages,
+      loadFlags: api.getLockerModImageFlags,
+      loadEdit: api.getLockerModImageEdit,
+      storeImage: api.setLockerModImage,
+      storeFlag: api.setLockerModImageHideName,
+      storeEdit: api.setLockerModImageEdit,
+      removeImage: api.removeLockerModImage,
+    },
+    options
+  );
+  await migrateLockerImageSurface(
+    'thumbnail',
+    plan,
+    {
+      loadImages: api.getLockerModThumbnails,
+      loadFlags: api.getLockerModThumbnailFlags,
+      loadEdit: api.getLockerModImageEdit,
+      storeImage: api.setLockerModThumbnail,
+      storeFlag: api.setLockerModThumbnailHideName,
+      storeEdit: api.setLockerModImageEdit,
+      removeImage: api.removeLockerModThumbnail,
+    },
+    options
+  );
+  await migrateLockerImageSurface(
+    'background',
+    plan,
+    {
+      loadImages: api.getLockerModBackgrounds,
+      loadFlags: api.getLockerModBackgroundFlags,
+      loadEdit: api.getLockerModImageEdit,
+      storeImage: api.setLockerModBackground,
+      storeFlag: api.setLockerModBackgroundHideName,
+      storeEdit: api.setLockerModImageEdit,
+      removeImage: api.removeLockerModBackground,
+    },
+    options
+  );
+}
+
 // Browse-page UI state. Kept in the store (not local component state) so it
 // survives navigation away from /browse and back — user complaint: search
 // query, view mode, and filters all reset when switching pages.
@@ -119,6 +226,10 @@ export interface BrowseUiState {
   // (GameBanana Generic_Submitter filter) and Browse shows an artist banner.
   // Session-only; carries display fields so the banner needs no extra fetch.
   submitter?: BrowseArtistRef;
+  /** Narrow exception for a trusted navigation that deliberately opens an
+   *  artist even when they are hidden. It must equal `submitter.id`; ordinary
+   *  artist navigation clears it automatically in `setBrowseUi`. */
+  hiddenCreatorOverrideId?: number;
 }
 
 export interface BrowseArtistRef {
@@ -287,8 +398,11 @@ interface AppState {
   /** Reload the installed-mods list from the main process.
    *  Pass `{ silent: true }` to refresh without toggling `modsLoading`,
    *  so background refreshes (e.g. on window focus) don't replace the
-   *  page with the loading skeleton. */
-  loadMods: (opts?: { silent?: boolean }) => Promise<void>;
+   *  page with the loading skeleton. Refreshes are silent by default once a
+   *  library has loaded; pass `{ silent: false }` only for an explicit blocking
+   *  reload. Pass `{ force: true }` after a filesystem mutation so an older
+   *  in-flight scan cannot be reused. */
+  loadMods: (opts?: { silent?: boolean; force?: boolean }) => Promise<void>;
   /** Returns false when the toggle was blocked (e.g. the 99-enabled cap), so
    *  batch callers can stop early. */
   toggleMod: (modId: string) => Promise<boolean>;
@@ -299,6 +413,8 @@ interface AppState {
   reorderMods: (orderedIds: string[]) => Promise<void>;
   setShuffleOnLaunch: (enabled: boolean) => void;
   toggleShuffleIncluded: (skinKey: string) => void;
+  /** Add or remove many shuffle keys at once (bulk category action). */
+  setShuffleIncluded: (skinKeys: readonly string[], included: boolean) => void;
   /** Store an explicit per-skin variant policy, or clear it back to the unset
    *  default (keep the currently loaded files) with null. */
   setShuffleVariant: (skinKey: string, choice: VariantChoice | null) => void;
@@ -317,6 +433,12 @@ interface AppState {
   /** Drop the solo-restore snapshot without touching enablement. */
   clearSoloRestore: () => void;
   editLocalMod: (modId: string, args: EditLocalModArgs) => Promise<void>;
+  /** Group local mods as variants of one mod, or take them back out. Resolves
+   *  with the group they now share (null after a clear). */
+  setLocalVariantGroup: (
+    modIds: string[],
+    target: LocalVariantGroupTarget
+  ) => Promise<string | null>;
   setModLockerHero: (modId: string, heroName: string | null) => Promise<void>;
   setModGlobalType: (modId: string, globalType: GlobalModType | null) => Promise<void>;
   /** Mark a mod Global (priority root) or clear it. Moves the VPK, so it goes
@@ -441,7 +563,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ settings, settingsLoading: false });
       // Reload mods if path changed
       if (getActiveDeadlockPath(settings)) {
-        get().loadMods();
+        get().loadMods({ force: true });
       }
     } catch (err) {
       // A failed write deliberately leaves `settings` untouched, so the control
@@ -458,6 +580,20 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Issue #208: per-mod (per-skin) Locker view image overrides (display only).
   loadLockerModImages: async () => {
     try {
+      // Locker mounts its image and mod loaders in sibling effects. On a direct
+      // startup the image request used to win that race, build an empty legacy
+      // migration plan, and publish old keys for the whole session. Await the
+      // shared initial scan so migration and the maps below use canonical mods.
+      if (!get().modsLoaded) await get().loadMods();
+      // Canonicalize the old GameBanana-first key used by builds predating
+      // explicit local-group precedence. This also handles users who upgrade
+      // without performing another grouping mutation first. With no real
+      // before-topology, a legacy `gamebanana:<id>` source may belong to a
+      // currently uninstalled mod, so those keys are copied but never deleted
+      // here. `mod:<id>` keys name this mod's own slot and stay removable.
+      await migrateLockerImagePreferences(lockerImagePlan([], get().mods), {
+        preserveSource: (source) => source.startsWith('gamebanana:'),
+      });
       const [images, flags, backgrounds, bgFlags, thumbnails, thumbFlags] = await Promise.all([
         api.getLockerModImages(),
         api.getLockerModImageFlags(),
@@ -592,28 +728,75 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // Load mods from backend.
   // Silent refreshes (window focus, etc.) skip the loading flag so the UI
-  // doesn't flash the skeleton over already-rendered content.
-  loadMods: async (opts) => {
-    const silent = !!opts?.silent;
+  // doesn't flash the skeleton over already-rendered content. A forced refresh
+  // supersedes an older scan when a mutation or path change makes reuse unsafe.
+  loadMods: (opts) => {
+    const existing = modsLoadInFlight;
+    if (!opts?.force && existing && existing.generation === modsGeneration) {
+      return existing.promise;
+    }
+
+    const silent = opts?.silent ?? get().modsLoaded;
     const gen = ++modsGeneration;
     if (!silent) set({ modsLoading: true, modsError: null });
-    try {
-      const scanned = await api.getMods();
-      if (gen === modsGeneration) {
-        const mods = reconcileMods(get().mods, scanned);
-        set(silent ? { mods, modsLoaded: true, modsError: null } : { mods, modsLoaded: true, modsLoading: false });
-      } else if (!silent) {
-        // Superseded by a newer load/mutation: drop the stale list, but still
-        // clear our own spinner so the page doesn't hang on it.
-        set({ modsLoading: false });
+    const promise = (async () => {
+      try {
+        const scanned = await api.getMods();
+        if (gen === modsGeneration) {
+          const state = get();
+          const mods = reconcileMods(state.mods, scanned);
+          const plans = stablePreferencePlans([], scanned);
+          const migrated = migrateStoredStableKeyPreferences(
+            plans.preferencePlan,
+            plans.shufflePlan
+          );
+          if (silent) {
+            // Zustand notifies whole-store subscribers on every set(), even if
+            // every field value is unchanged. Avoid that no-op publication:
+            // it used to redraw the Installed grid after every duplicate
+            // completion/focus refresh.
+            if (
+              mods !== state.mods ||
+              !state.modsLoaded ||
+              state.modsError !== null ||
+              migrated.changed
+            ) {
+              set({
+                mods,
+                modsLoaded: true,
+                modsError: null,
+                shuffleIncluded: migrated.shuffleIncluded,
+                shuffleVariants: migrated.shuffleVariants,
+              });
+            }
+          } else {
+            set({
+              mods,
+              modsLoaded: true,
+              modsLoading: false,
+              shuffleIncluded: migrated.shuffleIncluded,
+              shuffleVariants: migrated.shuffleVariants,
+            });
+          }
+        } else if (!silent) {
+          // Superseded by a newer load/mutation: drop the stale list, but still
+          // clear our own spinner so the page doesn't hang on it.
+          set({ modsLoading: false });
+        }
+      } catch (err) {
+        if (gen === modsGeneration) {
+          set(silent ? { modsError: String(err) } : { modsError: String(err), modsLoading: false });
+        } else if (!silent) {
+          set({ modsLoading: false });
+        }
       }
-    } catch (err) {
-      if (gen === modsGeneration) {
-        set(silent ? { modsError: String(err) } : { modsError: String(err), modsLoading: false });
-      } else if (!silent) {
-        set({ modsLoading: false });
-      }
-    }
+    })();
+
+    modsLoadInFlight = { generation: gen, promise };
+    void promise.finally(() => {
+      if (modsLoadInFlight?.promise === promise) modsLoadInFlight = null;
+    });
+    return promise;
   },
 
   // Toggle mod enabled/disabled. Runs through enqueueToggle so concurrent
@@ -648,7 +831,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       // found". The desired state is whatever the folder already reflects, so
       // resync silently instead of dropping the whole page to the error screen.
       if (/Mod not found/.test(String(err))) {
-        get().loadMods({ silent: true });
+        get().loadMods({ silent: true, force: true });
         return false;
       }
       set({ modsError: String(err) });
@@ -717,7 +900,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     } catch (err) {
       if (isEnableCapError(err)) { set({ modsNotice: ENABLE_CAP_NOTICE }); }
       else if (!isGameRunningModLockError(err)) { set({ modsError: String(err) }); }
-      get().loadMods();
+      get().loadMods({ force: true });
     }
   },
 
@@ -732,7 +915,25 @@ export const useAppStore = create<AppState>((set, get) => ({
     const next = new Set(get().shuffleIncluded);
     if (next.has(skinKey)) next.delete(skinKey);
     else next.add(skinKey);
-    try { localStorage.setItem(SHUFFLE_INCLUDED_KEY, JSON.stringify([...next])); } catch { /* ignore */ }
+    writeStoredShuffleIncluded(next);
+    set({ shuffleIncluded: next });
+  },
+
+  // Bulk include/exclude for a whole card set (the Locker's per-category
+  // "Shuffle all" / "Remove all"). One state update and one storage write for
+  // the batch, through the same writer the single-card toggle uses.
+  setShuffleIncluded: (skinKeys: readonly string[], included: boolean) => {
+    if (skinKeys.length === 0) return;
+    const current = get().shuffleIncluded;
+    const next = new Set(current);
+    for (const key of skinKeys) {
+      if (included) next.add(key);
+      else next.delete(key);
+    }
+    // Nothing moved: skip the write so an already-satisfied bulk click does not
+    // churn storage or re-render every card that reads the pool.
+    if (next.size === current.size) return;
+    writeStoredShuffleIncluded(next);
     set({ shuffleIncluded: next });
   },
 
@@ -833,7 +1034,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       } catch (err) {
         if (isEnableCapError(err)) { set({ modsNotice: ENABLE_CAP_NOTICE }); }
         else if (!isGameRunningModLockError(err)) { set({ modsError: String(err) }); }
-        get().loadMods();
+        get().loadMods({ force: true });
         return { failures: failures + enableIds.length + disableIds.length + cardChoices.length };
       }
     });
@@ -859,7 +1060,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     } catch (err) {
       if (isEnableCapError(err)) { set({ modsNotice: ENABLE_CAP_NOTICE }); }
       else if (!isGameRunningModLockError(err)) { set({ modsError: String(err) }); }
-      get().loadMods();
+      get().loadMods({ force: true });
       // The game-running lock is swallowed silently everywhere else (background
       // toggles), but a solo *launch* that does nothing needs a reason, so the
       // caller can surface it. Enable-cap already auto-toasts via modsNotice and
@@ -887,7 +1088,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     } catch (err) {
       if (isEnableCapError(err)) { set({ modsNotice: ENABLE_CAP_NOTICE }); }
       else if (!isGameRunningModLockError(err)) { set({ modsError: String(err) }); }
-      get().loadMods();
+      get().loadMods({ force: true });
       return { failures: enable.length + disable.length };
     }
   }),
@@ -896,9 +1097,61 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   editLocalMod: async (modId: string, args: EditLocalModArgs) => {
     const updated = await api.editLocalMod(modId, args);
+    // Renaming a member of a local variant group renames the whole group in
+    // main, so mirror that here instead of leaving the siblings on their old
+    // name until the next scan (the group card title reads from whichever
+    // member is primary).
+    const groupId = updated.localGroupId;
     set({
-      mods: get().mods.map((m) => (m.id === modId ? updated : m)),
+      mods: get().mods.map((m) => {
+        if (m.id === modId) return updated;
+        if (!groupId || m.localGroupId !== groupId || m.name === updated.name) return m;
+        return { ...m, name: updated.name };
+      }),
     });
+  },
+
+  setLocalVariantGroup: async (modIds, target) => {
+    try {
+      const before = get().mods;
+      const { groupId, mods } = await api.setLocalVariantGroup(modIds, target);
+      const plans = stablePreferencePlans(before, mods);
+      const migrated = migrateStoredStableKeyPreferences(
+        plans.preferencePlan,
+        plans.shufflePlan
+      );
+      // The handler returns the full list (memberships and the unified name can
+      // touch mods outside `modIds`), so adopt it wholesale and bump the
+      // generation like every other whole-list mutation.
+      modsGeneration++;
+      set({
+        mods,
+        shuffleIncluded: migrated.shuffleIncluded,
+        shuffleVariants: migrated.shuffleVariants,
+      });
+      try {
+        await migrateLockerImagePreferences(lockerImagePlan(before, mods));
+        // The maps may already be loaded when grouping is invoked from Locker.
+        // Refreshing is cheap compared with the image copies and keeps all
+        // mounted surfaces on the canonical key immediately.
+        if (
+          Object.keys(get().lockerModImages).length > 0 ||
+          Object.keys(get().lockerModBackgrounds).length > 0 ||
+          Object.keys(get().lockerModThumbnails).length > 0
+        ) {
+          await get().loadLockerModImages();
+        }
+      } catch (imageError) {
+        // Group membership already committed in main. Image migration is
+        // auxiliary-first and source-last, so failure leaves the old preference
+        // recoverable; do not reject an otherwise successful grouping action.
+        console.error('Failed to migrate Locker image preferences', imageError);
+      }
+      return groupId;
+    } catch (err) {
+      set({ modsError: String(err) });
+      throw err;
+    }
   },
 
   setModLockerHero: async (modId: string, heroName: string | null) => {
@@ -923,12 +1176,26 @@ export const useAppStore = create<AppState>((set, get) => ({
     await enqueueToggle(async () => {
       try {
         const updated = await api.setModPriorityFolder(modId, priority);
-        set({ mods: get().mods.map((m) => (m.id === modId ? updated : m)) });
+        const mods = get().mods.map((m) => (m.id === modId ? updated : m));
+        // Pinning retires the mod's shuffle opt-in. Its card swaps the toggle
+        // for the always-on pin, so a key left behind would be invisible yet
+        // still counted, and unpinning would put the mod back in the shuffle
+        // without the user asking. Unpinning does not restore it: opting back
+        // in is one click on a control that is visible again.
+        const prunedPool = priority
+          ? prunePoolKeysForMod(get().shuffleIncluded, updated, mods)
+          : null;
+        if (prunedPool) {
+          writeStoredShuffleIncluded(prunedPool);
+          set({ mods, shuffleIncluded: prunedPool });
+        } else {
+          set({ mods });
+        }
       } catch (err) {
         // Reconcile any partial batch progress, then preserve the rejection for
         // the initiating surface. The picker and card menus own contextual
         // errors; swallowing here made them close as if a failed move worked.
-        await get().loadMods({ silent: true });
+        await get().loadMods({ silent: true, force: true });
         throw err;
       }
     });
@@ -1005,7 +1272,17 @@ export const useAppStore = create<AppState>((set, get) => ({
   // a time without restating the rest. layout + sort also persist, so they
   // survive app restarts.
   setBrowseUi: (partial: Partial<BrowseUiState>) => {
-    set({ browseUi: { ...get().browseUi, ...partial } });
+    const next = { ...get().browseUi, ...partial };
+    // An override belongs to the exact navigation that supplied it. Any
+    // ordinary submitter change must drop it so a later Installed/Browse link
+    // cannot accidentally reveal a creator the user chose to hide.
+    if (
+      Object.prototype.hasOwnProperty.call(partial, 'submitter') &&
+      !Object.prototype.hasOwnProperty.call(partial, 'hiddenCreatorOverrideId')
+    ) {
+      next.hiddenCreatorOverrideId = undefined;
+    }
+    set({ browseUi: next });
     if (partial.layout !== undefined) writePref('browseLayout', partial.layout);
     if (partial.sort !== undefined) writePref('browseSort', partial.sort);
   },

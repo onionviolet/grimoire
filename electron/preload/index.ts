@@ -28,6 +28,7 @@ import type {
     EditLocalModArgs,
     LockerClearScope,
     MergeModsArgs,
+    MergeSourceReplacement,
     ImprintInstalledProgress,
     ModelCompatibilityReport,
     TrippySpriteOptions,
@@ -52,6 +53,8 @@ import type {
     ChatWheelSaveArgs,
     ImportCustomModsBatchArgs,
     ImportCustomModsProgress,
+    LocalVariantGroupTarget,
+    RestoreLocalVariantGroupReplacementArgs,
     ImportSoulContainerGlbArgs,
     PreviewSoulContainerGlbArgs,
     ImportSpiritUrnGlbArgs,
@@ -169,6 +172,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
         ipcRenderer.invoke('list-unknown-mod-files', modId),
     editLocalMod: (modId: string, args: EditLocalModArgs) =>
         ipcRenderer.invoke('edit-local-mod', modId, args),
+    setLocalVariantGroup: (modIds: string[], target: LocalVariantGroupTarget) =>
+        ipcRenderer.invoke('set-local-variant-group', modIds, target),
+    restoreLocalVariantGroupReplacement: (args: RestoreLocalVariantGroupReplacementArgs) =>
+        ipcRenderer.invoke('restore-local-variant-group-replacement', args),
     setVariantLabel: (modId: string, label: string) =>
         ipcRenderer.invoke('set-variant-label', modId, label),
     setModLockerHero: (modId: string, heroName: string | null) =>
@@ -377,6 +384,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
         ipcRenderer.invoke('extract-merge-source', mergedModId, sourceFileName),
     addMergeSources: (mergedModId: string, addModIds: string[], strict = false) =>
         ipcRenderer.invoke('add-merge-sources', mergedModId, addModIds, strict),
+    replaceMergeSources: (
+        mergedModId: string,
+        replacements: MergeSourceReplacement[],
+        strict = false
+    ) => ipcRenderer.invoke('replace-merge-sources', mergedModId, replacements, strict),
     imprintOneMod: (modId: string) => ipcRenderer.invoke('imprint-one-mod', modId),
     imprintAllInstalled: () => ipcRenderer.invoke('imprint-all-installed'),
     imprintPreflight: () => ipcRenderer.invoke('imprint-preflight'),
@@ -441,6 +453,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
         version?: string | null
     ) => ipcRenderer.invoke('reset-performance-config-overrides', presetId, optIns, version),
     restorePerformanceConfigBackup: () => ipcRenderer.invoke('restore-performance-config-backup'),
+    getPerformanceLatestInfo: (presetId: string) =>
+        ipcRenderer.invoke('get-performance-latest-info', presetId),
+    checkPerformanceLatest: (presetId: string, force?: boolean) =>
+        ipcRenderer.invoke('check-performance-latest', presetId, force),
+    listPerformanceRemoteVersions: (presetId: string) =>
+        ipcRenderer.invoke('list-performance-remote-versions', presetId),
+    fetchPerformanceRemoteVersion: (presetId: string, ref: string, commit?: string | null) =>
+        ipcRenderer.invoke('fetch-performance-remote-version', presetId, ref, commit),
     openPerformanceConfigFile: () => ipcRenderer.invoke('open-performance-config-file'),
     listEditorCandidates: () => ipcRenderer.invoke('list-editor-candidates'),
     openModsFolder: () => ipcRenderer.invoke('open-mods-folder'),
@@ -502,8 +522,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // Download Queue
     getDownloadQueue: () => ipcRenderer.invoke('get-download-queue'),
     getCurrentDownload: () => ipcRenderer.invoke('get-current-download'),
-    removeFromQueue: (modId: number) => ipcRenderer.invoke('remove-from-queue', modId),
+    removeFromQueue: (modId: number, fileId?: number) =>
+        ipcRenderer.invoke('remove-from-queue', modId, fileId),
     cancelActiveDownload: () => ipcRenderer.invoke('cancel-active-download'),
+    cancelDownloadTarget: (modId: number, fileId: number) =>
+        ipcRenderer.invoke('cancel-download-target', modId, fileId),
     onDownloadQueueUpdated: (callback: (data: DownloadQueueData) => void) => {
         const handler = (_event: Electron.IpcRendererEvent, data: DownloadQueueData) => callback(data);
         ipcRenderer.on('download-queue-updated', handler);

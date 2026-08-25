@@ -654,6 +654,11 @@ export interface Mod {
   variantLabel?: string;
   fileDescription?: string;
   sourceFileName?: string;
+  /** Opaque id linking several locally imported VPKs as variants of one mod.
+   *  The local analogue of gameBananaId for grouping only: no provenance, no
+   *  meaning outside this install. Undefined for GameBanana mods and for
+   *  standalone local imports. See variantGroupKey in src/lib/variantGroups.ts. */
+  localGroupId?: string;
   /** Hero this mod belongs to in the Locker, by canonical hero name. Set
    *  automatically at download time for Sound mods (inferHeroFromTitle) or
    *  manually via the Locker's "Tag hero" affordance. Takes precedence over
@@ -834,6 +839,25 @@ export interface AddMergeSourcesResult {
   merged: MergedModInfo;
   /** Final on-disk filenames of the newly absorbed source VPKs. */
   addedFileNames: string[];
+}
+
+export interface MergeSourceReplacement {
+  /** fileName of the absorbed source being swapped out, as recorded in the
+   *  merge manifest. */
+  oldFileName: string;
+  /** Local mod id of the freshly installed replacement VPK. */
+  newModId: string;
+}
+
+export interface ReplaceMergeSourcesResult {
+  /** Updated merge manifest. The merge keeps its on-disk mod id, load-order
+   *  slot, metadata key, and stable merge id. */
+  merged: MergedModInfo;
+  /** Final on-disk filenames of the newly absorbed replacement VPKs. */
+  replacedFileNames: string[];
+  /** Filenames of the old source VPKs deleted after the rebuild. Shorter than
+   *  `replacedFileNames` when an old source was already gone from disk. */
+  retiredFileNames: string[];
 }
 
 export interface UnknownModFilterGuess {
@@ -1320,11 +1344,6 @@ export interface AppSettings {
    *  to the official Deadworks registry (api.deadworks.net) and can be repointed
    *  via settings.json at any deadworks-shaped relay (e.g. a future grimoire-relay). */
   deadworksRelayUrl?: string;
-  /** Performance config: apply one of the bundled community fps presets onto
-   *  gameinfo.gi from a Settings card. Applied-state lives in a sidecar file
-   *  next to gameinfo.gi (main-process owned), not in settings, so a renderer
-   *  settings save can never clobber it. */
-  experimentalPerformanceConfig?: boolean;
   /** Which bundled performance preset the user has selected. Undefined = the
    *  generated default. This is the pre-apply choice; what is actually in
    *  gameinfo.gi right now comes from the file's own marker. */
@@ -1339,6 +1358,19 @@ export interface AppSettings {
    *  means creator defaults (visibility/camera on, developer tools off); an
    *  explicit empty list means the user disabled every optional setting. */
   performanceConfigOptIns?: Record<string, string[]>;
+  /** A historical upstream version the user pinned from the full-history
+   *  browser, per preset id. The version names a release held in the
+   *  main-process fetch cache; ref and date are display metadata. Cleared when
+   *  the user picks a bundled version instead. */
+  performanceConfigRemotePins?: Record<string, { version: string; ref: string; date: string }>;
+  /** Track the newest upstream release of the selected preset instead of the
+   *  newest bundled one: the card fetches upstream (GitHub) on demand and
+   *  Apply writes the fetched release, falling back to bundled data when
+   *  offline. Undefined = on (the presets exist to mirror living community
+   *  configs); explicit false = only ever apply the reviewed bundled
+   *  releases. A per-preset version pin in `performanceConfigVersions` beats
+   *  tracking: an explicit rollback is the stronger, deliberate choice. */
+  performanceTrackLatest?: boolean;
   /** Editor binary used to open gameinfo.gi for hand edits. null = the OS
    *  default app; undefined = never chosen, so the picker is shown first.
    *  (.gi maps to text/plain, which often resolves to a word processor, so

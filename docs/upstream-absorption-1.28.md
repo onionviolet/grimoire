@@ -261,3 +261,43 @@ verdicts mark where our surface must be re-applied deliberately, not where the
 merge will hurt. The two places duplicated intent actually accumulated are the
 Locker shuffle planner and the Modal dismissal path, and both were read in
 full on both sides before deciding.
+
+## Resolution note: Locker.tsx landed as upstream, port deferred
+
+Decision 1 called for taking upstream's category and General-shuffle structure
+in `src/pages/Locker.tsx` and re-applying the fork surfaces on top, and judged
+that call-site work. Resolving it showed the verdict was right about the
+direction and wrong about the cost. The two sides are not one structure with
+different call sites: the fork drives the view from a merged rail projection
+(the `all` / `looks` / `sounds` sections, `railRows`, `selectedAllKey`,
+`paneIsSounds`, and the roving-arrow tablist), and upstream drives it from a
+tab model (`GeneralTabId`: the seven types, then Global, then user categories).
+Seven of the file's seventeen hunks are that one disagreement, 270 fork lines
+against 142 upstream lines, and both sides render the same subtree from their
+own answer to "which pane is showing".
+
+Splicing those hunk by hunk is the outcome this plan calls the worst available,
+so the merge commit takes **upstream's `Locker.tsx` wholesale** and the fork
+surface re-applies as a follow-up repair commit, which is the shape the
+sequence already allows. What is absent between the merge commit and that
+repair, and what the repair owes back:
+
+- the Sounds section and the Sound Locker shelves, including the
+  `shuffleKeyFor={shuffleSoundKey}` wiring that gives the sound pool its own
+  namespace (`HeroSkinsPanel.shufflePropsFor` already honours the prop, so the
+  re-application is a call site, not a rewrite)
+- the merged rail projection and its zero-count row hiding (D-04)
+- the roving arrow-key tablist on the section tabs
+- `selectedAllKey`, and the null-until-picked landing tab, which upstream
+  resolves in a state initializer and therefore reopens the empty-pane freeze
+  the fork's comment describes
+- derived pak descriptions (D-19) and the broken-pose disclosure
+
+Nothing here is lost: the fork's implementation is the pre-merge file, at
+`git show 54a609f:src/pages/Locker.tsx`.
+
+Open question for the repair, raised by the maintainer and deliberately not
+answered here: rather than reconciling the two views into one, the fork could
+carry a toggle between upstream's tab model and the fork's rail. That is a
+product decision with its own design and persistence questions, so it is
+recorded as a candidate and not treated as the default.

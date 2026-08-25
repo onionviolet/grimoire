@@ -5,13 +5,15 @@ import DOMPurify from 'dompurify';
 import { Button } from './common/ui';
 import { Modal } from './common/Modal';
 
-type InstallSource = 'managed' | 'appimage' | 'standard' | 'fork';
+type InstallSource = 'managed' | 'appimage' | 'standard' | 'fork' | 'manual';
 
 // Duplicated rather than hoisted to a shared constants module: this repo has
 // no shared app-constants file, and SupportSection.tsx's own FORK_REPO is
 // local to that file too. Inventing a shared module for two call sites is a
 // larger change than this decision warrants. See docs/fork-maintenance.md.
 const FORK_ISSUES = 'https://github.com/onionviolet/grimoire/issues';
+
+const RELEASES_URL = 'https://github.com/Slush97/grimoire/releases/latest';
 
 interface UpdateInfo {
     version: string;
@@ -39,6 +41,10 @@ export default function UpdateModal({ onClose }: Props) {
     const [status, setStatus] = useState<UpdateStatus | null>(null);
     const [checkedOnce, setCheckedOnce] = useState(false);
     const [installSource, setInstallSource] = useState<InstallSource>('standard');
+    // 'managed' hands the whole lifecycle to the package manager; 'manual'
+    // (ad-hoc signed macOS) can report an update but cannot apply one. Both
+    // hide the download/install actions, but they say different things.
+    const canSelfInstall = installSource !== 'managed' && installSource !== 'manual';
 
     useEffect(() => {
         window.electronAPI.updater.getVersion().then(setAppVersion);
@@ -155,6 +161,24 @@ export default function UpdateModal({ onClose }: Props) {
                         </div>
                     )}
 
+                    {installSource === 'manual' && (
+                        <div className="flex items-start gap-3 p-4 rounded-lg bg-bg-tertiary border border-white/10 mb-4">
+                            <Package className="w-5 h-5 flex-shrink-0 mt-0.5 text-accent" />
+                            <div className="text-sm text-text-secondary space-y-2">
+                                <p className="text-text-primary font-medium">{t('updateModal.manualDownloadRequired')}</p>
+                                <p>{t('updateModal.manualUnsignedExplanation')}</p>
+                                <a
+                                    href={RELEASES_URL}
+                                    target="_blank"
+                                    rel="noreferrer noopener"
+                                    className="inline-block font-mono text-text-primary underline underline-offset-2 hover:text-accent transition-colors"
+                                >
+                                    {t('updateModal.manualDownloadLink')}
+                                </a>
+                            </div>
+                        </div>
+                    )}
+
                     {status?.error && (
                         <div className="flex items-start gap-2 p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-300 text-sm mb-4">
                             <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
@@ -224,7 +248,7 @@ export default function UpdateModal({ onClose }: Props) {
                                 </div>
                             )}
                         </>
-                    ) : installSource !== 'managed' && !status?.available && !status?.checking && (
+                    ) : canSelfInstall && !status?.available && !status?.checking && (
                         <p className="text-sm text-text-secondary">
                             {t('updateModal.deliveredViaGithub')}
                         </p>
@@ -246,11 +270,13 @@ export default function UpdateModal({ onClose }: Props) {
                         <Button onClick={onClose} variant="secondary">
                             {t('common.actions.close')}
                         </Button>
-                        {installSource === 'managed' ? null : status?.downloaded ? (
+                        {/* 'manual' keeps Check (that still works) but never
+                            Download/Install, which Squirrel.Mac would reject. */}
+                        {installSource === 'managed' ? null : canSelfInstall && status?.downloaded ? (
                             <Button onClick={handleInstall} icon={ArrowDownCircle}>
                                 {t('settings.updates.installRestart')}
                             </Button>
-                        ) : status?.available && !status.downloading ? (
+                        ) : canSelfInstall && status?.available && !status.downloading ? (
                             <Button onClick={handleDownload} icon={Download}>
                                 {t('settings.updates.downloadUpdate')}
                             </Button>

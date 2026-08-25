@@ -14,31 +14,44 @@ import { useEffect, useRef } from 'react';
  * not tear the listener down and rebuild it on every render. Only `enabled`
  * moves the subscription.
  *
- * This deliberately does not arbitrate between layered overlays. Each caller
- * installs its own listener, exactly as before, and a nested overlay that must
- * win keeps its own guard (see `ModDetailsModal`, where the lightbox eats
- * Escape before the modal does). A registration stack looks like the fix and is
- * not: React runs child effects before parent effects, so the innermost overlay
- * registers first and would read as the outermost.
+ * Layered overlays arbitrate through the optional `guard` predicate. A caller
+ * that participates in a stack passes its own topmost test (see `common/Modal`,
+ * whose stack is keyed off the `open` transition rather than effect nesting,
+ * so it does not depend on React running child effects before parent effects).
+ * Callers that pass no guard behave exactly as before, and a nested overlay
+ * that must win can still keep its own guard (see `ModDetailsModal`, where the
+ * lightbox eats Escape before the modal does).
+ *
+ * The guard lives here rather than inline at the call site so there is exactly
+ * one Escape implementation in the app.
  *
  * Element-scoped Escape stays element-scoped. `common/SearchInput` clears its
  * field from an `onKeyDown` and only when the field is non-empty, precisely so
  * an empty field lets Escape through to the enclosing modal. That is a
  * different contract from this one, not a call site to convert.
  */
-export function useEscapeKey(onEscape: () => void, enabled = true) {
+export function useEscapeKey(
+    onEscape: () => void,
+    enabled = true,
+    guard?: () => boolean,
+) {
     const handlerRef = useRef(onEscape);
+    const guardRef = useRef(guard);
     // Synced in an effect rather than assigned during render: the React
     // Compiler treats a render-phase ref write as a side effect and bails out
     // of optimizing the whole component.
     useEffect(() => {
         handlerRef.current = onEscape;
+        guardRef.current = guard;
     });
 
     useEffect(() => {
         if (!enabled) return;
         const onKeyDown = (event: KeyboardEvent) => {
             if (event.key !== 'Escape') return;
+            // A dialog stacked above this one owns the keyboard; letting the
+            // lower handler run too would close both on a single Escape.
+            if (guardRef.current && !guardRef.current()) return;
             event.preventDefault();
             handlerRef.current();
         };

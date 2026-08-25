@@ -1,4 +1,4 @@
-import type { Mod, AppSettings, GlobalModType, UnknownModFilterGuess, UnknownModDetectionProgress, ApplyUnknownModMatchArgs, ApplyUnknownCustomModArgs, AssociateUnknownModArgs, UnknownModFileList, EditLocalModArgs, MergeModsArgs, UnmergeModResult, ExtractMergeSourceResult, AddMergeSourcesResult, ImprintAllInstalledResult, ImprintInstalledProgress, ImprintPreflightResult, ImprintDetails, PeekImprintResult, ModelCompatibilityReport, ApplyHeroCardResult, HeroAbilitySlot, AbilitySlot, AbilitySoundParams, ActiveHeroSound, ApplyHeroSoundResult, ActiveHeroColor, ApplyHeroColorResult, ApplyHeroPrismResult, ActiveTrippySkin, ApplyTrippySkinResult, ApplyTrippyVfxResult, TrippySpriteOptions, TrippySpriteResult, TrippyVfxChoice, LockerOverview, LockerCardThumbnail, LockerClearScope, AppearanceSurface } from '../types/mod';
+import type { Mod, AppSettings, GlobalModType, UnknownModFilterGuess, UnknownModDetectionProgress, ApplyUnknownModMatchArgs, ApplyUnknownCustomModArgs, AssociateUnknownModArgs, UnknownModFileList, EditLocalModArgs, MergeModsArgs, UnmergeModResult, ExtractMergeSourceResult, AddMergeSourcesResult, MergeSourceReplacement, ReplaceMergeSourcesResult, ImprintAllInstalledResult, ImprintInstalledProgress, ImprintPreflightResult, ImprintDetails, PeekImprintResult, ModelCompatibilityReport, ApplyHeroCardResult, HeroAbilitySlot, AbilitySlot, AbilitySoundParams, ActiveHeroSound, ApplyHeroSoundResult, ActiveHeroColor, ApplyHeroColorResult, ApplyHeroPrismResult, ActiveTrippySkin, ApplyTrippySkinResult, ApplyTrippyVfxResult, TrippySpriteOptions, TrippySpriteResult, TrippyVfxChoice, LockerOverview, LockerCardThumbnail, LockerClearScope, AppearanceSurface } from '../types/mod';
 import type { DmmMigrationRequest, DmmMigrationReport } from './dmmMigration';
 import type {
   HeroPortrait,
@@ -27,6 +27,9 @@ import type {
   ImportCustomModResult,
   ImportCustomModsBatchResult,
   ImportCustomModsProgress,
+  LocalVariantGroupTarget,
+  RestoreLocalVariantGroupReplacementArgs,
+  SetLocalVariantGroupResult,
 } from '../types/electron';
 import { parseFeModel, type ClothModel } from './feModel';
 import { showToast } from '../stores/toastStore';
@@ -38,7 +41,7 @@ import i18n from '../i18n';
 // toast is translated separately.
 const GAME_RUNNING_NOTICE = 'Game is running';
 
-function isGameRunningModLockError(err: unknown): boolean {
+export function isGameRunningModLockError(err: unknown): boolean {
   return String(err).includes(GAME_RUNNING_NOTICE);
 }
 
@@ -172,6 +175,22 @@ export async function listUnknownModFiles(modId: string): Promise<UnknownModFile
 
 export async function editLocalMod(modId: string, args: EditLocalModArgs): Promise<Mod> {
   return window.electronAPI.editLocalMod(modId, args);
+}
+
+/** Group locally imported VPKs as variants of one mod, or take them back out.
+ *  `{ mode: 'mint' }` returns the freshly minted group id, which is what the
+ *  "add a variant to a standalone local mod" flow feeds to the import. */
+export async function setLocalVariantGroup(
+  modIds: string[],
+  target: LocalVariantGroupTarget
+): Promise<SetLocalVariantGroupResult> {
+  return window.electronAPI.setLocalVariantGroup(modIds, target);
+}
+
+export async function restoreLocalVariantGroupReplacement(
+  args: RestoreLocalVariantGroupReplacementArgs
+): Promise<void> {
+  return window.electronAPI.restoreLocalVariantGroupReplacement(args);
 }
 
 export async function setVariantLabel(modId: string, label: string): Promise<Mod> {
@@ -528,7 +547,7 @@ export function onImportCustomModsProgress(
   return window.electronAPI.onImportCustomModsProgress(callback);
 }
 
-export type { ImportCustomModArgs, ImportCustomModResult, ImportCustomModsBatchResult, ImportCustomModsProgress };
+export type { ImportCustomModArgs, ImportCustomModResult, ImportCustomModsBatchResult, ImportCustomModsProgress, LocalVariantGroupTarget, RestoreLocalVariantGroupReplacementArgs, SetLocalVariantGroupResult };
 
 /** Build a soul-container override VPK from a user GLB and install it as a
  *  tracked local mod. Returns the full enriched mod list after install. */
@@ -739,7 +758,26 @@ export async function addMergeSources(
   return withGameRunningWarning(() => window.electronAPI.addMergeSources(mergedModId, addModIds, strict));
 }
 
-export type { UnmergeModResult, ExtractMergeSourceResult, AddMergeSourcesResult };
+/** Swap absorbed merge sources for freshly downloaded replacements and rebuild
+ *  the merge in one pass. Each replacement inherits the retired source's
+ *  merge-time priority and enabled state. */
+export async function replaceMergeSources(
+  mergedModId: string,
+  replacements: MergeSourceReplacement[],
+  strict = false,
+): Promise<ReplaceMergeSourcesResult> {
+  return withGameRunningWarning(() =>
+    window.electronAPI.replaceMergeSources(mergedModId, replacements, strict),
+  );
+}
+
+export type {
+  UnmergeModResult,
+  ExtractMergeSourceResult,
+  AddMergeSourcesResult,
+  MergeSourceReplacement,
+  ReplaceMergeSourcesResult,
+};
 
 /** Imprint a single installed VPK in place with a self-identifying addoninfo.txt
  *  embed (path B). Surfaces the game-running warning toast on a loaded-mod
@@ -974,6 +1012,31 @@ export async function restorePerformanceConfigBackup(): Promise<PerformanceConfi
   return window.electronAPI.restorePerformanceConfigBackup();
 }
 
+export async function getPerformanceLatestInfo(presetId: string): Promise<PerformanceLatestInfo> {
+  return window.electronAPI.getPerformanceLatestInfo(presetId);
+}
+
+export async function checkPerformanceLatest(
+  presetId: string,
+  force?: boolean
+): Promise<PerformanceLatestInfo> {
+  return window.electronAPI.checkPerformanceLatest(presetId, force);
+}
+
+export async function listPerformanceRemoteVersions(
+  presetId: string
+): Promise<PerformanceRemoteVersionList> {
+  return window.electronAPI.listPerformanceRemoteVersions(presetId);
+}
+
+export async function fetchPerformanceRemoteVersion(
+  presetId: string,
+  ref: string,
+  commit?: string | null
+): Promise<PerformanceLatestInfo> {
+  return window.electronAPI.fetchPerformanceRemoteVersion(presetId, ref, commit);
+}
+
 export async function openPerformanceConfigFile(): Promise<void> {
   return window.electronAPI.openPerformanceConfigFile();
 }
@@ -1135,7 +1198,7 @@ export function conflictPairKey(a: string, b: string): string {
 // Profile wire types are single-sourced in types/electron.ts; re-exported
 // here to preserve this module's existing import surface.
 export type { Profile, ProfileMod, ProfileCrosshairSettings, ApplyProfileResult } from '../types/electron';
-import type { Profile, ProfileCrosshairSettings, ApplyProfileResult, PerformanceConfigStatus, PerformancePresetSummary, EditorCandidate, LockerImageVariant, LockerImageEdit, CropRect } from '../types/electron';
+import type { Profile, ProfileCrosshairSettings, ApplyProfileResult, PerformanceConfigStatus, PerformancePresetSummary, PerformanceLatestInfo, PerformanceRemoteVersionList, EditorCandidate, LockerImageVariant, LockerImageEdit, CropRect } from '../types/electron';
 
 export async function getProfiles(): Promise<Profile[]> {
   return window.electronAPI.getProfiles();

@@ -32,6 +32,7 @@ import PublishDialog from '../components/social/PublishDialog';
 import { getActiveDeadlockPath, shouldBlurNsfw } from '../lib/appSettings';
 import Tx from '../components/translation/Tx';
 import type { Mod } from '../types/mod';
+import { profileModDisplayGroupKey } from '../lib/profileModGrouping';
 
 type ProfileModEntry = Profile['mods'][number];
 
@@ -68,18 +69,42 @@ function getVariantDisplayLabel(profileMod: ProfileModEntry, mod?: Mod): string 
 
 function getProfileModGroups(
   profileMods: ProfileModEntry[],
-  modByFileName: Map<string, Mod>
+  modByFileName: Map<string, Mod>,
+  modBySha: Map<string, Mod>
 ): ProfileModGroupDisplay[] {
   const groups = new Map<string, ProfileModGroupDisplay>();
 
   for (const profileMod of profileMods) {
-    const mod = modByFileName.get(profileMod.fileName);
+    // Content hash first: local mods get renamed by profile switches and
+    // reorders, so the saved fileName can point at a different (or no)
+    // installed mod. The fileName lookup stays as the only path for legacy
+    // entries saved before sha256 was recorded.
+    const sha = profileMod.sha256?.toLowerCase();
+    let mod = sha ? modBySha.get(sha) : undefined;
+    if (!mod) {
+      const candidate = modByFileName.get(profileMod.fileName);
+      const candidateSha = candidate?.sha256?.toLowerCase();
+      // Mirror the resolver's refused-crossmatch: when both sides know their
+      // hash and the hashes disagree, the saved slot was reused by a different
+      // mod, and showing the interloper's name would display a mod the apply
+      // refuses to enable. Either side lacking a hash keeps the fallback.
+      if (!(sha && candidateSha && sha !== candidateSha)) mod = candidate;
+    }
     // Prefer the saved stable id over the live scan: a multi-VPK pair whose
     // pakNN_ prefix shifted since save would otherwise miss in modByFileName
     // and split into two file:<fileName> groups, inflating the displayed
     // count by one per stranded sibling.
-    const gbId = profileMod.gameBananaId ?? mod?.gameBananaId;
-    const key = gbId ? `gamebanana:${gbId}` : `file:${profileMod.fileName}`;
+    // A local variant group collapses into one row with N variants, the same
+    // shape a GameBanana submission gets. DISPLAY ONLY: the group id is
+    // per-install state that never reaches the portable profile, so it is read
+    // off the resolved installed mod, and profile resolution stays sha-based
+    // (an entry whose mod is not installed simply falls back to its own hash).
+    const key = profileModDisplayGroupKey(
+      profileMod.gameBananaId,
+      mod,
+      sha,
+      profileMod.fileName,
+    );
     const group = groups.get(key) ?? {
       key,
       name: mod?.name || fallbackFileLabel(profileMod.fileName),
@@ -144,6 +169,13 @@ export default function Profiles() {
   const socialSignedIn = useSocialStore((s) => s.status.signedIn);
 
   const modByFileName = new Map(mods.map((m) => [m.fileName, m]));
+  // Rename-proof lookup for the saved profile entries. First writer wins: mods
+  // sharing a sha are byte-identical, so either one displays the same.
+  const modBySha = new Map<string, Mod>();
+  for (const m of mods) {
+    const sha = m.sha256?.toLowerCase();
+    if (sha && !modBySha.has(sha)) modBySha.set(sha, m);
+  }
 
   const loadProfileList = async (opts?: { silent?: boolean }) => {
     // Silent refresh leaves the page rendered: needed for in-modal flows
@@ -714,7 +746,7 @@ export default function Profiles() {
                 const busyBlockerId = `profile-busy-${profile.id}`;
                 const isActive = activeProfileId === profile.id;
                 const isExpanded = expandedProfiles.has(profile.id);
-                const profileModGroups = getProfileModGroups(profile.mods, modByFileName);
+                const profileModGroups = getProfileModGroups(profile.mods, modByFileName, modBySha);
                 const profileFileCount = profile.mods.length;
 
                 const isRenamingThis = renamingId === profile.id;

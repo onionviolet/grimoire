@@ -70,6 +70,7 @@ import {
   ArrowUpToLine,
   ImageDown,
   Link,
+  Unlink,
 } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
@@ -92,16 +93,23 @@ import { isImprintPending } from '../lib/imprintPending';
 import { readPref, writePref, CARD_SIZE_MIN as CARD_SIZE_MULTIPLIER_FLOOR, CARD_SIZE_MAX as CARD_SIZE_MULTIPLIER_CEILING } from '../lib/uiPrefs';
 import SearchInput from '../components/common/SearchInput';
 import { useScrollRestore } from '../lib/useScrollRestore';
-import { getConflicts, openModsFolder, readImageDataUrl, showOpenDialog, getModDetails, getModFileList, downloadMod, createSnapshot, detectUnknownModFilters, detectUnknownModCacheBulk, cancelUnknownModDetection, onUnknownModDetectionProgress, applyUnknownModMatch, applyUnknownCustomMod, associateUnknownMod, listUnknownModFiles, browseMods, mergeMods, unmergeMod, extractMergeSource, addMergeSources, reorderMods as apiReorderMods, setModIgnoreUpdates, getLockerOverview, revealModInFolder, dmmMigrateScan, dmmMigrateExecute, imprintAllInstalled, onImprintAllInstalledProgress, imprintPreflight, readImprintDetails, getModelCompatibilityReport, applyModelCompatibilityFix, launchModded } from '../lib/api';
-import type { UnmergeModResult, ImprintAllInstalledResult, ImprintInstalledProgress, ImprintPreflightResult, ImprintDetails } from '../lib/api';
+import { getConflicts, openModsFolder, readImageDataUrl, showOpenDialog, getModDetails, getModFileList, downloadMod, createSnapshot, detectUnknownModFilters, detectUnknownModCacheBulk, cancelUnknownModDetection, onUnknownModDetectionProgress, applyUnknownModMatch, applyUnknownCustomMod, associateUnknownMod, listUnknownModFiles, browseMods, mergeMods, unmergeMod, extractMergeSource, addMergeSources, reorderMods as apiReorderMods, setModIgnoreUpdates, getLockerOverview, revealModInFolder, dmmMigrateScan, dmmMigrateExecute, imprintAllInstalled, onImprintAllInstalledProgress, imprintPreflight, readImprintDetails, getModelCompatibilityReport, applyModelCompatibilityFix, launchModded, deleteMod as deleteModApi, replaceMergeSources, restoreLocalVariantGroupReplacement } from '../lib/api';
+import type { UnmergeModResult, ImprintAllInstalledResult, ImprintInstalledProgress, ImprintPreflightResult, ImprintDetails, ImportCustomModArgs, ImportCustomModResult } from '../lib/api';
 import type { ModConflict } from '../lib/api';
-import type { Mod, GlobalModType, UnknownModDetectionProgress, UnknownModFilterGuess, MergedModSource, AssociateUnknownModArgs, ImprintAnomalousMod, ImprintSkippedMod, ImprintFailedMod, ModelCompatibilityReport } from '../types/mod';
-import type { GameBananaModDetails, GameBananaMod, GameBananaItemRef } from '../types/gamebanana';
+import type { Mod, GlobalModType, UnknownModDetectionProgress, UnknownModFilterGuess, MergedModSource, AssociateUnknownModArgs, ImprintAnomalousMod, ImprintSkippedMod, ImprintFailedMod, ModelCompatibilityReport, MergeSourceReplacement } from '../types/mod';
+import type { GameBananaModDetails, GameBananaMod, GameBananaItemRef, GameBananaFile } from '../types/gamebanana';
+import {
+  mergeSourceModIds,
+  planMergeSourceUpdates,
+  type MergeSourceUpdateOutcome,
+  type MergeSourceUpdateSkip,
+} from '../lib/mergeSourceUpdate';
 import { getModThumbnail } from '../types/gamebanana';
 import ModThumbnail from '../components/ModThumbnail';
 import AudioPreviewPlayer from '../components/AudioPreviewPlayer';
 import ModDetailsModal from '../components/ModDetailsModal';
 import VariantPickerModal from '../components/VariantPickerModal';
+import ImportCustomModsModal from '../components/ImportCustomModsModal';
 import MergeModsModal from '../components/MergeModsModal';
 import MergedContentsModal from '../components/MergedContentsModal';
 import PriorityEditor from '../components/PriorityEditor';
@@ -111,15 +119,34 @@ import { useBackdropDismiss } from '../components/common/useBackdropDismiss';
 import { useDismissable } from '../components/common/useDismissable';
 import { useEscapeKey } from '../components/common/useEscapeKey';
 import { inferHeroFromTitle, getHeroRenderPath, getHeroFacePosition, getHeroChipIconPath, HERO_NAMES, HERO_NAMES_SORTED, canonicalHeroName, GLOBAL_MOD_TYPE_ORDER, GLOBAL_MOD_TYPE_LABELS, getEffectiveGlobalType, modLoadOrder } from '../lib/lockerUtils';
+import {
+  canJoinLocalVariantGroup,
+  installedVariantGroupKey,
+  localVariantSelectionEligibility,
+} from '../lib/localVariantEligibility';
+import { getInstalledCardTaxonomy, type InstalledCardTaxonomy } from '../lib/installedCardTaxonomy';
 import { formatRelativeDate, formatAbsoluteDate } from '../lib/dates';
 import { useStableCallback } from '../lib/useStableCallback';
+import {
+  STABLE_KEY_PREFERENCES_MIGRATED_EVENT,
+  type StableKeyPreferencesMigratedDetail,
+} from '../lib/stableKeyMigration';
+import { isDownloadRequestPending, releaseDownloadRequest, requestDownload } from '../lib/downloadActivity';
 import { formatBytes } from '../lib/formatBytes';
 import { canOpenImageSource, copyImageToClipboard, resolveImageSource } from '../lib/imageActions';
-import { resolveUpdateTarget } from '../lib/updateFileMatch';
-import { createEnabledVpkRestoreSnapshot, shouldRestoreVpkEnabled, type EnabledVpkRestoreSnapshot } from '../lib/vpkRestore';
+import { planFileUpdates } from '../lib/updateFileMatch';
+import {
+  createEnabledVpkRestoreSnapshot,
+  createGlobalVpkRestoreSnapshot,
+  restoreReplacementVpkState,
+  type EnabledVpkRestoreSnapshot,
+  type GlobalVpkRestoreSnapshot,
+} from '../lib/vpkRestore';
 import { modRestoreKey } from '../lib/soloRestore';
 import { captureBulkSnapshot } from '../lib/bulkUndo';
 import { useBulkUndoOffer } from '../lib/useBulkUndoOffer';
+import { findReplacementTargetIdsAfterInstall } from '../lib/replacementCleanup';
+import { planLocalVariantUpdateRestore } from '../lib/localVariantUpdateRestore';
 import { buildCachedModDetails, canUseCachedModDetails } from '../lib/cachedModDetails';
 import {
   createDisabledEntryComparator,
@@ -145,6 +172,7 @@ import {
 import { CreateModListModal, ModListSubmenu } from '../components/installed/ModListMenu';
 import { ManageModListsModal } from '../components/installed/ManageModListsModal';
 import { FilterCheckList } from '../components/installed/FilterCheckList';
+import { InstalledProfilesMenu } from '../components/installed/InstalledProfilesMenu';
 import { Button, CheckboxMark, IconButton, ModalHeader, Tag } from '../components/common/ui';
 import { FormField, Input, Select } from '../components/common/forms';
 import { HeroSelect } from '../components/common/HeroSelect';
@@ -208,8 +236,9 @@ const DROP_STATE_RESET_DELAY_MS = 160;
 const INITIAL_MOUNT_COUNT = 40;
 
 /**
- * Rows on the Installed page are either standalone mods or grouped files
- * sharing the same GameBanana mod (e.g. five preset VPKs from one skin pack).
+ * Rows on the Installed page are either standalone mods or grouped files that
+ * are variants of one mod (e.g. five preset VPKs from one skin pack, whether
+ * they came from a GameBanana submission or a locally imported archive).
  * Grouped entries collapse to a single card; the picker modal handles
  * per-file enable, rename, and delete actions.
  */
@@ -217,7 +246,12 @@ type ModEntry =
   | { kind: 'single'; mod: Mod; key: string }
   | {
       kind: 'group';
-      gameBananaId: number;
+      /** Shared grouping key from variantGroupKey ("gb:123" / "local:<uuid>").
+       *  The stable identity of the group across reconciles. */
+      groupKey: string;
+      /** Set only for GameBanana groups. Absent on local groups, which have no
+       *  mod page to open and nothing to check for updates. */
+      gameBananaId?: number;
       variants: Mod[];
       /** Enabled files in this group. Empty when the whole group is disabled. */
       enabledVariants: Mod[];
@@ -231,6 +265,13 @@ type ModEntry =
       key: string;
     };
 
+/** Electron prefixes ipcRenderer.invoke rejections with the channel name;
+ *  strip it so toasts show only the main-process message. */
+function toastErrorMessage(err: unknown): string {
+  const detail = err instanceof Error ? err.message : String(err);
+  return detail.replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
+}
+
 function modEntryKey(mod: Mod): string {
   if (typeof mod.gameBananaId === 'number' && typeof mod.gameBananaFileId === 'number') {
     return `single:gb:${mod.gameBananaId}:${mod.gameBananaFileId}`;
@@ -242,23 +283,24 @@ function modEntryKey(mod: Mod): string {
 }
 
 function buildModEntries(mods: Mod[]): ModEntry[] {
-  const byGb = new Map<number, Mod[]>();
+  const byGroup = new Map<string, Mod[]>();
   const singles: Mod[] = [];
   for (const m of mods) {
-    if (typeof m.gameBananaId === 'number' && m.gameBananaId > 0) {
-      const arr = byGb.get(m.gameBananaId) ?? [];
+    const groupKey = installedVariantGroupKey(m);
+    if (groupKey) {
+      const arr = byGroup.get(groupKey) ?? [];
       arr.push(m);
-      byGb.set(m.gameBananaId, arr);
+      byGroup.set(groupKey, arr);
     } else {
       singles.push(m);
     }
   }
-  // Singletons (only one mod for a given GB id) collapse back to single
-  // entries — the group concept only matters when there are 2+ variants.
-  for (const [gb, variants] of Array.from(byGb.entries())) {
+  // Singletons (only one mod for a given group key) collapse back to single
+  // entries: the group concept only matters when there are 2+ variants.
+  for (const [groupKey, variants] of Array.from(byGroup.entries())) {
     if (variants.length === 1) {
       singles.push(variants[0]);
-      byGb.delete(gb);
+      byGroup.delete(groupKey);
     }
   }
 
@@ -280,7 +322,7 @@ function buildModEntries(mods: Mod[]): ModEntry[] {
     const key = (baseKeyCounts.get(base) ?? 0) > 1 ? `${base}#${m.id}` : base;
     entries.push({ kind: 'single', mod: m, key });
   }
-  for (const [gameBananaId, variants] of byGb) {
+  for (const [groupKey, variants] of byGroup) {
     // Sort variants by current priority so drag-reorder lines up with the
     // user's mental model ("which slot is this in?") and the picker shows
     // them in the same order as the addons folder.
@@ -289,15 +331,23 @@ function buildModEntries(mods: Mod[]): ModEntry[] {
     const active = enabledVariants[0] ?? null;
     const primary = enabledVariants[0] ?? variants[0];
     const totalSize = variants.reduce((sum, v) => sum + v.size, 0);
+    // Preserve primary provenance for mod-page affordances. Whether membership
+    // is user-managed comes from the authoritative group key, not this id: an
+    // explicit local group may legitimately contain an adopted GameBanana VPK.
+    const gameBananaId =
+      typeof primary.gameBananaId === 'number' && primary.gameBananaId > 0
+        ? primary.gameBananaId
+        : undefined;
     entries.push({
       kind: 'group',
+      groupKey,
       gameBananaId,
       variants,
       enabledVariants,
       active,
       primary,
       totalSize,
-      key: `group:${gameBananaId}`,
+      key: `group:${groupKey}`,
     });
   }
   return entries;
@@ -349,10 +399,13 @@ function entryInstalledAt(entry: ModEntry): string {
   );
 }
 
-/** A locally imported mod has no GameBanana id. Group entries are always
- *  GameBanana (they're keyed by a shared GameBanana mod id). */
+/** Whether membership/name are user-managed. Explicit local identity wins over
+ * adopted GameBanana provenance, matching variantGroupKey and the main process. */
 function entryIsLocal(entry: ModEntry): boolean {
-  return entry.kind === 'single' && typeof entry.mod.gameBananaId !== 'number';
+  return entry.kind === 'single'
+    ? !!entry.mod.localGroupId ||
+        !(typeof entry.mod.gameBananaId === 'number' && entry.mod.gameBananaId > 0)
+    : entry.groupKey.startsWith('local:');
 }
 
 const OTHER_TAG_KEY = 'other';
@@ -539,6 +592,7 @@ interface InstalledEntryCardProps {
   soundVolume: number;
   conflicts: ModConflict[];
   updateAvailable: boolean;
+  staleSourceCount: number;
   fixingUnknown: boolean;
   loadPosition: number | undefined;
   loadCount: number;
@@ -548,12 +602,17 @@ interface InstalledEntryCardProps {
   favorite: boolean;
   onOpenDetails: (mod: Mod) => void;
   onViewAuthor: (mod: Mod) => void;
-  onOpenPicker: (gameBananaId: number) => void;
+  /** Opens the variant picker for a group, by its shared grouping key. */
+  onOpenPicker: (groupKey: string) => void;
   onToggle: (entry: ModEntry) => void;
   onSoloLaunch: (entry: ModEntry) => void;
   onDelete: (entry: ModEntry) => void;
   onEditLocal: (mod: Mod) => void;
   onRenameLocal: (mod: Mod, newName: string) => Promise<void>;
+  /** Open the add-variants import dialog for a local entry. */
+  onAddVariant: (entry: ModEntry) => void;
+  /** Dissolve a local variant group (every member becomes its own card). */
+  onUngroupVariants: (entry: ModEntry) => Promise<void>;
   /** Open the imprint details modal for a mod whose wire `imprinted` flag is
    *  true. Externally-imprinted files without the local flag simply do not get
    *  the menu entry: the flag is the cheap client hint, and the modal's empty
@@ -593,6 +652,7 @@ const InstalledEntryCard = memo(function InstalledEntryCard({
   soundVolume,
   conflicts,
   updateAvailable,
+  staleSourceCount,
   fixingUnknown,
   loadPosition,
   loadCount,
@@ -608,6 +668,8 @@ const InstalledEntryCard = memo(function InstalledEntryCard({
   onDelete,
   onEditLocal,
   onRenameLocal,
+  onAddVariant,
+  onUngroupVariants,
   onViewImprint,
   onTagLocker,
   onTagGlobal,
@@ -633,6 +695,7 @@ const InstalledEntryCard = memo(function InstalledEntryCard({
         conflicts={conflicts}
         soundVolume={soundVolume}
         updateAvailable={updateAvailable}
+        staleSourceCount={staleSourceCount}
         entryKey={entry.key}
         onOpenDetails={
           mod.merged || mod.gameBananaId ? () => onOpenDetails(mod) : undefined
@@ -642,8 +705,13 @@ const InstalledEntryCard = memo(function InstalledEntryCard({
         onSoloLaunch={() => onSoloLaunch(entry)}
         soloBusy={soloBusy}
         onDelete={() => onDelete(entry)}
-        onEditLocal={!mod.gameBananaId ? () => onEditLocal(mod) : undefined}
-        onRenameLocal={!mod.gameBananaId ? (newName) => onRenameLocal(mod, newName) : undefined}
+        onEditLocal={entryIsLocal(entry) ? () => onEditLocal(mod) : undefined}
+        onRenameLocal={
+          entryIsLocal(entry) ? (newName) => onRenameLocal(mod, newName) : undefined
+        }
+        // A local mod can adopt variants: the first add mints the group. A
+        // merged VPK is excluded, like it is from the GameBanana link flow.
+        onAddVariant={canJoinLocalVariantGroup(mod) ? () => onAddVariant(entry) : undefined}
         onViewImprint={mod.imprinted ? () => onViewImprint(mod) : undefined}
         onTagLocker={(heroName) => onTagLocker(entry, heroName)}
         onTagGlobal={(globalType) => onTagGlobal(entry, globalType)}
@@ -652,7 +720,11 @@ const InstalledEntryCard = memo(function InstalledEntryCard({
           // Any local (unlinked, non-merged) mod can search GameBanana and
           // link, not just ones flagged "unknown": naming a local mod via
           // Edit Local clears isUnknown but it still has no GameBanana source.
-          entryIsLocal(entry) && !mod.merged ? () => onFixUnknown(mod) : undefined
+          entryIsLocal(entry) &&
+          !mod.merged &&
+          !(typeof mod.gameBananaId === 'number' && mod.gameBananaId > 0)
+            ? () => onFixUnknown(mod)
+            : undefined
         }
         fixingUnknown={fixingUnknown}
         loadPosition={loadPosition}
@@ -698,7 +770,7 @@ const InstalledEntryCard = memo(function InstalledEntryCard({
       soundVolume={soundVolume}
       updateAvailable={updateAvailable}
       entryKey={entry.key}
-      onOpenDetails={() => onOpenPicker(entry.gameBananaId)}
+      onOpenDetails={() => onOpenPicker(entry.groupKey)}
       onViewAuthor={entry.gameBananaId ? () => onViewAuthor(entry.primary) : undefined}
       // Imprints are per file; a group card shows the primary's imprint.
       onViewImprint={entry.primary.imprinted ? () => onViewImprint(entry.primary) : undefined}
@@ -706,6 +778,20 @@ const InstalledEntryCard = memo(function InstalledEntryCard({
       onSoloLaunch={() => onSoloLaunch(entry)}
       soloBusy={soloBusy}
       onDelete={() => onDelete(entry)}
+      // A local group is the user's own construction, so it can be renamed,
+      // extended and dissolved from the card. A GameBanana group can do none of
+      // those: its files and its name come from the submission. Renaming the
+      // primary renames every member (main fans the name out).
+      onEditLocal={entryIsLocal(entry) ? () => onEditLocal(entry.primary) : undefined}
+      onRenameLocal={
+        entryIsLocal(entry) ? (newName) => onRenameLocal(entry.primary, newName) : undefined
+      }
+      onAddVariant={
+        entryIsLocal(entry) && entry.variants.every(canJoinLocalVariantGroup)
+          ? () => onAddVariant(entry)
+          : undefined
+      }
+      onUngroupVariants={entryIsLocal(entry) ? () => void onUngroupVariants(entry) : undefined}
       onTagLocker={(heroName) => onTagLocker(entry, heroName)}
       onTagGlobal={(globalType) => onTagGlobal(entry, globalType)}
       onSetPriority={(priority) => onSetPriority(entry, priority)}
@@ -733,7 +819,7 @@ const InstalledEntryCard = memo(function InstalledEntryCard({
           variant.sourceFileName ??
           variant.fileName
         ),
-        onOpenPicker: () => onOpenPicker(entry.gameBananaId),
+        onOpenPicker: () => onOpenPicker(entry.groupKey),
       }}
     />
   );
@@ -836,10 +922,12 @@ export default function Installed() {
     deleteMod,
     reorderMods,
     editLocalMod,
+    setLocalVariantGroup,
     setModLockerHero,
     setModGlobalType,
     setModPriorityFolder,
     setVariantLabel,
+    importCustomMods,
     soundVolume,
     setInstalledScrollTop,
     setBrowseUi,
@@ -850,9 +938,33 @@ export default function Installed() {
   // User-authored lists (see lib/modLists.ts). Purely an organization axis:
   // membership never changes what is enabled, only which cards are shown.
   const [modLists, setModLists] = useState(readStoredModLists);
+  // Grouping changes a standalone mod's stable key (sha256 -> localgroup) and
+  // splitting does the reverse. The store migrates localStorage atomically,
+  // then signals this mounted page so its component-local mirrors update in
+  // the same interaction instead of waiting for a remount.
+  useEffect(() => {
+    const handleMigration = (
+      event: CustomEvent<StableKeyPreferencesMigratedDetail>
+    ) => {
+      setDisabledFavorites(new Set(event.detail.disabledFavorites));
+      setDisabledOrder([...event.detail.disabledOrder]);
+      setModLists(event.detail.modLists.map((list) => ({ ...list, keys: [...list.keys] })));
+    };
+    window.addEventListener(STABLE_KEY_PREFERENCES_MIGRATED_EVENT, handleMigration);
+    return () => window.removeEventListener(STABLE_KEY_PREFERENCES_MIGRATED_EVENT, handleMigration);
+  }, []);
   // Entry the "New list" dialog was opened from, so creating also files it.
   const [creatingListFor, setCreatingListFor] = useState<ModEntry | null>(null);
   const [managingLists, setManagingLists] = useState(false);
+
+  // Applying (or saving) a profile from the header control changes what is
+  // enabled behind the page's back: there is no event or subscription to hear
+  // it on. The force flag is required because loadMods no-ops on a generation
+  // guard otherwise, and settings carry the active-profile marker.
+  const handleProfileApplied = useCallback(() => {
+    void loadMods({ force: true });
+    void loadSettings();
+  }, [loadMods, loadSettings]);
 
   // Source mods absorbed into a merged VPK still live on disk (disabled) so
   // unmerge can restore them, but the user shouldn't see them as separate
@@ -1234,12 +1346,28 @@ export default function Installed() {
   // GB id of the group whose picker is open, or null. The actual entry is
   // derived from live `mods` each render so per-file deletes inside the
   // picker reflect immediately without juggling a separate snapshot.
-  const [pickerGroupId, setPickerGroupId] = useState<number | null>(null);
+  // Open variant picker, held by the group's shared grouping key (see
+  // variantGroupKey): "gb:<id>" for GameBanana groups, "local:<uuid>" for
+  // locally imported multi-VPK archives.
+  const [pickerGroupId, setPickerGroupId] = useState<string | null>(null);
   // The batch local-import dialog is mounted by Layout, not here: this page
   // early-returns an empty state when it has no mods, so hosting the dialog
   // would unmount it mid-batch on a first-ever import. Only the open flag lives
   // on the page's buttons.
   const setImportOpen = useAppStore((s) => s.setBatchImportOpen);
+  // Target of the "Add variant" dialog, which IS hosted here (unlike the plain
+  // batch import): it can only be opened from a card, so the page always has
+  // mods and can never early-return out from under it. `groupId` is null for a
+  // standalone local mod, whose group is minted on the first successful add.
+  const [addVariantTarget, setAddVariantTarget] = useState<{
+    modIds: string[];
+    groupId: string | null;
+    modName: string;
+    /** Set once this dialog minted the group, so a retry after a partial
+     *  failure joins the same group instead of minting another, and closing
+     *  without a single file landing can undo the mint. */
+    mintedGroupId?: string;
+  } | null>(null);
   const [unknownFilterGuess, setUnknownFilterGuess] = useState<{
     mod: Mod;
     loading: boolean;
@@ -1377,22 +1505,99 @@ export default function Installed() {
   // True when the overlay is showing cached-catalog data because the live
   // GameBanana fetch failed; drives the offline banner in the modal.
   const [detailsOffline, setDetailsOffline] = useState(false);
-  const [detailsUpdateAvailable, setDetailsUpdateAvailable] = useState(false);
   const [detailsIgnoreUpdates, setDetailsIgnoreUpdates] = useState(false);
-  const [detailsInstalledFileIds, setDetailsInstalledFileIds] = useState<Set<number>>(new Set());
-  // GameBanana fileIds of enabled files in the group. Drives the "Active"
-  // badges in the details modal when multiple files are enabled together.
-  const [detailsActiveFileIds, setDetailsActiveFileIds] = useState<Set<number>>(new Set());
+  // GameBanana id the overlay is showing. Every installed-state value below is
+  // derived live from the store off this id rather than snapshotted when the
+  // overlay opens: a snapshot went stale the moment the user installed a
+  // variant or an update from inside the overlay, so the button stayed on
+  // "Install" and the row never picked up its Installed/Active styling.
+  const [detailsGameBananaId, setDetailsGameBananaId] = useState<number | null>(null);
   const [detailsDates, setDetailsDates] = useState<{ dateAdded: number; dateModified: number } | null>(null);
-  // Local id of the installed mod that triggered the overlay. On download we
-  // delete this entry first so Update/Reinstall replaces the old VPK instead
-  // of installing a second copy alongside it.
+  // Local id of the installed mod that triggered the overlay. A successful
+  // Update/Reinstall removes this predecessor after the replacement lands.
   const [detailsSourceModId, setDetailsSourceModId] = useState<string | null>(null);
   // Monotonic guard so a slower linked-item fetch can't clobber a newer one.
   const detailsRequestIdRef = useRef(0);
-
   // Map of mod id → true if a newer version exists on GameBanana.
   const [updatesAvailable, setUpdatesAvailable] = useState<Set<string>>(new Set());
+  // Merged mod id -> fileNames of its absorbed sources whose GameBanana file is
+  // gone. Kept apart from `updatesAvailable` because runUpdate has nothing to
+  // re-download for a merged VPK; this is surfaced as information only.
+  const [mergedSourceUpdates, setMergedSourceUpdates] = useState<Map<string, Set<string>>>(
+    new Map(),
+  );
+
+  // Installed/enabled GameBanana fileIds for the mod the details overlay is
+  // showing, aggregated across every sibling that shares the GB id (not just
+  // the clicked file) so multi-variant groups flag every owned row. Derived
+  // from `mods` so an install, delete or toggle performed while the overlay is
+  // open updates it on the spot, the way Browse feeds the same modal.
+  const { detailsInstalledFileIds, detailsActiveFileIds } = useMemo(() => {
+    const installedFileIds = new Set<number>();
+    const activeFileIds = new Set<number>();
+    if (detailsGameBananaId !== null) {
+      for (const candidate of mods) {
+        if (candidate.gameBananaId !== detailsGameBananaId) continue;
+        if (typeof candidate.gameBananaFileId !== 'number') continue;
+        installedFileIds.add(candidate.gameBananaFileId);
+        if (candidate.enabled) activeFileIds.add(candidate.gameBananaFileId);
+      }
+    }
+    return { detailsInstalledFileIds: installedFileIds, detailsActiveFileIds: activeFileIds };
+  }, [mods, detailsGameBananaId]);
+
+  // Update pulse for the overlay. Keyed off the entry that opened it, matching
+  // the per-file update check: a sibling variant having an update must not
+  // relabel this file's button as "Update", which would make the download
+  // handler treat the pick as a version replacement and delete the source.
+  const detailsUpdateAvailable = useMemo(
+    () => (detailsSourceModId ? updatesAvailable.has(detailsSourceModId) : false),
+    [detailsSourceModId, updatesAvailable],
+  );
+
+  const detailsUpdatePlan = useMemo(() => {
+    if (!detailsMod || !detailsSourceModId || !detailsUpdateAvailable) {
+      return { sourcesByTargetFileId: new Map<number, string[]>(), unresolvedSourceIds: [] };
+    }
+    const source = mods.find((mod) => mod.id === detailsSourceModId);
+    if (!source || typeof source.gameBananaFileId !== 'number') {
+      return { sourcesByTargetFileId: new Map<number, string[]>(), unresolvedSourceIds: [] };
+    }
+    const liveIds = new Set(
+      (detailsMod.files ?? []).filter((file) => !file.isArchived).map((file) => file.id),
+    );
+    const candidates = mods.filter(
+      (mod) =>
+        mod.gameBananaId === detailsMod.id &&
+        (mod.gameBananaFileId === source.gameBananaFileId ||
+          (typeof mod.gameBananaFileId === 'number' && liveIds.has(mod.gameBananaFileId))),
+    );
+    return planFileUpdates(
+      detailsMod.id,
+      detailsMod.files ?? [],
+      candidates.map((mod) => ({
+        id: mod.id,
+        gameBananaId: mod.gameBananaId,
+        gameBananaFileId: mod.gameBananaFileId,
+        ignoreUpdates: mod.ignoreUpdates,
+        installedFileId: mod.gameBananaFileId!,
+        fileDescription: mod.fileDescription,
+        sourceFileName: mod.sourceFileName,
+      })),
+    );
+  }, [detailsMod, detailsSourceModId, detailsUpdateAvailable, mods]);
+
+  const detailsUpdateFileIds = useMemo(() => {
+    const planned = new Set(detailsUpdatePlan.sourcesByTargetFileId.keys());
+    if (planned.size > 0 || detailsUpdatePlan.unresolvedSourceIds.length === 0) return planned;
+    // No automatic match: every current file is a user-selectable replacement.
+    // They are intentionally labelled Update because the Installed handler
+    // will replace the stale source, not add an ordinary sibling variant.
+    for (const file of detailsMod?.files ?? []) {
+      if (!file.isArchived) planned.add(file.id);
+    }
+    return planned;
+  }, [detailsMod, detailsUpdatePlan]);
 
   // "Update all" confirm + progress. Progress is null when idle, otherwise
   // { done, total } so the button can render "Updating 2/5…" and stay disabled
@@ -1444,23 +1649,9 @@ export default function Installed() {
     setDetailsSection(section);
     setDetailsCategoryId(categoryId);
     setDetailsSourceModId(m.id);
-    // Build the installed-file set from every sibling sharing this GB id,
-    // not just the clicked file. Otherwise the modal flags only one row
-    // as "Reinstall" when multiple files of the same mod are present -
-    // diverging from Browse, which already aggregates correctly.
-    const siblingFileIds = new Set<number>();
-    const activeFileIds = new Set<number>();
-    for (const candidate of mods) {
-      if (candidate.gameBananaId !== m.gameBananaId) continue;
-      if (typeof candidate.gameBananaFileId !== 'number') continue;
-      siblingFileIds.add(candidate.gameBananaFileId);
-      if (candidate.enabled) {
-        activeFileIds.add(candidate.gameBananaFileId);
-      }
-    }
-    setDetailsInstalledFileIds(siblingFileIds);
-    setDetailsActiveFileIds(activeFileIds);
-    setDetailsUpdateAvailable(updatesAvailable.has(m.id));
+    // Installed/active file sets and the update pulse are derived from this id
+    // against the live mod list, so nothing to snapshot here.
+    setDetailsGameBananaId(m.gameBananaId);
     setDetailsIgnoreUpdates(!!m.ignoreUpdates);
     setDetailsDates(null);
     setDetailsOffline(false);
@@ -1517,10 +1708,9 @@ export default function Installed() {
     setDetailsMod(null);
     setDetailsError(null);
     setDetailsOffline(false);
-    setDetailsUpdateAvailable(false);
     setDetailsIgnoreUpdates(false);
     setDetailsSourceModId(null);
-    setDetailsActiveFileIds(new Set());
+    setDetailsGameBananaId(null);
     setDetailsDates(null);
   });
 
@@ -1551,25 +1741,19 @@ export default function Installed() {
     setDetailsSection(item.section);
     setDetailsCategoryId(0);
 
-    const siblingFileIds = new Set<number>();
-    const activeFileIds = new Set<number>();
-    let sourceModId: string | null = null;
-    let ignoreUpdates = false;
-    let updateAvailable = false;
-    for (const candidate of mods) {
-      if (candidate.gameBananaId !== item.id) continue;
-      if (!sourceModId) sourceModId = candidate.id;
-      if (candidate.ignoreUpdates) ignoreUpdates = true;
-      if (updatesAvailable.has(candidate.id)) updateAvailable = true;
-      if (typeof candidate.gameBananaFileId !== 'number') continue;
-      siblingFileIds.add(candidate.gameBananaFileId);
-      if (candidate.enabled) activeFileIds.add(candidate.gameBananaFileId);
-    }
-    setDetailsInstalledFileIds(siblingFileIds);
-    setDetailsActiveFileIds(activeFileIds);
-    setDetailsSourceModId(sourceModId);
-    setDetailsIgnoreUpdates(ignoreUpdates);
-    setDetailsUpdateAvailable(updateAvailable);
+    // A linked item has no clicked entry, so choose an installed sibling as
+    // its anchor. The file sets and update pulse follow from that anchor plus
+    // the live mod list.
+    const linkedCandidates = mods.filter((candidate) => candidate.gameBananaId === item.id);
+    // Prefer the sibling that actually carries the update pulse. Choosing the
+    // first installed sibling could anchor on a current variant and suppress
+    // both the badge and the stale variant's replacement plan.
+    const source = linkedCandidates.find((candidate) => updatesAvailable.has(candidate.id))
+      ?? linkedCandidates[0]
+      ?? null;
+    setDetailsGameBananaId(item.id);
+    setDetailsSourceModId(source?.id ?? null);
+    setDetailsIgnoreUpdates(!!source?.ignoreUpdates);
     setDetailsDates(null);
 
     const cachedPromise = window.electronAPI.getCachedMod(item.id).catch(() => null);
@@ -2087,6 +2271,10 @@ export default function Installed() {
 
   const handleDetailsDownload = useStableCallback(async (fileId: number, fileName: string) => {
     if (!detailsMod) return;
+    // Synchronous app-wide guard: covers double clicks and the same target
+    // being requested from Browse before React or the backend queue can render.
+    if (!requestDownload({ modId: detailsMod.id, fileId, fileName, modName: detailsMod.name })) return;
+    setDetailsError(null);
     try {
       // Decide whether this pick replaces the source install or adds a sibling:
       //  - same-file pick = a true reinstall -> replace.
@@ -2104,14 +2292,22 @@ export default function Installed() {
       // *different* file the user already owns (a second variant) reinstalls it
       // rather than deleting the source; guard on !archived so picking an old
       // file from the archived list never replaces a newer install.
+      const plannedUpdateSourceIds = detailsUpdatePlan.sourcesByTargetFileId.get(fileId);
+      const isPlannedUpdate = !!plannedUpdateSourceIds && plannedUpdateSourceIds.length > 0;
+      const isManualUpdate =
+        detailsUpdatePlan.unresolvedSourceIds.includes(sourceMod?.id ?? '') &&
+        detailsUpdateFileIds.has(fileId);
       const isUpdate =
         !!sourceMod &&
         detailsUpdateAvailable &&
-        !detailsInstalledFileIds.has(fileId) &&
-        !pickedIsArchived;
+        !pickedIsArchived &&
+        (isPlannedUpdate || isManualUpdate);
       const replacing = isReinstall || isUpdate;
       let replacementTargets: typeof mods = [];
-      if (replacing && sourceMod) {
+      if (isPlannedUpdate) {
+        const sourceIds = new Set(plannedUpdateSourceIds);
+        replacementTargets = mods.filter((mod) => sourceIds.has(mod.id));
+      } else if (replacing && sourceMod) {
         replacementTargets = mods.filter(
           (mod) =>
             mod.gameBananaId === sourceMod.gameBananaId &&
@@ -2123,6 +2319,10 @@ export default function Installed() {
         );
       }
       const restoreEnabled = createEnabledVpkRestoreSnapshot(replacementTargets);
+      const restoreGlobal = createGlobalVpkRestoreSnapshot(replacementTargets);
+      if (restoreGlobal.ambiguous) {
+        throw new Error(t('installed.updateAll.ambiguousGlobalState'));
+      }
 
       if (replacing && sourceMod) {
         // Snapshot before the destructive delete so the user can roll back,
@@ -2134,34 +2334,133 @@ export default function Installed() {
           console.warn('[Update] failed to capture pre-update snapshot:', err);
         }
       }
-      for (const mod of replacementTargets) {
-        await deleteMod(mod.id);
+
+      const replacementAlreadyInstalled = mods.some(
+        (mod) =>
+          mod.gameBananaId === detailsMod.id &&
+          mod.gameBananaFileId === fileId &&
+          !replacementTargets.some((target) => target.id === mod.id),
+      );
+      if (!isDownloadRequestPending(detailsMod.id, fileId)) return;
+      let installedBeforeCleanup: typeof mods;
+      let targetIds: string[];
+      if (!replacementAlreadyInstalled) {
+        await downloadMod(detailsMod.id, fileId, fileName, detailsSection, detailsCategoryId);
+        await loadMods();
+        installedBeforeCleanup = useAppStore.getState().mods;
+        targetIds = findReplacementTargetIdsAfterInstall(
+          installedBeforeCleanup,
+          replacementTargets,
+          fileId,
+        );
+      } else {
+        installedBeforeCleanup = useAppStore.getState().mods;
+        targetIds = replacementTargets.map((mod) => mod.id);
       }
 
-      await downloadMod(detailsMod.id, fileId, fileName, detailsSection, detailsCategoryId);
+      // A GameBanana update is normally forbidden from entering a local
+      // variant group. The narrow restore IPC proves this is a replacement for
+      // a still-installed adopted member, then copies that group's established
+      // identity before the source is deleted. If the mapping is ambiguous,
+      // keep the old source rather than split the card and orphan preferences.
+      const groupedReplacement = replacementTargets.some((target) => !!target.localGroupId);
+      let localGroupRestore = planLocalVariantUpdateRestore(
+        replacementTargets,
+        installedBeforeCleanup,
+        targetIds,
+        detailsMod.id,
+        fileId,
+      );
+      if (groupedReplacement && !localGroupRestore) {
+        throw new Error(t('installed.variants.updateRestoreFailed'));
+      }
+      // A Global local group must stay wholly in the priority folder. Move the
+      // fresh files first (the existing restore operation owns filesystem
+      // placement), then recompute because that move changes local mod ids.
+      // Main refuses to stamp group metadata until placement matches, so a
+      // failed move leaves the still-installed source and its preferences safe.
+      if (localGroupRestore && restoreGlobal.allGlobal) {
+        const replacementIds = new Set(localGroupRestore.replacementModIds);
+        for (const replacement of installedBeforeCleanup) {
+          if (replacementIds.has(replacement.id) && !replacement.priorityMod) {
+            await setModPriorityFolder(replacement.id, true);
+          }
+        }
+        await loadMods({ force: true });
+        installedBeforeCleanup = useAppStore.getState().mods;
+        localGroupRestore = planLocalVariantUpdateRestore(
+          replacementTargets,
+          installedBeforeCleanup,
+          targetIds,
+          detailsMod.id,
+          fileId,
+        );
+        if (!localGroupRestore) {
+          throw new Error(t('installed.variants.updateRestoreGlobalFailed'));
+        }
+      }
+      if (localGroupRestore) await restoreLocalVariantGroupReplacement(localGroupRestore);
+      for (const targetId of targetIds) await deleteModApi(targetId);
 
-      // Replacement downloads land disabled, so restore the enabled state after
+      await loadMods({ force: true });
+
+      // Replacement downloads land disabled with fresh metadata. Restore both
+      // enabled state and the user's Global priority-root placement after
       // reloading. Match by GB ids because local ids change on reinstall.
-      if (restoreEnabled.hadEnabled) {
-        await loadMods();
+      let restoreFailureMessage: string | null = null;
+      if (restoreEnabled.hadEnabled || restoreGlobal.hadGlobal) {
         const newMods = useAppStore
           .getState()
           .mods.filter((m) => m.gameBananaId === detailsMod.id && m.gameBananaFileId === fileId);
-        for (const newMod of newMods) {
-          if (!shouldRestoreVpkEnabled(newMod, newMods, restoreEnabled)) continue;
-          if (newMod.enabled) continue;
-          try {
-            await toggleMod(newMod.id);
-          } catch (err) {
-            console.warn('[Update] failed to re-enable updated mod:', err);
-          }
+        const restoreFailures = await restoreReplacementVpkState(
+          newMods,
+          restoreEnabled,
+          restoreGlobal,
+          {
+            setGlobal: (modId) => setModPriorityFolder(modId, true),
+            enable: async (modId) => {
+              if (!await toggleMod(modId)) throw new Error('Failed to enable replacement mod');
+            },
+          },
+        );
+        if (restoreFailures.length > 0) {
+          const summary = restoreFailures
+            .map((failure) => `${failure.action}: ${String(failure.error)}`)
+            .join('; ');
+          restoreFailureMessage = t('installed.updateAll.restoreStateFailed', { details: summary });
         }
       }
 
-      closeModDetails();
-      loadMods();
+      // Always reconcile the store with what actually landed on disk, even when
+      // the state restore below failed.
+      await loadMods({ force: true });
+
+      // A restore failure is NOT an update failure: the new file is installed
+      // and only its enabled/Global state is off. Throwing here would report a
+      // succeeded update as a failed one, so surface it in the overlay instead.
+      if (restoreFailureMessage) {
+        showToast(restoreFailureMessage, { tone: 'warning', duration: 7000 });
+      }
+
+      // Keep the overlay open on the freshly installed file so the row flips to
+      // Installed/Active and the button to "Reinstall" in place. Re-anchor the
+      // source entry first: an update or reinstall deletes the old local id, and
+      // leaving it dangling would break the ignore-updates toggle and make a
+      // follow-up pick look like a variant add rather than a replacement.
+      const installed = useAppStore
+        .getState()
+        .mods.find((m) => m.gameBananaId === detailsMod.id && m.gameBananaFileId === fileId);
+      if (installed) {
+        setDetailsSourceModId(installed.id);
+        setDetailsIgnoreUpdates(!!installed.ignoreUpdates);
+      }
     } catch (err) {
-      setDetailsError(String(err));
+      // The error dialog below only renders when no mod is loaded, and the
+      // overlay now stays open through the install, so a failure has to be
+      // surfaced as a toast or it would be swallowed entirely.
+      showToast(toastErrorMessage(err), { tone: 'error', duration: 6000 });
+    } finally {
+      releaseDownloadRequest(detailsMod.id, fileId);
     }
   });
 
@@ -2184,9 +2483,12 @@ export default function Installed() {
         gameBananaFileId: m.gameBananaFileId!,
         fileName: m.fileName,
         vpkIndex: m.vpkIndex,
+        sha256: m.sha256,
         section: m.sourceSection ?? 'Mod',
         categoryId: m.categoryId ?? 0,
         wasEnabled: m.enabled,
+        wasGlobal: !!m.priorityMod,
+        localGroupId: m.localGroupId,
         fileDescription: m.fileDescription,
         sourceFileName: m.sourceFileName,
       }));
@@ -2214,6 +2516,7 @@ export default function Installed() {
       gameBananaId: number;
       gameBananaFileId: number;
       restoreEnabled: EnabledVpkRestoreSnapshot;
+      restoreGlobal: GlobalVpkRestoreSnapshot;
       fileName: string;
     }[] = [];
     let progress = 0;
@@ -2243,77 +2546,61 @@ export default function Installed() {
       const liveFiles = (details.files ?? []).filter((f) => !f.isArchived);
       const liveFileIds = new Set(liveFiles.map((f) => f.id));
 
-      // Resolve every snapshot to a target file *before* any delete/download
-      // runs, so an unrecoverable row keeps its existing install rather than
-      // getting deleted into a failed re-download.
-      //
-      // Pass 1: rows whose stored fileId is still a current file on GameBanana
-      // (genuine multi-file mods stay 1:1).
-      // Pass 2: rows whose fileId is gone or archived. First try to identify
-      // the replacement by the author's per-file description and filename
-      // token overlap (resolveUpdateTarget); then fall back to a single-file
-      // consolidation when the mod now ships exactly one current file. Rows
-      // with no confident match go to the manual-pick queue instead of being
-      // guessed at.
+      // Use the same per-file planner as the Installed and Browse detail
+      // popups, so Update-all cannot disagree with the row labelled Update.
+      // Resolve everything before any delete/download runs; unresolved rows
+      // keep their existing install and go to the manual-pick queue.
       type Resolution =
         | { ok: true; snapshot: (typeof snapshots)[number]; fileId: number; fileName: string }
         | { ok: false; snapshot: (typeof snapshots)[number]; reason: string };
-      const resolutions: Resolution[] = [];
-      const resolvedByOldFileId = new Map<number, { fileId: number; fileName: string }>();
-      // Seed claims with live files already installed as siblings outside this
-      // run, so neither the fuzzy match nor the single-file fallback
-      // re-downloads a variant the user already has.
       const groupOldIds = new Set(group.map((s) => s.oldId));
-      const claimedIds = new Set<number>();
-      for (const m of mods) {
-        if (m.gameBananaId !== group[0].gameBananaId || groupOldIds.has(m.id)) continue;
-        if (typeof m.gameBananaFileId === 'number' && liveFileIds.has(m.gameBananaFileId)) {
-          claimedIds.add(m.gameBananaFileId);
-        }
+      const plan = planFileUpdates(
+        group[0].gameBananaId,
+        details.files ?? [],
+        [
+          ...group.map((snapshot) => ({
+            id: snapshot.oldId,
+            gameBananaId: snapshot.gameBananaId,
+            gameBananaFileId: snapshot.gameBananaFileId,
+            installedFileId: snapshot.gameBananaFileId,
+            fileDescription: snapshot.fileDescription,
+            sourceFileName: snapshot.sourceFileName,
+          })),
+          ...mods
+            .filter(
+              (mod) =>
+                mod.gameBananaId === group[0].gameBananaId &&
+                !groupOldIds.has(mod.id) &&
+                typeof mod.gameBananaFileId === 'number' &&
+                liveFileIds.has(mod.gameBananaFileId),
+            )
+            .map((mod) => ({
+              id: mod.id,
+              gameBananaId: mod.gameBananaId,
+              gameBananaFileId: mod.gameBananaFileId,
+              installedFileId: mod.gameBananaFileId!,
+              fileDescription: mod.fileDescription,
+              sourceFileName: mod.sourceFileName,
+            })),
+        ],
+      );
+      const targetBySourceId = new Map<string, number>();
+      for (const [fileId, sourceIds] of plan.sourcesByTargetFileId) {
+        for (const sourceId of sourceIds) targetBySourceId.set(sourceId, fileId);
       }
-      for (const s of group) {
-        if (liveFileIds.has(s.gameBananaFileId)) {
-          resolutions.push({ ok: true, snapshot: s, fileId: s.gameBananaFileId, fileName: s.fileName });
-          claimedIds.add(s.gameBananaFileId);
-        }
-      }
-      for (const s of group) {
-        if (liveFileIds.has(s.gameBananaFileId)) continue;
-        const existingResolution = resolvedByOldFileId.get(s.gameBananaFileId);
-        if (existingResolution) {
-          resolutions.push({
-            ok: true,
-            snapshot: s,
-            fileId: existingResolution.fileId,
-            fileName: existingResolution.fileName,
-          });
-          continue;
-        }
-        const match = resolveUpdateTarget(
-          {
-            installedFileId: s.gameBananaFileId,
-            fileDescription: s.fileDescription,
-            sourceFileName: s.sourceFileName,
-          },
-          details.files ?? [],
-          claimedIds,
-        );
-        if (match) {
-          resolutions.push({ ok: true, snapshot: s, fileId: match.id, fileName: match.fileName });
-          resolvedByOldFileId.set(s.gameBananaFileId, { fileId: match.id, fileName: match.fileName });
-          claimedIds.add(match.id);
-        } else if (liveFiles.length === 1 && !claimedIds.has(liveFiles[0].id)) {
-          resolutions.push({ ok: true, snapshot: s, fileId: liveFiles[0].id, fileName: liveFiles[0].fileName });
-          resolvedByOldFileId.set(s.gameBananaFileId, { fileId: liveFiles[0].id, fileName: liveFiles[0].fileName });
-          claimedIds.add(liveFiles[0].id);
-        } else {
-          resolutions.push({
-            ok: false,
-            snapshot: s,
-            reason: 'stored file is no longer current on GameBanana and no clear replacement match exists',
-          });
-        }
-      }
+      const resolutions: Resolution[] = group.map((snapshot) => {
+        const fileId = liveFileIds.has(snapshot.gameBananaFileId)
+          ? snapshot.gameBananaFileId
+          : targetBySourceId.get(snapshot.oldId);
+        const file = fileId === undefined ? undefined : liveFiles.find((candidate) => candidate.id === fileId);
+        return file
+          ? { ok: true, snapshot, fileId: file.id, fileName: file.fileName }
+          : {
+              ok: false,
+              snapshot,
+              reason: 'stored file is no longer current on GameBanana and no clear replacement match exists',
+            };
+      });
 
       // Capture a recovery snapshot before any delete runs in this group.
       // We only snapshot once per runUpdate invocation (guarded by the
@@ -2367,25 +2654,93 @@ export default function Installed() {
 
       for (const batch of okBatches.values()) {
         try {
-          for (const snapshot of batch.snapshots) {
-            await deleteMod(snapshot.oldId);
+          const restoreEnabled = createEnabledVpkRestoreSnapshot(
+            batch.snapshots.map((snapshot) => ({
+              enabled: snapshot.wasEnabled,
+              vpkIndex: snapshot.vpkIndex,
+            })),
+          );
+          const restoreGlobal = createGlobalVpkRestoreSnapshot(
+            batch.snapshots.map((snapshot) => ({
+              priorityMod: snapshot.wasGlobal,
+              vpkIndex: snapshot.vpkIndex,
+            })),
+          );
+          if (restoreGlobal.ambiguous) {
+            throw new Error(t('installed.updateAll.ambiguousGlobalState'));
           }
-          await downloadMod(
+          // The replacement may already be installed as a disabled sibling
+          // (for example the user installed V5 from Browse while V4 remained
+          // enabled). In that case the update is a promotion, not another
+          // download: delete the stale install and restore its state onto the
+          // existing current file.
+          const replacementAlreadyInstalled = mods.some(
+            (mod) =>
+              mod.gameBananaId === batch.gameBananaId &&
+              mod.gameBananaFileId === batch.fileId &&
+              !batch.snapshots.some((snapshot) => snapshot.oldId === mod.id),
+          );
+          if (!replacementAlreadyInstalled) {
+            await downloadMod(
+              batch.gameBananaId,
+              batch.fileId,
+              batch.fileName,
+              batch.section,
+              batch.categoryId,
+            );
+          }
+          await loadMods();
+          const installedAfterDownload = useAppStore.getState().mods;
+          const cleanupTargets = batch.snapshots.map((snapshot) => ({
+            id: snapshot.oldId,
+            gameBananaId: snapshot.gameBananaId,
+            gameBananaFileId: snapshot.gameBananaFileId,
+            vpkIndex: snapshot.vpkIndex,
+            sha256: snapshot.sha256,
+          }));
+          const targetIds = findReplacementTargetIdsAfterInstall(
+            installedAfterDownload,
+            cleanupTargets,
+            batch.fileId,
+          );
+          const groupedReplacement = batch.snapshots.some((snapshot) => !!snapshot.localGroupId);
+          let localGroupRestore = planLocalVariantUpdateRestore(
+            batch.snapshots,
+            installedAfterDownload,
+            targetIds,
             batch.gameBananaId,
             batch.fileId,
-            batch.fileName,
-            batch.section,
-            batch.categoryId,
           );
+          if (groupedReplacement && !localGroupRestore) {
+            throw new Error(t('installed.variants.updateRestoreFailed'));
+          }
+          if (localGroupRestore && restoreGlobal.allGlobal) {
+            const replacementIds = new Set(localGroupRestore.replacementModIds);
+            for (const replacement of installedAfterDownload) {
+              if (replacementIds.has(replacement.id) && !replacement.priorityMod) {
+                await setModPriorityFolder(replacement.id, true);
+              }
+            }
+            await loadMods({ force: true });
+            const installedAfterPriorityRestore = useAppStore.getState().mods;
+            localGroupRestore = planLocalVariantUpdateRestore(
+              batch.snapshots,
+              installedAfterPriorityRestore,
+              targetIds,
+              batch.gameBananaId,
+              batch.fileId,
+            );
+            if (!localGroupRestore) {
+              throw new Error(t('installed.variants.updateRestoreGlobalFailed'));
+            }
+          }
+          if (localGroupRestore) await restoreLocalVariantGroupReplacement(localGroupRestore);
+          for (const targetId of targetIds) await deleteModApi(targetId);
           completed.push({
             gameBananaId: batch.gameBananaId,
             gameBananaFileId: batch.fileId,
-            restoreEnabled: createEnabledVpkRestoreSnapshot(
-              batch.snapshots.map((snapshot) => ({
-                enabled: snapshot.wasEnabled,
-                vpkIndex: snapshot.vpkIndex,
-              })),
-            ),
+            restoreEnabled,
+            restoreGlobal,
             fileName: batch.fileName,
           });
         } catch (err) {
@@ -2410,23 +2765,28 @@ export default function Installed() {
     }
 
     // Refresh once so the new installs are in the store with their new ids,
-    // then re-enable anything that was enabled before. Match by GB ids; the
+    // then restore Global placement and enabled state. Match by GB ids; the
     // local mod id changes on reinstall.
-    await loadMods();
+    await loadMods({ force: true });
     const refreshed = useAppStore.getState().mods;
     for (const c of completed) {
-      if (!c.restoreEnabled.hadEnabled) continue;
+      if (!c.restoreEnabled.hadEnabled && !c.restoreGlobal.hadGlobal) continue;
       const newMods = refreshed.filter(
         (m) => m.gameBananaId === c.gameBananaId && m.gameBananaFileId === c.gameBananaFileId,
       );
-      for (const newMod of newMods) {
-        if (!shouldRestoreVpkEnabled(newMod, newMods, c.restoreEnabled)) continue;
-        if (newMod.enabled) continue;
-        try {
-          await toggleMod(newMod.id);
-        } catch (err) {
-          failures.push(`re-enable ${c.fileName}: ${String(err)}`);
-        }
+      const restoreFailures = await restoreReplacementVpkState(
+        newMods,
+        c.restoreEnabled,
+        c.restoreGlobal,
+        {
+          setGlobal: (modId) => setModPriorityFolder(modId, true),
+          enable: async (modId) => {
+            if (!await toggleMod(modId)) throw new Error('Failed to enable replacement mod');
+          },
+        },
+      );
+      for (const failure of restoreFailures) {
+        failures.push(`restore ${failure.action} ${c.fileName}: ${String(failure.error)}`);
       }
     }
     setUpdateAllProgress(null);
@@ -2468,10 +2828,11 @@ export default function Installed() {
    * Update every flagged variant within one grouped mod. Invoked from the
    * variant picker so the user doesn't have to bounce out to the mod page.
    */
-  const handleUpdateGroup = async (gameBananaId: number) => {
+  const handleUpdateGroup = async (variantIds: readonly string[]) => {
+    const groupIds = new Set(variantIds);
     setUpdateAllError(null);
     await runUpdate(
-      mods.filter((m) => m.gameBananaId === gameBananaId && updatesAvailable.has(m.id)),
+      mods.filter((m) => groupIds.has(m.id) && updatesAvailable.has(m.id)),
     );
   };
 
@@ -2523,6 +2884,27 @@ export default function Installed() {
   const selectedMods = mods.filter((m) => selectedIds.has(m.id));
   const selectedEnabledCount = selectedMods.filter((m) => m.enabled).length;
   const selectedDisabledCount = selectedMods.length - selectedEnabledCount;
+  // Grouping as variants is local-only. Merged outputs also stay standalone:
+  // their card is the only route to contents, unmerge, and share-code recovery.
+  const groupSelectionEligibility = localVariantSelectionEligibility(selectedMods);
+  const canGroupSelectionAsVariants = groupSelectionEligibility.eligible;
+
+  // Make the selection one mod with N variants. Every member adopts the first
+  // one's name (main does that), so the group card has a coherent title.
+  const handleBulkGroupVariants = async () => {
+    if (!canGroupSelectionAsVariants) return;
+    const targets = selectedMods.map((m) => m.id);
+    try {
+      await setLocalVariantGroup(targets, { mode: 'mint' });
+      showToast(t('installed.variants.grouped', { count: targets.length }), { tone: 'success' });
+      exitSelectMode();
+    } catch (err) {
+      showToast(
+        t('installed.variants.groupFailed', { error: toastErrorMessage(err) }),
+        { tone: 'error' }
+      );
+    }
+  };
 
   const handleBulkEnable = async () => {
     // Snapshot the work list before the loop so the progress total stays
@@ -2856,6 +3238,101 @@ export default function Installed() {
     );
   };
 
+  /**
+   * Update every outdated source of the open merge in one pass: resolve each
+   * stale source to its current GameBanana file, download the replacements as
+   * normal installs, then hand them all to a single `replaceMergeSources`
+   * rebuild. One rebuild, not one per source.
+   *
+   * Sources that can't be confidently resolved (no clear replacement, or a
+   * download that produced several VPKs with nothing to say which is the
+   * replacement) are reported back rather than guessed at. The merge is left
+   * alone for those; the per-source extract button is the manual route.
+   */
+  const handleUpdateMergeSources = async (): Promise<MergeSourceUpdateOutcome> => {
+    const targetId = mergedContentsMod?.id;
+    const staleFileNames = targetId ? mergedSourceUpdates.get(targetId) : undefined;
+    const stale = (mergedContentsMod?.merged?.sources ?? []).filter((source) =>
+      staleFileNames?.has(source.fileName),
+    );
+    if (!targetId || stale.length === 0) return { updated: 0, skipped: [] };
+
+    const filesByModId = new Map<number, GameBananaFile[]>();
+    const categoryByModId = new Map<number, number>();
+    for (const [gbId, section] of mergeSourceModIds(stale)) {
+      try {
+        const details = await getModDetails(gbId, section);
+        filesByModId.set(gbId, details.files ?? []);
+        if (typeof details.category?.id === 'number') categoryByModId.set(gbId, details.category.id);
+      } catch (err) {
+        console.warn(`[MergeUpdate] failed to fetch files for GB mod ${gbId}:`, err);
+      }
+    }
+
+    // Don't re-download a file the user already has installed standalone.
+    const claimed = new Set<number>();
+    for (const mod of mods) {
+      if (typeof mod.gameBananaFileId !== 'number') continue;
+      if (!filesByModId.has(mod.gameBananaId ?? -1)) continue;
+      claimed.add(mod.gameBananaFileId);
+    }
+
+    const plan = planMergeSourceUpdates(stale, filesByModId, claimed);
+    const skipped: MergeSourceUpdateSkip[] = plan.unresolved.map((entry) => ({
+      modName: entry.source.modName,
+      reason: entry.reason,
+    }));
+    if (plan.resolved.length === 0) return { updated: 0, skipped };
+
+    try {
+      await createSnapshot('pre-update');
+    } catch (err) {
+      console.warn('[MergeUpdate] failed to capture pre-update snapshot:', err);
+    }
+
+    // Snapshot the install list so each download's output can be identified as
+    // the mods that were not there before it ran.
+    const replacements: MergeSourceReplacement[] = [];
+    for (const entry of plan.resolved) {
+      const before = new Set(useAppStore.getState().mods.map((mod) => mod.id));
+      try {
+        await downloadMod(
+          entry.gameBananaId,
+          entry.fileId,
+          entry.fileName,
+          entry.section,
+          categoryByModId.get(entry.gameBananaId) ?? 0,
+        );
+      } catch (err) {
+        console.warn(`[MergeUpdate] download failed for ${entry.source.modName}:`, err);
+        skipped.push({ modName: entry.source.modName, reason: 'download-failed' });
+        continue;
+      }
+      await loadMods({ silent: true });
+      const installed = useAppStore
+        .getState()
+        .mods.filter((mod) => !before.has(mod.id) && mod.gameBananaFileId === entry.fileId);
+      if (installed.length !== 1) {
+        // Zero means the archive yielded nothing usable; more than one means a
+        // multi-VPK download where nothing identifies the replacement. Both
+        // leave whatever landed installed as normal mods.
+        skipped.push({
+          modName: entry.source.modName,
+          reason: installed.length === 0 ? 'download-failed' : 'multi-vpk',
+        });
+        continue;
+      }
+      replacements.push({ oldFileName: entry.source.fileName, newModId: installed[0].id });
+    }
+
+    if (replacements.length === 0) return { updated: 0, skipped };
+
+    await replaceMergeSources(targetId, replacements);
+    await loadMods({ silent: true });
+    setMergedContentsMod(useAppStore.getState().mods.find((mod) => mod.id === targetId) ?? null);
+    return { updated: replacements.length, skipped };
+  };
+
 
   // Surface a non-fatal store notice (e.g. the 99-enabled cap) through the same
   // transient toast, then clear it from the store so it doesn't re-fire.
@@ -2894,7 +3371,7 @@ export default function Installed() {
     if (group.enabledVariants.length > 0) {
       await setGroupEnabled(group, false);
     } else {
-      setPickerGroupId(group.gameBananaId);
+      setPickerGroupId(group.groupKey);
     }
   };
 
@@ -3048,9 +3525,10 @@ export default function Installed() {
   useEffect(() => {
     let cancelled = false;
     const checkUpdates = async () => {
-      // Absorbed merge sources are intentionally excluded: updating them on
-      // disk would leave the merged VPK stale, so we don't flag updates the
-      // user can't act on without unmerging first.
+      // Absorbed merge sources never enter `targets`: runUpdate would rewrite
+      // the source VPK on disk and leave the merged VPK stale, so they can't be
+      // updated in place. They are still checked separately below and reported
+      // as information on the merged mod (see `mergedTargets`).
       // Mods with `ignoreUpdates` set are excluded too: the user pinned the
       // installed version on purpose (e.g. the author replaced the file with
       // one they don't want) and shouldn't see the pulse.
@@ -3061,16 +3539,28 @@ export default function Installed() {
           m.gameBananaFileId > 0 &&
           !m.ignoreUpdates,
       );
-      if (targets.length === 0) {
+      // Merged mods carry their sources' provenance in the manifest, so the
+      // same live-file-list check answers "did any ingredient go stale?".
+      const mergedTargets = visibleMods.filter((m) => !!m.merged && !m.ignoreUpdates);
+      if (targets.length === 0 && mergedTargets.length === 0) {
         setUpdatesAvailable(new Set());
+        setMergedSourceUpdates(new Map());
         return;
       }
 
-      // One fetch per GB mod id; variants share the result.
+      // One fetch per GB mod id; variants and merge sources share the result.
       const uniqueIds = new Map<number, string>();
       for (const m of targets) {
         if (!uniqueIds.has(m.gameBananaId!)) {
           uniqueIds.set(m.gameBananaId!, m.sourceSection ?? 'Mod');
+        }
+      }
+      for (const m of mergedTargets) {
+        for (const source of m.merged!.sources) {
+          if (typeof source.gameBananaId !== 'number') continue;
+          if (!uniqueIds.has(source.gameBananaId)) {
+            uniqueIds.set(source.gameBananaId, source.section ?? 'Mod');
+          }
         }
       }
 
@@ -3111,6 +3601,20 @@ export default function Installed() {
         }
       }
       setUpdatesAvailable(available);
+
+      const staleByMerge = new Map<string, Set<string>>();
+      for (const mod of mergedTargets) {
+        const stale = new Set<string>();
+        for (const source of mod.merged!.sources) {
+          if (typeof source.gameBananaId !== 'number') continue;
+          if (typeof source.gameBananaFileId !== 'number' || source.gameBananaFileId <= 0) continue;
+          const liveIds = updateCheckCache.get(source.gameBananaId);
+          if (!liveIds) continue;
+          if (!liveIds.has(source.gameBananaFileId)) stale.add(source.fileName);
+        }
+        if (stale.size > 0) staleByMerge.set(mod.id, stale);
+      }
+      setMergedSourceUpdates(staleByMerge);
     };
     checkUpdates();
     return () => {
@@ -3218,8 +3722,8 @@ export default function Installed() {
     if (mod.merged) setMergedContentsMod(mod);
     else if (mod.gameBananaId) void openModDetails(mod);
   });
-  const openEntryPicker = useStableCallback((gameBananaId: number) => {
-    setPickerGroupId(gameBananaId);
+  const openEntryPicker = useStableCallback((groupKey: string) => {
+    setPickerGroupId(groupKey);
   });
   // Open an artist's page inside Grimoire by entering Browse's artist mode (the
   // grid scoped to that submitter), the same surface the artist card in a mod's
@@ -3381,6 +3885,102 @@ export default function Installed() {
       thumbnailDataUrl: mod.thumbnailUrl,
       nsfw: mod.nsfw,
     });
+  });
+
+  // LOCAL VARIANT GROUPS
+  //
+  // Grouping is derived from `localGroupId` (see lib/variantGroups.ts), so the
+  // grid regroups on its own once main has written the sidecars: none of these
+  // handlers touch entry state.
+  const openAddVariant = useStableCallback((entry: ModEntry) => {
+    const members = entry.kind === 'group' ? entry.variants : [entry.mod];
+    setAddVariantTarget({
+      modIds: members.map((m) => m.id),
+      // Null for a standalone mod: importVariantsIntoGroup mints the group at
+      // import time, so a dialog the user cancels leaves no stray id behind.
+      groupId: members[0]?.localGroupId ?? null,
+      modName: entry.kind === 'group' ? entry.primary.name : entry.mod.name,
+    });
+  });
+  const importVariantsIntoGroup = useStableCallback(async (items: ImportCustomModArgs[]) => {
+    const target = addVariantTarget;
+    if (!target) return [];
+    let groupId = target.groupId;
+    if (!groupId) {
+      groupId = await setLocalVariantGroup(target.modIds, { mode: 'mint' });
+      if (!groupId) throw new Error(t('installed.variants.createGroupFailed'));
+      // Remember it: the dialog stays open on a partial failure, and the retry
+      // must land in this group rather than mint a second one.
+      const minted = groupId;
+      setAddVariantTarget((prev) =>
+        prev ? { ...prev, groupId: minted, mintedGroupId: minted } : prev
+      );
+    }
+    // Every row joins the group under the group's name; the per-file label
+    // comes from the archive folder or filename, stamped by the import itself.
+    return importCustomMods(
+      items.map((item) => ({ ...item, name: target.modName, localGroupId: groupId }))
+    );
+  });
+  // Closing without a single file landing undoes a mint from this dialog: the
+  // lone member would otherwise keep a group id nothing else shares (harmless
+  // on screen, since a one-member group renders as a plain card, but it is
+  // state the user never asked for).
+  const closeAddVariant = useStableCallback(() => {
+    const target = addVariantTarget;
+    setAddVariantTarget(null);
+    if (!target?.mintedGroupId) return;
+    // Read the store, not this render's `mods`: a successful import closes the
+    // dialog immediately after updating the store, before React has re-rendered
+    // this page, and the stale list would look like nothing joined.
+    const members = useAppStore
+      .getState()
+      .mods.filter((m) => m.localGroupId === target.mintedGroupId);
+    if (members.length !== 1) return;
+    void setLocalVariantGroup([members[0].id], { mode: 'clear' }).catch(() => {
+      // Best effort: the id is invisible either way.
+    });
+  });
+  const reportVariantImport = useStableCallback((results: ImportCustomModResult[]) => {
+    const imported = results.reduce((total, r) => total + (r.ok ? r.imported : 0), 0);
+    const failed = results.filter((r) => !r.ok);
+    if (imported > 0) {
+      showToast(t('installed.batchImport.addedVariantsToast', { count: imported }), {
+        tone: 'success',
+      });
+    }
+    if (failed.length > 0) {
+      showToast(
+        t('installed.batchImport.failedToast', { count: failed.length, error: failed[0].error ?? '' }),
+        { tone: 'error', duration: 9000 }
+      );
+    }
+  });
+  const ungroupEntry = useStableCallback(async (entry: ModEntry) => {
+    if (entry.kind !== 'group') return;
+    const count = entry.variants.length;
+    try {
+      await setLocalVariantGroup(entry.variants.map((v) => v.id), { mode: 'clear' });
+      showToast(t('installed.variants.ungrouped', { count }), { tone: 'success' });
+    } catch (err) {
+      showToast(
+        t('installed.variants.groupFailed', { error: toastErrorMessage(err) }),
+        { tone: 'error' }
+      );
+    }
+  });
+  // Detach ONE file from a group. Main dissolves the group when this would
+  // leave a single member behind, so no orphan id lingers.
+  const detachVariant = useStableCallback(async (variant: Mod) => {
+    try {
+      await setLocalVariantGroup([variant.id], { mode: 'clear' });
+      showToast(t('installed.variants.detached'), { tone: 'success' });
+    } catch (err) {
+      showToast(
+        t('installed.variants.groupFailed', { error: toastErrorMessage(err) }),
+        { tone: 'error' }
+      );
+    }
   });
   const tagEntryLocker = useStableCallback(async (entry: ModEntry, heroName: string | null) => {
     if (entry.kind === 'group') {
@@ -3866,6 +4466,8 @@ export default function Installed() {
       entry.kind === 'single'
         ? updatesAvailable.has(entry.mod.id)
         : entry.variants.some((v) => updatesAvailable.has(v.id)),
+    staleSourceCount:
+      entry.kind === 'single' ? (mergedSourceUpdates.get(entry.mod.id)?.size ?? 0) : 0,
     fixingUnknown: entry.kind === 'single' && unknownFilterPendingIds.has(entry.mod.id),
     loadPosition: loadPositionById.get(entryRepresentativeId(entry)),
     loadCount: enabledModCount,
@@ -3881,6 +4483,8 @@ export default function Installed() {
     onDelete: deleteEntry,
     onEditLocal: editLocalEntry,
     onRenameLocal: renameLocalMod,
+    onAddVariant: openAddVariant,
+    onUngroupVariants: ungroupEntry,
     onViewImprint: viewEntryImprint,
     onTagLocker: tagEntryLocker,
     onTagGlobal: tagEntryGlobal,
@@ -4541,12 +5145,23 @@ export default function Installed() {
         </div>
       )}
 
-      {visibleEnabled.length > 0 && (
+      {/* The header row also carries the profiles control, so it renders even
+          with nothing enabled: zero enabled mods is exactly the moment someone
+          wants to load a profile. A live search or filter is the one case where
+          it stays hidden, because an empty result there is about the query or
+          filter, not about the install (and the no-matches empty state above
+          should not get a stray button row under it). */}
+      {(visibleEnabled.length > 0 || (!searchNeedle && !filtersActive)) && (
         <div className="mb-6">
-          <div className="flex items-baseline justify-between mb-[14px]">
-            <SectionHeader count={visibleEnabled.length} className="!mb-0 !text-xs !font-semibold !tracking-[0.06em]">{t('installed.sections.enabled', { count: visibleEnabled.length })}</SectionHeader>
+          <div className="flex items-center justify-between gap-3 mb-[14px]">
+            {visibleEnabled.length > 0 ? (
+              <SectionHeader count={visibleEnabled.length} className="!mb-0 !text-xs !font-semibold !tracking-[0.06em]">{t('installed.sections.enabled', { count: visibleEnabled.length })}</SectionHeader>
+            ) : (
+              <span />
+            )}
+            <InstalledProfilesMenu onApplied={handleProfileApplied} />
           </div>
-          {renderSortableSection('enabled')}
+          {visibleEnabled.length > 0 && renderSortableSection('enabled')}
         </div>
       )}
 
@@ -4739,13 +5354,24 @@ export default function Installed() {
         />
       )}
 
+      {/* Add variants to an existing local mod. The same batch-import dialog
+          as the toolbar's, minus the per-row name: the group owns the name. */}
+      {addVariantTarget && (
+        <ImportCustomModsModal
+          addToGroup={{ modName: addVariantTarget.modName }}
+          onClose={closeAddVariant}
+          onImport={importVariantsIntoGroup}
+          onFinished={reportVariantImport}
+        />
+      )}
+
       {(() => {
         if (pickerGroupId === null) return null;
         // Derive the live entry from current mods so deletes inside the
         // picker reflect immediately. If the group has disappeared (all
         // files deleted or moved), auto-close the picker.
         const liveEntry = allEntries.find(
-          (e) => e.kind === 'group' && e.gameBananaId === pickerGroupId
+          (e) => e.kind === 'group' && e.groupKey === pickerGroupId
         ) as Extract<ModEntry, { kind: 'group' }> | undefined;
         if (!liveEntry) {
           // Defer close to avoid setState during render warnings.
@@ -4767,8 +5393,16 @@ export default function Installed() {
             return [variant.id, conflicts];
           })
         );
+        const localGroup = liveEntry.groupKey.startsWith('local:');
         const variantsWithUpdate = new Set(
-          liveEntry.variants.filter((v) => updatesAvailable.has(v.id)).map((v) => v.id),
+          liveEntry.variants
+            .filter(
+              (variant) =>
+                typeof variant.gameBananaId === 'number' &&
+                variant.gameBananaId > 0 &&
+                updatesAvailable.has(variant.id)
+            )
+            .map((variant) => variant.id),
         );
         return (
           <VariantPickerModal
@@ -4792,10 +5426,22 @@ export default function Installed() {
                   }
                 : undefined
             }
+            // Membership is only editable for local groups: a GameBanana group
+            // is defined by its submission, not by the user. Adding closes the
+            // picker (one modal at a time); the card reopens it.
+            onAddVariant={
+              localGroup
+                ? () => {
+                    setPickerGroupId(null);
+                    openAddVariant(liveEntry);
+                  }
+                : undefined
+            }
+            onDetachVariant={localGroup ? (variant) => detachVariant(variant) : undefined}
             variantsWithUpdate={variantsWithUpdate}
             onUpdateGroup={
               variantsWithUpdate.size > 0
-                ? () => handleUpdateGroup(liveEntry.gameBananaId)
+                ? () => handleUpdateGroup(liveEntry.variants.map((variant) => variant.id))
                 : undefined
             }
             isUpdating={!!updateAllProgress}
@@ -4847,14 +5493,12 @@ export default function Installed() {
           installed={detailsInstalledFileIds.size > 0}
           installedFileIds={detailsInstalledFileIds}
           activeFileIds={detailsActiveFileIds}
-          downloadingFileId={null}
-          extracting={false}
-          progress={null}
           hideNsfwPreviews={installedHideNsfwPreviews}
           dateAdded={detailsDates?.dateAdded}
           dateModified={detailsDates?.dateModified}
           offline={detailsOffline}
           updateAvailable={detailsUpdateAvailable}
+          updateFileIds={detailsUpdateFileIds}
           ignoreUpdates={detailsIgnoreUpdates}
           onToggleIgnoreUpdates={
             detailsSourceModId ? handleToggleIgnoreUpdates : undefined
@@ -4975,6 +5619,8 @@ export default function Installed() {
           onClose={() => setMergedContentsMod(null)}
           onUnmerge={() => setUnmergeTarget(mergedContentsMod)}
           onExtractSource={handleExtractMergeSource}
+          staleSourceFileNames={mergedSourceUpdates.get(mergedContentsMod.id)}
+          onUpdateSources={handleUpdateMergeSources}
           eligibleMods={eligibleMergeAdditions}
           onAddSources={handleAddMergeSources}
         />
@@ -5208,6 +5854,32 @@ export default function Installed() {
                 }
               >
                 {t('installed.select.merge')}{selectedMods.length >= 2 ? ` (${selectedMods.length})` : ''}
+              </Button>
+              {/* Group as variants: one card, N interchangeable files. Unlike
+                  Merge, nothing is rebuilt or combined; the files stay separate
+                  and independently toggleable. */}
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={!canGroupSelectionAsVariants}
+                icon={Files}
+                onClick={handleBulkGroupVariants}
+                title={
+                  groupSelectionEligibility.eligible
+                    ? t('installed.select.groupVariantsHint', { count: selectedMods.length })
+                    : groupSelectionEligibility.reason === 'minimum'
+                    ? t('installed.select.groupVariantsMinHint')
+                    : groupSelectionEligibility.reason === 'merged'
+                      ? t('installed.select.groupVariantsMergedHint')
+                      : groupSelectionEligibility.reason === 'placement'
+                        ? t('installed.select.groupVariantsPlacementHint')
+                        : groupSelectionEligibility.reason === 'classification'
+                          ? t('installed.select.groupVariantsClassificationHint')
+                          : t('installed.select.groupVariantsLocalHint')
+                }
+              >
+                {t('installed.select.groupVariants')}
+                {canGroupSelectionAsVariants ? ` (${selectedMods.length})` : ''}
               </Button>
               <div className="relative" ref={tagMenuRef}>
                 <Button
@@ -7163,6 +7835,9 @@ interface ModCardProps {
   conflicts: ModConflict[];
   soundVolume: number;
   updateAvailable?: boolean;
+  /** Absorbed merge sources whose GameBanana file is gone. Informational only:
+   *  a merged VPK has no file of its own to re-download. */
+  staleSourceCount?: number;
   onOpenDetails?: () => void;
   /** Open the mod author's GameBanana profile in the browser. Undefined for
    *  local mods with no GameBanana source. */
@@ -7177,6 +7852,11 @@ interface ModCardProps {
   /** Inline rename of a local mod's name (double-click the title). Undefined
    *  for GameBanana-sourced mods, which can't be renamed. */
   onRenameLocal?: (newName: string) => Promise<void>;
+  /** Import more local VPKs as variants of this mod. Local cards only: a
+   *  GameBanana mod's files come from its submission. */
+  onAddVariant?: () => void;
+  /** Dissolve this local variant group. Passed only on local GROUP cards. */
+  onUngroupVariants?: () => void;
   /** Open the imprint details modal. Passed only when the mod's wire
    *  `imprinted` flag is true (the parent gates on it); shown in the card's
    *  right-click menu. */
@@ -7217,9 +7897,10 @@ interface ModCardProps {
   onToggleList?: (listId: string) => void;
   onCreateList?: () => void;
   entryKey?: string;
-  /** Present when this card represents grouped files from the same
-   *  GameBanana mod. Swaps the filename meta for an enabled/total count and
-   *  routes the card-body click to the picker modal. */
+  /** Present when this card represents grouped files that are variants of one
+   *  mod (a GameBanana submission, or a locally imported multi-VPK archive).
+   *  Swaps the filename meta for an enabled/total count and routes the
+   *  card-body click to the picker modal. */
   group?: {
     variantCount: number;
     /** Enabled file labels for this group. Empty when fully disabled. */
@@ -7397,6 +8078,7 @@ function ModMediaPreview({
 
 interface ModListRowContentProps {
   mod: ModCardProps['mod'];
+  taxonomy: InstalledCardTaxonomy;
   hideNsfwPreviews: boolean;
   soundVolume: number;
   onOpenDetails?: () => void;
@@ -7446,7 +8128,7 @@ function HeroTagLabel({ heroName, iconClassName = 'h-4 w-4', iconOnly = false }:
         className={`${iconClassName} block flex-shrink-0 rounded-full object-cover`}
         loading="lazy"
       />
-      {!iconOnly && <ChipText>{heroName}</ChipText>}
+      {iconOnly ? <span className="sr-only">{heroName}</span> : <ChipText>{heroName}</ChipText>}
     </span>
   );
 }
@@ -7642,6 +8324,7 @@ function EditableModTitle({
 
 function ModListRowContent({
   mod,
+  taxonomy,
   hideNsfwPreviews,
   soundVolume,
   onOpenDetails,
@@ -7669,6 +8352,9 @@ function ModListRowContent({
     : null;
   const listHeroRenderUrl = listHeroName ? getHeroRenderPath(listHeroName) : null;
   const listHeroFacePosX = listHeroName ? getHeroFacePosition(listHeroName).x : 50;
+  const taxonomyLabel = taxonomy.globalType
+    ? (GLOBAL_MOD_TYPE_LABELS[taxonomy.globalType] ?? taxonomy.globalType)
+    : taxonomy.categoryLabel;
 
   return (
     <>
@@ -7742,17 +8428,33 @@ function ModListRowContent({
           onRename={onRenameLocal}
         />
         <div className="flex min-w-0 items-center gap-2 overflow-hidden whitespace-nowrap text-[11px] leading-[24px] text-text-secondary">
-          <LockerHeroChip
-            mod={mod}
-            manualTagChipClasses={manualTagChipClasses}
-            inferredTagChipClasses={inferredTagChipClasses}
-            iconClassName={tagIconClassName}
-          />
-          {mod.categoryName && (
-            <CategoryChip
-              label={mod.categoryName}
+          {!mod.enabled && mod.priorityMod && (
+            <MetaTextChip
+              label={t('installed.priority.chip')}
+              className={manualTagChipClasses}
+              title={t('installed.priority.hint')}
+            />
+          )}
+          {taxonomy.heroName && (
+            mod.lockerHero ? (
+              <LockerHeroChip
+                mod={mod}
+                manualTagChipClasses={manualTagChipClasses}
+                inferredTagChipClasses={inferredTagChipClasses}
+                iconClassName={tagIconClassName}
+              />
+            ) : (
+              <CategoryChip
+                label={taxonomy.heroName}
+                className={metaChipClasses}
+                iconClassName={tagIconClassName}
+              />
+            )
+          )}
+          {taxonomyLabel && (
+            <MetaTextChip
+              label={taxonomyLabel}
               className={metaChipClasses}
-              iconClassName={tagIconClassName}
             />
           )}
           {mod.nsfw && (
@@ -7809,6 +8511,7 @@ function ModCard({
   conflicts,
   soundVolume,
   updateAvailable,
+  staleSourceCount = 0,
   onOpenDetails,
   onViewAuthor,
   onToggle,
@@ -7817,6 +8520,8 @@ function ModCard({
   onDelete,
   onEditLocal,
   onRenameLocal,
+  onAddVariant,
+  onUngroupVariants,
   onViewImprint,
   onTagLocker,
   onTagGlobal,
@@ -7987,7 +8692,7 @@ function ModCard({
       ? 'shadow-[3px_3px_0_0_var(--color-bg-secondary),3px_3px_0_1px_var(--color-border),6px_6px_0_0_var(--color-bg-secondary),6px_6px_0_1px_var(--color-border)] mr-1.5 mb-1.5'
       : '';
   const chipMaxClass =
-    viewMode === 'compact' ? 'max-w-[152px]' : viewMode === 'list' ? 'max-w-[148px]' : 'max-w-[170px]';
+    viewMode === 'compact' ? 'max-w-[132px]' : viewMode === 'list' ? 'max-w-[148px]' : 'max-w-[170px]';
   const chipSizeClasses =
     viewMode === 'list'
       ? 'h-6 rounded-[7px] px-2 text-[11px]'
@@ -7996,7 +8701,11 @@ function ModCard({
         : 'h-7 rounded-lg px-2.5 text-[12px]';
   const tagIconClassName =
     viewMode === 'list' ? 'h-[18px] w-[18px]' : viewMode === 'compact' ? 'h-5 w-5' : 'h-[22px] w-[22px]';
-  const baseChipClasses = `inline-flex min-w-0 ${chipMaxClass} ${chipSizeClasses} items-center overflow-hidden font-semibold leading-none`;
+  // A compact text chip must retain enough width to show actual content; zero
+  // was technically valid to flexbox and produced the orphaned border seen on
+  // the smallest cards.
+  const chipMinClass = viewMode === 'compact' ? 'min-w-9' : 'min-w-0';
+  const baseChipClasses = `inline-flex ${chipMinClass} ${chipMaxClass} ${chipSizeClasses} items-center overflow-hidden font-semibold leading-none`;
   const metaChipClasses = `${baseChipClasses} border border-white/[0.06] bg-bg-tertiary/65 text-text-secondary/80`;
   const manualTagChipClasses = `${baseChipClasses} border border-accent/30 bg-accent/10 text-accent`;
   const inferredTagChipClasses = `${baseChipClasses} border border-sky-400/35 bg-sky-500/15 text-sky-100`;
@@ -8047,29 +8756,26 @@ function ModCard({
   const titleClasses = isCompact
     ? 'text-[14px] font-semibold leading-[18px] truncate'
     : 'text-[15px] font-medium leading-[18px] truncate';
-  // Grid footers stay single-line. The hover-only date can appear after the
-  // chips when there is room, but it must never wrap into a second line and
-  // resize the card.
+  // Grid footers stay single-line. Classification is deliberately limited to
+  // one hero identity plus one text label below, so resizing a card never
+  // changes *which* tags it shows.
   const gridTagsClasses = viewMode === 'compact' ? 'h-[26px] flex-nowrap' : 'h-7 flex-nowrap';
   // Locker global axis (HUD, Soul Containers, ...). Surfaced as a card chip so a
   // manual or auto global tag is visible here, not just in the Locker. A global
   // mod has no hero, so the two chips never both show.
-  const cardGlobalType = getEffectiveGlobalType(mod);
-  const cardGlobalLabel = cardGlobalType
-    ? (GLOBAL_MOD_TYPE_LABELS[cardGlobalType] ?? cardGlobalType)
+  const cardTaxonomy = getInstalledCardTaxonomy(mod);
+  const cardGlobalLabel = cardTaxonomy.globalType
+    ? (GLOBAL_MOD_TYPE_LABELS[cardTaxonomy.globalType] ?? cardTaxonomy.globalType)
     : undefined;
-  // A globally-classified mod (HUD, Soul Containers, ...) already shows the
-  // Locker global chip, which makes the GameBanana category chip redundant: for
-  // HUD it was literally rendering "HUD" twice (category + global). Suppress the
-  // category chip whenever a global chip is present and let it stand in.
-  const showCategoryChip =
-    (viewMode !== 'compact' || !mod.lockerHero) && !cardGlobalType;
-  const compactBaseChipCount =
-    (mod.lockerHero ? 1 : 0) + (showCategoryChip && mod.categoryName ? 1 : 0);
-  const showGlobalChip = !!cardGlobalType && (!isCompact || compactBaseChipCount < 2);
-  const compactChipCount = compactBaseChipCount + (showGlobalChip ? 1 : 0);
-  const showNsfwChip = !!mod.nsfw && (!isCompact || compactChipCount < 2);
-  const showGroupChip = !!group && (!isCompact || compactChipCount + (showNsfwChip ? 1 : 0) < 2);
+  // One stable taxonomy model for every grid size:
+  //   1. the hero identity, when present (bare portrait);
+  //   2. either the Locker global type or the GameBanana category (one label).
+  // Global classification supersedes category because those labels are often
+  // identical (HUD/HUD). A hero category is represented by the portrait and
+  // therefore does not also need a text chip. Previously compact cards counted
+  // available slots and silently dropped later tags, which made the same mod
+  // appear to have different metadata as the size slider crossed a breakpoint.
+  const cardTaxonomyLabel = cardGlobalLabel ?? cardTaxonomy.categoryLabel;
   // Enabled cards get their own copy: pinning only takes effect once the mod is
   // disabled, and the disabled section's "top of disabled mods" wording would be
   // a lie there.
@@ -8080,12 +8786,20 @@ function ModCard({
     : favorite
       ? t('installed.card.removeDisabledFavorite', { name: mod.name })
       : t('installed.card.addDisabledFavorite', { name: mod.name });
+  // Context-menu actions should scan like actions, not tooltips. Keep the
+  // longer placement explanation on the card button's title/aria label, while
+  // the right-click and kebab menus use the same concise wording as Locker.
+  const favoriteMenuLabel = favorite
+    ? t('installed.card.unfavorite')
+    : t('installed.card.favorite');
 
   // One canonical list of card actions, mounted twice: once under the
   // right-click (context) root wrapping the whole card, once under the
   // dropdown root on the three-dot button. Only one of the two is open at a
   // time, so this renders once in practice.
-  const hasTopActions = !!onEditLocal || !!onOpenDetails || !!onViewAuthor || !!cardImageSource;
+  const hasTopActions =
+    !!onEditLocal || !!onAddVariant || !!onUngroupVariants || !!onOpenDetails || !!onViewAuthor
+    || !!cardImageSource;
   const hasSecondaryActions =
     !!onSoloLaunch || !!onSetPriority || !!onTagLocker || !!onTagGlobal || !!onFixUnknown
     || !!(mod.merged && (onCopyShareCode || onUnmerge));
@@ -8094,6 +8808,16 @@ function ModCard({
       {onEditLocal && (
         <MenuItem icon={Pencil} onSelect={onEditLocal}>
           {t('installed.card.edit')}
+        </MenuItem>
+      )}
+      {onAddVariant && (
+        <MenuItem icon={FilePlus} onSelect={onAddVariant}>
+          {t('installed.card.addVariant')}
+        </MenuItem>
+      )}
+      {onUngroupVariants && (
+        <MenuItem icon={Unlink} onSelect={onUngroupVariants}>
+          {t('installed.card.ungroupVariants')}
         </MenuItem>
       )}
       {onOpenDetails && (
@@ -8132,6 +8856,11 @@ function ModCard({
           onToggle={onToggleList}
           onCreateNew={onCreateList}
         />
+      )}
+      {onToggleFavorite && (
+        <MenuItem icon={Star} onSelect={onToggleFavorite}>
+          {favoriteMenuLabel}
+        </MenuItem>
       )}
       <MenuItem icon={FolderOpen} onSelect={handleRevealInFolder}>
         {t('installed.card.revealInFolder')}
@@ -8248,7 +8977,11 @@ function ModCard({
 
   const actions = (
     <div className="ml-auto flex items-center gap-1">
-      {onToggleFavorite && (
+      {/* At compact size the direct favorite/delete buttons consumed 56px even
+          while transparent, squeezing the adjacent taxonomy chip down to a
+          one-pixel border. Both actions remain available from the kebab and
+          right-click menus; larger cards keep their faster hover affordances. */}
+      {onToggleFavorite && !isCompact && (
         <button
           type="button"
           onPointerDown={(event) => event.stopPropagation()}
@@ -8265,7 +8998,7 @@ function ModCard({
           <Star className={`h-4 w-4 ${favorite ? 'fill-current' : ''}`} />
         </button>
       )}
-      {!mod.merged && (
+      {!mod.merged && !isCompact && (
         <button
           type="button"
           onClick={(e) => {
@@ -8357,6 +9090,7 @@ function ModCard({
         {isList ? (
           <ModListRowContent
             mod={mod}
+            taxonomy={cardTaxonomy}
             hideNsfwPreviews={hideNsfwPreviews}
             soundVolume={soundVolume}
             onOpenDetails={onOpenDetails}
@@ -8413,13 +9147,33 @@ function ModCard({
               )
             )}
             {!mod.enabled && !selectMode && (
-              <div className="absolute top-2 left-2 z-10 flex h-5 items-start">
+              <div className="absolute top-2 left-2 z-10 flex flex-col items-start gap-1">
                 <Tag tone="neutral" variant="overlay" icon={PowerOff} title={t('locker.global.disabledBadgeTitle')}>
                   {t('locker.global.disabledBadge')}
                 </Tag>
+                {mod.priorityMod && (
+                  <Tag
+                    tone="accent"
+                    variant="overlay"
+                    icon={ArrowUpToLine}
+                    title={t('installed.priority.hint')}
+                  >
+                    {t('installed.priority.chip')}
+                  </Tag>
+                )}
               </div>
             )}
               <div className="absolute top-2 right-2 z-10 flex flex-col items-end gap-1">
+              {mod.nsfw && (
+                <Tag
+                  tone="danger"
+                  variant="overlay"
+                  title={t('modThumbnail.nsfw')}
+                  className="uppercase tracking-wide"
+                >
+                  18+
+                </Tag>
+              )}
               {hasConflicts && (
                 <Tag
                   tone="warning"
@@ -8461,6 +9215,16 @@ function ModCard({
                   {t('installed.card.mergedBadge', { count: mod.merged.sources.length })}
                 </Tag>
               )}
+              {staleSourceCount > 0 && (
+                <Tag
+                  variant="overlay"
+                  icon={Download}
+                  title={t('installed.card.staleSourcesTitle', { count: staleSourceCount })}
+                  className="border-amber-300/70 text-amber-200"
+                >
+                  {t('installed.card.staleSourcesBadge', { count: staleSourceCount })}
+                </Tag>
+              )}
               {group && group.variantCount > 1 && (
                 <Tag
                   variant="overlay"
@@ -8498,60 +9262,27 @@ function ModCard({
             onRename={onRenameLocal}
           />
           <div
-            className={`${isCompact ? 'mt-1.5 h-7' : 'mt-1'} grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-end gap-3`}
+            className={`${isCompact ? 'mt-1.5 h-7 gap-1.5' : 'mt-1 gap-3'} grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-end`}
             title={`${mod.fileName} | ${formatBytes(mod.size)} | installed ${formatAbsoluteDate(mod.installedAt)}`}
           >
             <div className={`flex min-w-0 items-center gap-1.5 overflow-hidden text-xs text-text-secondary ${gridTagsClasses}`}>
-              {mod.priorityMod && (
-                <MetaTextChip
-                  label={t('installed.priority.chip')}
-                  className={manualTagChipClasses}
-                  title={t('installed.priority.hint')}
-                />
-              )}
-              <LockerHeroChip
-                mod={mod}
-                manualTagChipClasses={manualTagChipClasses}
-                inferredTagChipClasses={inferredTagChipClasses}
-                iconClassName={tagIconClassName}
-                iconOnly
-              />
-              {showGlobalChip && cardGlobalLabel && (
-                <MetaTextChip
-                  label={cardGlobalLabel}
-                  className={metaChipClasses}
-                  title={`Locker: ${cardGlobalLabel}`}
-                />
-              )}
-              {showCategoryChip && mod.categoryName && heroNameForLabel(mod.categoryName) !== mod.lockerHero && (
-                <CategoryChip
-                  label={mod.categoryName}
-                  className={metaChipClasses}
-                  iconClassName={tagIconClassName}
-                  iconOnly
-                />
-              )}
-              {showNsfwChip && (
-                <MetaTextChip label="18+" className={dangerInlineChipClasses} />
-              )}
-              {showGroupChip && (
-                // Enabled/total variant count as a quiet icon + number (no accent,
-                // no border, no "files" label) so it reads as metadata, not a tag.
+              {cardTaxonomy.heroName && (
                 <span
-                  className="inline-flex flex-shrink-0 items-center gap-1 text-[11px] tabular-nums text-text-secondary"
-                  title={variantStatusTitle}
+                  className="inline-flex flex-shrink-0 items-center"
+                  title={cardTaxonomy.heroName}
                 >
-                  <Files className="h-3.5 w-3.5 flex-shrink-0" aria-hidden="true" />
-                  {variantStatusLabel}
+                  <HeroTagLabel
+                    heroName={cardTaxonomy.heroName}
+                    iconClassName={tagIconClassName}
+                    iconOnly
+                  />
                 </span>
               )}
-              {!isCompact && (
-                <span
-                  className="hidden flex-shrink-0 items-center pl-1.5 text-[11px] tabular-nums text-text-secondary/55 group-hover/card:inline-flex"
-                  title={`Installed ${formatAbsoluteDate(mod.installedAt)}`}
-                >
-                  {formatRelativeDate(mod.installedAt)}
-                </span>
+              {cardTaxonomyLabel && (
+                <MetaTextChip
+                  label={cardTaxonomyLabel}
+                  className={metaChipClasses}
+                />
               )}
             </div>
 

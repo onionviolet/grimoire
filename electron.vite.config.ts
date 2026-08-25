@@ -139,6 +139,12 @@ export default defineConfig(({ mode }) => {
             // A second agent must never silently drive the first agent's Vite
             // server. Pick a slot instead of accepting Vite's fallback port.
             strictPort: true,
+            watch: {
+                // The flatpak-builder ostree cache contains symlink loops
+                // (udev/watch) that crash chokidar with ELOOP, killing the dev
+                // server moments after it binds.
+                ignored: ['**/.flatpak-builder/**', '**/dist/**', '**/release/**'],
+            },
         },
     },
     };

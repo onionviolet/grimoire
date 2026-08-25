@@ -68,11 +68,21 @@ import {
   getGamebananaSections,
   getGamebananaCategories,
   backfillGameBananaFileId,
+  createSnapshot,
+  deleteMod as deleteModApi,
 } from '../lib/api';
 import { getActiveDeadlockPath } from '../lib/appSettings';
 import { useStableCallback } from '../lib/useStableCallback';
 import { usePrefersReducedMotion } from '../lib/usePrefersReducedMotion';
 import { readPref, writePref, CARD_SIZE_MIN, CARD_SIZE_MAX } from '../lib/uiPrefs';
+import {
+  isModDownloadPending,
+  getVisibleDownloadQueue,
+  isDownloadRequestPending,
+  releaseDownloadRequest,
+  requestDownload,
+  useDownloadQueueActivity,
+} from '../lib/downloadActivity';
 import type {
   GameBananaMod,
   GameBananaModDetails,
@@ -106,7 +116,13 @@ import ImportCollectionModal from '../components/ImportCollectionModal';
 import ImportProfileDialog from '../components/profiles/ImportProfileDialog';
 import { inferHeroFromTitle, getHeroRenderPath, getHeroFacePosition, getHeroChipIconPath, findCategoryByName } from '../lib/lockerUtils';
 import { formatAbsoluteDate, formatRelativeDate } from '../lib/dates';
-import { hasPendingUpdate } from '../lib/updateFileMatch';
+import { hasPendingUpdate, planFileUpdates } from '../lib/updateFileMatch';
+import {
+  createEnabledVpkRestoreSnapshot,
+  createGlobalVpkRestoreSnapshot,
+  restoreReplacementVpkState,
+} from '../lib/vpkRestore';
+import { findReplacementTargetIdsAfterInstall } from '../lib/replacementCleanup';
 import { showToast } from '../stores/toastStore';
 import { parseGameBananaImportHandoff } from '../lib/browserImportHandoff';
 
@@ -822,6 +838,26 @@ function BrowseSoundPlaceholder({ title }: { title: string }) {
   );
 }
 
+/**
+ * Compositor-only download indicator for cards. The old stroked SVG spinner
+ * could look stepped at these tiny sizes; this keeps a quiet track underneath
+ * a continuous orbit and never depends on React progress renders to move.
+ */
+function BrowseDownloadSpinner({
+  className = '',
+  size = 'default',
+}: {
+  className?: string;
+  size?: 'default' | 'large';
+}) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`browse-download-spinner ${size === 'large' ? 'browse-download-spinner--large' : ''} ${className}`}
+    />
+  );
+}
+
 function BrowseReadableAction({
   modName,
   installed,
@@ -925,9 +961,7 @@ function BrowseReadableAction({
     queueShift ? 'browse-action-button--queue-shift' : '',
   ].filter(Boolean).join(' ');
   const icon =
-    action === 'downloading'
-      ? Loader2
-      : action === 'installed'
+    action === 'installed'
         ? Check
         : action === 'enable'
           ? Power
@@ -937,12 +971,16 @@ function BrowseReadableAction({
   const content = (
     iconOnly ? (
       <span className={`browse-action-button-icon browse-action-button-icon--${action}`}>
-        {React.createElement(icon, { 'aria-hidden': true, className: action === 'downloading' ? 'animate-spin' : undefined })}
+        {action === 'downloading'
+          ? <BrowseDownloadSpinner />
+          : React.createElement(icon, { 'aria-hidden': true })}
       </span>
     ) : (
       <>
         <span className={`browse-action-button-icon browse-action-button-icon--${action}`}>
-          {React.createElement(icon, { 'aria-hidden': true, className: action === 'downloading' ? 'animate-spin' : undefined })}
+          {action === 'downloading'
+            ? <BrowseDownloadSpinner />
+            : React.createElement(icon, { 'aria-hidden': true })}
         </span>
         <span className="browse-action-button-label">
           {action === 'queued' ? (
@@ -1097,6 +1135,8 @@ export default function Browse() {
   const saveSettings = useAppStore((s) => s.saveSettings);
   const loadMods = useAppStore((s) => s.loadMods);
   const deleteMod = useAppStore((s) => s.deleteMod);
+  const toggleMod = useAppStore((s) => s.toggleMod);
+  const setModPriorityFolder = useAppStore((s) => s.setModPriorityFolder);
   const installedMods = useAppStore((s) => s.mods);
   const soundVolume = useAppStore((s) => s.soundVolume);
   const setSoundVolume = useAppStore((s) => s.setSoundVolume);
@@ -1104,6 +1144,10 @@ export default function Browse() {
   const setBrowseUi = useAppStore((s) => s.setBrowseUi);
   const browseSession = useAppStore((s) => s.browseSession);
   const setBrowseSession = useAppStore((s) => s.setBrowseSession);
+  // Browse only needs queue membership. Byte-progress ticks belong to the
+  // details popup and queue indicator; subscribing the whole catalog to them
+  // redrew every visible card throughout an install/reinstall.
+  const downloadActivity = useDownloadQueueActivity();
   const activeDeadlockPath = getActiveDeadlockPath(settings);
   const hiddenCreators = useMemo(() => settings?.hiddenCreators ?? [], [settings?.hiddenCreators]);
   const hiddenCreatorIds = useMemo(() => hiddenCreators.map((creator) => creator.id), [hiddenCreators]);
@@ -1111,10 +1155,11 @@ export default function Browse() {
   const hiddenCreatorsStamp = useMemo(() => hiddenCreatorIdsStamp(hiddenCreators), [hiddenCreators]);
   // Filter inputs are mirrored from the store so they survive page nav.
   // `setBrowseUi({...})` is the write path; reads come straight from `browseUi`.
-  const { search, layout, sort, section, nsfw, addedWithin, addedFrom, addedTo, heroCategoryId, categoryId, submitter } = browseUi;
+  const { search, layout, sort, section, nsfw, addedWithin, addedFrom, addedTo, heroCategoryId, categoryId, submitter, hiddenCreatorOverrideId } = browseUi;
   // Artist mode: the grid is scoped to one submitter's mods and Browse shows an
   // artist banner instead of the normal search/filter header.
   const artistMode = !!submitter;
+  const allowHiddenSubmitter = !!submitter?.id && submitter.id === hiddenCreatorOverrideId;
   const [browseViewportMetrics, setBrowseViewportMetrics] = useState<BrowseViewportMetrics>(DEFAULT_BROWSE_VIEWPORT_METRICS);
   const [browseCardSizeMultiplier, setBrowseCardSizeMultiplierState] = useState(readBrowseCardSizeMultiplier);
   const browseCardSize = getResponsiveBrowseCardSize(browseViewportMetrics, browseCardSizeMultiplier);
@@ -1156,7 +1201,7 @@ export default function Browse() {
   // wipe loaded results or scroll position. The cache stamp encodes current
   // filters; if filters changed in between (impossible today since they only
   // change on Browse, but defensive) we ignore the stale cache.
-  const initialFilterStamp = `${browseUi.section}|${browseUi.search}|${browseUi.sort}|${browseUi.categoryId}|${browseUi.heroCategoryId}|${browseUi.nsfw}|${browseUi.addedWithin}|${browseUi.addedFrom}|${browseUi.addedTo}|${browseUi.submitter?.id ?? ''}|${hiddenCreatorsStamp}`;
+  const initialFilterStamp = `${browseUi.section}|${browseUi.search}|${browseUi.sort}|${browseUi.categoryId}|${browseUi.heroCategoryId}|${browseUi.nsfw}|${browseUi.addedWithin}|${browseUi.addedFrom}|${browseUi.addedTo}|${browseUi.submitter?.id ?? ''}|${browseUi.hiddenCreatorOverrideId ?? ''}|${hiddenCreatorsStamp}`;
   const initialCache = browseSession && browseSession.stamp === initialFilterStamp
     ? browseSession
     : null;
@@ -1186,9 +1231,6 @@ export default function Browse() {
   const [selectedModDates, setSelectedModDates] = useState<{ dateAdded: number; dateModified: number } | null>(null);
   const [modalNavigation, setModalNavigation] = useState<{ direction: ModDetailsNavigationDirection; label: string } | null>(null);
   const modalNavigationRequestRef = useRef(0);
-  const [downloading, setDownloading] = useState<{ modId: number; fileId: number } | null>(null);
-  const [downloadProgress, setDownloadProgress] = useState<{ downloaded: number; total: number } | null>(null);
-  const [extracting, setExtracting] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(() => initialCache?.hasMore ?? true);
   // A page>1 (or stale-results) fetch failure routes here instead of `error`
@@ -1237,7 +1279,7 @@ export default function Browse() {
   // double effect run in dev — the second setup compares stamps and short-
   // circuits, instead of consuming a one-shot skip flag.
   const lastFetchedStampRef = useRef<string | null>(
-    initialCache ? `${initialCache.page}|${browseUi.search}|${browseUi.sort}|${browseUi.section}|${browseUi.categoryId}|${browseUi.heroCategoryId}|${browseUi.nsfw}|${browseUi.addedWithin}|${browseUi.addedFrom}|${browseUi.addedTo}|${browseUi.submitter?.id ?? ''}|${hiddenCreatorsStamp}` : null
+    initialCache ? `${initialCache.page}|${browseUi.search}|${browseUi.sort}|${browseUi.section}|${browseUi.categoryId}|${browseUi.heroCategoryId}|${browseUi.nsfw}|${browseUi.addedWithin}|${browseUi.addedFrom}|${browseUi.addedTo}|${browseUi.submitter?.id ?? ''}|${browseUi.hiddenCreatorOverrideId ?? ''}|${hiddenCreatorsStamp}` : null
   );
   // Monotonic guard for browse/search requests. Filter changes and newer
   // requests invalidate older responses so they cannot append stale pages into
@@ -1274,7 +1316,6 @@ export default function Browse() {
   const [localSearchFailed, setLocalSearchFailed] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [downloadQueue, setDownloadQueue] = useState<Array<{ modId: number; fileId: number; fileName: string }>>([]);
   // Multi-file quick-install picker anchored to a card's Install button (#209).
   const [filePicker, setFilePicker] = useState<{
     details: GameBananaModDetails;
@@ -1282,6 +1323,18 @@ export default function Browse() {
     anchor: HTMLElement;
     dates: { dateAdded: number; dateModified: number };
   } | null>(null);
+  // Card chrome and the compact picker consume the same app-wide queue state as
+  // ModDetailsModal. The first optimistic request occupies the active slot
+  // until the backend publishes its queue event; later requests are queued.
+  const visibleDownloads = useMemo(
+    () => getVisibleDownloadQueue(downloadActivity),
+    [downloadActivity],
+  );
+  const currentDownload = visibleDownloads.current;
+  const downloading = currentDownload
+    ? { modId: currentDownload.modId, fileId: currentDownload.fileId }
+    : null;
+  const downloadQueue = visibleDownloads.queue;
   const [playingModId, setPlayingModId] = useState<number | null>(null);
   const observerRef = useRef<IntersectionObserver | null>(null);
   const loadMoreRef = useRef<HTMLDivElement>(null);
@@ -1474,25 +1527,6 @@ export default function Browse() {
     };
   }, [refreshLocalCacheState]);
 
-  // Fetch initial download queue state on mount
-  useEffect(() => {
-    const fetchInitialQueueState = async () => {
-      try {
-        const [queue, currentDownload] = await Promise.all([
-          window.electronAPI.getDownloadQueue(),
-          window.electronAPI.getCurrentDownload(),
-        ]);
-        setDownloadQueue(queue);
-        if (currentDownload) {
-          setDownloading({ modId: currentDownload.modId, fileId: currentDownload.fileId });
-        }
-      } catch (err) {
-        console.error('Failed to fetch initial queue state:', err);
-      }
-    };
-    fetchInitialQueueState();
-  }, []);
-
   // 'none' = client-side post-filter for Sound mods without a hero in the
   // title. The fetch path sees it as "no category filter" so the API doesn't
   // get a nonsense id; the actual exclusion happens against displayMods.
@@ -1566,7 +1600,7 @@ export default function Browse() {
   // Category and hero names resolve asynchronously with their category trees.
   // Keep both in the request identity so an early id-only local query cannot
   // suppress the corrected name-based query when either tree arrives.
-  const fetchFilterStamp = `${effectiveSearch}|${sort}|${section}|${effectiveCategoryId}|${effectiveCategoryName ?? ''}|${heroCategoryId}|${selectedHeroName ?? ''}|${nsfw}|${addedWithin}|${customAddedFrom ?? ''}|${customAddedTo ?? ''}|${perPage}|${submitter?.id ?? ''}|${hiddenCreatorsStamp}`;
+  const fetchFilterStamp = `${effectiveSearch}|${sort}|${section}|${effectiveCategoryId}|${effectiveCategoryName ?? ''}|${heroCategoryId}|${selectedHeroName ?? ''}|${nsfw}|${addedWithin}|${customAddedFrom ?? ''}|${customAddedTo ?? ''}|${perPage}|${submitter?.id ?? ''}|${hiddenCreatorOverrideId ?? ''}|${hiddenCreatorsStamp}`;
   const browseResultsCacheRef = useRef<Map<string, BrowseResultCacheEntry>>(new Map());
   const browseScrollCacheRef = useRef<Map<string, number>>(new Map());
   const activeFetchFilterStampRef = useRef(fetchFilterStamp);
@@ -1728,7 +1762,7 @@ export default function Browse() {
     return () => {
       const ui = useAppStore.getState().browseUi;
       const liveHiddenCreators = useAppStore.getState().settings?.hiddenCreators ?? [];
-      const stamp = `${ui.section}|${ui.search}|${ui.sort}|${ui.categoryId}|${ui.heroCategoryId}|${ui.nsfw}|${ui.addedWithin}|${ui.addedFrom}|${ui.addedTo}|${ui.submitter?.id ?? ''}|${hiddenCreatorIdsStamp(liveHiddenCreators)}`;
+      const stamp = `${ui.section}|${ui.search}|${ui.sort}|${ui.categoryId}|${ui.heroCategoryId}|${ui.nsfw}|${ui.addedWithin}|${ui.addedFrom}|${ui.addedTo}|${ui.submitter?.id ?? ''}|${ui.hiddenCreatorOverrideId ?? ''}|${hiddenCreatorIdsStamp(liveHiddenCreators)}`;
       const cachedMods = modsRef.current;
       // Don't cache an empty state — would just bypass the next fetch
       // unhelpfully. Clear instead so the next mount starts fresh.
@@ -1782,7 +1816,7 @@ export default function Browse() {
   // backend error doesn't permanently disable local search.
   useEffect(() => {
     setLocalSearchFailed(false);
-  }, [debouncedSearch, heroCategoryId, nsfw, addedWithin, section, sort, hiddenCreatorsStamp]);
+  }, [debouncedSearch, heroCategoryId, nsfw, addedWithin, section, sort, hiddenCreatorOverrideId, hiddenCreatorsStamp]);
 
   // The single most useful line for diagnosing "my filters do nothing": which
   // backend the current filter set routes to, and when it routes remote, which
@@ -1877,10 +1911,13 @@ export default function Browse() {
 
       // Remote fallback paths cannot express a negative submitter filter in
       // GameBanana's API. Filter defensively here; normal browsing routes to
-      // the local catalog above so pagination remains full and accurate.
-      enrichedRecords = enrichedRecords.filter(
-        (mod) => !mod.submitter?.id || !hiddenCreatorIdSet.has(mod.submitter.id)
-      );
+      // the local catalog above so pagination remains full and accurate. Only
+      // trusted entry points may deliberately reveal one hidden artist.
+      if (!allowHiddenSubmitter) {
+        enrichedRecords = enrichedRecords.filter(
+          (mod) => !mod.submitter?.id || !hiddenCreatorIdSet.has(mod.submitter.id)
+        );
+      }
 
       if (requestGeneration !== requestGenerationRef.current || lastFetchedStampRef.current !== stamp) {
         return;
@@ -1939,6 +1976,7 @@ export default function Browse() {
     fetchFilterStamp,
     useLocalSearch,
     submitter,
+    allowHiddenSubmitter,
     hiddenCreatorIdSet,
   ]);
 
@@ -2300,78 +2338,19 @@ export default function Browse() {
   }, [activeDeadlockPath, loadMods]);
 
   useEffect(() => {
-    const progressUnsub = window.electronAPI.onDownloadProgress((data) => {
-      if (
-        downloading &&
-        data.modId === downloading.modId &&
-        data.fileId === downloading.fileId
-      ) {
-        setDownloadProgress({
-          downloaded: data.downloaded,
-          total: data.total,
-        });
-      }
-    });
-
-    const extractingUnsub = window.electronAPI.onDownloadExtracting((data) => {
-      if (
-        downloading &&
-        data.modId === downloading.modId &&
-        data.fileId === downloading.fileId
-      ) {
-        setExtracting(true);
-      }
-    });
-
-    const completeUnsub = window.electronAPI.onDownloadComplete((data) => {
-      if (
-        downloading &&
-        data.modId === downloading.modId &&
-        data.fileId === downloading.fileId
-      ) {
-        setDownloading(null);
-        setDownloadProgress(null);
-        setExtracting(false);
-        loadMods(); // Refresh installed mods
-      }
-    });
-
-    const errorUnsub = window.electronAPI.onDownloadError((data) => {
-      if (
-        downloading &&
-        data.modId === downloading.modId &&
-        data.fileId === downloading.fileId
-      ) {
-        setDownloading(null);
-        setDownloadProgress(null);
-        setExtracting(false);
-        const fullMessage =
-          data.helpUrl && !data.message.includes(data.helpUrl)
-            ? `${data.message} ${data.helpUrl}`
-            : data.message;
-        setError(fullMessage);
-      }
-    });
-
-    const queueUnsub = window.electronAPI.onDownloadQueueUpdated((data) => {
-      setDownloadQueue(data.queue);
-      // Sync local downloading state with backend - this is the source of truth
-      if (data.currentDownload) {
-        setDownloading({ modId: data.currentDownload.modId, fileId: data.currentDownload.fileId });
-      } else {
-        // Only clear if we don't have a current download from backend
-        // Don't clear during race conditions - let the complete event handle that
-      }
+    const completeUnsub = window.electronAPI.onDownloadComplete(() => {
+      // Refresh unconditionally, not only for downloads this page started.
+      // 1-Click protocol installs, collection/profile imports and the
+      // DeadlockForge bridge all complete with ids Browse never tracked, and
+      // an open details overlay would otherwise keep offering "Install" for a
+      // mod that is now on disk.
+      loadMods();
     });
 
     return () => {
-      progressUnsub();
-      extractingUnsub();
       completeUnsub();
-      errorUnsub();
-      queueUnsub();
     };
-  }, [downloading, loadMods]);
+  }, [loadMods]);
 
   // Infinite scroll observer
   // Infinite scroll observer
@@ -2461,7 +2440,7 @@ export default function Browse() {
       pendingPageResetStampRef.current = null;
       setRefreshKey(k => k + 1);
     } catch (err) {
-      setError(String(err));
+      showToast(String(err), { tone: 'error', duration: 7000 });
     } finally {
       setSyncing(false);
     }
@@ -2644,45 +2623,101 @@ export default function Browse() {
   // virtualizer range change while the docked sidebar is open).
   const handleDownload = useStableCallback(async (fileId: number, fileName: string) => {
     if (!selectedMod || !activeDeadlockPath) return;
-
-    // The first file claims the active slot (shows progress); additional clicks
-    // queue behind it. The backend's download-queue-updated event is the source
-    // of truth for what's queued, so don't clobber the active progress UI here.
-    if (!downloading) {
-      setDownloading({ modId: selectedMod.id, fileId });
-      setDownloadProgress({ downloaded: 0, total: 0 });
-      setExtracting(false);
-    }
+    if (!requestDownload({ modId: selectedMod.id, fileId, fileName, modName: selectedMod.name })) return;
 
     try {
-      await downloadMod(selectedMod.id, fileId, fileName, selectedDetailsSection, effectiveCategoryId);
+      const updateSourceIds = selectedUpdateSourcesByTargetFileId.get(fileId) ?? [];
+      const replacementTargets = updateSourceIds.length > 0
+        ? installedMods.filter((mod) => updateSourceIds.includes(mod.id))
+        : installedMods.filter(
+            (mod) => mod.gameBananaId === selectedMod.id && mod.gameBananaFileId === fileId,
+          );
+      const restoreEnabled = createEnabledVpkRestoreSnapshot(replacementTargets);
+      const restoreGlobal = createGlobalVpkRestoreSnapshot(replacementTargets);
+      if (restoreGlobal.ambiguous) {
+        throw new Error(t('installed.updateAll.ambiguousGlobalState'));
+      }
+
+      if (replacementTargets.length > 0) {
+        try {
+          await createSnapshot('pre-update');
+        } catch (error) {
+          console.warn('[Browse download] Failed to capture replacement snapshot:', error);
+        }
+      }
+
+      const replacementAlreadyInstalled =
+        updateSourceIds.length > 0 &&
+        installedMods.some(
+          (mod) =>
+            mod.gameBananaId === selectedMod.id &&
+            mod.gameBananaFileId === fileId &&
+            !updateSourceIds.includes(mod.id),
+        );
+
+      if (!replacementAlreadyInstalled) {
+        // Snapshot capture can leave an optimistic row on screen long enough
+        // for the user to cancel it. Do not cross IPC after that cancellation.
+        if (!isDownloadRequestPending(selectedMod.id, fileId)) return;
+        await downloadMod(selectedMod.id, fileId, fileName, selectedDetailsSection, effectiveCategoryId);
+        await loadMods();
+        const installedAfterDownload = useAppStore.getState().mods;
+        const targetIds = findReplacementTargetIdsAfterInstall(
+          installedAfterDownload,
+          replacementTargets,
+          fileId,
+        );
+        for (const targetId of targetIds) await deleteModApi(targetId);
+      } else {
+        if (!isDownloadRequestPending(selectedMod.id, fileId)) return;
+        for (const target of replacementTargets) await deleteModApi(target.id);
+      }
+      await loadMods({ force: true });
+
+      if (restoreEnabled.hadEnabled || restoreGlobal.hadGlobal) {
+        const replacements = useAppStore
+          .getState()
+          .mods.filter(
+            (mod) => mod.gameBananaId === selectedMod.id && mod.gameBananaFileId === fileId,
+          );
+        const failures = await restoreReplacementVpkState(
+          replacements,
+          restoreEnabled,
+          restoreGlobal,
+          {
+            setGlobal: (modId) => setModPriorityFolder(modId, true),
+            enable: async (modId) => {
+              if (!await toggleMod(modId)) throw new Error('Failed to enable replacement mod');
+            },
+          },
+        );
+        if (failures.length > 0) {
+          showToast(
+            t('installed.updateAll.restoreStateFailed', {
+              details: failures.map((failure) => `${failure.action}: ${String(failure.error)}`).join('; '),
+            }),
+            { tone: 'warning', duration: 7000 },
+          );
+          await loadMods({ force: true });
+        }
+      }
     } catch (err) {
       setError(String(err));
-      // Reset the active UI only if the file that failed is the active one.
-      // Functional update reads fresh state, not this closure's snapshot.
-      setDownloading((cur) =>
-        cur && cur.modId === selectedMod.id && cur.fileId === fileId ? null : cur
-      );
+    } finally {
+      releaseDownloadRequest(selectedMod.id, fileId);
     }
   });
 
   // Kick off the actual download of one specific file. Shared by the single-file
   // quick install and the multi-file picker so both behave identically.
   const runDownload = async (modId: number, file: GameBananaFile) => {
-    if (!downloading) {
-      setDownloading({ modId, fileId: file.id });
-      setDownloadProgress({ downloaded: 0, total: 0 });
-      setExtracting(false);
-    }
+    if (!requestDownload({ modId, fileId: file.id, fileName: file.fileName })) return;
     try {
       await downloadMod(modId, file.id, file.fileName, section, effectiveCategoryId);
     } catch (err) {
       setError(String(err));
-      if (downloading?.modId === modId) {
-        setDownloading(null);
-        setDownloadProgress(null);
-        setExtracting(false);
-      }
+    } finally {
+      releaseDownloadRequest(modId, file.id);
     }
   };
 
@@ -2690,8 +2725,7 @@ export default function Browse() {
     if (!activeDeadlockPath) return;
 
     // Check if already downloading or in queue
-    if (downloading?.modId === mod.id) return;
-    if (downloadQueue.some(q => q.modId === mod.id)) return;
+    if (isModDownloadPending(downloadActivity, mod.id)) return;
 
     try {
       // Fetch mod details to get the first file. Include the submitter up front
@@ -2728,12 +2762,6 @@ export default function Browse() {
       await runDownload(mod.id, getPrimaryFile(installable));
     } catch (err) {
       setError(String(err));
-      // Only clear downloading state if this was the active download
-      if (downloading?.modId === mod.id) {
-        setDownloading(null);
-        setDownloadProgress(null);
-        setExtracting(false);
-      }
     }
   };
 
@@ -2801,8 +2829,6 @@ export default function Browse() {
     return map;
   }, [installedMods]);
 
-  const toggleMod = useAppStore((state) => state.toggleMod);
-
   // Track installed file IDs for per-file "Reinstall" button state
   const installedFileIds = useMemo(() => {
     const ids = new Set<number>();
@@ -2839,6 +2865,57 @@ export default function Browse() {
     () => (selectedMod ? hasPendingUpdate(selectedMod.id, selectedMod.files ?? [], installedMods) : false),
     [selectedMod, installedMods]
   );
+  const selectedUpdatePlan = useMemo(() => {
+    if (!selectedMod) {
+      return { sourcesByTargetFileId: new Map<number, string[]>(), unresolvedSourceIds: [] };
+    }
+    return planFileUpdates(
+      selectedMod.id,
+      selectedMod.files ?? [],
+      installedMods
+        .filter(
+          (mod) =>
+            mod.gameBananaId === selectedMod.id &&
+            typeof mod.gameBananaFileId === 'number',
+        )
+        .map((mod) => ({
+          id: mod.id,
+          gameBananaId: mod.gameBananaId,
+          gameBananaFileId: mod.gameBananaFileId,
+          ignoreUpdates: mod.ignoreUpdates,
+          installedFileId: mod.gameBananaFileId!,
+          fileDescription: mod.fileDescription,
+          sourceFileName: mod.sourceFileName,
+        })),
+    );
+  }, [selectedMod, installedMods]);
+  const selectedUpdateSourcesByTargetFileId = useMemo(() => {
+    const sources = new Map(selectedUpdatePlan.sourcesByTargetFileId);
+    if (
+      !selectedMod ||
+      sources.size > 0 ||
+      selectedUpdatePlan.unresolvedSourceIds.length === 0
+    ) return sources;
+
+    // If every unresolved local VPK came from the same old GameBanana file,
+    // the ambiguity is only "which new variant does the user want?". Let every
+    // current row be an explicit Update choice. Distinct stale file ids remain
+    // unlabelled because collapsing several variants into one would be unsafe.
+    const unresolved = installedMods.filter((mod) =>
+      selectedUpdatePlan.unresolvedSourceIds.includes(mod.id),
+    );
+    const oldFileIds = new Set(unresolved.map((mod) => mod.gameBananaFileId));
+    if (oldFileIds.size === 1) {
+      for (const file of selectedMod.files ?? []) {
+        if (!file.isArchived) sources.set(file.id, [...selectedUpdatePlan.unresolvedSourceIds]);
+      }
+    }
+    return sources;
+  }, [selectedMod, selectedUpdatePlan, installedMods]);
+  const selectedUpdateFileIds = useMemo(
+    () => new Set(selectedUpdateSourcesByTargetFileId.keys()),
+    [selectedUpdateSourcesByTargetFileId],
+  );
 
   const queuedByModId = useMemo(() => {
     const map = new Map<number, QueuedDownloadState>();
@@ -2847,15 +2924,6 @@ export default function Browse() {
     });
     return map;
   }, [downloadQueue]);
-
-  const selectedQueuedFileIds = useMemo(() => {
-    if (!selectedMod) return new Set<number>();
-    const ids = new Set<number>();
-    for (const queued of downloadQueue) {
-      if (queued.modId === selectedMod.id) ids.add(queued.fileId);
-    }
-    return ids;
-  }, [downloadQueue, selectedMod]);
 
   const queuedModIds = useMemo(
     () => new Set(downloadQueue.map((queued) => queued.modId)),
@@ -2939,7 +3007,7 @@ export default function Browse() {
   // Just use all loaded mods - infinite scroll handles pagination.
   // Hide outdated mods if the user has opted in.
   const displayMods = useMemo(() => {
-    let nextMods = hiddenCreatorIdSet.size > 0
+    let nextMods = !allowHiddenSubmitter && hiddenCreatorIdSet.size > 0
       ? mods.filter((mod) => !mod.submitter?.id || !hiddenCreatorIdSet.has(mod.submitter.id))
       : mods;
     if (settings?.hideOutdatedMods) {
@@ -2964,7 +3032,7 @@ export default function Browse() {
     }
 
     return nextMods;
-  }, [mods, settings?.hideOutdatedMods, section, heroCategoryId, browseNsfwContentMode, nsfw, hiddenCreatorIdSet]);
+  }, [mods, settings?.hideOutdatedMods, section, heroCategoryId, browseNsfwContentMode, nsfw, hiddenCreatorIdSet, allowHiddenSubmitter]);
   const selectedModIndex = selectedMod
     ? displayMods.findIndex((mod) => mod.id === selectedMod.id)
     : -1;
@@ -3086,14 +3154,18 @@ export default function Browse() {
     showToast(t('hiddenCreators.shownToast', { name: creator.name }), { tone: 'success' });
   });
 
-  // Artist mode can be entered from Installed as well as Browse. If that
-  // submitter is already hidden, return to the normal catalog instead of
-  // presenting an empty artist page that cannot explain why it is empty.
+  // Artist mode can be entered from Installed as well as Browse. Respect the
+  // hidden-creator setting unless this exact navigation supplied the narrow
+  // trusted override used by the Performance credit link.
   useEffect(() => {
-    if (submitter?.id && hiddenCreatorIdSet.has(submitter.id)) {
+    if (
+      submitter?.id &&
+      hiddenCreatorIdSet.has(submitter.id) &&
+      !allowHiddenSubmitter
+    ) {
       setBrowseUi({ submitter: undefined });
     }
-  }, [submitter?.id, hiddenCreatorIdSet, setBrowseUi]);
+  }, [submitter?.id, hiddenCreatorIdSet, allowHiddenSubmitter, setBrowseUi]);
 
   const readableCardTargetWidth = getReadableCardTargetWidth(browseCardSize);
   const gridGap =
@@ -3190,13 +3262,10 @@ export default function Browse() {
         section={selectedDetailsSection}
         installed={installedIds.has(selectedMod.id)}
         updateAvailable={selectedModUpdateAvailable}
+        updateFileIds={selectedUpdateFileIds}
         installedFileIds={installedFileIds}
         installedFileStates={installedFileStates}
         onEnableFile={toggleMod}
-        downloadingFileId={downloading && downloading.modId === selectedMod.id ? downloading.fileId : null}
-        queuedFileIds={selectedQueuedFileIds}
-        extracting={extracting}
-        progress={downloadProgress}
         hideNsfwPreviews={browseBlurNsfwPreviews}
         saved={favoriteModIds.has(selectedMod.id)}
         onToggleSaved={() => { void handleToggleSaved(selectedMod.id); }}
@@ -4626,7 +4695,7 @@ function ModCard({ mod, installed, installedDisabled, downloading, queuePosition
               </Tag>
             ) : downloading ? (
               <span className="flex-shrink-0 flex items-center justify-center w-7 h-7 bg-bg-primary/80 rounded-full">
-                <Loader2 className="w-4 h-4 animate-spin text-accent" />
+                <BrowseDownloadSpinner className="text-accent" />
               </span>
             ) : (
               <button
@@ -5004,8 +5073,8 @@ function ModCard({ mod, installed, installedDisabled, downloading, queuePosition
             ✓
           </span>
         ) : downloading ? (
-          <div className={`flex items-center justify-center rounded-full bg-bg-primary/85 backdrop-blur-sm ring-1 ring-border shadow-md ${isCompact ? 'w-7 h-7' : 'w-8 h-8'}`} title={t('browse.card.downloading')}>
-            <Loader2 className={`animate-spin text-accent ${isCompact ? 'w-4 h-4' : 'w-5 h-5'}`} />
+          <div className={`browse-download-badge flex items-center justify-center rounded-full bg-bg-primary/85 backdrop-blur-sm ring-1 ring-border shadow-md ${isCompact ? 'w-7 h-7' : 'w-8 h-8'}`} title={t('browse.card.downloading')}>
+            <BrowseDownloadSpinner className="text-accent" size={isCompact ? 'default' : 'large'} />
           </div>
         ) : queuePosition ? (
           <div

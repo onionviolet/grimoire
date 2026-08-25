@@ -15,6 +15,8 @@ import type {
     ExtractMergeSourceResult,
     AddMergeSourcesResult,
     MergeAnalysisResult,
+    MergeSourceReplacement,
+    ReplaceMergeSourcesResult,
     ImprintAllInstalledResult,
     ImprintInstalledProgress,
     ImprintPreflightResult,
@@ -197,6 +199,9 @@ export interface PerformancePresetVersion {
     /** Whether `ref` is a real git tag or a version stated in prose. */
     refKind: 'tag' | 'prose';
     commit: string;
+    /** Last commit at or before the release pin that touched this preset's
+     *  source file. Prose version history is scoped to that path. */
+    historyCommit: string;
     /** Upstream release date, yyyy-mm-dd. Shown because upstream tag names do
      *  not reliably sort into release order (OptiLock tagged v4.0d after v4.1),
      *  so the name alone cannot tell a user which release is older. */
@@ -286,6 +291,60 @@ export interface AutoexecConvarConflict {
     managed: boolean;
 }
 
+/** What is known about the newest upstream release of a performance preset,
+ *  from the track-latest fetch cache. All-null data fields mean no check has
+ *  ever succeeded for this preset. */
+export interface PerformanceLatestInfo {
+    presetId: string;
+    /** Version identity of the newest fetched release: the upstream tag with
+     *  any leading `v` removed for tag-published sources, or the short commit
+     *  sha for sources that publish no tags. What Apply writes into the
+     *  gameinfo.gi marker. */
+    version: string | null;
+    ref: string | null;
+    refKind: 'tag' | 'prose' | null;
+    commit: string | null;
+    /** Upstream commit date, yyyy-mm-dd. */
+    date: string | null;
+    /** ISO timestamp of the fetch that produced the cached release. */
+    fetchedAt: string | null;
+    /** Gameplay-shaped upstream keys held back because nobody has classified
+     *  them yet; they are never written. */
+    withheldCount: number;
+    /** The fetched latest is byte-identical to this bundled (human-reviewed)
+     *  release version; the card can say "up to date" instead of offering it. */
+    matchesBundled: string | null;
+    /** Fetch or validation failure. The cached fields above may still be
+     *  populated from an earlier successful check. */
+    error: string | null;
+}
+
+/** One version a preset's upstream has published, for the full-history
+ *  browser. A row is only a pointer: nothing is fetched until it is picked. */
+export interface PerformanceRemoteVersion {
+    /** The upstream handle: a tag name ('v4.2') or a short commit sha. */
+    ref: string;
+    /** The version identity a pin/apply of this row would use (tag with any
+     *  leading 'v' stripped, or the short sha). */
+    version: string;
+    /** Full commit sha when the listing knows it (commit-versioned sources);
+     *  tag refs resolve at fetch time instead. */
+    commit: string | null;
+    /** yyyy-mm-dd. */
+    date: string;
+    /** Human handle where upstream provides one: the release title, or the
+     *  commit subject line for sources that version in prose. */
+    label: string | null;
+    /** Already fetched, gated, and cached locally (appliable offline). */
+    cached?: boolean;
+}
+
+export interface PerformanceRemoteVersionList {
+    /** Newest first. Empty on error. */
+    versions: PerformanceRemoteVersion[];
+    error: string | null;
+}
+
 export interface OpenDialogOptions {
     directory?: boolean;
     title?: string;
@@ -303,8 +362,58 @@ export interface SaveDialogOptions {
 export interface ImportCustomModArgs {
     vpkPath: string;
     name: string;
+    /** Optional user-facing name for this variant source. Exact for a bare VPK;
+     *  used as a prefix when an archive expands into several VPK members. */
+    variantLabel?: string;
     thumbnailDataUrl?: string;
     nsfw?: boolean;
+    /** Join this existing local variant group instead of standing alone. Every
+     *  VPK this source yields gets the id, so a SINGLE-vpk source imported into
+     *  a group joins it rather than collapsing it. Omitted for a normal import,
+     *  where a multi-VPK archive still mints its own group id. */
+    localGroupId?: string;
+    /** Groups sources within this one batch without letting the renderer mint
+     *  persistent ids. Main maps equal non-empty keys to one random UUID. The
+     *  key itself is request-local and is never written to metadata. */
+    localGroupBatchKey?: string;
+}
+
+/**
+ * What `setLocalVariantGroup` should do with the mods it is handed.
+ *
+ * A discriminated shape rather than a nullable id, so "mint a fresh group" is
+ * not spelled as a magic string a real group id could collide with, and so uuid
+ * minting stays in ONE place (the main process). The minted id comes back in
+ * the result, which is what the "add a variant to a standalone local mod" flow
+ * hands to the import that follows.
+ */
+export type LocalVariantGroupTarget =
+    /** Mint a fresh group id and put every listed mod in it. */
+    | { mode: 'mint' }
+    /** Put every listed mod into an existing group. */
+    | { mode: 'join'; groupId: string }
+    /** Take every listed mod out of whatever group it is in. */
+    | { mode: 'clear' };
+
+export interface SetLocalVariantGroupResult {
+    /** The group every listed mod now belongs to, or null after a clear. */
+    groupId: string | null;
+    /** The full enriched mod list after the change. */
+    mods: Mod[];
+}
+
+/**
+ * Reattach a freshly downloaded GameBanana replacement to the explicit local
+ * variant group its still-installed source belongs to. Main validates the
+ * source and replacement provenance; this is intentionally separate from the
+ * user-facing grouping API so ordinary GameBanana mods remain ineligible.
+ */
+export interface RestoreLocalVariantGroupReplacementArgs {
+    sourceModId: string;
+    sourceGameBananaFileId: number;
+    replacementModIds: string[];
+    expectedGameBananaId: number;
+    replacementGameBananaFileId: number;
 }
 
 /** Batch local import: one entry per picked file, imported in array order. */
@@ -318,6 +427,9 @@ export interface ImportCustomModResult {
     ok: boolean;
     /** Mod slots this source produced (an archive can yield several). */
     imported: number;
+    /** Resolved local group id when this source was imported as a variant.
+     *  Returned even on failure so a retry joins files that already landed. */
+    localGroupId?: string;
     error?: string;
 }
 
@@ -874,6 +986,13 @@ export interface ElectronAPI {
     associateUnknownMod: (modId: string, args: AssociateUnknownModArgs) => Promise<Mod>;
     listUnknownModFiles: (modId: string) => Promise<UnknownModFileList>;
     editLocalMod: (modId: string, args: EditLocalModArgs) => Promise<Mod>;
+    setLocalVariantGroup: (
+        modIds: string[],
+        target: LocalVariantGroupTarget
+    ) => Promise<SetLocalVariantGroupResult>;
+    restoreLocalVariantGroupReplacement: (
+        args: RestoreLocalVariantGroupReplacementArgs
+    ) => Promise<void>;
     setVariantLabel: (modId: string, label: string) => Promise<Mod>;
     setModLockerHero: (modId: string, heroName: string | null) => Promise<Mod>;
     getHeroPortraits: (heroName: string) => Promise<HeroPortrait[]>;
@@ -1095,6 +1214,11 @@ export interface ElectronAPI {
     unmergeMod: (mergedModId: string) => Promise<UnmergeModResult>;
     extractMergeSource: (mergedModId: string, sourceFileName: string) => Promise<ExtractMergeSourceResult>;
     addMergeSources: (mergedModId: string, addModIds: string[], strict?: boolean) => Promise<AddMergeSourcesResult>;
+    replaceMergeSources: (
+        mergedModId: string,
+        replacements: MergeSourceReplacement[],
+        strict?: boolean,
+    ) => Promise<ReplaceMergeSourcesResult>;
     imprintOneMod: (modId: string) => Promise<Mod>;
     imprintAllInstalled: () => Promise<ImprintAllInstalledResult>;
     imprintPreflight: () => Promise<ImprintPreflightResult>;
@@ -1157,6 +1281,14 @@ export interface ElectronAPI {
         version?: string | null
     ) => Promise<PerformanceConfigStatus>;
     restorePerformanceConfigBackup: () => Promise<PerformanceConfigStatus>;
+    getPerformanceLatestInfo: (presetId: string) => Promise<PerformanceLatestInfo>;
+    checkPerformanceLatest: (presetId: string, force?: boolean) => Promise<PerformanceLatestInfo>;
+    listPerformanceRemoteVersions: (presetId: string) => Promise<PerformanceRemoteVersionList>;
+    fetchPerformanceRemoteVersion: (
+        presetId: string,
+        ref: string,
+        commit?: string | null
+    ) => Promise<PerformanceLatestInfo>;
     openPerformanceConfigFile: () => Promise<void>;
     listEditorCandidates: () => Promise<EditorCandidate[]>;
     openModsFolder: () => Promise<void>;
@@ -1188,8 +1320,9 @@ export interface ElectronAPI {
     // Download Queue
     getDownloadQueue: () => Promise<DownloadQueueItem[]>;
     getCurrentDownload: () => Promise<DownloadQueueItem | null>;
-    removeFromQueue: (modId: number) => Promise<boolean>;
+    removeFromQueue: (modId: number, fileId?: number) => Promise<boolean>;
     cancelActiveDownload: () => Promise<boolean>;
+    cancelDownloadTarget: (modId: number, fileId: number) => Promise<boolean>;
     onDownloadQueueUpdated: (callback: (data: DownloadQueueData) => void) => () => void;
 
     // GameBanana 1-Click protocol handler
@@ -1334,7 +1467,7 @@ export interface ElectronAPI {
     updater: {
         getVersion: () => Promise<string>;
         getStatus: () => Promise<UpdateStatus>;
-        getInstallSource: () => Promise<'managed' | 'appimage' | 'standard' | 'fork'>;
+        getInstallSource: () => Promise<'managed' | 'appimage' | 'standard' | 'fork' | 'manual'>;
         checkForUpdates: () => Promise<UpdateInfo | null>;
         downloadUpdate: () => Promise<void>;
         installUpdate: () => void;
@@ -1624,6 +1757,11 @@ export interface ProfileMod {
     /** Zero-based VPK index within a multi-VPK GameBanana file, assigned by
      *  ascending VPK size at install time. Omitted for normal single-VPK files. */
     vpkIndex?: number;
+    /** Canonical pre-imprint content hash of the mod's `_dir.vpk`. The primary
+     *  stable identifier for local (non-GameBanana) mods, which have no id pair
+     *  and whose fileName changes on every reorder. Optional: legacy profiles
+     *  and pre-backfill installs lack it. */
+    sha256?: string;
 }
 
 /** Profiles embed the same crosshair model the Crosshair tab edits. Saved

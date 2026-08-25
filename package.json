@@ -1,7 +1,7 @@
 {
   "name": "grimoire",
   "private": true,
-  "version": "1.27.2",
+  "version": "1.28.0",
   "description": "Grimoire - A Deadlock mod manager and customization workshop",
   "license": "MIT",
   "author": {
@@ -37,7 +37,7 @@
     "refs:check": "node scripts/check-upstream-refs.mjs",
     "engine-pin:check": "node scripts/check-release-engine-pin.mjs",
     "i18n:manifest": "node scripts/gen-locale-manifest.mjs",
-    "perf:presets": "node scripts/gen-performance-presets.mjs",
+    "perf:presets": "tsx scripts/gen-performance-presets.mjs",
     "i18n:extract-unwired": "node scripts/extract-unwired-i18n.mjs",
     "verify:in-app": "node scripts/verify-in-app.mjs",
     "package": "node scripts/fetch-filter-lists.mjs --refresh && electron-vite build && electron-builder",
@@ -109,6 +109,7 @@
     "jsdom": "24.1.3",
     "leva": "^0.10.1",
     "tailwindcss": "^4.1.18",
+    "tsx": "^4.20.6",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.46.4",
     "vite": "^6.3.0",
