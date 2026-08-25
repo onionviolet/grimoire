@@ -62,14 +62,24 @@ record of the decision, not a prediction to be defended.
 
 Two specific calls that are already made for you:
 
-- `package.json` version: set it to `1.28.0`. This fork's numbering tracks
-  upstream's and adds patch increments on top, which is how `1.27.2` came from
-  upstream's `1.27.1`. Do not invent a different number, and do not cut a
-  release.
+- `package.json` version: set it to `1.28.1`, as its own commit, after the
+  merge. Not `1.28.0`: that is upstream's own version, and electron-updater
+  compares versions, so the fork build must sort strictly above the upstream
+  build it absorbed. This is the same call the v1.26 absorption recorded, and
+  `docs/upstream-absorption-1.28.md` restates the reasoning. Do not cut a
+  release, and do not reintroduce the retired four-digit counter.
 - `src/locales/*/translation.json` and `src/locales/manifest.json`: take both
   sides' keys, never drop one to end a conflict. Regenerate the manifest with
   `node scripts/gen-locale-manifest.mjs` rather than hand-merging it, then run
   `node scripts/check-i18n.mjs`.
+- `electron/main/services/performanceConfigData.ts`: its eight conflicting
+  hunks are regeneration drift between two runs of one generator, so take
+  upstream's file wholesale (`git checkout --theirs`) rather than regenerating.
+  `scripts/gen-performance-presets.mjs` fetches from `raw.githubusercontent.com`
+  and `api.github.com`, so a regeneration can stall on an unauthenticated rate
+  limit, and upstream's committed file already IS that generator's output at
+  the pinned SHA. Run the generator only if the pins file itself changes, and
+  if it fails on the network, keep upstream's file and say so in the doc.
 
 Commit the merge. Then land any follow-up repairs as separate, small commits
 after it, so the merge commit stays readable.

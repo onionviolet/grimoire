@@ -186,14 +186,30 @@ None of this needs judgment beyond patience.
    performance lane, the Modal/settings promotion, release plumbing.
 3. Second pass: the three decisions above, resolved at the level of the
    verdict, not the hunk.
-4. Gates, all of them: `pnpm lint`, `tsc` over both projections with
-   `--noEmit`, `pnpm exec vitest run`, `pnpm i18n:check`, the locale manifest
-   check, `pnpm encoding:check`, and `pnpm refs:check`.
+4. Gates, all of them. Run the binaries directly, not through `pnpm`: the
+   local pnpm is v11, this repo is pinned to v10 in CI, and v11's pre-command
+   dependency check fails the run before the script executes.
+
+       ./node_modules/.bin/tsc -b
+       ./node_modules/.bin/vitest run
+       ./node_modules/.bin/eslint .
+       node scripts/check-i18n.mjs
+       node scripts/check-encoding.mjs
+       node scripts/check-upstream-refs.mjs
+
+   Nine test files fail at the pre-merge baseline, 26 tests: the two
+   `browserContentFilter` files, `browserDownloadCapture`, `foundryNonStandard`,
+   `foundryTextureReplace`, `modinfoFormat`, `vpkIdentity`, `heroStageMode`,
+   and `uiPrefs`. `tsc -b` exits 0 at baseline, so a type error after the merge
+   is ours.
 5. Drive the real app from a numbered dev slot: Locker (user categories,
    General shuffle, sound and card pools), Installed (variants, inline
    profiles menu), Settings (promoted performance configs beside Game
    ConVars), the performance card (staged edits over the version picker), and
-   dialogs stacked on dialogs.
+   dialogs stacked on dialogs. This is a human step, and per Rule 6a a missing
+   smoke record means unverified, not blocked. An unattended agent records the
+   surfaces it could not exercise and stops there; it does not treat the
+   absence as a failure or invent the evidence.
 6. Version bump as its own commit: `1.28.1`.
 
 ## Version
