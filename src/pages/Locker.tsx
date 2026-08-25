@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { ArrowLeft, ArrowUpToLine, Box, Check, ChevronDown, ChevronsDownUp, ChevronsUpDown, ExternalLink, Filter, FolderPlus, Ghost, Images, Layers, MoreVertical, Music, Palette, Plus, PowerOff, Settings2, Shield, Shirt, Shuffle, Sparkles, Star, Trash2 } from 'lucide-react';
+import { ArrowLeft, ArrowUpToLine, Box, Check, ChevronDown, ChevronsDownUp, ChevronsUpDown, ExternalLink, Filter, FolderPlus, Ghost, Hammer, Images, Layers, MoreVertical, Music, Palette, Plus, PowerOff, Settings2, Shield, Shirt, Shuffle, Sparkles, Star, Trash2 } from 'lucide-react';
 import { useAppStore } from '../stores/appStore';
 import {
   getGamebananaCategories,
@@ -11,6 +11,7 @@ import {
   setModGlobalType,
   setModLockerHero,
 } from '../lib/api';
+import { migrateLegacyHeroFavorites, useHeroFavorites } from '../lib/heroFavorites';
 import { getActiveDeadlockPath, shouldBlurNsfw } from '../lib/appSettings';
 import { getAssetPath } from '../lib/assetPath';
 import HeroSkinsPanel from '../components/locker/HeroSkinsPanel';
@@ -23,6 +24,7 @@ import {
   ShuffleIncludeButton,
 } from '../components/locker/ShuffleControls';
 import { LockerHeroView } from './LockerHero';
+import GlobalSoundShelf from '../components/locker/GlobalSoundShelf';
 import ModThumbnail from '../components/ModThumbnail';
 import { ErrorBoundary } from '../components/common/ErrorBoundary';
 
@@ -45,8 +47,8 @@ import { ViewModeToggle, EmptyState, SectionHeader, ConfirmModal } from '../comp
 import { Tag, ToggleIndicator } from '../components/common/ui';
 import { Skeleton } from '../components/common/Skeleton';
 import { HeroSelect } from '../components/common/HeroSelect';
+import { useEscapeKey } from '../components/common/useEscapeKey';
 import {
-  FAVORITE_HEROES_KEY,
   GLOBAL_MOD_TYPE_LABELS,
   GLOBAL_MOD_TYPE_ORDER,
   activeLockerSkin,
@@ -66,7 +68,6 @@ import {
   isLockerManagedSound,
   isPropContainerType,
   modLoadOrder,
-  readStoredFavorites,
   type GlobalModGroups,
   type HeroCategory,
 } from '../lib/lockerUtils';
@@ -74,9 +75,27 @@ import {
   shuffleGroupKind,
   shufflePoolKey,
   shuffleSkinKey,
+  shuffleSoundKey,
   summarizeShufflePool,
   type VariantChoice,
 } from '../lib/lockerRandomizer';
+import { resolveLockerRoute, type LockerMode } from '../lib/lockerMode';
+import { readPref, writePref } from '../lib/uiPrefs';
+import { useScrollRestore } from '../lib/useScrollRestore';
+import {
+  buildSoundInventory,
+  countMods,
+  entriesInCategory,
+  type SoundCategory,
+  type SoundInventoryEntry,
+} from '../lib/soundInventory';
+import {
+  GLOBAL_SOUND_SECTIONS,
+  globalSoundSectionLabel,
+} from '../lib/globalSoundSections';
+import { useDiscoveredSoundPaths } from '../components/locker/useDiscoveredSoundPaths';
+import { useUnnamedPakEntries } from '../components/locker/useUnnamedPakEntries';
+import { derivePakDescription, isUnnamedPakName } from '../lib/derivedPakName';
 import {
   addCategoryMembership,
   buildCategoryMembershipIndex,
@@ -134,7 +153,6 @@ function useOverlayExit<T>(value: T | null): { item: T | null; closing: boolean 
   };
 }
 
-let lockerPageScrollTop = 0;
 let lockerCategoriesCache: GameBananaCategoryNode[] | null = null;
 const lockerLoadedImageUrls = new Set<string>();
 const lockerLoadingImageUrls = new Set<string>();
@@ -262,7 +280,7 @@ function FacetSheenDefs() {
 
 export default function Locker() {
   const { t } = useTranslation();
-  const { settings, mods, modsLoading, modsError, loadSettings, loadMods, toggleMod, reorderMods, deleteMod, setModPriorityFolder, setBrowseUi, setLockerHeroName, lockerModImages, lockerHideHeroName, lockerModThumbnails, lockerThumbHideHeroName, loadLockerModImages, shuffleOnLaunch, setShuffleOnLaunch, shuffleIncluded, toggleShuffleIncluded, setShuffleIncluded, shuffleVariants, setShuffleVariant } =
+  const { settings, mods, modsLoading, modsError, loadSettings, loadMods, toggleMod, reorderMods, deleteMod, setModPriorityFolder, setBrowseUi, setLockerHeroName, lockerModImages, lockerHideHeroName, lockerModThumbnails, lockerThumbHideHeroName, loadLockerModImages, shuffleOnLaunch, setShuffleOnLaunch, shuffleIncluded, toggleShuffleIncluded, setShuffleIncluded, shuffleVariants, setShuffleVariant, shuffleIncludeVanilla, setShuffleIncludeVanilla, soundShuffleIncluded, toggleSoundShuffleIncluded } =
     useAppStore();
   const activeDeadlockPath = getActiveDeadlockPath(settings);
   const [categories, setCategories] = useState<GameBananaCategoryNode[]>(
@@ -270,16 +288,11 @@ export default function Locker() {
   );
   const [categoriesLoading, setCategoriesLoading] = useState(false);
   const [categoriesError, setCategoriesError] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'gallery' | 'list'>(() => {
-    const stored = localStorage.getItem('lockerViewMode');
-    return stored === 'list' ? 'list' : 'gallery';
-  });
+  const [viewMode, setViewMode] = useState<'gallery' | 'list'>(() => readPref('lockerViewMode'));
   // When on, heroes without any assigned skins/sounds are hidden so the grid
   // only shows the heroes you've actually customized. Favorited heroes stay
   // visible regardless. Persisted alongside viewMode.
-  const [hideEmptyHeroes, setHideEmptyHeroes] = useState(
-    () => localStorage.getItem('lockerHideEmpty') === 'true'
-  );
+  const [hideEmptyHeroes, setHideEmptyHeroes] = useState(() => readPref('lockerHideEmpty'));
   const [heroTypeahead, setHeroTypeahead] =
     useState<HeroTypeaheadState>(EMPTY_HERO_TYPEAHEAD);
   const [heroTypeaheadFading, setHeroTypeaheadFading] = useState(false);
@@ -320,9 +333,10 @@ export default function Locker() {
   // first render. A useEffect-driven load would race against the save effect
   // under StrictMode: the save closure captures `[]`, clobbers localStorage,
   // and StrictMode's replayed load reads the empty value and wins.
-  const [favoriteHeroes, setFavoriteHeroes] = useState<number[]>(() =>
-    readStoredFavorites()
-  );
+  // Favorites are shared with the Foundry grid, keyed by canonical hero name
+  // (Foundry has no GameBanana category ids to key on). The id set below is
+  // derived so this page's existing id-based comparisons keep working.
+  const { favorites: favoriteHeroNames, toggleFavorite } = useHeroFavorites();
   // Applied Locker overrides (hero card art + ability sounds + ability recolors
   // + trippy paints), keyed by hero name. Lives off the mod list, so it's
   // fetched separately and feeds the per-hero card/effect indicator icons.
@@ -334,8 +348,6 @@ export default function Locker() {
       setLockerOverview(null);
     }
   }, []);
-  const lockerScrollRef = useRef<HTMLDivElement | null>(null);
-  const latestLockerScrollTopRef = useRef(lockerPageScrollTop);
   const heroTypeaheadRef = useRef(heroTypeahead);
   const heroTypeaheadFadeTimerRef = useRef<number | null>(null);
   const heroTypeaheadExpireTimerRef = useRef<number | null>(null);
@@ -396,19 +408,26 @@ export default function Locker() {
   }, []);
 
   useEffect(() => {
-    localStorage.setItem(FAVORITE_HEROES_KEY, JSON.stringify(favoriteHeroes));
-  }, [favoriteHeroes]);
-
-  useEffect(() => {
-    localStorage.setItem('lockerViewMode', viewMode);
+    writePref('lockerViewMode', viewMode);
   }, [viewMode]);
 
   useEffect(() => {
-    localStorage.setItem('lockerHideEmpty', String(hideEmptyHeroes));
+    writePref('lockerHideEmpty', hideEmptyHeroes);
   }, [hideEmptyHeroes]);
 
   const navigate = useNavigate();
   const location = useLocation();
+  // Which surface the URL names and which of its sections is selected, decided
+  // in one pure place (`resolveLockerRoute`, covered by lockerMode.test.ts)
+  // rather than by four regexes and two query reads scattered down this file.
+  // The section is read straight from the URL with no remembered fallback: a
+  // stored preference would make a bare `/locker/global` open on whichever tab
+  // was used last, which is not what a plain link to Global should do.
+  const route = useMemo(
+    () => resolveLockerRoute(location.pathname, location.search),
+    [location.pathname, location.search]
+  );
+  const globalSection: LockerMode | null = route.drillIn === 'global' ? route.section : null;
   const goToHero = useCallback(
     (hero: HeroCategory) => navigate(`/locker/hero/${hero.id}`),
     [navigate]
@@ -428,20 +447,14 @@ export default function Locker() {
     },
     [navigate, setBrowseUi]
   );
-  const selectedHeroRouteParam = useMemo(() => {
-    const match = location.pathname.match(/^\/locker\/hero\/([^/]+)\/?$/);
-    return match ? match[1] : null;
-  }, [location.pathname]);
+  const selectedHeroRouteParam = route.drillIn === 'hero' ? route.heroId : null;
   const selectedHeroId = useMemo(() => {
     if (selectedHeroRouteParam === null || !/^\d+$/.test(selectedHeroRouteParam)) {
       return null;
     }
     return Number(selectedHeroRouteParam);
   }, [selectedHeroRouteParam]);
-  const globalSelected = useMemo(
-    () => /^\/locker\/global\/?$/.test(location.pathname),
-    [location.pathname]
-  );
+  const globalSelected = route.drillIn === 'global';
 
   // Hero cards and ability effects can only be applied from inside a hero
   // drill-in, so the override overview is fresh enough if we (re)load it on
@@ -452,10 +465,67 @@ export default function Locker() {
 
   // Build basic hero list first (needed for mod categorization)
   const baseHeroList = useMemo(() => buildHeroList(categories), [categories]);
+  // The shared (name-keyed) favorites, projected back onto this page's category
+  // ids so the existing sort/filter/card comparisons are unchanged.
+  // One-time translation of the legacy id list into names, done here because
+  // this is the only surface with a roster that can map ids to heroes.
+  useEffect(() => {
+    migrateLegacyHeroFavorites(baseHeroList);
+  }, [baseHeroList]);
+
+  const favoriteHeroes = useMemo(
+    () =>
+      new Set(
+        baseHeroList
+          .filter((hero) => favoriteHeroNames.includes(canonicalHeroName(hero.name)))
+          .map((hero) => hero.id)
+      ),
+    [baseHeroList, favoriteHeroNames]
+  );
   const heroNamesForColorSupport = useMemo(
     () => Array.from(new Set(baseHeroList.map((hero) => hero.name))).sort((a, b) => a.localeCompare(b)),
     [baseHeroList]
   );
+
+  // `/locker?hero=<display name>` opens that hero's shelf. Foundry links here by
+  // name because it never sees the GameBanana category ids the routes use, so the
+  // id resolution happens on this side, once the category list has loaded. An
+  // unknown name deliberately leaves the user on the grid rather than guessing a
+  // hero; either way the query is dropped so a back-navigation cannot re-fire it.
+  // Legacy Sound Locker URLs predate folding sounds into the hero page. Rewrite
+  // them to the canonical routes so old bookmarks and Foundry handoffs land in
+  // the right place instead of on the grid.
+  useEffect(() => {
+    if (route.drillIn !== 'legacy') return;
+    const target = route.legacy;
+    if (target.kind === 'global') {
+      navigate('/locker/global?mode=sounds', { replace: true });
+      return;
+    }
+    if (target.kind === 'locker') {
+      navigate('/locker', { replace: true });
+      return;
+    }
+    // Needs the category list to turn a hero name into the id the route uses.
+    if (!baseHeroList.length) return;
+    const canonical = canonicalHeroName(target.hero);
+    const match = baseHeroList.find((hero) => canonicalHeroName(hero.name) === canonical);
+    navigate(match ? `/locker/hero/${match.id}?section=sounds` : '/locker', { replace: true });
+  }, [baseHeroList, navigate, route]);
+
+  useEffect(() => {
+    // Grid only. A legacy `/locker/sounds?hero=<name>` carries the same query,
+    // and the rewrite above already owns it: both effects firing meant this one
+    // landed second and dropped the `?section=sounds` the other had just added,
+    // so the Foundry handoff opened the hero on Skins.
+    if (route.drillIn !== 'grid') return;
+    const wanted = new URLSearchParams(location.search).get('hero');
+    if (!wanted) return;
+    if (!baseHeroList.length) return;
+    const canonical = canonicalHeroName(wanted);
+    const match = baseHeroList.find((hero) => canonicalHeroName(hero.name) === canonical);
+    navigate(match ? `/locker/hero/${match.id}` : '/locker', { replace: true });
+  }, [baseHeroList, location.search, navigate, route]);
 
   useEffect(() => {
     let active = true;
@@ -511,15 +581,27 @@ export default function Locker() {
     [mods]
   );
   const globalGroups = useMemo(() => groupGlobalMods(mods), [mods]);
-  // The General tile is the entry point for both independent axes. Count each
-  // mod once even when it has a General classification and Global placement.
-  const globalCount = useMemo(
-    () => mods.reduce(
-      (count, mod) => count + (getEffectiveGlobalType(mod) || mod.priorityMod ? 1 : 0),
-      0
-    ),
-    [mods]
+  // The tile has to answer the same question the drill-in answers, or the two
+  // disagree in the two steps it takes to click through. The drill-in's rail
+  // now carries three axes (classification, Global placement, and the sound
+  // taxonomy), so the tile counts over all three, each mod once.
+  //
+  // Reading the VPKs here (rather than only in the drill-in) is what keeps the
+  // sound rows honest: without the discovered paths a sound mod falls back to
+  // its GameBanana category, which is the label that caused #5. It also warms
+  // the same per-mod cache the drill-in reads, so navigating in no longer
+  // reclassifies on arrival.
+  const globalDiscoveredPaths = useDiscoveredSoundPaths(mods);
+  const globalSoundInventory = useMemo(
+    () => buildSoundInventory(mods, { discoveredPaths: globalDiscoveredPaths }).global,
+    [mods, globalDiscoveredPaths]
   );
+  const globalCount = useMemo(() => {
+    const ids = new Set(priorityMods.map((mod) => mod.id));
+    for (const mod of mods) if (getEffectiveGlobalType(mod)) ids.add(mod.id);
+    for (const entry of globalSoundInventory) ids.add(entry.modId);
+    return ids.size;
+  }, [mods, priorityMods, globalSoundInventory]);
   const [globalPickerOpen, setGlobalPickerOpen] = useState(false);
   // Sequential on purpose: each call renames a VPK under the main-process
   // mutation lock, so firing them concurrently would just queue anyway, and
@@ -527,11 +609,16 @@ export default function Locker() {
   const addModsToGlobal = async (modIds: string[]) => {
     for (const modId of modIds) await setModPriorityFolder(modId, true);
   };
+  // Populated rows across the same three axes the rail renders, so "N types"
+  // on the tile and the rail the click lands on are the same number.
   const globalTypeCount = useMemo(
     () =>
       GLOBAL_MOD_TYPE_ORDER.filter((type) => globalGroups[type].length > 0).length +
-      (priorityMods.length > 0 ? 1 : 0),
-    [globalGroups, priorityMods]
+      (priorityMods.length > 0 ? 1 : 0) +
+      GLOBAL_SOUND_SECTIONS.filter(
+        (category) => entriesInCategory(globalSoundInventory, category).length > 0
+      ).length,
+    [globalGroups, priorityMods, globalSoundInventory]
   );
 
   // User-defined categories for the General drill-in (see lib/lockerCategories.ts).
@@ -745,8 +832,8 @@ export default function Locker() {
   // Sorted hero list for display
   const heroList = useMemo(() => {
     return [...baseHeroList].sort((a, b) => {
-      const aFav = favoriteHeroes.includes(a.id);
-      const bFav = favoriteHeroes.includes(b.id);
+      const aFav = favoriteHeroes.has(a.id);
+      const bFav = favoriteHeroes.has(b.id);
       // Favorites first
       if (aFav !== bFav) return aFav ? -1 : 1;
       // Then heroes with any applied customization: anything active in-game floats
@@ -767,13 +854,23 @@ export default function Locker() {
     });
   }, [baseHeroList, favoriteHeroes, heroMods, heroSounds, heroHasActive]);
 
+  // The hero grid's scroll position, restored after a drill-in round trip.
+  // Deps are the things that can change the grid's height, so an offset that
+  // did not fit a moment ago is retried once the list is real.
+  const lockerScrollRef = useScrollRestore<HTMLDivElement>('locker:grid', [
+    modsLoading,
+    categoriesLoading,
+    heroList.length,
+    viewMode,
+  ]);
+
   // When "hide empty" is on, drop heroes with no assigned skins/sounds. Favorites
   // are kept so an intentional pin never disappears. Uses the same content test
   // as the sort above so what's hidden matches what sorts to the bottom.
   const displayedHeroList = useMemo(() => {
     if (!hideEmptyHeroes) return heroList;
     return heroList.filter((hero) => {
-      if (favoriteHeroes.includes(hero.id)) return true;
+      if (favoriteHeroes.has(hero.id)) return true;
       return (
         countLockerSkins(heroMods.map.get(hero.id) ?? []) > 0 ||
         countLockerSkins(heroSounds.map.get(hero.id) ?? []) > 0
@@ -826,7 +923,9 @@ export default function Locker() {
     lockerScrollRef.current
       ?.querySelector(`[data-locker-hero-id="${heroId}"]`)
       ?.scrollIntoView({ block: 'nearest' });
-  }, []);
+    // lockerScrollRef comes from useScrollRestore rather than a bare useRef, so
+    // the lint rule cannot tell it is a stable ref object and asks for it here.
+  }, [lockerScrollRef]);
 
   useEffect(() => {
     const next = reconcileHeroTypeaheadHeroes(
@@ -1018,42 +1117,6 @@ export default function Locker() {
       prewarmLockerImage(getHeroNamePath(hero.name));
     }
   }, [heroList]);
-
-  useLayoutEffect(() => {
-    let frame: number | null = null;
-    let attempts = 0;
-    const restoreScroll = () => {
-      const container = lockerScrollRef.current;
-      if (!container || lockerPageScrollTop <= 0) return;
-      const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
-      if (maxScrollTop <= 0 && attempts < 8) {
-        attempts += 1;
-        frame = window.requestAnimationFrame(restoreScroll);
-        return;
-      }
-      const target = Math.min(lockerPageScrollTop, maxScrollTop);
-      container.scrollTop = target;
-      latestLockerScrollTopRef.current = lockerPageScrollTop;
-    };
-    restoreScroll();
-    frame = window.requestAnimationFrame(restoreScroll);
-    return () => {
-      if (frame !== null) window.cancelAnimationFrame(frame);
-    };
-  }, [modsLoading, categoriesLoading, heroList.length, viewMode]);
-
-  useEffect(() => {
-    const container = lockerScrollRef.current;
-    if (!container) return;
-    const onScroll = () => {
-      latestLockerScrollTopRef.current = container.scrollTop;
-      lockerPageScrollTop = container.scrollTop;
-    };
-    container.addEventListener('scroll', onScroll, { passive: true });
-    return () => {
-      container.removeEventListener('scroll', onScroll);
-    };
-  }, [modsLoading, categoriesLoading]);
 
   // Both skins and sounds toggle independently. Users layering multiple VPKs
   // on the same hero (textures + weapons + voice) is a valid workflow; the
@@ -1291,10 +1354,24 @@ export default function Locker() {
                     shuffleIncluded.size > 0 ? 'bg-accent/15 text-accent' : 'bg-yellow-500/15 text-yellow-400'
                   }`}
                 >
-                  {shuffleIncluded.size}
+                  {shuffleIncluded.size + soundShuffleIncluded.size}
                 </span>
               )}
               <ToggleIndicator checked={shuffleOnLaunch} className="ml-0.5 scale-90" />
+            </button>
+          )}
+          {hasShuffleableMods && (
+            <button
+              type="button"
+              role="switch"
+              aria-checked={shuffleIncludeVanilla}
+              onClick={() => setShuffleIncludeVanilla(!shuffleIncludeVanilla)}
+              title={t('locker.page.vanillaShuffleTitle')}
+              className="flex items-center gap-1.5 self-stretch rounded-sm border border-border bg-bg-secondary px-3 text-xs text-text-secondary hover:bg-bg-tertiary hover:text-text-primary cursor-pointer"
+            >
+              {shuffleIncludeVanilla
+                ? t('locker.page.vanillaShuffleOn')
+                : t('locker.page.vanillaShuffleOff')}
             </button>
           )}
           {viewMode === 'gallery' &&
@@ -1372,17 +1449,14 @@ export default function Locker() {
               inShufflePool={shuffleOnLaunch && shufflePoolHeroes.has(hero.id)}
               cardImage={heroCardImage(hero.id)}
               hideHeroName={heroHideName(hero.id)}
-              isFavorite={favoriteHeroes.includes(hero.id)}
+              isFavorite={favoriteHeroes.has(hero.id)}
               typeaheadClassName={heroTypeaheadCardState(hero.id)}
               onNavigate={() => goToHero(hero)}
+              onOpenSounds={() => navigate(`/locker/hero/${hero.id}?section=sounds`)}
+              lookCount={countLockerSkins(heroMods.map.get(hero.id) ?? [])}
+              soundCount={countLockerSkins(heroSounds.map.get(hero.id) ?? [])}
               onBrowse={() => openHeroInBrowse(hero)}
-              onToggleFavorite={() =>
-                setFavoriteHeroes((prev) =>
-                  prev.includes(hero.id)
-                    ? prev.filter((id) => id !== hero.id)
-                    : [...prev, hero.id]
-                )
-              }
+              onToggleFavorite={() => toggleFavorite(hero.name)}
             />
           ))}
         </div>
@@ -1440,14 +1514,10 @@ export default function Locker() {
               shuffleVariantChoices={shuffleVariants}
               onSetShuffleVariant={setShuffleVariant}
               shuffleArmed={shuffleOnLaunch}
-              isFavorite={favoriteHeroes.includes(hero.id)}
-              onToggleFavorite={() =>
-                setFavoriteHeroes((prev) =>
-                  prev.includes(hero.id)
-                    ? prev.filter((id) => id !== hero.id)
-                    : [...prev, hero.id]
-                )
-              }
+              soundShuffleIncluded={soundShuffleIncluded}
+              onToggleSoundShuffleIncluded={toggleSoundShuffleIncluded}
+              isFavorite={favoriteHeroes.has(hero.id)}
+              onToggleFavorite={() => toggleFavorite(hero.name)}
               hideNsfwPreviews={shouldBlurNsfw(settings)}
             />
           ))}
@@ -1534,15 +1604,14 @@ export default function Locker() {
             skinList={selectedHeroMods}
             soundList={selectedHeroSoundList}
             skinCount={selectedHeroSkinCount}
-            isFavorite={favoriteHeroes.includes(overlayHero.id)}
+            // Every section of this drill-in is addressable, not just sounds:
+            // a link that names a section it cannot open is the same defect as
+            // a tab that cannot be returned to.
+            initialSection={route.drillIn === 'hero' ? route.section : undefined}
+            isFavorite={favoriteHeroes.has(overlayHero.id)}
             onBack={() => navigate('/locker')}
-            onToggleFavorite={() =>
-              setFavoriteHeroes((prev) =>
-                prev.includes(overlayHero.id)
-                  ? prev.filter((id) => id !== overlayHero.id)
-                  : [...prev, overlayHero.id]
-              )
-            }
+            onEditInFoundry={() => navigate(`/foundry?hero=${encodeURIComponent(overlayHero.name)}`)}
+            onToggleFavorite={() => toggleFavorite(overlayHero.name)}
             onSelect={(modId) => setActiveSkin(overlayHero.id, modId)}
             onToggleVariant={(modId) => toggleHeroVariant(overlayHero.id, modId)}
             onReorderSkins={(orderedModIds) => reorderHeroSkins(overlayHero.id, orderedModIds)}
@@ -1594,6 +1663,8 @@ export default function Locker() {
             onImportSoul={() => setSoulImportOpen(true)}
             onImportUrn={() => setUrnImportOpen(true)}
             priorityMods={priorityMods}
+            soundEntries={globalSoundInventory}
+            initialSection={globalSection}
             onAddGlobal={() => setGlobalPickerOpen(true)}
             onRemoveGlobal={(modId) => setModPriorityFolder(modId, false)}
             shuffleArmed={shuffleOnLaunch}
@@ -1711,6 +1782,8 @@ interface HeroCardProps {
   shuffleVariantChoices: ReadonlyMap<string, VariantChoice>;
   onSetShuffleVariant: (skinKey: string, choice: VariantChoice | null) => void;
   shuffleArmed: boolean;
+  soundShuffleIncluded: Set<string>;
+  onToggleSoundShuffleIncluded: (soundKey: string) => void;
   isFavorite: boolean;
   onToggleFavorite: () => void;
   hideNsfwPreviews: boolean;
@@ -1736,6 +1809,9 @@ interface HeroGalleryCardProps {
   hideHeroName?: boolean;
   isFavorite: boolean;
   onNavigate: () => void;
+  onOpenSounds: () => void;
+  lookCount: number;
+  soundCount: number;
   onBrowse: () => void;
   onToggleFavorite: () => void;
   /** Typeahead highlight/dim classes, merged into the card root. Applied to the
@@ -1815,7 +1891,16 @@ const PRIORITY_TAB = 'priority' as const;
  */
 const CUSTOM_TAB_PREFIX = 'custom:';
 type CustomTabId = `${typeof CUSTOM_TAB_PREFIX}${string}`;
-type GeneralTabId = GlobalModType | typeof PRIORITY_TAB | CustomTabId;
+
+/**
+ * Tab id namespace for a global sound category (src/lib/globalSoundSections.ts).
+ * A fourth axis in the same rail: sound content is classified from what a VPK
+ * actually writes, not from `globalType`, so a sound row can never be a move
+ * destination for the classification menu and never writes that field.
+ */
+const SOUND_TAB_PREFIX = 'sound:';
+type SoundTabId = `${typeof SOUND_TAB_PREFIX}${string}`;
+type GeneralTabId = GlobalModType | typeof PRIORITY_TAB | CustomTabId | SoundTabId;
 
 function customTabId(categoryId: string): CustomTabId {
   return `${CUSTOM_TAB_PREFIX}${categoryId}`;
@@ -1829,9 +1914,21 @@ function customTabCategoryId(tab: CustomTabId): string {
   return tab.slice(CUSTOM_TAB_PREFIX.length);
 }
 
+function soundTabId(category: SoundCategory): SoundTabId {
+  return `${SOUND_TAB_PREFIX}${category}`;
+}
+
+function isSoundTab(tab: GeneralTabId): tab is SoundTabId {
+  return tab.startsWith(SOUND_TAB_PREFIX);
+}
+
+function soundTabCategory(tab: SoundTabId): SoundCategory {
+  return tab.slice(SOUND_TAB_PREFIX.length) as SoundCategory;
+}
+
 /**
- * Display label for a General-view tab: builtin type labels, Global, and the
- * user's own category names (user data, so no i18n key).
+ * Display label for a General-view tab: builtin type labels, Global, the sound
+ * categories, and the user's own category names (user data, so no i18n key).
  */
 function generalTabLabel(
   tab: GeneralTabId,
@@ -1842,6 +1939,14 @@ function generalTabLabel(
   if (isCustomTab(tab)) {
     const id = customTabCategoryId(tab);
     return categories.find((category) => category.id === id)?.name ?? '';
+  }
+  if (isSoundTab(tab)) {
+    // globalSoundSectionLabel takes the two-argument (key, fallback) form of
+    // `t`, which this narrower one-argument parameter cannot express.
+    return globalSoundSectionLabel(
+      t as unknown as (key: string, fallback: string) => string,
+      soundTabCategory(tab)
+    );
   }
   return GLOBAL_MOD_TYPE_LABELS[tab];
 }
@@ -1861,6 +1966,17 @@ interface LockerGlobalViewProps {
   onImportUrn: () => void;
   /** Mods living in the citadel/grimoire priority root (the "Global" tab). */
   priorityMods: Mod[];
+  /**
+   * The global sound inventory, built once on the page so the tile's count and
+   * this rail's rows answer from the same pass over the mod list.
+   */
+  soundEntries: readonly SoundInventoryEntry[];
+  /**
+   * Which axis a legacy `?mode=` link named. Only 'sounds' still selects
+   * anything: the rail merged the old Visuals/All sections, so those land on
+   * the ordinary landing tab.
+   */
+  initialSection: LockerMode | null;
   /** Open the picker that adds installed mods to Global. */
   onAddGlobal: () => void;
   /** Move a mod back out of the priority root. */
@@ -1900,27 +2016,49 @@ interface LockerGlobalViewProps {
  * frosted-glass carousel of cosmetic types (echoing the LockerHeroView shell's
  * art + blur language). Selecting a tile reveals that type's toggleable mods.
  */
-function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType, onRequestDelete, onImportSoul, onImportUrn, priorityMods, onAddGlobal, onRemoveGlobal, shuffleArmed, includedShuffleKeys, onToggleShuffleIncluded, onSetShuffleIncluded, heroList, categories, categoryGroups, categoryMembership, onAddModsToCategory, onToggleModCategory, onCreateCategory, onManageCategories }: LockerGlobalViewProps) {
+function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType, onRequestDelete, onImportSoul, onImportUrn, priorityMods, soundEntries, initialSection, onAddGlobal, onRemoveGlobal, shuffleArmed, includedShuffleKeys, onToggleShuffleIncluded, onSetShuffleIncluded, heroList, categories, categoryGroups, categoryMembership, onAddModsToCategory, onToggleModCategory, onCreateCategory, onManageCategories }: LockerGlobalViewProps) {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const soundVolume = useAppStore((s) => s.soundVolume);
-  // Every tab is selectable, empty or not. We still default the landing tab to
-  // the first populated type (or a prop container when nothing is installed),
-  // so the view opens on something meaningful rather than a blank pane.
-  const firstPopulated = GLOBAL_MOD_TYPE_ORDER.filter(
-    (type) => groups[type].length > 0 || isPropContainerType(type)
+  const mods = useAppStore((s) => s.mods);
+  // Sound rows, and what each holds. Only populated categories become rows
+  // (D-04): there are eight of them, and a user with no sound mods would
+  // otherwise get eight permanently empty rows below the seven classification
+  // tabs, which is the density problem D-04 was raised about. The
+  // classification tabs keep upstream's every-tab-selectable behaviour, since
+  // each of those has a real empty state (an importer, or a Browse hint).
+  const soundRows = useMemo(
+    () =>
+      GLOBAL_SOUND_SECTIONS.map((category) => ({
+        category,
+        entries: entriesInCategory(soundEntries, category),
+      })).filter((row) => row.entries.length > 0),
+    [soundEntries]
   );
-  const [selectedType, setSelectedType] = useState<GeneralTabId>(
-    () => firstPopulated[0] ?? 'soul-container'
-  );
+  // What each unnamed pak writes, so a card whose name is only a pak slot can
+  // lead with a description derived from the mod's own entries (D-19).
+  const unnamedPakEntries = useUnnamedPakEntries(mods);
+  // Every tab is selectable, empty or not, but the landing tab is the first one
+  // that actually has content. Null until the user picks, for the same reason
+  // the sound rows above are derived rather than snapshotted: the mod list
+  // arrives after mount, so a landing tab resolved once in a state initializer
+  // would freeze on whatever was loaded at the time (which is nothing) and open
+  // on an empty pane.
+  const [selectedType, setSelectedType] = useState<GeneralTabId | null>(null);
   // Tab order: the seven classification types, then Global (the precedence
   // axis). Global is deliberately last and visually separated: it answers a
   // different question ("does this mod win?") than the types above it ("what
-  // kind of mod is this?"). The user's own categories follow, behind a second
-  // separator, as a third axis again ("which pile did I put it in?").
+  // kind of mod is this?"). The sound categories follow behind their own
+  // separator, then the user's own categories behind a third, as further axes
+  // again ("what does this VPK actually write?", "which pile did I put it in?").
   const fixedTabIds: readonly GeneralTabId[] = [...GLOBAL_MOD_TYPE_ORDER, PRIORITY_TAB];
   const countForTab = (tab: GeneralTabId) => {
     if (tab === PRIORITY_TAB) return priorityMods.length;
     if (isCustomTab(tab)) return categoryGroups.get(customTabCategoryId(tab))?.length ?? 0;
+    if (isSoundTab(tab)) {
+      const category = soundTabCategory(tab);
+      return countMods(soundRows.find((row) => row.category === category)?.entries ?? []);
+    }
     return groups[tab].length;
   };
   // Sliding active-tab highlight, mirroring the main sidebar's glide: one
@@ -1937,44 +2075,57 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
     setPriorityActionBusy(false);
     setPriorityActionError(null);
   }, [retagMenu?.id]);
-  // Close the menu on any scroll / resize / Escape — a fixed menu would
-  // otherwise float away from its anchor once the pane scrolls.
+  const closeRetagMenu = useCallback(() => setRetagMenu(null), [setRetagMenu]);
+  useEscapeKey(closeRetagMenu, !!retagMenu);
+  // Also close on any scroll / resize: a fixed menu would otherwise float away
+  // from its anchor once the pane scrolls.
   useEffect(() => {
     if (!retagMenu) return;
-    const close = () => setRetagMenu(null);
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setRetagMenu(null);
-    };
-    window.addEventListener('scroll', close, true);
-    window.addEventListener('resize', close);
-    window.addEventListener('keydown', onKey);
+    window.addEventListener('scroll', closeRetagMenu, true);
+    window.addEventListener('resize', closeRetagMenu);
     return () => {
-      window.removeEventListener('scroll', close, true);
-      window.removeEventListener('resize', close);
-      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('scroll', closeRetagMenu, true);
+      window.removeEventListener('resize', closeRetagMenu);
     };
-  }, [retagMenu]);
-  // Any type is a valid selection now (empty tabs render their own empty
-  // state), so the active tab is simply whatever the user picked.
-  const activeType = selectedType;
+  }, [retagMenu, closeRetagMenu]);
+  // Before the user picks, the landing tab is the first classification type
+  // with installed content, then the first populated sound row, and only then
+  // a prop container: its import-only empty state is the least informative
+  // thing the view can open on. A legacy `?mode=sounds` link asks for the
+  // sound axis, so it lands on the first sound row when there is one.
+  const landingTab: GeneralTabId = useMemo(() => {
+    const soundLanding = soundRows.length > 0 ? soundTabId(soundRows[0].category) : null;
+    if (initialSection === 'sounds' && soundLanding) return soundLanding;
+    const populatedType = GLOBAL_MOD_TYPE_ORDER.find((type) => groups[type].length > 0);
+    if (populatedType) return populatedType;
+    if (soundLanding) return soundLanding;
+    return GLOBAL_MOD_TYPE_ORDER.find((type) => isPropContainerType(type)) ?? 'soul-container';
+  }, [groups, soundRows, initialSection]);
+  // Any tab is a valid selection (empty tabs render their own empty state), so
+  // once the user picks, that is the active tab.
+  const activeType: GeneralTabId = selectedType ?? landingTab;
   const isPriorityTab = activeType === PRIORITY_TAB;
   const activeCategoryId = isCustomTab(activeType) ? customTabCategoryId(activeType) : null;
+  const activeSoundCategory: SoundCategory | null = isSoundTab(activeType)
+    ? soundTabCategory(activeType)
+    : null;
   // Memoized: the shuffle derivations below key off this array, and a fresh
-  // `?? []` on every render would recompute them for nothing.
+  // `?? []` on every render would recompute them for nothing. A sound tab has
+  // none: its pane is the shelf, which renders sound entries rather than cards.
   const activeMods: Mod[] = useMemo(() => {
     if (activeType === PRIORITY_TAB) return priorityMods;
     if (isCustomTab(activeType)) return categoryGroups.get(customTabCategoryId(activeType)) ?? [];
+    if (isSoundTab(activeType)) return [];
     return groups[activeType] ?? [];
   }, [activeType, priorityMods, categoryGroups, groups]);
   // A category can be deleted from the manage dialog while its tab is open, so
   // fall back to the landing tab rather than sitting on a tab that is gone.
-  const landingTab: GeneralTabId = firstPopulated[0] ?? 'soul-container';
   useEffect(() => {
-    if (!isCustomTab(selectedType)) return;
+    if (selectedType === null || !isCustomTab(selectedType)) return;
     const id = customTabCategoryId(selectedType);
     if (categories.some((category) => category.id === id)) return;
-    setSelectedType(landingTab);
-  }, [selectedType, categories, landingTab]);
+    setSelectedType(null);
+  }, [selectedType, categories]);
   // Track the active row's box so the highlight can glide to it. Measured in a
   // layout effect (pre-paint) to avoid a one-frame jump on first mount. Also
   // re-measured when the category count changes: adding or deleting one moves
@@ -1982,18 +2133,25 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
   useLayoutEffect(() => {
     const el = tabRefs.current.get(activeType);
     if (el) setTabIndicator({ top: el.offsetTop, height: el.offsetHeight });
-  }, [activeType, categories.length]);
+  }, [activeType, categories.length, soundRows.length]);
   // Soul containers and spirit urns share the single-select + live-3D-tile
   // treatment (frosted glass, content-stable key, active badge, import button).
   // Never true for the Global tab: priority mods are ordinary multi-toggle
   // cards, never the single-select live-3D treatment.
   // Never true on a custom tab either: a category is a view grouping, so its
   // cards stay ordinary multi-toggle cards whatever they are classified as.
+  // Never true on a sound tab: that pane is the shelf, not cards at all.
   const isPropContainer =
-    activeType !== PRIORITY_TAB && !isCustomTab(activeType) && isPropContainerType(activeType);
+    activeType !== PRIORITY_TAB &&
+    !isCustomTab(activeType) &&
+    !isSoundTab(activeType) &&
+    isPropContainerType(activeType);
+  // One denominator, across every axis the rail renders. Counted by mod id so
+  // a sound mod that also carries a legacy `globalType` is one thing, not two.
   const total = new Set([
     ...GLOBAL_MOD_TYPE_ORDER.flatMap((type) => groups[type].map((mod) => mod.id)),
     ...priorityMods.map((mod) => mod.id),
+    ...soundEntries.map((entry) => entry.modId),
   ]).size;
   // The scrollable card pane: the shared soul-container canvas clamps each
   // card's render rect to this element so models never bleed past the pane.
@@ -2116,7 +2274,7 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
         <span className={`flex-1 truncate text-sm font-medium text-white ${isEmpty && !isActive ? 'opacity-50' : ''}`}>
           {generalTabLabel(type, t, categories)}
         </span>
-        <span className="text-xs text-white/50">{count}</span>
+        <span className="text-xs tabular-nums text-white/50">{count}</span>
       </button>
     );
   };
@@ -2199,7 +2357,7 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
           <h2 className="text-lg font-semibold text-white drop-shadow-[0_2px_12px_rgba(0,0,0,0.6)]">
             {t('locker.page.global')}
           </h2>
-          <span className="text-xs text-white/60">
+          <span className="text-xs tabular-nums text-white/60">
             {t('locker.page.modCount', { count: total })}
           </span>
         </div>
@@ -2218,8 +2376,17 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
             />
           )}
           {fixedTabIds.map(renderTab)}
+          {/* The sound axis, behind its own divider. These rows are classified
+              from what each VPK actually writes rather than from `globalType`,
+              which is why they are a separate block and not more type tabs:
+              retagging a card into one would be writing the wrong field. */}
+          {soundRows.length > 0 && (
+            <div aria-hidden className="mx-3 my-1 h-px bg-white/10" />
+          )}
+          {soundRows.map((row) => renderTab(soundTabId(row.category)))}
           {/* The user's own categories, kept behind a divider so the rail reads
-              as "what kind of mod", then "does it win", then "my piles". */}
+              as "what kind of mod", then "does it win", then "what does it
+              write", then "my piles". */}
           {categories.length > 0 && (
             <div aria-hidden className="mx-3 my-1 h-px bg-white/10" />
           )}
@@ -2263,13 +2430,42 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
           key={activeType}
           className={`flex min-h-full flex-col gap-4 p-6 ${isPropContainer ? '' : 'animate-fade-in'}`}
         >
-          {activeType ? (
+          {activeSoundCategory !== null ? (
+            <>
+              {/* Same heading treatment as a classification tab: the panes of
+                  this drill-in should differ only in their content region. */}
+              <div className="flex items-baseline gap-2">
+                <h3 className="text-base font-semibold text-white drop-shadow-[0_2px_12px_rgba(0,0,0,0.6)]">
+                  {globalSoundSectionLabel(t, activeSoundCategory)}
+                </h3>
+                <span className="text-xs tabular-nums text-white/60">
+                  {t('locker.page.modCount', { count: countForTab(activeType) })}
+                </span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    navigate(`/foundry?tool=globalSound&category=${activeSoundCategory}`)
+                  }
+                  className="ml-auto inline-flex items-center gap-1.5 self-center rounded-lg border border-accent/40 bg-accent/10 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:border-accent/60 hover:bg-accent/20 cursor-pointer"
+                >
+                  <Hammer className="h-3.5 w-3.5" />
+                  {t('soundLocker.global.makeNew', 'Forge {{type}} sound', {
+                    type: globalSoundSectionLabel(t, activeSoundCategory),
+                  })}
+                </button>
+              </div>
+              <GlobalSoundShelf
+                category={activeSoundCategory}
+                shown={soundRows.find((row) => row.category === activeSoundCategory)?.entries ?? []}
+              />
+            </>
+          ) : activeType ? (
             <>
               <div className="flex items-baseline gap-2">
                 <h3 className="text-base font-semibold text-white drop-shadow-[0_2px_12px_rgba(0,0,0,0.6)]">
                   {generalTabLabel(activeType, t, categories)}
                 </h3>
-                <span className="text-xs text-white/60">
+                <span className="text-xs tabular-nums text-white/60">
                   {t('locker.page.modCount', { count: activeMods.length })}
                 </span>
                 {isPriorityTab && (
@@ -2394,6 +2590,30 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
                   // hidden imagery into the glass tint, even blurred.
                   const glassBackdropUrl =
                     mod.thumbnailUrl && !(mod.nsfw && hideNsfw) ? mod.thumbnailUrl : null;
+                  // A mod whose name is only a pak slot has no useful name to
+                  // show, so its card leads with what it writes once the entry
+                  // read has landed. While the read is in flight the raw name
+                  // stays, and an unreadable or empty VPK falls through to the
+                  // unknown label rather than a guessed description (D-19).
+                  const unnamedPakPaths = isUnnamedPakName(mod.name)
+                    ? unnamedPakEntries[mod.id]
+                    : undefined;
+                  let unnamedPakLabel: string | null = null;
+                  if (unnamedPakPaths !== undefined) {
+                    const derived = derivePakDescription(unnamedPakPaths);
+                    if (derived.kind === 'unknown') {
+                      unnamedPakLabel = t('locker.global.unnamedPakUnknown');
+                    } else {
+                      const entryList = derived.entries.join(', ');
+                      unnamedPakLabel =
+                        derived.extra === 0
+                          ? t('locker.global.unnamedPakDerived', { entryList })
+                          : t('locker.global.unnamedPakDerivedMore', {
+                              entryList,
+                              count: derived.extra,
+                            });
+                    }
+                  }
                   // Placement beats the pool: a priority-root mod is always on
                   // and the planner never re-rolls it, so it shows the locked
                   // marker instead of an opt-in the shuffle would have to
@@ -2635,12 +2855,31 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
 
                       {/* Title only — the whole card is the enable/disable control. */}
                       <div className="mt-auto px-0.5">
-                        <h3
-                          className="min-w-0 truncate text-[15px] font-semibold leading-[19px] text-text-primary"
-                          title={mod.name}
-                        >
-                          {mod.name}
-                        </h3>
+                        {unnamedPakLabel === null ? (
+                          <h3
+                            className="min-w-0 truncate text-[15px] font-semibold leading-[19px] text-text-primary"
+                            title={mod.name}
+                          >
+                            {mod.name}
+                          </h3>
+                        ) : (
+                          <>
+                            {/* An unnamed pak keeps its raw name as a secondary
+                                identity line beneath the derived description. */}
+                            <h3
+                              className="min-w-0 truncate text-[15px] font-semibold leading-[19px] text-text-primary"
+                              title={unnamedPakLabel}
+                            >
+                              {unnamedPakLabel}
+                            </h3>
+                            <p
+                              className="truncate text-[11px] text-text-secondary"
+                              title={mod.name}
+                            >
+                              {mod.name}
+                            </p>
+                          </>
+                        )}
                       </div>
 
                       {/* Audio preview for sound-backed global mods (Killstreak
@@ -2847,6 +3086,9 @@ function HeroGalleryCard({
   hideHeroName,
   isFavorite,
   onNavigate,
+  onOpenSounds,
+  lookCount,
+  soundCount,
   onBrowse,
   onToggleFavorite,
   typeaheadClassName = '',
@@ -2914,11 +3156,14 @@ function HeroGalleryCard({
     setFallbackStep(3);
   };
 
+  // No onClick on the wrapper: the card's primary action is the transparent
+  // overlay button below, which keeps the target real for keyboard and
+  // screen-reader users. The data attribute is how the hero typeahead scrolls a
+  // match into view.
   return (
     <div
-      onClick={onNavigate}
       data-locker-hero-id={hero.id}
-      className={`group relative w-full overflow-hidden rounded-2xl border border-border bg-bg-secondary text-left shadow-sm transition-transform duration-300 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/70 cursor-pointer ${typeaheadClassName}`}
+      className={`group relative w-full overflow-hidden rounded-2xl border border-border bg-bg-secondary text-left shadow-sm transition-transform duration-300 hover:-translate-y-1 ${typeaheadClassName}`}
     >
       <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent opacity-80" />
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.06),_transparent_55%)] opacity-60 transition-opacity duration-300 group-hover:opacity-100" />
@@ -2958,6 +3203,18 @@ function HeroGalleryCard({
           </div>
         )}
       </div>
+      {/* Looks is the card's primary action, so it stays the whole-card target
+          rather than a pill over the art. A transparent overlay button (not an
+          onClick on the wrapper div) keeps that target real for keyboard and
+          screen-reader users, and leaves the Sounds chip below as a sibling
+          instead of a nested button. */}
+      <button
+        type="button"
+        onClick={onNavigate}
+        aria-label={t('locker.page.openHeroLooks', { hero: hero.name, count: lookCount })}
+        title={t('locker.page.openHeroLooks', { hero: hero.name, count: lookCount })}
+        className="absolute inset-0 z-10 cursor-pointer rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/70"
+      />
       {/* Favorite toggle. Favorited cards keep a pinned filled star so the
           state reads at a glance in the sorted grid. Un-favorited cards keep
           the same slot but reveal a softer outline-star on hover, restoring
@@ -3051,9 +3308,34 @@ function HeroGalleryCard({
           )}
         </div>
       )}
+      {/* The second route off this card. It sits bottom-left, clear of the
+          right-aligned name logo, and reveals on hover or keyboard focus like
+          the Browse and Favorite controls above: the card is poster art first,
+          and a permanent pill strip buried the hero name. Always in the tab
+          order, so the facet glyphs are never the only way to reach sounds. */}
+      <button
+        type="button"
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onOpenSounds();
+        }}
+        aria-label={t('locker.page.openHeroSounds', { hero: hero.name, count: soundCount })}
+        title={t('locker.page.openHeroSounds', { hero: hero.name, count: soundCount })}
+        className="absolute bottom-2 left-2 z-20 flex items-center gap-1 rounded-full border border-white/30 bg-black/55 px-2 py-1 text-[11px] font-medium text-white/90 opacity-0 backdrop-blur-sm transition-opacity hover:bg-black/70 focus:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent group-hover:opacity-100"
+      >
+        <Music className="h-3 w-3" aria-hidden />
+        <span className="tabular-nums">{soundCount}</span>
+      </button>
     </div>
   );
 }
+
+/** The expanded hero card's Skins/Sounds tabs, in tablist order. */
+const CARD_SECTION_TABS = [
+  { id: 'skins' as const, icon: Shirt, labelKey: 'locker.page.skins' },
+  { id: 'sounds' as const, icon: Music, labelKey: 'locker.page.sounds' },
+];
 
 function HeroCard({
   hero,
@@ -3072,6 +3354,8 @@ function HeroCard({
   shuffleVariantChoices,
   onSetShuffleVariant,
   shuffleArmed,
+  soundShuffleIncluded,
+  onToggleSoundShuffleIncluded,
   isFavorite,
   onToggleFavorite,
   hideNsfwPreviews,
@@ -3085,6 +3369,8 @@ function HeroCard({
   // wiki render -> GameBanana icon -> none (solid panel).
   const [bgFallbackStep, setBgFallbackStep] = useState(0);
   const [section, setSection] = useState<'skins' | 'sounds'>('skins');
+  const cardTabRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const cardTabsId = useId();
   const skinCount = useMemo(() => countLockerSkins(mods), [mods]);
   const soundCount = useMemo(() => countLockerSkins(sounds), [sounds]);
   const hasSounds = sounds.length > 0;
@@ -3206,46 +3492,60 @@ function HeroCard({
             aria-label={t('locker.page.section')}
             className="inline-flex items-center rounded-full border border-border bg-bg-tertiary p-0.5 text-xs"
           >
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeSection === 'skins'}
-              onClick={() => setSection('skins')}
-              className={`flex items-center gap-1.5 rounded-full px-3 py-1 transition-colors cursor-pointer ${
-                activeSection === 'skins'
-                  ? 'bg-accent/15 text-text-primary border border-accent/40'
-                  : 'text-text-secondary hover:text-text-primary border border-transparent'
-              }`}
-            >
-              <Shirt className="w-3.5 h-3.5" />
-              {t('locker.page.skins')}
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeSection === 'sounds'}
-              onClick={() => setSection('sounds')}
-              className={`flex items-center gap-1.5 rounded-full px-3 py-1 transition-colors cursor-pointer ${
-                activeSection === 'sounds'
-                  ? 'bg-accent/15 text-text-primary border border-accent/40'
-                  : 'text-text-secondary hover:text-text-primary border border-transparent'
-              }`}
-            >
-              <Music className="w-3.5 h-3.5" />
-              {t('locker.page.sounds')}
-            </button>
+            {CARD_SECTION_TABS.map(({ id, icon: Icon, labelKey }, i) => {
+              const selected = activeSection === id;
+              return (
+                <button
+                  key={id}
+                  ref={(el) => { cardTabRefs.current[i] = el; }}
+                  type="button"
+                  role="tab"
+                  id={`${cardTabsId}-tab-${id}`}
+                  aria-controls={`${cardTabsId}-panel`}
+                  aria-selected={selected}
+                  tabIndex={selected ? 0 : -1}
+                  onKeyDown={(e) => {
+                    const dir = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+                    if (!dir) return;
+                    e.preventDefault();
+                    const next = (i + dir + CARD_SECTION_TABS.length) % CARD_SECTION_TABS.length;
+                    setSection(CARD_SECTION_TABS[next].id);
+                    cardTabRefs.current[next]?.focus();
+                  }}
+                  onClick={() => setSection(id)}
+                  className={`flex items-center gap-1.5 rounded-full px-3 py-1 transition-colors cursor-pointer ${
+                    selected
+                      ? 'bg-accent/15 text-text-primary border border-accent/40'
+                      : 'text-text-secondary hover:text-text-primary border border-transparent'
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  {t(labelKey)}
+                </button>
+              );
+            })}
           </div>
         )}
+        {/* The panel both card tabs select. One element rather than one per
+            tab: it is the same list with a different source, so a second
+            panel would be an empty promise. `aria-labelledby` tracks the
+            selected tab. */}
+        <div
+          role={hasSounds ? 'tabpanel' : undefined}
+          id={hasSounds ? `${cardTabsId}-panel` : undefined}
+          aria-labelledby={hasSounds ? `${cardTabsId}-tab-${activeSection}` : undefined}
+        >
         <HeroSkinsPanel
           mods={activeList}
           onSelect={onSelect}
           onToggleVariant={onToggleVariant}
           onRequestDelete={onRequestDelete}
-          includedSkinKeys={activeSection === 'skins' ? includedSkinKeys : undefined}
-          onToggleShuffleIncluded={activeSection === 'skins' ? onToggleShuffleIncluded : undefined}
+          includedSkinKeys={activeSection === 'skins' ? includedSkinKeys : soundShuffleIncluded}
+          onToggleShuffleIncluded={activeSection === 'skins' ? onToggleShuffleIncluded : onToggleSoundShuffleIncluded}
           shuffleVariantChoices={activeSection === 'skins' ? shuffleVariantChoices : undefined}
           onSetShuffleVariant={activeSection === 'skins' ? onSetShuffleVariant : undefined}
           shuffleArmed={shuffleArmed}
+          shuffleKeyFor={activeSection === 'sounds' ? shuffleSoundKey : undefined}
           hideNsfwPreviews={hideNsfwPreviews}
           showDownloadable={activeSection === 'skins'}
           browseAction={
@@ -3261,6 +3561,7 @@ function HeroCard({
               : t('locker.page.downloadASkinForThisHero')
           }
         />
+        </div>
       </div>
       )}
     </div>

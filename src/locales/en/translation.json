@@ -2696,7 +2696,10 @@
       "openHeroLooks_one": "{{hero}} looks: {{count}} installed mod",
       "openHeroLooks_other": "{{hero}} looks: {{count}} installed mods",
       "openHeroSounds_one": "{{hero}} sounds: {{count}} installed mod",
-      "openHeroSounds_other": "{{hero}} sounds: {{count}} installed mods"
+      "openHeroSounds_other": "{{hero}} sounds: {{count}} installed mods",
+      "vanillaShuffleTitle": "Allow the character-model shuffle to choose vanilla",
+      "vanillaShuffleOn": "Vanilla included",
+      "vanillaShuffleOff": "Vanilla off"
     },
     "hero": {
       "skins": "Skins",
