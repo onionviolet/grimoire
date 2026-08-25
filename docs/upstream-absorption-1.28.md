@@ -301,3 +301,52 @@ answered here: rather than reconciling the two views into one, the fork could
 carry a toggle between upstream's tab model and the fork's rail. That is a
 product decision with its own design and persistence questions, so it is
 recorded as a candidate and not treated as the default.
+
+### What the repair landed
+
+The repair is one commit, `fix(locker): re-apply the fork's Locker surfaces
+over upstream's tab model`. It reconciles the two views rather than building
+the toggle.
+
+Upstream keeps the shared surface, per rule 3: the `GeneralTabId` tab model is
+the rail, every tab stays selectable whether or not it holds anything, and the
+`all` / `looks` / `sounds` segmented control does not come back. The rail's
+visual arrangement on its own was not a differentiator the fork could name, so
+it was not defended, and `selectedAllKey` went with the section it served.
+
+Everything the list above owed is back, over that base:
+
+- The global sound categories are a fourth rail block behind their own
+  divider, and a sound row's pane is `GlobalSoundShelf` plus its Forge button.
+  They stay a separate block because they are classified from what a VPK
+  writes, not from `globalType`, so the retag menu can never offer one as a
+  move destination. D-04 applies to that block only: an empty sound row is
+  hidden, while an empty type tab keeps the real empty state upstream gives it
+  (an importer, an add-mods button, or a Browse hint).
+- `shuffleKeyFor` at the hero card's call site, so the sound pool keeps its own
+  namespace, and the header badge counts both pools again.
+- The null-until-picked landing tab, replacing upstream's state initializer.
+- `resolveLockerRoute`, the legacy Sound Locker rewrites, the Foundry `?hero=`
+  handoff, and the hero drill-in's `?section=`. A legacy `?mode=sounds` link
+  now lands on the first populated sound row.
+- The name-keyed hero favorites shared with the Foundry grid, `readPref` /
+  `writePref`, `useScrollRestore`, and `useEscapeKey`.
+- The gallery card's overlay button and Sounds chip, the expanded card's
+  roving tablist and tabpanel, derived pak descriptions (D-19), and the
+  vanilla-shuffle switch.
+
+The Global tile and the drill-in both count over classification, placement and
+the sound taxonomy, by mod id, so a click through cannot change the number.
+
+### What remains
+
+- `src/lib/globalInventory.ts` is now reachable only from its own test.
+  `globalInventoryRailRows` and `firstGlobalRailRowKey` projected the merged
+  rail for a section, and there are no sections; `countGlobalInventoryMods` and
+  `countGlobalInventoryCategories` predate the Global placement axis, so
+  neither is the denominator any more. Deleting the module and its test is a
+  separate change, not this repair's to make.
+- `GLOBAL_VISUAL_MOD_TYPE_ORDER` in `lockerUtils` now has `globalInventory` as
+  its only consumer and would go the same way.
+- No manual smoke record. The Locker surfaces this touches are listed in the
+  release's smoke-record section as unverified.
