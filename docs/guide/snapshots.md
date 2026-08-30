@@ -2,7 +2,7 @@
 title: Snapshots and rolling back
 description: Automatic recovery points taken before risky operations, and how to use one to undo a bad update or a wrong profile.
 slug: snapshots
-order: 20
+order: 18
 updated: 2026-07-29
 ---
 

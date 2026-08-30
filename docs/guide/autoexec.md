@@ -2,7 +2,7 @@
 title: Console commands and launch options
 description: Build an autoexec.cfg of console commands that run at game start, and set Steam launch options without leaving Grimoire.
 slug: autoexec
-order: 17
+order: 20
 updated: 2026-07-29
 ---
 

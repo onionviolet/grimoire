@@ -2,7 +2,7 @@
 title: Managing skins in the Locker
 description: Equip, order, and preview a hero's skins, pick between variants, and shuffle a different one on every launch.
 slug: locker-skins
-order: 8
+order: 9
 updated: 2026-07-29
 ---
 

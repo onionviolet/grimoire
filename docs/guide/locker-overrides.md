@@ -2,7 +2,7 @@
 title: Reviewing and removing Locker overrides
 description: One list of every card, sound, color, and paint the Locker has applied, across every hero.
 slug: locker-overrides
-order: 14
+order: 15
 updated: 2026-07-29
 ---
 

@@ -3,18 +3,18 @@ title: Performance presets
 description: Apply a community fps config to Deadlock without breaking your mods, and remove it cleanly when you want.
 slug: performance-presets
 order: 21
-updated: 2026-07-29
+updated: 2026-08-30
 ---
 
 # Performance presets
 
 Grimoire can apply community-made performance configs that raise your frame rate by turning down effects the game does not need. **Your mods keep working**, and you can remove it at any time.
 
-Turn it on in **Settings > Experimental Features > Performance Config**, then find its controls in **Settings > Game setup**. The toggle and the card are in different panes, so if the toggle seems to have done nothing, that is why. There is a link on the toggle that takes you there.
+Everything lives at **Settings > Game > Performance**. There is no toggle to find first: older writing says to enable **Performance Config** under Experimental Features, and that is out of date.
 
 ## Applying one
 
-1. Go to **Settings > Game setup** and find the **Performance Config** card.
+1. Go to **Settings > Game > Performance**.
 2. Pick a preset from the dropdown.
 3. Click **Apply Config**.
 4. Restart Deadlock.
@@ -75,6 +75,18 @@ Grimoire notices and says so with **Wiped by game update**. Click **Reapply Conf
 If you edit values by hand, Grimoire spots it and the badge changes to **(edited)**. **Reapply** then folds your edits into saved overrides and keeps them across future reapplies, so your tweaks survive game updates.
 
 **Reset Overrides** discards those saved edits. It acts on the preset currently in the file, not whatever is selected in the dropdown.
+
+**Edit File**, **Change editor**, **Reset Overrides**, and **Restore Backup** are not buttons on the card. They are behind the **...** menu next to **Apply Config**, which only lists the ones that apply to your current state.
+
+## Pinning a version
+
+The card applies a specific version of a preset, not whatever its author pushed today, and the badge says which: **Applied v3** and so on.
+
+**Version** picks a different one. Choosing does not write it; the card says *Reapply to write it to gameinfo.gi* and waits for you. **Full version history** lists every version with its date, so you can go back to one that worked.
+
+If a newer version ships, the status line says so (*v4 is available*) and **Reapply** takes it. Nothing updates on its own.
+
+**Track latest upstream** goes further: it applies the newest release straight from the config author's GitHub repo rather than waiting for a Grimoire update. It makes a network request to that repo, and settings that appeared upstream but have not been reviewed yet are held back, with the card saying how many.
 
 ## If the map looks too dark
 

@@ -2,7 +2,7 @@
 title: Discover
 description: Browse mod loadouts published by other Grimoire players, import them, and publish your own.
 slug: discover
-order: 23
+order: 26
 updated: 2026-07-29
 ---
 

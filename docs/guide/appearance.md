@@ -2,7 +2,7 @@
 title: Customizing how Grimoire looks
 description: Accent color, background glow, sidebar art, and the language picker.
 slug: appearance
-order: 27
+order: 22
 updated: 2026-07-29
 ---
 

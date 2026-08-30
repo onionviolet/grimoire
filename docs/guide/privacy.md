@@ -2,8 +2,8 @@
 title: Privacy and what leaves your machine
 description: Grimoire has no telemetry. Here is every network request it can make, what triggers each one, and how to verify a download.
 slug: privacy
-order: 25
-updated: 2026-07-29
+order: 31
+updated: 2026-08-30
 ---
 
 # Privacy and what leaves your machine
@@ -35,7 +35,7 @@ These are plain requests for public files. No account, no identifier.
 
 ## Everything else is opt-in
 
-The features that talk to anything beyond the above are all off by default, behind **Settings > Experimental Features**. None of them turns on by itself.
+The features that talk to anything beyond the above are all off by default. Most are behind **Settings > Experimental Features**; the last three below live elsewhere and each says where. None of them turns on by itself.
 
 ### Stats
 
@@ -53,6 +53,12 @@ One thing to know that the app does not spell out: **while Discover is enabled, 
 
 If you have ever signed in, Grimoire also checks your session at startup even with the toggle off, because the saved session still exists. **Sign out** to stop that. See [Discover](./discover.md).
 
+### In-app browser
+
+A **Browser** tab for mod sites. Anything you visit in it reaches that site exactly as it would in a normal browser, so this is the one feature whose network activity is entirely yours to direct.
+
+Two things it does not do. It **blocks ads and trackers using filter lists bundled into the app at build time**, so the blocking itself makes no request and nobody learns what you browsed. And it never installs anything on its own: a download is handed to your real browser, or, for a recognized mod file, offered to your library only after you confirm.
+
 ### Deadworks Servers
 
 The server list comes from a third-party registry. To show you a ping, **your machine sends a packet directly to every server in the list**, which means those operators can see your IP before you join anything. See [servers](./servers.md).
@@ -68,6 +74,10 @@ Uploads four numbers per match: the match id, the server cluster, and two replay
 **Settings > Preferences.** Off by default.
 
 Shows what you are doing in Grimoire on your Discord profile. It talks only to the Discord app on your own machine, over a local socket. Nothing goes to Grimoire.
+
+### Track latest upstream (performance presets)
+
+**Settings > Game > Performance**, off unless you tick it. It asks the config author's public GitHub repository for its newest release so a preset can update ahead of Grimoire. A plain request for a public file, no identifier attached. See [performance presets](./performance-presets.md).
 
 ## Things worth being precise about
 

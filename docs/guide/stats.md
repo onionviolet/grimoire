@@ -2,7 +2,7 @@
 title: Player stats
 description: Track ranked score, match history, and hero performance for any Steam account, and understand exactly what gets sent where.
 slug: stats
-order: 15
+order: 25
 updated: 2026-07-29
 ---
 

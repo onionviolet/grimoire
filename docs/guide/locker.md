@@ -2,7 +2,7 @@
 title: What the Locker is
 description: The Locker organizes your cosmetics by hero, and applies a second kind of cosmetic that sits outside your normal mod list entirely.
 slug: locker
-order: 7
+order: 8
 updated: 2026-07-29
 ---
 

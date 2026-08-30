@@ -2,7 +2,7 @@
 title: Hero cards
 description: Apply card art from an installed mod, or build your own from your images, one portrait variant at a time.
 slug: locker-cards
-order: 9
+order: 10
 updated: 2026-07-29
 ---
 

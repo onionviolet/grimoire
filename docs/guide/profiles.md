@@ -2,7 +2,7 @@
 title: Saving and swapping mod profiles
 description: Save your current loadout as a named profile and switch between setups without reinstalling anything.
 slug: profiles
-order: 18
+order: 16
 updated: 2026-07-29
 ---
 

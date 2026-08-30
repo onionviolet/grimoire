@@ -2,7 +2,7 @@
 title: Replacing a hero's sound with your own
 description: Swap any ability sound or voice line for your own MP3, with trimming and volume matching.
 slug: door-stuck-sounds
-order: 26
+order: 28
 updated: 2026-07-29
 ---
 

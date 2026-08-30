@@ -2,7 +2,7 @@
 title: Global cosmetics
 description: Cosmetics that are not tied to a hero, including soul containers and spirit urns you can build from your own 3D models.
 slug: locker-global
-order: 12
+order: 13
 updated: 2026-07-29
 ---
 

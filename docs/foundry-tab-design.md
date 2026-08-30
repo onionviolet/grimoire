@@ -1,7 +1,9 @@
 # Foundry tab (design / vision)
 
-> **Status:** Design, 2026-06-20. A first-class **Foundry** tab and its core
-> catalog/sound/texture slices have since shipped, so the code is the truth.
+> **Status:** Design, 2026-06-20. The tab and its core catalog/sound/texture
+> slices have since shipped, so the code is the truth. It is `Foundry` in the
+> route and the source (`src/pages/Foundry.tsx`) but ships to players labelled
+> **Door Stuck** (`nav.foundry`), behind `experimentalFoundry`.
 > Kept for the original vision and the deferred ideas. See
 > [feature-status.md](./feature-status.md) for the current inventory.
 

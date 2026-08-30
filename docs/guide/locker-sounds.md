@@ -2,7 +2,7 @@
 title: Per-ability sounds
 description: Assign one sound mod per ability, then tune its volume and pitch, without the mods fighting each other.
 slug: locker-sounds
-order: 10
+order: 11
 updated: 2026-07-29
 ---
 

@@ -2,7 +2,7 @@
 title: Deadworks community servers
 description: Browse community dedicated servers, let Grimoire fetch whatever content they need, and join through Steam.
 slug: servers
-order: 24
+order: 27
 updated: 2026-07-29
 ---
 

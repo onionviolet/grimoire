@@ -2,7 +2,7 @@
 title: "Tutorial: a custom soul container from Sketchfab"
 description: Take a free 3D model off Sketchfab and turn it into a working soul container or spirit urn, start to finish.
 slug: locker-glb-tutorial
-order: 13
+order: 14
 updated: 2026-07-29
 ---
 

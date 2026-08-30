@@ -2,7 +2,7 @@
 title: Recoloring abilities and painting skins
 description: Repaint a hero's ability effects in any color, rainbow, or gradient, and paint a flowing pattern onto their body and gun.
 slug: locker-effects
-order: 11
+order: 12
 updated: 2026-07-29
 ---
 

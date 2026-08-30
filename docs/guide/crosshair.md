@@ -2,7 +2,7 @@
 title: Designing a crosshair
 description: Build a custom crosshair with a live preview, save it as a preset, and get it into the game.
 slug: crosshair
-order: 16
+order: 19
 updated: 2026-07-29
 ---
 

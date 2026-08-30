@@ -13,6 +13,7 @@ Writing one? Read [STYLE.md](./STYLE.md) first. The short version: one page, one
 | [Load order and the mod limit](./load-order.md) | `load-order` | Which mod wins, how to reorder, what happens past 99 |
 | [When two mods conflict](./conflicts.md) | `conflicts` | What the Conflicts tab is telling me and whether to care |
 | [Launching modded or vanilla](./launching.md) | `launching` | How vanilla works without uninstalling anything |
+| [Saving mods for later](./saved.md) | `saved` | Bookmark a mod without installing it |
 | [Fixing mods that do not load](./troubleshooting.md) | `troubleshooting` | Mods are installed but the game is unmodded |
 
 ## The Locker
@@ -46,6 +47,7 @@ Its own set, because the Locker holds two different kinds of thing and conflatin
 | [Console commands and launch options](./autoexec.md) | `autoexec` | Run commands at game start |
 | [Performance presets](./performance-presets.md) | `performance-presets` | More fps without breaking my mods |
 | [Customizing how Grimoire looks](./appearance.md) | `appearance` | Accent, glow, sidebar art, language |
+| [Seeing your resolved game settings](./config.md) | `config` | Which value my game actually uses, and what set it |
 
 ## Optional features
 
@@ -56,6 +58,8 @@ Its own set, because the Locker holds two different kinds of thing and conflatin
 | [Discover](./discover.md) | `discover` | Share loadouts with other players |
 | [Deadworks community servers](./servers.md) | `servers` | Join a community server |
 | [Replacing a hero's sound](./door-stuck-sounds.md) | `door-stuck-sounds` | Swap a sound for my own audio |
+| [Browsing mod sites inside Grimoire](./browser.md) | `browser` | Find mods without leaving the app |
+| [Building a custom chat wheel](./chat-wheel.md) | `chat-wheel` | Make a ChatLane wheel and install it |
 
 ## Trust
 

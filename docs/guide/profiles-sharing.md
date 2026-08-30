@@ -2,7 +2,7 @@
 title: Sharing a profile
 description: Send your loadout to someone as a share code or a file, and import one you were sent.
 slug: profiles-sharing
-order: 19
+order: 17
 updated: 2026-07-29
 ---
 

@@ -2,7 +2,7 @@
 title: Fixing mods that do not load
 description: The first thing to try, what a Deadlock update breaks, and how to handle the common failures.
 slug: troubleshooting
-order: 6
+order: 7
 updated: 2026-07-29
 ---
 
