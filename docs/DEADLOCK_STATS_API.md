@@ -1,5 +1,7 @@
 # Deadlock API Complete Reference
 
+> **Status:** Living. Describes shipped behavior or a stable contract. Reviewed 2026-07-29.
+
 **Base URL:** `https://api.deadlock-api.com`  
 **Version:** 0.1.0  
 **License:** MIT  

@@ -1,5 +1,7 @@
 # APT repository (Debian / Ubuntu)
 
+> **Status:** Living. Describes shipped behavior or a stable contract. Reviewed 2026-07-29.
+
 Grimoire ships an APT repository at `https://apt.grimoiremods.com` so Debian and
 Ubuntu users can install and update via `apt` instead of manually downloading a
 `.deb` each release.

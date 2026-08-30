@@ -1,13 +1,15 @@
 # Hero sound codenames
 
+> **Status:** Living. Describes shipped behavior or a stable contract. Reviewed 2026-07-29.
+
 Reference dictionary for mapping Deadlock's internal hero codenames to display names, scoped to **sound-mods-in-Locker** work (organize sound mods by hero and ability slot).
 
 ## Why two columns of codenames
 
 Deadlock uses **two parallel codename namespaces** that don't always agree:
 
-1. **`class_name`** (form: `hero_<name>`) — what `assets.deadlock-api.com/v2/heroes` returns. Used by HUD, panorama, scripts.
-2. **sound-path codename** — what the VPK actually uses inside `sounds/abilities/<codename>/a<1-4>_<ability>/`.
+1. **`class_name`** (form: `hero_<name>`): what `assets.deadlock-api.com/v2/heroes` returns. Used by HUD, panorama, scripts.
+2. **sound-path codename**: what the VPK actually uses inside `sounds/abilities/<codename>/a<1-4>_<ability>/`.
 
 For 33 of the 35 heroes that currently ship ability sounds, these two agree. The exceptions:
 

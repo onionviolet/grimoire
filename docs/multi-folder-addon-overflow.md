@@ -1,6 +1,8 @@
 # Multi-folder addon overflow
 
-Status: implemented (W1-W10 landed); renderer polish (W11) optional
+> **Status:** Living. Describes shipped behavior or a stable contract. Reviewed 2026-07-29.
+
+Delivery: W1-W10 landed; renderer polish (W11) optional
 Owner: Slush97
 Last updated: 2026-05-27
 

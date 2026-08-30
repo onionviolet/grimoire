@@ -1,11 +1,14 @@
 # Locker Hero Card: APPLY pipeline design
 
-Status: **shipped** (re-verified 2026-07-28: apply, swap, revert, custom
-uploads, empty-set teardown, and the Installed/Conflicts/profile/
-portable-export hiding all confirmed in code). The one renderer gap, the
-unsurfaced missing-source warning, was closed the same day; see deviation 5.
-This document is the design of record; the "As built" section below records
-where the implementation deviates from it. Read alongside the project memory
+> **Status:** Design, 2026-05-27, and shipped. Re-verified 2026-07-28: apply,
+> swap, revert, custom uploads, empty-set teardown, and the Installed/Conflicts/
+> profile/portable-export hiding are all confirmed in code, and the one renderer
+> gap (the unsurfaced missing-source warning) was closed the same day; see
+> deviation 5. This document is the design of record, and the "As built" section
+> below records where the implementation deviates from it.
+
+Supersedes the "next step" note in the `feat/locker-hero-card-picker` prototype.
+Read alongside the project memory
 `project_global_mod_type_signals.md` for the verified path signals and decode
 notes.
 

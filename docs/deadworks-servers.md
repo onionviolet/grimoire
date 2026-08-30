@@ -1,5 +1,7 @@
 # Deadworks server browser
 
+> **Status:** Living. Describes shipped behavior or a stable contract. Reviewed 2026-07-29.
+
 Lets Grimoire users browse and join Deadworks community dedicated servers from a
 **Servers** tab. Gated behind the `experimentalDeadworksServers` setting.
 
@@ -60,8 +62,12 @@ server content off the user's 99-slot `pakNN` budget.
 The directory is served by `grimoire-relay` (separate CF Worker, see that
 repo's CLAUDE.md). Wire types mirror `grimoire-relay/src/shared/schemas.ts`;
 the client copy is `src/types/deadworks.ts` (keep additive and in sync). The
-relay URL is configurable (`deadworksRelayUrl` setting), defaulting to the
-built-in `https://relay.grimoiremods.com`; any deadworks-shaped relay works.
+relay URL is configurable (`deadworksRelayUrl` setting, no UI); any
+deadworks-shaped relay works. **The shipped default is the upstream
+third-party registry `https://api.deadworks.net`** (`DEFAULT_RELAY_URL`,
+`electron/main/ipc/servers.ts`), not the built-in
+`https://relay.grimoiremods.com`. Corrected 2026-07-29: this doc previously
+claimed the Grimoire relay was the default, which it is not.
 
 ## Security / conventions
 

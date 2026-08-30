@@ -1,5 +1,7 @@
 # GameBanana Categories Reference for Deadlock
 
+> **Status:** Living. Describes shipped behavior or a stable contract. Reviewed 2026-07-29.
+
 > **Game ID**: `20948` (Deadlock)
 > **Last Verified**: 2024-12-31
 > **Total Items Scanned**: 1,579

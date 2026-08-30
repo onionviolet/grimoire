@@ -1,5 +1,7 @@
 # Localization (i18n)
 
+> **Status:** Living. Describes shipped behavior or a stable contract. Reviewed 2026-07-29.
+
 Grimoire's UI is translated by the community through [Weblate](https://weblate.org).
 This doc covers all three audiences: the maintainer setting Weblate up once,
 developers adding translatable strings, and translators doing the work.
@@ -94,11 +96,11 @@ Weblate then opens and updates a PR itself. Use this once you're comfortable.
 
 ### 4. Recommended addons (component -> Addons)
 
-- **Cleanup translation files** — keeps each language file structurally in sync with
+- **Cleanup translation files**: keeps each language file structurally in sync with
   the English base and drops obsolete keys. Strongly recommended.
-- **Customize JSON output** — set indentation to **2 spaces** to match the repo style
+- **Customize JSON output**: set indentation to **2 spaces** to match the repo style
   and minimize PR diff noise.
-- **Squash Git commits** — one tidy commit per push instead of one per string.
+- **Squash Git commits**: one tidy commit per push instead of one per string.
 
 ### 5. Invite translators
 

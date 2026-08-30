@@ -1,6 +1,8 @@
 # Foundry handoff (next agent)
 
-Picking up the Grimoire **Foundry** tab. Read [foundry-tab-design.md](./foundry-tab-design.md)
+> **Status:** Archived. A point-in-time handoff note referencing branches that no longer matter. Kept for history only.
+
+Picking up the Grimoire **Foundry** tab. Read [foundry-tab-design.md](../foundry-tab-design.md)
 for the full vision. This file is the "where we are / what's next" snippet.
 
 Refreshed against `main` at v1.24.0. Everything below was re-verified against the

@@ -1,5 +1,7 @@
 # Mod Profile Format Spec
 
+> **Status:** Living. Describes shipped behavior or a stable contract. Reviewed 2026-07-29.
+
 A portable JSON format for sharing Deadlock mod loadouts between machines running Grimoire. This format is Grimoire-only and not compatible with other mod managers.
 
 The format was first implemented in [Grimoire](https://github.com/Slush97/grimoire) for Deadlock. The schema is deliberately game neutral and carries a slot for tool-specific extensions, but nothing outside Grimoire reads or writes it today. A profile is just a named, ordered list of mod references, each pinned to a specific source (currently GameBanana) plus optional tool-specific extensions.

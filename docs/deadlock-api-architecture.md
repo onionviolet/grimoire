@@ -1,5 +1,7 @@
 # Deadlock Stats API & Database Architecture
 
+> **Status:** Living. Describes shipped behavior or a stable contract. Reviewed 2026-07-29.
+
 > Comprehensive reference for the Deadlock Mod Manager's player statistics system, covering external API integration, local persistence, and data flow patterns.
 
 ---
@@ -178,28 +180,28 @@ sequenceDiagram
 | `/v1/players/{id}/match-history` | Match records | match_history | ON CONFLICT ignore |
 | `/v1/players/hero-stats` | Per-hero stats | hero_stats_snapshots | Weekly snapshot |
 | `/v1/players/steam` | Profile data | players | Name/avatar update |
-| `/v1/players/{id}/mate-stats` | Teammate win rates | — | In-memory only |
-| `/v1/players/{id}/enemy-stats` | Opponent stats | — | In-memory only |
-| `/v1/analytics/badge-distribution` | Rank distribution | — | Transform badge_level→names |
-| `/v1/analytics/hero-counter-stats` | Hero matchups | — | Transform field names |
-| `/v1/analytics/hero-synergy-stats` | Hero pairs | — | Transform hero_id1/2 |
+| `/v1/players/{id}/mate-stats` | Teammate win rates | n/a | In-memory only |
+| `/v1/players/{id}/enemy-stats` | Opponent stats | n/a | In-memory only |
+| `/v1/analytics/badge-distribution` | Rank distribution | n/a | Transform badge_level->names |
+| `/v1/analytics/hero-counter-stats` | Hero matchups | n/a | Transform field names |
+| `/v1/analytics/hero-synergy-stats` | Hero pairs | n/a | Transform hero_id1/2 |
 
 ### Meta Analytics Transform Layer
 
 Several analytics endpoints require backend transformation:
 
 ```typescript
-// Badge Distribution: badge_level 12-116 → Initiate I through Eternus VI
+// Badge Distribution: badge_level 12-116 -> Initiate I through Eternus VI
 const group = Math.floor(badgeLevel / 10)  // 1-11
-const sublevel = badgeLevel % 10           // 2-6 → I-V
+const sublevel = badgeLevel % 10           // 2-6 -> I-V
 
 // Hero Counters: API field mapping
 { hero_id, enemy_hero_id, matches_played, wins }
-  → { hero_id, enemy_hero_id, matches, win_rate }
+  -> { hero_id, enemy_hero_id, matches, win_rate }
 
 // Hero Synergies: API field mapping  
 { hero_id1, hero_id2, matches_played, wins }
-  → { hero_id, ally_hero_id, matches, win_rate }
+  -> { hero_id, ally_hero_id, matches, win_rate }
 ```
 
 ---
@@ -242,10 +244,10 @@ Applied to: Hero Counters, Hero Synergies, Hero Duos, Heroes tab, Analytics tab.
 ## Key Implementation Patterns
 
 ### 1. Fetch-then-Persist
-Load local data immediately → background API fetch → persist new data → update UI.
+Load local data immediately -> background API fetch -> persist new data -> update UI.
 
 ### 2. Batch Profile Resolution
-Collect unique player IDs → single Steam API call → map back to entities.
+Collect unique player IDs -> single Steam API call -> map back to entities.
 
 ### 3. Sort-Before-Slice
 Sort by UI display order **before** slicing IDs for batch lookup to ensure displayed entries have resolved names.

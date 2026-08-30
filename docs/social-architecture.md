@@ -1,6 +1,7 @@
 # Grimoire Social: Architecture & Scope
 
-**Status:** Draft (planning)
+> **Status:** Living. Describes shipped behavior or a stable contract. Reviewed 2026-07-29.
+
 **Owner:** Slush97
 **Last updated:** 2026-05-15 (rev 2: applied context7-verified corrections)
 
@@ -32,7 +33,16 @@ A small social layer for Grimoire that lets users publish their portable mod pro
 ### Non-functional goals
 
 - Publishing or browsing must never block offline use of the app
-- Preserve current privacy posture: no telemetry, no background calls
+- Preserve current privacy posture: no telemetry, and no background calls
+  beyond the ones listed here. **Correction 2026-07-29: as shipped there are
+  two.** With `experimentalSocial` on, the sidebar polls
+  `GET /v1/profiles?sort=new` every 2 minutes for the lifetime of the app to
+  drive the unread badge, whether or not Discover is open (`Sidebar.tsx`,
+  `DISCOVER_BADGE_POLL_MS`). And `hydrateOnBoot()` calls `GET /v1/me` at
+  startup whenever an encrypted session file exists, ungated by the flag
+  (`electron/main/index.ts`). Both are documented for users in
+  `docs/guide/privacy.md`. Revisit whether the badge poll is worth its
+  privacy cost.
 - Discoverable content gated behind explicit user navigation to a `Discover` tab
 - NSFW handling at parity with current GameBanana flow (`hideNsfwPreviews` setting respected)
 
@@ -145,7 +155,7 @@ CREATE INDEX idx_reports_open ON reports(created_at) WHERE resolved_at IS NULL;
 
 ## 4. API surface (v1)
 
-All routes JSON, all responses include `{ error: string }` on failure. Auth via `Authorization: Bearer <session>` issued at login. **All routes are prefixed with `/v1/`.** This is non-negotiable: the client ships in Electron releases that may stay installed for years, so we must never break v1 once published — additive changes only, breaking changes go to `/v2/` alongside.
+All routes JSON, all responses include `{ error: string }` on failure. Auth via `Authorization: Bearer <session>` issued at login. **All routes are prefixed with `/v1/`.** This is non-negotiable: the client ships in Electron releases that may stay installed for years, so we must never break v1 once published: additive changes only, breaking changes go to `/v2/` alongside.
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
@@ -196,7 +206,7 @@ Steam still uses OpenID 2.0 (deprecated by Google et al., alive at Steam). No ca
 
 **Session storage on the client**
 
-- Prefer Electron's **async** safeStorage API (`isAsyncEncryptionAvailable()`, async encrypt/decrypt). Non-blocking, supports key rotation, and on Linux supports the **Portal Secret D-Bus interface** for sandboxed installs (Flatpak, Snap) — better behavior than the sync API in those environments. Sync API still works; async is preferred for new code.
+- Prefer Electron's **async** safeStorage API (`isAsyncEncryptionAvailable()`, async encrypt/decrypt). Non-blocking, supports key rotation, and on Linux supports the **Portal Secret D-Bus interface** for sandboxed installs (Flatpak, Snap): better behavior than the sync API in those environments. Sync API still works; async is preferred for new code.
 - Gate on `safeStorage.isAsyncEncryptionAvailable()` after `app.ready` (on Linux specifically, availability is only knowable after the ready event)
 - **Linux gotcha (verified):** *"Linux supports various secret stores like `kwallet` and `gnome-libsecret`, but if no store is available, items are encrypted via a hardcoded plaintext password."* Detect this and either (a) refuse to persist the token and require sign-in each launch, or (b) persist with an explicit warning toast. Recommend (a) for v1.
 
@@ -212,7 +222,7 @@ Steam still uses OpenID 2.0 (deprecated by Google et al., alive at Steam). No ca
 
 ## 6. Rate limiting and abuse prevention
 
-Cloudflare ships a first-party Rate Limiting API binding (`env.MY_RL.limit({ key })`) — preferred over hand-rolled KV solutions. **Caveat**: the `simple` config only supports periods of 10 or 60 seconds.
+Cloudflare ships a first-party Rate Limiting API binding (`env.MY_RL.limit({ key })`): preferred over hand-rolled KV solutions. **Caveat**: the `simple` config only supports periods of 10 or 60 seconds.
 
 | Action | Limit | Mechanism | Reasoning |
 |---|---|---|---|
@@ -274,26 +284,26 @@ The asymmetry (hard-delete user, soft-delete profiles) is deliberate: the user's
 
 **New files**
 
-- `electron/main/services/social.ts` — fetch wrapper, rate limiter (mirror `gamebanana.ts:67`), session lifecycle
-- `electron/main/services/socialAuth.ts` — opens BrowserWindow for Steam, intercepts redirect, persists token via `safeStorage`
-- `electron/main/ipc/social.ts` — IPC handlers (`social:login`, `social:logout`, `social:listProfiles`, `social:publish`, `social:like`, `social:unlike`, `social:report`, `social:me`)
-- `electron/preload/index.ts` — expose `window.electronAPI.social.*`
-- `src/pages/Discover.tsx` — list/detail UI
-- `src/components/social/ProfileCard.tsx` — list item
-- `src/components/social/PublishDialog.tsx` — title + description form, picks an existing local profile to publish
-- `src/stores/socialStore.ts` — Zustand store for current user + cached lists
+- `electron/main/services/social.ts`: fetch wrapper, rate limiter (mirror `gamebanana.ts:67`), session lifecycle
+- `electron/main/services/socialAuth.ts`: opens BrowserWindow for Steam, intercepts redirect, persists token via `safeStorage`
+- `electron/main/ipc/social.ts`: IPC handlers (`social:login`, `social:logout`, `social:listProfiles`, `social:publish`, `social:like`, `social:unlike`, `social:report`, `social:me`)
+- `electron/preload/index.ts`: expose `window.electronAPI.social.*`
+- `src/pages/Discover.tsx`: list/detail UI
+- `src/components/social/ProfileCard.tsx`: list item
+- `src/components/social/PublishDialog.tsx`: title + description form, picks an existing local profile to publish
+- `src/stores/socialStore.ts`: Zustand store for current user + cached lists
 
 **Touched files**
 
-- `src/components/Sidebar.tsx` — add Discover entry between Browse and Profiles
-- `src/pages/Profiles.tsx` — add a "Publish" button per profile row (gated on logged-in state)
-- `src/components/profiles/ImportProfileDialog.tsx` — allow opening from a Discover detail with the share code prefilled
-- `src/types/electron.d.ts` — types for new IPC
+- `src/components/Sidebar.tsx`: add Discover entry between Browse and Profiles
+- `src/pages/Profiles.tsx`: add a "Publish" button per profile row (gated on logged-in state)
+- `src/components/profiles/ImportProfileDialog.tsx`: allow opening from a Discover detail with the share code prefilled
+- `src/types/electron.d.ts`: types for new IPC
 
 **Reuse existing**
 
 - Portable profile parser/builder (already in `electron/main/services/profiles/`)
-- `ImportProfileDialog` for the import action — no new download flow
+- `ImportProfileDialog` for the import action: no new download flow
 - Rate limiter pattern from `gamebanana.ts`
 - `ModThumbnail` for hint thumbnails on profile cards
 
@@ -317,7 +327,7 @@ D1 is regionally replicated; reads from a non-primary region after a write may n
 Mitigation:
 
 - `POST /v1/profiles` returns the **full created row** (not just `{ id }`). Client prepends it to its in-memory list immediately
-- Don't trigger a refetch of the list right after publishing — trust the optimistic insert
+- Don't trigger a refetch of the list right after publishing: trust the optimistic insert
 - Refetch on the next natural navigation to Discover
 
 Same pattern applies to like/unlike: server returns the new `like_count`; client updates local state directly rather than refetching.
@@ -337,13 +347,13 @@ Same pattern applies to like/unlike: server returns the new `like_count`; client
 | D1 storage | 5 GB | ~50 MB at 10K profiles | 100x |
 | KV reads | 100K/day | ~30K/day at 1K MAU | 3x |
 | KV writes | 1K/day | <100/day | 10x |
-| Workers Paid (next step) | $5/mo, 10M req/month included; ~$0.30/M after¹ | — | upgrade trigger |
+| Workers Paid (next step) | $5/mo, 10M req/month included; ~$0.30/M after¹ | n/a | upgrade trigger |
 
 ¹ Verify exact pricing at upgrade time; Cloudflare adjusts these.
 
 **Likely first-bottleneck:** D1 writes during a viral moment (single popular profile + brigade of likes). If `like_count` updates start approaching 100K writes/day, move the counter to KV with periodic D1 reconciliation, or upgrade to Workers Paid (50M D1 writes/month included).
 
-**Critical failure mode (verified from Cloudflare D1 docs):** *"Exceeding daily read/write limits on the Free plan will prevent D1 queries from running, returning errors to your client."* This is a **hard cliff, not throttling**. A viral moment doesn't degrade gracefully — publish/like will 5xx until the daily counter resets. Mitigation:
+**Critical failure mode (verified from Cloudflare D1 docs):** *"Exceeding daily read/write limits on the Free plan will prevent D1 queries from running, returning errors to your client."* This is a **hard cliff, not throttling**. A viral moment doesn't degrade gracefully: publish/like will 5xx until the daily counter resets. Mitigation:
 
 - Alert (manually for now: a daily admin check) at 70K writes/day = 70% of ceiling
 - Pre-emptively upgrade to Workers Paid before the doc gets shared in any high-traffic channel
@@ -396,10 +406,10 @@ The app shifts from "zero telemetry" to "explicit social opt-in." Discover tab f
 ## 11. Open questions
 
 1. **Domain name?** `grimoire.app` taken? Otherwise `grimoiremods.com` or stick with `grimoire-social.<your>.workers.dev` for v1.
-2. **Admin identity?** Hardcoded Steam ID in Worker secrets, or a separate admin token? Recommend the latter — one fewer hot path in the auth code.
-3. **Profile editing post-publish?** v1 says no — to edit, delete and re-publish. Easier UX, easier moderation. Confirm acceptable.
+2. **Admin identity?** Hardcoded Steam ID in Worker secrets, or a separate admin token? Recommend the latter: one fewer hot path in the auth code.
+3. **Profile editing post-publish?** v1 says no: to edit, delete and re-publish. Easier UX, easier moderation. Confirm acceptable.
 4. **Search?** D1 supports FTS5 but it's a real schema change. Defer until profile count makes browse-only painful (~500+).
-5. **Hero inference**: where's the canonical hero list? `lockerUtils.ts` has `inferHeroFromTitle` — can we reuse it server-side? (Pure function over strings — yes, but needs porting; goes in the shared types package.)
+5. **Hero inference**: where's the canonical hero list? `lockerUtils.ts` has `inferHeroFromTitle`: can we reuse it server-side? (Pure function over strings: yes, but needs porting; goes in the shared types package.)
 6. **Soft-delete vs. hard-delete UX**: should owner-deleted profiles still be visible to people who already imported them via direct link? Recommend: 404 the public route, but the share code itself remains importable forever (it's self-contained data).
 7. **Like-history preservation on account deletion?** §6.5 says hard-delete the user's likes. Alternative: anonymize (set `voter_steam_id = '__deleted__'`) to preserve historical counts perfectly. Tradeoff: GDPR-clean vs. count stability. Recommend hard-delete for simplicity; like counts re-derive correctly.
 8. **Monorepo vs. separate repo for `grimoire-social`?** Separate repo keeps deployment surfaces clean and lets the Worker have its own release cadence. Monorepo simplifies shared types. Recommend separate repo + npm-published shared types package.
@@ -424,11 +434,11 @@ The app shifts from "zero telemetry" to "explicit social opt-in." Discover tab f
 13. Wrangler deploy to `*.workers.dev`; soft-launch to a Discord channel for feedback
 
 **Phase 1.5: Polish (1-2 weeks after launch)**
-- Analytics dashboard (admin-only): publishes/day, likes/day, MAU, top reports — *still open*
-- ~~Better empty/error states; offline detection; "service busy" toast on D1 ceiling 5xx~~ — **done**: offline and busy are distinct states with their own copy and retry, and both say local mods/profiles are unaffected
-- ~~"Mods I'm missing" hint in profile cards (resolve against local install state)~~ — **done**: rendered on the profile detail rail (the import surface), where mod ids are known locally. The list wire format carries `mod_count` but not mod ids, and adding per-card ids would fatten every list response for a hint only the detail view can act on
-- ~~Owner-only stats: views per profile~~ — **done**: `ProfileDetail.view_count`, null for non-owners, fed by the coalescing counter DO (ADR-017)
-- ~~**GameBanana revalidation cron**~~ — **done**: weekly paced job (ADR-017) writes `mods_available` / `mods_revalidated_at` / `unavailable_mod_ids`; cards show "11 of 12 mods available", and never-checked profiles show as unknown rather than healthy
+- Analytics dashboard (admin-only): publishes/day, likes/day, MAU, top reports: *still open*
+- ~~Better empty/error states; offline detection; "service busy" toast on D1 ceiling 5xx~~: **done**: offline and busy are distinct states with their own copy and retry, and both say local mods/profiles are unaffected
+- ~~"Mods I'm missing" hint in profile cards (resolve against local install state)~~: **done**: rendered on the profile detail rail (the import surface), where mod ids are known locally. The list wire format carries `mod_count` but not mod ids, and adding per-card ids would fatten every list response for a hint only the detail view can act on
+- ~~Owner-only stats: views per profile~~: **done**: `ProfileDetail.view_count`, null for non-owners, fed by the coalescing counter DO (ADR-017)
+- ~~**GameBanana revalidation cron**~~: **done**: weekly paced job (ADR-017) writes `mods_available` / `mods_revalidated_at` / `unavailable_mod_ids`; cards show "11 of 12 mods available", and never-checked profiles show as unknown rather than healthy
 
 **Phase 2: Growth (open-ended)**
 - Comments (with the moderation cost we postponed)
@@ -442,9 +452,9 @@ The app shifts from "zero telemetry" to "explicit social opt-in." Discover tab f
 
 ## 13. Glossary
 
-- **Portable profile** — the existing `mp1:...` share code format defined in `docs/profile-spec.md`. Self-contained; references mods by GameBanana ID.
-- **Published profile** — a portable profile uploaded to grimoire-social with title + description + owner + likes.
-- **Share code** — the base64url(gzip(json)) string with `mp1:` prefix.
-- **D1** — Cloudflare's managed SQLite, replicated globally per region.
-- **DO** — Durable Object. Cloudflare primitive for strongly-consistent per-key state.
-- **RL API** — Cloudflare's first-party Rate Limiting binding.
+- **Portable profile**: the existing `mp1:...` share code format defined in `docs/profile-spec.md`. Self-contained; references mods by GameBanana ID.
+- **Published profile**: a portable profile uploaded to grimoire-social with title + description + owner + likes.
+- **Share code**: the base64url(gzip(json)) string with `mp1:` prefix.
+- **D1**: Cloudflare's managed SQLite, replicated globally per region.
+- **DO**: Durable Object. Cloudflare primitive for strongly-consistent per-key state.
+- **RL API**: Cloudflare's first-party Rate Limiting binding.

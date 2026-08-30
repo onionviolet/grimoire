@@ -1,6 +1,8 @@
 # Grimoire Social: Architecture Decision Records
 
-A log of the load-bearing decisions made while planning Grimoire Social. Each entry is short by design — the *why* matters, not the prose. Companion to `social-architecture.md`.
+> **Status:** Living. Describes shipped behavior or a stable contract. Reviewed 2026-07-29.
+
+A log of the load-bearing decisions made while planning Grimoire Social. Each entry is short by design: the *why* matters, not the prose. Companion to `social-architecture.md`.
 
 **Format:** Status / Context / Decision / Consequences / Alternatives considered. Each ADR is self-contained; later ADRs may supersede earlier ones, never edit them in place.
 
@@ -61,7 +63,7 @@ A log of the load-bearing decisions made while planning Grimoire Social. Each en
 - (+) Free tier covers expected v1 load (~10K MAU) with 10-100x headroom on most resources
 - (+) Global edge presence; low latency from a desktop app's perspective
 - (+) No server to babysit; deploys via `wrangler`
-- (+) D1 is just SQLite — schema is portable; export with `wrangler d1 export`
+- (+) D1 is just SQLite: schema is portable; export with `wrangler d1 export`
 - (-) Ties us to Cloudflare; vendor lock-in is real (mitigated by SQLite portability)
 - (-) D1 free tier hard-stops at 100K writes/day (see ADR-013)
 - (-) Workers runtime restricts Node-only libraries (see ADR-010 for OpenID consequence)
@@ -81,12 +83,12 @@ A log of the load-bearing decisions made while planning Grimoire Social. Each en
 **Decision.** Use the RL API binding for high-frequency limits where 10s/60s windows fit (likes, auth begin). For arbitrary windows (publish 1/10min, reports 5/day), use a Durable Object per Steam ID storing a `last_action_ts` map.
 
 **Consequences.**
-- (+) Strongly-consistent across colos — no race between two POPs
+- (+) Strongly-consistent across colos: no race between two POPs
 - (+) Per-key isolation; one user's hot path can't starve others
 - (-) DO has its own pricing dimension once we go to Workers Paid
 - (-) Slightly more code than a single binding call
 
-**Alternatives considered.** All-KV (rejected: ~60s eventual consistency lets a user race two publishes through different colos). Multiple RL bindings stacked (e.g. limit=1/period=60 fired ten times — gameable, doesn't actually enforce a 10-min window). Cloudflare WAF rate limiting (operates at the wrong layer for per-Steam-ID).
+**Alternatives considered.** All-KV (rejected: ~60s eventual consistency lets a user race two publishes through different colos). Multiple RL bindings stacked (e.g. limit=1/period=60 fired ten times: gameable, doesn't actually enforce a 10-min window). Cloudflare WAF rate limiting (operates at the wrong layer for per-Steam-ID).
 
 ---
 
@@ -95,7 +97,7 @@ A log of the load-bearing decisions made while planning Grimoire Social. Each en
 **Date:** 2026-05-15
 **Status:** Accepted
 
-**Context.** The Electron client ships in releases. Old clients persist in the wild for years — auto-update is not always taken, and some users are on offline machines. A breaking API change would brick installed apps until the user updates.
+**Context.** The Electron client ships in releases. Old clients persist in the wild for years: auto-update is not always taken, and some users are on offline machines. A breaking API change would brick installed apps until the user updates.
 
 **Decision.** All routes prefixed with `/v1/`. Once shipped, v1 is frozen: only additive changes (new optional request fields, new response fields, new endpoints). Breaking changes go to `/v2/` deployed alongside.
 
@@ -105,7 +107,7 @@ A log of the load-bearing decisions made while planning Grimoire Social. Each en
 - (-) Schema cruft accumulates over time; v1 will grow ugly
 - (-) When v2 ships, we maintain two surfaces until v1 usage drops to ~zero (which may be never)
 
-**Alternatives considered.** Header-based versioning (less obvious, harder to debug). No versioning + force-update (rejected — would brick offline users and undermines the offline-first promise).
+**Alternatives considered.** Header-based versioning (less obvious, harder to debug). No versioning + force-update (rejected: would brick offline users and undermines the offline-first promise).
 
 ---
 
@@ -167,7 +169,7 @@ A log of the load-bearing decisions made while planning Grimoire Social. Each en
 - (-) ~3-4 weeks of backend work before any user feedback
 - (-) Risk that the social loop doesn't resonate and the work was wasted
 
-**Alternatives considered.** Phase 0 first (recommended originally; user explicitly rejected — wants to build the full thing).
+**Alternatives considered.** Phase 0 first (recommended originally; user explicitly rejected: wants to build the full thing).
 
 **Mitigation.** Pre-seed Discover with featured profiles before launch (see ADR-012) so the empty-state risk is contained even without the Phase 0 warmup.
 
@@ -178,7 +180,7 @@ A log of the load-bearing decisions made while planning Grimoire Social. Each en
 **Date:** 2026-05-15
 **Status:** Accepted
 
-**Context.** Comments are a primary engagement loop on social platforms — but they are also the dominant moderation cost driver. We are one developer.
+**Context.** Comments are a primary engagement loop on social platforms: but they are also the dominant moderation cost driver. We are one developer.
 
 **Decision.** No comment system in v1. Reactions are limited to the like button. Communication happens out-of-band (Discord).
 
@@ -221,7 +223,7 @@ A log of the load-bearing decisions made while planning Grimoire Social. Each en
 **Status:** Accepted
 **Verified via:** Electron `docs/api/safe-storage.md` (context7)
 
-**Context.** The session token must be stored on the client between launches. Electron's `safeStorage` provides OS-keychain-backed encryption. On Linux, if no secret store (`kwallet`, `gnome-libsecret`, Portal Secret D-Bus) is available, Electron falls back to a *hardcoded plaintext password* — effectively no encryption.
+**Context.** The session token must be stored on the client between launches. Electron's `safeStorage` provides OS-keychain-backed encryption. On Linux, if no secret store (`kwallet`, `gnome-libsecret`, Portal Secret D-Bus) is available, Electron falls back to a *hardcoded plaintext password*: effectively no encryption.
 
 **Decision.** Use Electron's async safeStorage API (`isAsyncEncryptionAvailable`, async encrypt/decrypt). On Linux, if no real secret store is available, refuse to persist the token; the user re-logs each launch.
 
@@ -251,7 +253,7 @@ A log of the load-bearing decisions made while planning Grimoire Social. Each en
 - (-) ~half a day of manual profile curation work pre-launch
 - (-) Risk of taste mismatch: our featured profiles may not match what the community wants
 
-**Alternatives considered.** Empty Discover at launch with strong CTA (rejected: empty-state risk too high). Phase 0 curation first (rejected per ADR-008). Aggregating GameBanana collection authors automatically (interesting but Phase 2 — we don't own those profiles).
+**Alternatives considered.** Empty Discover at launch with strong CTA (rejected: empty-state risk too high). Phase 0 curation first (rejected per ADR-008). Aggregating GameBanana collection authors automatically (interesting but Phase 2: we don't own those profiles).
 
 ---
 
@@ -261,9 +263,9 @@ A log of the load-bearing decisions made while planning Grimoire Social. Each en
 **Status:** Accepted
 **Verified via:** Cloudflare D1 pricing FAQ (context7)
 
-**Context.** Cloudflare docs state plainly: *"Exceeding daily read/write limits on the Free plan will prevent D1 queries from running, returning errors to your client."* This is not throttling — it's a hard error wall until the daily counter resets.
+**Context.** Cloudflare docs state plainly: *"Exceeding daily read/write limits on the Free plan will prevent D1 queries from running, returning errors to your client."* This is not throttling: it's a hard error wall until the daily counter resets.
 
-**Decision.** Acknowledge this as a high-impact risk. Build the system to alert at 70K writes/day (70% of the 100K free-tier ceiling) and pre-emptively upgrade to Workers Paid before any high-traffic share (Discord launch post, Reddit thread, etc.). Show "service is busy, try again later" toast on 5xx publish/like — never a generic error.
+**Decision.** Acknowledge this as a high-impact risk. Build the system to alert at 70K writes/day (70% of the 100K free-tier ceiling) and pre-emptively upgrade to Workers Paid before any high-traffic share (Discord launch post, Reddit thread, etc.). Show "service is busy, try again later" toast on 5xx publish/like: never a generic error.
 
 **Consequences.**
 - (+) We don't get caught by surprise; the upgrade path is clear and cheap ($5/mo)
@@ -305,7 +307,7 @@ A log of the load-bearing decisions made while planning Grimoire Social. Each en
 **Decision.** Wire-format types live in a single source: a `@grimoire/social-types` package. Worker validates inbound bodies with Zod schemas exported from that package; client imports the same Zod schemas for IPC payload typing and runtime validation of responses.
 
 **Consequences.**
-- (+) Schema drift is impossible — both sides import the same definitions
+- (+) Schema drift is impossible: both sides import the same definitions
 - (+) Runtime validation catches malformed responses (Worker bug, transit corruption)
 - (+) Generated TS types via `z.infer<>` flow naturally to both sides
 - (-) Adds a publish step (or path-based dependency) to the dev loop

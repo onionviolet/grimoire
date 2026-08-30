@@ -1,6 +1,8 @@
 # vpk-modinfo v1: Embedded VPK Identity Metadata
 
-Status: v1, stable (schemaVersion 1). This document is the source of truth for the
+> **Status:** Living. Describes shipped behavior or a stable contract. Reviewed 2026-07-29.
+
+Format version: v1, stable (schemaVersion 1). This document is the source of truth for the
 format. It is self-contained: a mod manager or tooling author can implement full
 read and write support from this document alone, without reading the source of any
 existing implementation.

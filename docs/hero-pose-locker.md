@@ -1,5 +1,7 @@
 # Live 3D hero poses in the Locker
 
+> **Status:** Living. Describes shipped behavior or a stable contract. Reviewed 2026-07-29.
+
 The per-hero Locker view (`src/pages/LockerHero.tsx`) shows a 2D portrait by
 default and a 2D/3D toggle (top-right of the portrait panel, lg+ only). Flipping
 to 3D renders a live, orbitable still of the hero in their menu pose, reflecting

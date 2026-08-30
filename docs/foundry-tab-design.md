@@ -1,9 +1,11 @@
 # Foundry tab (design / vision)
 
-Status: historical design document. A first-class **Foundry** tab and its core
-catalog/sound/texture slices are now built; this document retains the original
-vision and deferred ideas. See [feature-status.md](./feature-status.md) for the
-current implementation inventory. Target home: a new first-class **Foundry** tab in the
+> **Status:** Design, 2026-06-20. A first-class **Foundry** tab and its core
+> catalog/sound/texture slices have since shipped, so the code is the truth.
+> Kept for the original vision and the deferred ideas. See
+> [feature-status.md](./feature-status.md) for the current inventory.
+
+Target home: a new first-class **Foundry** tab in the
 Grimoire desktop client (Electron). Engine: `vpkmerge-core` (+ `morphic`), the same crates
 that already back the vpkmerge GUI prototype. Authored 2026-06-20.
 

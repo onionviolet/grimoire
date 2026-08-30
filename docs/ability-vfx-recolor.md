@@ -1,14 +1,16 @@
 # Ability VFX layer + recolor
 
-Status: shipped, with roster coverage essentially complete (re-verified against
-the code and the engine source on 2026-07-28). Particle layer extraction and
-particle recoloring are proven end to end (verified in game on Paige). The
-texture recolor primitive ships as `vpkmerge texture`, and the Locker UI
-(`HeroColorPicker.tsx`) is built. The bundled engine is the tagged, pinned
-`vpkmerge v0.19.0` release (`scripts/fetch-vpkmerge.mjs`), not a local dev build.
-Particle recolor never became a standalone `vpkmerge particle` subcommand: it is
-composed inside `recolor-hero`, `prism`, and `trippy-vfx`, which is the surface
-Grimoire calls.
+> **Status:** Living. Particle extraction, particle recolor, and the Locker
+> picker all ship; per-hero in-game confirmation is still outstanding. Re-verified
+> against the code and the engine source 2026-07-28.
+
+Particle layer extraction and particle recoloring are proven end to end (verified
+in game on Paige). The texture recolor primitive ships as `vpkmerge texture`, and
+the Locker UI (`HeroColorPicker.tsx`) is built. The bundled engine is the tagged,
+pinned `vpkmerge v0.19.0` release (`scripts/fetch-vpkmerge.mjs`), not a local dev
+build. Particle recolor never became a standalone `vpkmerge particle` subcommand:
+it is composed inside `recolor-hero`, `prism`, and `trippy-vfx`, which is the
+surface Grimoire calls.
 
 **38 heroes now carry a pinned recipe** (`COLOR_CODENAME_BY_HERO` in
 `services/heroColors.ts:55`), and every one of them resolves to a matching

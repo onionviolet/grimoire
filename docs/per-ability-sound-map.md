@@ -1,5 +1,7 @@
 # Deadlock per-ability sound map
 
+> **Status:** Living. Describes shipped behavior or a stable contract. Reviewed 2026-07-29.
+
 Generated from base `pak01_dir.vpk` + deadlock-api. For each hero: the 4 ability
 slots (deadlock-api `signatureN`, slot 4 = ultimate) with display name + icon, the
 count of ability sound files auto-assigned to each slot, and any sound groups that

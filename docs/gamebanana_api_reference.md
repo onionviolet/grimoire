@@ -1,5 +1,7 @@
 # GameBanana API Reference for Deadlock
 
+> **Status:** Living. Describes shipped behavior or a stable contract. Reviewed 2026-07-29.
+
 > **Game ID**: `20948` (Deadlock)
 > **API Base URLs**:
 > - Core (Legacy): `https://api.gamebanana.com`
