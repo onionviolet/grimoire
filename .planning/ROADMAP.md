@@ -51,10 +51,10 @@ and appear between their surrounding integers in numeric order.
 **Requirements**: REQ-cw-command-catalogue, REQ-cw-override-editing, REQ-cw-test-gap
 **Success Criteria** (what must be TRUE):
 
-  1. The catalogue in `src/lib/chatWheelCommands.ts` is typed and readonly, and every base command a user can search carries a stable command ID, a user-facing label, a category, and its default availability; the file names the bundled ChatLane release or commit it is versioned to and a short update procedure
+  1. The catalogue in `src/lib/chatWheelCommands.ts` is typed and readonly, and every base command a user can search carries a stable command ID, a user-facing label, a category, and its default availability; the file names the upstream ChatLane commit the catalogue was vendored from, notes explicitly that the bundled fork binary's exact build point is unverified (the fork repo is not publicly readable), and gives a short update procedure
   2. A user can search and filter the catalogue, see each command's game-default status, and toggle its availability for the stock Chat Wheel and the Ping wheel from form controls without touching YAML
-  3. Unknown YAML override entries stay visible and editable in an "Other commands in this file" group, and unknown root keys and unknown command IDs round-trip byte-for-byte through save and reopen
-  4. `chat-wheel:read` and `chat-wheel:starter` carry main-process test coverage beside the existing round-trip test, and the repository gate (`pnpm typecheck && pnpm lint && pnpm test`) plus `pnpm i18n:check` stay green
+  3. Unknown YAML override entries stay visible and editable in an "Other commands in this file" group, and unknown root keys and unknown command IDs round-trip byte-for-byte through save and reopen, covered end to end by a populated-override fixture in the real-binary round-trip suite (byte preservation is scoped to LF input with a plain unquoted name:, since the model normalizes CRLF and requotes name: by design)
+  4. `chat-wheel:read` and `chat-wheel:starter` carry main-process test coverage beside the existing round-trip test; typecheck, lint, and `i18n:check` pass, and the full test suite introduces no new failures beyond the pre-existing baseline recorded in docs/upstream-absorption-1.28.md (9 failing files / 26 failing tests, inherited from the v1.28 absorption; the gate binaries are run directly, not via pnpm run, because the local pnpm major differs from CI's)
 
 **Plans**: TBD
 

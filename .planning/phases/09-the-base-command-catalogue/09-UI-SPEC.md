@@ -122,7 +122,7 @@ Applicable state considerations resolved: 6 covered, 1 backstop, 0 unresolved.
 | `Tag` (`src/components/common/ui.tsx`) | reuse | Game-default status chip per row |
 | `Button` (`src/components/common/ui.tsx`) | reuse | Empty-state clear action, size sm variant secondary |
 | `Skeleton` (`src/components/common/Skeleton.tsx`) | reuse | Loading placeholder rows |
-| `EmptyState` (`src/components/common/PageComponents.tsx`) | reuse | Search-empty state (already imported by the page) |
+| `EmptyState` (`src/components/common/PageComponents.tsx`) | do not use | Page-scale (`h-full`, 64px icon, `text-xl` title); the section builds an inline empty-state box instead (Loading and Empty States below). The page's existing import serves its own top-level empty state, not this section |
 | `Tx` / `useTranslation` | reuse | All visible strings |
 | `SegmentedControl` + `useSegmentedTabs` | do not use | `role="tab"` promises a panel (`ui.tsx:487-493`); category filters and per-row selectors are not tab switches. RESEARCH risk 8 |
 | `Toggle` | do not use | Two-state switch only; cannot represent inherit (D-04) |
@@ -153,7 +153,7 @@ Applicable state considerations resolved: 6 covered, 1 backstop, 0 unresolved.
 2. **Legend line:** `<p className="text-xs text-text-secondary">` with `chatWheel.catalog.legend`.
 3. **Column header row** (hidden below `sm`): `hidden sm:grid grid-cols-[minmax(0,1fr)_9rem_11rem_11rem] gap-2 px-1 pb-1 text-xs font-semibold text-text-secondary`, four labels: Command / Game default / Chat Wheel / Ping wheel (`chatWheel.catalog.columnCommand`, `columnDefault`, `columnChatWheel`, `columnPingWheel`).
 4. **Row list.**
-5. **Broken caveat** footnote when the Broken category is in the current view (All or Broken filter active).
+5. **Broken caveat** footnote when the Broken category is in the current view (All or Broken filter active) and at least one broken row survives the current search.
 6. **"Other commands in this file" group.**
 
 **Category filter chips:** four plain buttons, not a tablist:
@@ -180,6 +180,7 @@ Chips: All, Default, Hidden, Broken (`chatWheel.catalog.filterAll`/`filterDefaul
   - `default` and not bindable: tone `neutral`, "Not bindable by default"
   - `hidden`: tone `info`, "Hidden by default" (title: `chatWheel.catalog.statusHiddenTooltip` = "Available in game but not bindable on the stock Chat Wheel; ChatLane unlocks it.")
   - `broken`: tone `warning`, "Game-state dependent" (title: `chatWheel.catalog.statusBrokenTooltip` = "Only usable in the game states that use it, such as post-game all-chat.")
+- Cell 2 addendum (ping default honesty): when `pingWheelBindable !== bindable`, render a second small Tag after the first, tone `neutral`, from `chatWheel.catalog.statusPingBindable` ("On ping wheel by default") or `chatWheel.catalog.statusPingNotBindable` ("Not on ping wheel by default") as the value dictates. Without it the Ping wheel Inherit state has no visible default for the 15 commands where the two flags diverge (the 3 isMenu default commands, bindable true / ping false, plus all 12 hidden commands, bindable false / ping true; no broken entry diverges, Missing is true/true and the rest false/false).
 - Cell 3: `TriStateControl` for the Chat Wheel / bind map, `aria-label` = `t('chatWheel.catalog.ariaChatWheel', '{{command}}: Chat Wheel', { command: id })`. Writes `override_bindable`.
 - Cell 4: `TriStateControl` for the Ping wheel map, `aria-label` = `t('chatWheel.catalog.ariaPingWheel', '{{command}}: Ping wheel', { command: id })`. Writes `override_ping_wheel_bindable`.
 
@@ -189,7 +190,7 @@ The whole row is not a tab stop; each control is independently focusable.
 
 ## Three-State Control Contract (new UI)
 
-`TriStateControl` props: `value: 'inherit' | 'on' | 'off'`, `onChange(state)`, `ariaLabel`, `disabled?`, `showInherit?` (default true).
+`TriStateControl` props: `value: 'inherit' | 'on' | 'off'`, `onChange(state)`, `ariaLabel`, `disabled?`. (A `showInherit?` prop was considered and dropped: the unknown-key group uses its own two-state button pair, so no caller ever passes false.)
 
 - Render `<div role="group" aria-label={ariaLabel} className="inline-flex gap-1">` with three buttons `type="button" aria-pressed={active}`, styled with the same chip classes as the filter chips (active/inactive above), plus `disabled:cursor-default disabled:opacity-50`.
 - Button icons (lucide, `h-3.5 w-3.5`): inherit = `Minus`, on = `Check`, off = `X`. Button text from `chatWheel.catalog.stateInherit` ("Inherit"), `stateOn` ("On"), `stateOff` ("Off").
@@ -213,7 +214,7 @@ The whole row is not a tab stop; each control is independently focusable.
 
 ## Broken Category Caveat
 
-When the Broken category is in the current view (All or Broken filter active), render beneath the list:
+When the Broken category is in the current view (All or Broken filter active) and at least one broken row survives the current search, render beneath the list:
 
 ```
 <div className="flex items-start gap-2 rounded border border-state-warning/20 bg-state-warning/5 px-3 py-2 text-xs text-text-secondary">
@@ -229,7 +230,7 @@ Copy is capability-honest (D-03): it states what ChatLane can offer and the game
 ## Loading and Empty States
 
 - **Loading:** while `starterLoading`, render four `Skeleton` rows in place of the list and the "Other commands" group, and pass `disabled` to every control. The catalogue rows themselves are static typed data and need no load state.
-- **Empty (search or filter yields no rows):** an `EmptyState`-style box using the page's existing `EmptyState` component with `icon={SearchX}` (the shared component requires an `icon` prop, `PageComponents.tsx:105-112`; `SearchX` is the search-no-results glyph), title, body, and a `Button` (variant secondary, size sm) labelled "Clear search and filters" that resets both the query and the category filter. The empty action is the next useful step (the `SearchInput` contract requires the zero-result state to offer one, `SearchInput.tsx:21-23`).
+- **Empty (search or filter yields no rows):** an EmptyState-style box built inline: `SearchX` icon (`h-8 w-8 text-text-secondary`), `text-sm font-semibold` title, `text-xs text-text-secondary` body, and a `Button` (variant secondary, size sm) labelled "Clear search and filters" that resets both the query and the category filter. Do NOT reuse the shared `EmptyState` component here: it is page-scale (`h-full`, 64px icon, `text-xl` title, `PageComponents.tsx:119-121`) and `text-xl` is outside this phase's declared type scale. The empty action is the next useful step (the `SearchInput` contract requires the zero-result state to offer one, `SearchInput.tsx:21-23`).
 - **Empty "Other commands" group:** render nothing (see zero-one-many row above).
 - **Converter unavailable:** editing the catalogue stays enabled. Toggling writes YAML only and needs no converter; only Save & install is gated by `converterAvailable` as today.
 
@@ -237,11 +238,11 @@ Copy is capability-honest (D-03): it states what ChatLane can offer and the game
 
 ## Keyboard Accessibility Floor (D-06)
 
-- Every interactive element is a native control: `<summary>`, the search `<input>`, plain `<button>` chips and three-state options. No custom key handling, no drag-only interaction. This floor is what Phase 10 drag-and-drop must preserve.
+- Every interactive element is a native control: `<summary>`, the search `<input>`, plain `<button>` chips and three-state options. No custom key handling beyond the roving-tabindex arrow movement inside a `TriStateControl` group (below); no key handler replaces a native activation. No drag-only interaction. This floor is what Phase 10 drag-and-drop must preserve.
 - Every row control has an accessible name via `aria-label` combining the command id and the map name. Column headers are presentational text labels, not `th`; the list is `role="list"` with `role="listitem"` rows, so no grid/row semantics are introduced.
 - Focus rings everywhere: `focus:outline-none focus-visible:ring-2 focus-visible:ring-accent`, with `ring-offset-2 ring-offset-bg-primary` on solid surfaces.
 - Filter focus management: pressing a category chip keeps focus on the chip; no focus steal on result changes. The `SearchInput` live region announces "Showing X of Y". When a filter empties the list, the empty state's "Clear search and filters" button is the immediate next tab stop.
-- The three-state options are a single tab stop per control group (roving `tabIndex` among the three buttons, arrow keys move within the group), matching the app's segmented-control interaction model without its tab semantics.
+- The three-state options are a single tab stop per control group: roving `tabIndex` among the three buttons, arrow keys move focus only and never change the value. This deliberately differs from `SegmentedControl` (whose move() handler selects on arrow, ui.tsx around lines 550-561): these are `aria-pressed` toggles whose activation writes saved YAML, so a focus move must not mutate the document. Enter/Space activate natively.
 - Rows are not focus targets; children are. `tabIndex` is never added to a row container.
 
 ---
@@ -254,7 +255,7 @@ Copy is capability-honest (D-03): it states what ChatLane can offer and the game
 | `chatWheel.catalog.legend` | "Each command has a game default. Inherit keeps it, On forces it enabled in the saved YAML, Off forces it disabled." |
 | `chatWheel.catalog.searchPlaceholder` | "Search commands" |
 | `chatWheel.catalog.searchScope` | "Search all {{count}} commands by name." |
-| `chatWheel.catalog.searchSummary` | "Showing {{count}} of {{total}} commands." |
+| `chatWheel.catalog.searchSummary` | "Showing {{count}} of {{total}} commands" |
 | `chatWheel.catalog.searchClear` | "Clear search" |
 | `chatWheel.catalog.filterLabel` | "Filter by category" |
 | `chatWheel.catalog.filterAll` | "All" |
@@ -264,6 +265,8 @@ Copy is capability-honest (D-03): it states what ChatLane can offer and the game
 | `chatWheel.catalog.brokenCaveat` | "Broken commands are not bindable by default and only matter in the game states that use them, such as post-game all-chat. Toggling them here changes what ChatLane offers, not what the game guarantees." |
 | `chatWheel.catalog.statusBindable` | "Bindable by default" |
 | `chatWheel.catalog.statusNotBindable` | "Not bindable by default" |
+| `chatWheel.catalog.statusPingBindable` | "On ping wheel by default" |
+| `chatWheel.catalog.statusPingNotBindable` | "Not on ping wheel by default" |
 | `chatWheel.catalog.statusHidden` | "Hidden by default" |
 | `chatWheel.catalog.statusHiddenTooltip` | "Available in game but not bindable on the stock Chat Wheel; ChatLane unlocks it." |
 | `chatWheel.catalog.statusBroken` | "Game-state dependent" |
@@ -285,7 +288,7 @@ Copy is capability-honest (D-03): it states what ChatLane can offer and the game
 | `chatWheel.catalog.ariaChatWheel` | "{{command}}: Chat Wheel" |
 | `chatWheel.catalog.ariaPingWheel` | "{{command}}: Ping wheel" |
 
-Reused existing keys: `chatWheel.saveAndInstall`. Raw catalogue display strings are data (D-02) and never enter `translation.json`; `pnpm i18n:check` and `pnpm i18n:manifest` are run after any catalogue change.
+Reused existing keys: `chatWheel.saveAndInstall`. The unknown-key group's On/Off pairs reuse `ariaChatWheel`/`ariaPingWheel` with the raw key as `{{command}}`; no dedicated keys exist for them. `statusNotBindable` is unreachable with the pinned commit's data (every `default` entry is bindable) and exists so a future `VC_LIST` change degrades honestly; `check-i18n.mjs` lists unused keys as a warning only. Raw catalogue display strings are data (D-02) and never enter `translation.json`; `pnpm i18n:check` and `pnpm i18n:manifest` are run after any catalogue change.
 
 ---
 

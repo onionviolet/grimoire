@@ -43,7 +43,7 @@ file:
   Game) - All Chat, plus Missing, Pinged Enemy Player, Pinged Teammate, and a
   second `broken` entry `Pregame Pings` appended at the very end.
 
-The 4 `default` entries appended after `broken` plus `Pregame Pings` at the end
+The 13 `default` entries appended after `broken` plus `Pregame Pings` at the end
 signal a later game-command batch; `CLI/example.yml`'s own "List of voice
 commands" comment still lists only 38 ids and omits all of them (for example
 `Going to Shop` and `Flank`).
@@ -169,8 +169,12 @@ Notes for vendoring:
 - `updateChatWheelYaml(yaml: string, model: ChatWheelModel): string` (lines
   68-84). Rewrites the `name:` line and splices the whole `custom_menus:` block
   (start line through the first dedent) with `customMenusBlock()`. Unknown
-  root options, comments, and other root fields survive because only owned
-  blocks are replaced.
+  root options, comments, and other root fields BEFORE the custom_menus block
+  survive because only owned blocks are replaced. CORRECTION (2026-08-31): the
+  block end-scan at line 82 treats column-0 comments and the trailing empty
+  line as part of the block, so trailing comments and the file-final newline
+  are swallowed by the splice today; plan 09-01 Task 2 fixes this scan as a
+  prerequisite of its identity round-trip truth.
 - Helpers: `unquote(value)` trims and strips a single matching quote pair;
   `quote(value)` returns the raw value when it matches
   `/^[A-Za-z0-9 _.-]+$/`, else `JSON.stringify(value)` (lines 12-13).
@@ -191,8 +195,8 @@ original per-entry lines and only serialize newly added or changed entries.
 ### 2.4 Test infrastructure
 
 - Vitest, node environment by default; jsdom is per-file via
-  `// @vitest-environment jsdom`. Includes `src/**/*.test.ts(x)` and
-  `electron/**/*.test.ts`. [VERIFIED: vitest.config.ts:7-15]
+  `// @vitest-environment jsdom`. Includes `src/**/*.test.ts(x)`,
+  `electron/**/*.test.ts`, and `scripts/**/*.test.ts`. [VERIFIED: vitest.config.ts:7-15]
 - `electron/main/services/chatWheel.test.ts`: `vi.mock('electron', ...)` +
   `vi.mock('child_process', ...)` stubbing `spawn` to write the output file and
   emit `close(0)`. Only `validateChatWheelYaml` is exercised today; the audit
@@ -253,9 +257,9 @@ original per-entry lines and only serialize newly added or changed entries.
 
 ### 2.6 i18n gates and the `chatWheel.*` namespace
 
-- `chatWheel.*` namespace exists at `src/locales/en/translation.json:3698-3741`
+- `chatWheel.*` namespace exists at `src/locales/en/translation.json:3857-3900`
   with keys up to `chatWheel.disabled.description`.
-  [VERIFIED: src/locales/en/translation.json:3698-3741]
+  [VERIFIED: src/locales/en/translation.json:3857-3900]
 - `pnpm i18n:check` runs `scripts/check-i18n.mjs`: scans every `.ts/.tsx` in
   `src/` for `t('key')` and `<Tx k="key">` and fails if the en catalog lacks
   the key. [VERIFIED: scripts/check-i18n.mjs:1-54]
@@ -275,9 +279,12 @@ original per-entry lines and only serialize newly added or changed entries.
   `override_bindable: {}` (line 5) and `override_ping_wheel_bindable: {}`
   (line 6), between `name:` and `custom_menus:`. D-07 says keep them empty and
   show inherited defaults in the UI. [VERIFIED: resources/chatlane/starter.yml:5-6]
-- The round-trip test notes the starter (including its two comment lines,
-  blank lines, key order, and CRLF line endings) comes back byte-for-byte
-  identical through the real binary. [VERIFIED: electron/main/services/chatWheel.roundtrip.test.ts:66-84]
+- The round-trip test's comment claims the starter comes back byte-for-byte
+  including CRLF endings, but CORRECTION (2026-08-31): starter.yml is LF-only
+  (zero CR bytes), and the suite's actual assertion is trimmed equality
+  (`roundTripped.trim()` vs `yaml.trim()`), not byte-for-byte. The comment at
+  roundtrip.test.ts:66-71 is the sole source of the CRLF claim and is stale.
+  [VERIFIED: electron/main/services/chatWheel.roundtrip.test.ts:66-84; od -c resources/chatlane/starter.yml]
 - `resources/chatlane/` contains `ChatLane.exe`, `LICENSE`, `starter.yml`,
   `TinyEXR.Native.dll`, `libSkiaSharp.dll`. The LICENSE is `MIT License,
   Copyright (c) 2024 RedMser`.
@@ -311,8 +318,11 @@ original per-entry lines and only serialize newly added or changed entries.
   module follows the same shape (typed readonly array + provenance + a
   find-by-id helper). [VERIFIED: src/lib/chatWheelIcons.ts:1-41]
 - **Byte-for-byte preservation:** `parseChatWheelYaml` / `updateChatWheelYaml`
-  already demonstrate the owned-block splice that leaves unknown root text and
-  comments untouched, and `chatWheelModel.test.ts:11-16` asserts it.
+  demonstrate the owned-block splice for unknown root text and comments before
+  the custom_menus block, and `chatWheelModel.test.ts:11-16` asserts it with
+  `toContain` (not full-string equality, which is why the trailing-text
+  swallowing noted in 2.3 has never been caught). Plan 09-01 fixes the end-scan
+  and upgrades the assertion to whole-string identity.
   [VERIFIED: src/lib/chatWheelModel.ts:67-84; src/lib/chatWheelModel.test.ts:11-16]
 - **Unknown-value honesty:** unknown icon names render as "no icon" rather
   than failing (`chatWheelIcons.ts:7-9`, `RadialWheelPreview.tsx:10`). The
@@ -363,9 +373,11 @@ original per-entry lines and only serialize newly added or changed entries.
    supports indeterminate visually only. The plan must define the row control
    semantics (inherit = no YAML entry) and its a11y pattern explicitly.
 7. **CRLF vs LF:** the model normalizes CRLF to LF on every
-   `parse`/`update`; the starter and (per round-trip comment) generated VPKs
-   are CRLF. This phase should not widen that gap, but a plan that round-trips
-   starter.yml through the model will normalize line endings by design.
+   `parse`/`update`. CORRECTION (2026-08-31): starter.yml is LF-only; the
+   round-trip test comment claiming CRLF is stale (the suite compares trimmed
+   strings). YAML extracted from a VPK by the converter may still carry CRLF,
+   in which case a model round trip normalizes line endings by design; byte
+   identity claims are therefore scoped to LF input.
 8. **Category chips vs tablist contract:** `SegmentedControl` is a tablist and
    promises a panel. Category filters are a filter, not a tab switch; use
    plain `aria-pressed` buttons unless a panel is actually provided, or the

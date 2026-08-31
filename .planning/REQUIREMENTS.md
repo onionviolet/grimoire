@@ -29,8 +29,10 @@ tree at the milestone start:
 - [ ] **REQ-cw-command-catalogue**: A typed, readonly catalogue of base-game
       voice commands (stable command ID, user-facing label, category, default
       availability) is captured and owned in `src/lib/chatWheelCommands.ts`,
-      versioned to the pinned ChatLane source/release with a provenance comment
-      and short update procedure. A small YAML fixture with known and unknown
+      versioned to the upstream ChatLane commit it was vendored from, with a
+      provenance comment, a short update procedure, and an explicit note that
+      the bundled fork binary's exact build point is unverified (the fork repo
+      is not publicly readable). A small YAML fixture with known and unknown
       entries keeps parser compatibility independent of the whole catalogue.
 - [ ] **REQ-cw-override-editing**: Users can search, filter, and browse the
       catalogue, and toggle each command's availability for the stock Chat
