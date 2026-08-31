@@ -28,7 +28,13 @@ const apiMock = vi.hoisted(() => ({
   getMods: vi.fn(async () => []),
   readChatWheel: vi.fn(async () => ''),
   saveChatWheel: vi.fn(async () => null),
-  getChatWheelStarter: vi.fn(async () => 'name: My Chat Wheel\ncustom_menus:\n'),
+  // The real starter shape (resources/chatlane/starter.yml): both override
+  // maps ship as inline `{}`, so the round-trip tests below exercise the
+  // inline-to-block path rather than an append-at-end path that never runs.
+  getChatWheelStarter: vi.fn(
+    async () =>
+      'name: My Chat Wheel\n\noverride_bindable: {}\noverride_ping_wheel_bindable: {}\n\ncustom_menus:\n'
+  ),
   getChatWheelStatus: vi.fn(async () => ({ available: true })),
   validateChatWheel: vi.fn(async () => undefined),
 }));
@@ -112,5 +118,48 @@ describe('ChatWheel page gate', () => {
 
     expect(host.textContent).toContain('Chat Wheel is off');
     expect(document.querySelector('textarea')).toBeNull();
+  });
+
+  it('renders the base command catalogue open, and round-trips an override through the YAML', async () => {
+    appStoreMock.settings = { experimentalChatWheel: true };
+    await renderPage();
+
+    const details = Array.from(document.querySelectorAll('details')).find((element) =>
+      element.querySelector('summary')?.textContent?.includes('Base command catalogue')
+    )!;
+    expect(details).toBeDefined();
+    expect(details.open).toBe(true);
+
+    // No testing-library in this repo: real events, dispatched inside act().
+    const group = document.querySelector('[role="group"][aria-label="Can Heal: Chat Wheel"]')!;
+    const on = Array.from(group.querySelectorAll('button'))[1];
+    await act(async () => {
+      on.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    await act(async () => {
+      await flush();
+    });
+
+    const textarea = document.querySelector('textarea') as HTMLTextAreaElement;
+    expect(textarea.value).toContain('override_bindable:\n  Can Heal: true');
+
+    // ...and a manual Advanced YAML edit flows back into the control.
+    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!;
+    await act(async () => {
+      setter.call(
+        textarea,
+        'name: My Chat Wheel\n\noverride_bindable:\n  Can Heal: false\noverride_ping_wheel_bindable: {}\n\ncustom_menus:\n'
+      );
+      textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await act(async () => {
+      await flush();
+    });
+
+    const after = Array.from(
+      document.querySelector('[role="group"][aria-label="Can Heal: Chat Wheel"]')!.querySelectorAll('button')
+    );
+    expect(after[2].getAttribute('aria-pressed')).toBe('true');
+    expect(after[1].getAttribute('aria-pressed')).toBe('false');
   });
 });

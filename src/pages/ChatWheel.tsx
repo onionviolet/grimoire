@@ -8,9 +8,10 @@ import { EmptyState } from '../components/common/PageComponents';
 import { useConfirm } from '../components/common/confirmContext';
 import Tx from '../components/translation/Tx';
 import type { Mod } from '../types/mod';
-import { parseChatWheelYaml, updateChatWheelYaml, type ChatWheelModel } from '../lib/chatWheelModel';
+import { applyOverride, parseChatWheelYaml, updateChatWheelYaml, type ChatWheelModel, type OverrideState } from '../lib/chatWheelModel';
 import { CHAT_WHEEL_ICONS, chatWheelIconUrl } from '../lib/chatWheelIcons';
 import RadialWheelPreview from '../components/chatwheel/RadialWheelPreview';
+import BaseCommandCatalog from '../components/chatwheel/BaseCommandCatalog';
 
 export default function ChatWheel() {
   const { t } = useTranslation();
@@ -34,6 +35,7 @@ export default function ChatWheel() {
   const model = useMemo(() => parseChatWheelYaml(yaml), [yaml]);
   const [activeMenu, setActiveMenu] = useState(0);
   const [focusedItem, setFocusedItem] = useState<number | null>(null);
+  const [catalogOpen, setCatalogOpen] = useState(true);
 
   const refreshWheels = async () => {
     const mods = await getMods();
@@ -373,6 +375,27 @@ export default function ChatWheel() {
               ) : <div className="mt-5 rounded border border-dashed border-border p-6 text-center text-xs text-text-secondary"><Tx k="chatWheel.previewEmpty" fallback="Add a menu to preview its wheel." /></div>}
             </div>
           </div>
+
+          {/* React 19 emits one toggle event on mount for a controlled
+              details, so the handler must be idempotent. */}
+          <details
+            open={catalogOpen}
+            onToggle={(event) => {
+              const next = event.currentTarget.open;
+              if (next !== catalogOpen) setCatalogOpen(next);
+            }}
+            className="rounded border border-border bg-bg-primary p-3"
+          >
+            <summary className="cursor-pointer text-sm font-semibold text-text-primary">
+              <Tx k="chatWheel.catalog.title" fallback="Base command catalogue" />
+            </summary>
+            <BaseCommandCatalog
+              model={model}
+              loading={starterLoading}
+              disabled={starterLoading || busy !== null}
+              onSetOverride={(id, map, state: OverrideState) => applyModel(applyOverride(model, map, id, state))}
+            />
+          </details>
 
           <datalist id="chat-wheel-icon-names">
             {CHAT_WHEEL_ICONS.map((icon) => <option key={icon.name} value={icon.name} />)}
