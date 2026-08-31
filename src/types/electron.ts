@@ -930,6 +930,10 @@ export interface ElectronAPI {
     // bar strip (the native frame is hidden on Windows only).
     platform: string;
 
+    // Saved OLED setting at window creation, forwarded through the preload's
+    // argv so the theme can apply before the settings IPC round-trip.
+    initialOledMode: boolean;
+
     // Settings
     detectDeadlock: () => Promise<string | null>;
     validateDeadlockPath: (path: string) => Promise<boolean>;

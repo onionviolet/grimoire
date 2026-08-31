@@ -95,3 +95,17 @@ describe('loadSettings hidden creator normalization', () => {
     expect(loadSettings().hiddenCreators).toEqual([{ id: 12, name: 'Valid' }]);
   });
 });
+
+describe('loadSettings OLED mode', () => {
+  it('defaults OLED mode to off for existing settings', () => {
+    writeFileSync(settingsPath(), JSON.stringify({}));
+
+    expect(loadSettings().oledMode).toBe(false);
+  });
+
+  it('keeps an enabled OLED mode from saved settings', () => {
+    writeFileSync(settingsPath(), JSON.stringify({ oledMode: true }));
+
+    expect(loadSettings().oledMode).toBe(true);
+  });
+});

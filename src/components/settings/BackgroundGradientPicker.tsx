@@ -5,7 +5,6 @@ import { Ban, Check, Pipette } from 'lucide-react';
 import { HexColorPicker, HexColorInput } from 'react-colorful';
 import { useAppStore } from '../../stores/appStore';
 import {
-  BACKGROUND_BASE,
   BACKGROUND_GRADIENT_PRESETS,
   applyBackgroundGradient,
   backgroundGradientPreviewCss,
@@ -46,7 +45,7 @@ function GradientTile({
       aria-label={label}
       aria-pressed={active}
       className={`${TILE_BASE} ${active ? 'border-accent/70' : 'border-white/10 hover:border-white/30'}`}
-      style={{ background: gradient ? backgroundGradientPreviewCss(gradient) : BACKGROUND_BASE }}
+      style={{ background: gradient ? backgroundGradientPreviewCss(gradient) : 'var(--color-bg-primary)' }}
     >
       {children}
       {/* Ringed badge: it is accent-colored and the swatch under it can be any

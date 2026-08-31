@@ -36,6 +36,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     ignoredConflictFilesGlobal: [],
     ignoredConflictMods: [],
     accentColor: '#f97316',
+    oledMode: false,
     sidebarHeroHighlight: 'Abrams',
     dateFormat: 'MM/DD/YYYY',
     language: null,

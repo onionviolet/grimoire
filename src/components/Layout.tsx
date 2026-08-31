@@ -16,6 +16,7 @@ import { getSettings, setSettings, getGameinfoStatus, fixGameinfo } from '../lib
 import { getActiveDeadlockPath } from '../lib/appSettings';
 import { applyAccentColor } from '../lib/accentColor';
 import { applyBackgroundGradient } from '../lib/backgroundGradient';
+import { applyOledMode } from '../lib/applyOledMode';
 import { useAppStore } from '../stores/appStore';
 import type {
   OneClickSuspiciousFilesData,
@@ -61,6 +62,7 @@ export default function Layout() {
   // even when the user has picked a different accent.
   const accentColor = useAppStore((s) => s.settings?.accentColor);
   const backgroundGradient = useAppStore((s) => s.settings?.backgroundGradient);
+  const oledMode = useAppStore((s) => s.settings?.oledMode);
   const loadStoreSettings = useAppStore((s) => s.loadSettings);
   const loadAppearanceImages = useAppStore((s) => s.loadAppearanceImages);
 
@@ -81,6 +83,13 @@ export default function Layout() {
   useEffect(() => {
     applyBackgroundGradient(backgroundGradient);
   }, [backgroundGradient]);
+  // main.tsx seeds the OLED attribute from the preload before first paint, so
+  // hold off until settings actually arrive: applying the undefined value here
+  // would strip the seed and reintroduce the startup flash.
+  useEffect(() => {
+    if (oledMode === undefined) return;
+    applyOledMode(oledMode);
+  }, [oledMode]);
 
   useEffect(() => {
     const checkFirstRun = async () => {

@@ -1213,6 +1213,9 @@
       "customAccentColor": "Custom accent color",
       "selectedColorPreview": "Selected color preview",
       "customAccent": "Custom Accent",
+      "oled": {
+        "title": "OLED mode"
+      },
       "launchButtons": {
         "combine": "Combine launch buttons",
         "combineDescription": "Use a single launch button and switch between Modded and Vanilla with the swap icon or right-click, instead of two stacked buttons."

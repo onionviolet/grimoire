@@ -5,6 +5,8 @@
 // custom pick is the same shape as a preset, and one renderer covers both the
 // real layer and the little preview tiles in Settings.
 
+import { BACKGROUND_BASE } from './oledMode';
+
 export interface BackgroundGradient {
   /** Color of the glow entering from the top-left corner. */
   from: string;
@@ -33,9 +35,6 @@ export const BACKGROUND_GRADIENT_PRESETS: BackgroundGradientPreset[] = [
 /** Peak alpha at each corner. Low enough that body text over the glow keeps
  *  its contrast, high enough to read as deliberate on a #0f0f0f base. */
 const GLOW_ALPHA = 0.3;
-
-/** The app's base background, painted under the glow in preview tiles. */
-export const BACKGROUND_BASE = '#0f0f0f';
 
 /** Hex (3- or 6-digit, with or without `#`) to an rgba() string. Anything else
  *  resolves to fully transparent: settings.json is user-editable and the color
@@ -85,9 +84,10 @@ export function backgroundGradientCss(gradient: BackgroundGradient): string {
   return glowLayers(gradient, LAYER);
 }
 
-/** Swatch background: the bolder preview glow over the app's own base color. */
+/** Swatch background: the bolder preview glow over the app's current base
+ *  color (the token, so swatches stay honest when OLED remaps it to black). */
 export function backgroundGradientPreviewCss(gradient: BackgroundGradient): string {
-  return `${glowLayers(gradient, SWATCH)}, ${BACKGROUND_BASE}`;
+  return `${glowLayers(gradient, SWATCH)}, var(--color-bg-primary, ${BACKGROUND_BASE})`;
 }
 
 /** True when both corners match, ignoring hex case. */

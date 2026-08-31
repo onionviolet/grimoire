@@ -1,7 +1,7 @@
 import { Languages, Palette } from 'lucide-react';
 import { useAppStore } from '../../../stores/appStore';
 import { formatDateParts } from '../../../lib/dateFormat';
-import { Card } from '../../common/ui';
+import { Card, Toggle } from '../../common/ui';
 import Tx from '../../translation/Tx';
 import AccentColorPicker from '../AccentColorPicker';
 import BackgroundGradientPicker from '../BackgroundGradientPicker';
@@ -29,6 +29,14 @@ export default function AppearanceSection() {
   return (
     <>
       <Card title={<Tx k="settings.sections.appearance" fallback="Appearance" />} icon={Palette}>
+        <Toggle
+          checked={settings?.oledMode ?? false}
+          onChange={(checked) => settings && void saveSettings({ ...settings, oledMode: checked })}
+          label={<Tx k="settings.appearance.oled.title" fallback="OLED mode" />}
+        />
+
+        <div className="my-5 h-px bg-white/5" />
+
         <AccentColorPicker />
 
         <div className="my-5 h-px bg-white/5" />

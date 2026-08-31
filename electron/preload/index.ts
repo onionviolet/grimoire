@@ -103,6 +103,10 @@ if (slotArgument) {
 contextBridge.exposeInMainWorld('electronAPI', {
     platform: process.platform,
 
+    // Saved OLED setting, forwarded by main via additionalArguments so the
+    // renderer can theme itself before the settings IPC round-trip resolves.
+    initialOledMode: process.argv.includes('--grimoire-oled'),
+
     // Settings
     detectDeadlock: () => ipcRenderer.invoke('detect-deadlock'),
     validateDeadlockPath: (path: string) => ipcRenderer.invoke('validate-deadlock-path', path),
