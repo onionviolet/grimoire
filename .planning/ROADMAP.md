@@ -37,7 +37,7 @@ it.
 Phase 9 onward. Decimal phases (9.1, 10.1) are urgent insertions marked INSERTED
 and appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 9: The Base Command Catalogue** - Capture the base-game voice commands as typed, provenance-pinned data, give `override_bindable` and `override_ping_wheel_bindable` a searchable, editable form surface that preserves unknown entries byte-for-byte, and close the `chat-wheel:read`/`starter` test gap
+- [x] **Phase 9: The Base Command Catalogue** - Capture the base-game voice commands as typed, provenance-pinned data, give `override_bindable` and `override_ping_wheel_bindable` a searchable, editable form surface that preserves unknown entries byte-for-byte, and close the `chat-wheel:read`/`starter` test gap
 - [ ] **Phase 10: Wheel Interaction And Disclosure** - Disclose the game's documented limitations near the controls they affect, finish arrow-key ring navigation on the radial preview, and add drag-and-drop menu building with keyboard alternatives
 - [ ] **Phase 11: Safety And Dressing** - Warn before removing a Chat Wheel add-on that must be unbound first, and prove the game-asset dressing spike with the pure-SVG wheel kept as the permanent fallback
 - [ ] **Phase 12: Release Engineering** - Ship v1.27.5: package.json version, CHANGELOG entry, tag `v1.27.5`, and a GitHub Release with notes from the changelog
@@ -115,7 +115,21 @@ Phases execute in numeric order: 9 → 10 → 11 → 12. Each phase depends on t
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 9. The Base Command Catalogue | 0/0 | Planned |  |
+| 9. The Base Command Catalogue | 3/3 | Complete | 2026-08-31 |
 | 10. Wheel Interaction And Disclosure | 0/0 | Planned |  |
 | 11. Safety And Dressing | 0/0 | Planned |  |
 | 12. Release Engineering | 0/0 | Planned |  |
+
+**Phase 9 exit note (2026-08-31):** success criterion 4 was settled by a full
+`./node_modules/.bin/vitest run` on the working tree: 26 failing tests across 3
+files (`browserDownloadCapture`, `heroStageMode`, `uiPrefs`), all in the
+documented v1.28-absorption baseline. The test count matches the recorded
+baseline exactly and the failing-file count is lower than the 9 recorded in
+docs/upstream-absorption-1.28.md, so the phase introduced no new failures. That
+9-file figure now looks stale rather than authoritative; re-record it the next
+time the baseline is quoted as a gate.
+
+One item is carried out of the phase rather than closed: the populated-override
+case added to the real-binary round-trip suite in 09-02 skips on macOS, because
+the bundled ChatLane converter is Windows-only, and still needs one Windows run.
+Tracked as ledger entry 3 in .planning/WINDOWS.md.
