@@ -4,16 +4,16 @@ milestone: v1.27.5
 milestone_name: Chat Wheel parity
 current_phase: 9
 current_phase_name: The Base Command Catalogue
-status: planning
-stopped_at: Phase 9 context gathered
-last_updated: "2026-08-11T15:13:05.201Z"
-last_activity: "2026-08-11: v1.27.5 roadmap defined"
+status: in-progress
+stopped_at: Wave 1 (09-01, 09-02) executed; wave 2 (09-03) not started
+last_updated: "2026-08-31T00:00:00.000Z"
+last_activity: "2026-08-31: wave 1 executed (09-01 catalogue + override model, 09-02 chat-wheel read/starter tests)"
 progress:
   total_phases: 1
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-last_activity_desc: v1.27.5 roadmap defined (phases 9-12)
+  total_plans: 3
+  completed_plans: 2
+last_activity_desc: Wave 1 executed. 09-01 vendored the 53-entry catalogue and taught the form model both override maps with byte-preserving in-place edits (plus the custom_menus end-scan fix); 09-02 closed the chat-wheel read/starter audit gap with 7 new stubbed tests and added a populated-override case to the real-binary round-trip suite, which cannot run on macOS (Windows-only converter)
 ---
 
 # Project State
@@ -28,9 +28,9 @@ See: .planning/PROJECT.md (updated 2026-08-11)
 ## Current Position
 
 Phase: 9 (The Base Command Catalogue)
-Plan: (none yet)
-Status: Roadmap defined (phases 9-12); awaiting phase 9 planning
-Last activity: 2026-08-11: v1.27.5 roadmap defined
+Plan: wave 1 (09-01, 09-02) complete; wave 2 (09-03, the catalogue UI) is next
+Status: Catalogue data and the byte-preserving override model exist and are tested; the two audit-flagged read paths are covered. One carried item: the new real-binary round-trip case in 09-02 skips on macOS and still needs a Windows run.
+Last activity: 2026-08-31: wave 1 executed
 
 ## Blockers
 
@@ -38,6 +38,6 @@ Last activity: 2026-08-11: v1.27.5 roadmap defined
 
 ## Session
 
-**Last session:** 2026-08-11T15:13:05.170Z
-**Stopped at:** Phase 9 context gathered
-**Resume file:** .planning/phases/09-the-base-command-catalogue/09-CONTEXT.md
+**Last session:** 2026-08-31
+**Stopped at:** Wave 1 executed and summarized; next step is plan 09-03 (the catalogue UI)
+**Resume file:** .planning/phases/09-the-base-command-catalogue/09-03-PLAN.md
