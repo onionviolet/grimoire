@@ -178,6 +178,9 @@ import { FormField, Input, Select } from '../components/common/forms';
 import { HeroSelect } from '../components/common/HeroSelect';
 import { LockerOverridesModal } from '../components/LockerOverridesModal';
 import { ViewModeToggle, EmptyState, LoadingState, ConfirmModal, SectionHeader, type ViewMode } from '../components/common/PageComponents';
+import { useConfirm } from '../components/common/confirmContext';
+import { confirmChatWheelUnbind } from '../components/chatwheel/unbindWarning';
+import { isChatWheelAddon } from '../lib/chatWheelAddon';
 
 const UNKNOWN_FIND_QUEUE_CONCURRENCY = 1;
 const UNKNOWN_FIND_QUEUE_PAUSE_MS = 35;
@@ -904,6 +907,7 @@ function getCardSizeGridStyle(multiplier: number): CSSProperties {
 
 export default function Installed() {
   const { t } = useTranslation();
+  const confirm = useConfirm();
   const navigate = useNavigate();
   const {
     settings,
@@ -3129,8 +3133,10 @@ export default function Installed() {
     }
   }, [loadMods, t]);
 
-  const openBulkDeleteConfirm = () => {
+  const openBulkDeleteConfirm = async () => {
     if (selectedMods.length === 0) return;
+    // A chat wheel add-on in the selection needs its unbind warning first.
+    if (!(await confirmChatWheelUnbind(confirm, t, selectedMods))) return;
     setModToDelete({
       ids: selectedMods.map((m) => m.id),
       name: `${selectedMods.length} mod${selectedMods.length === 1 ? '' : 's'}`,
@@ -3863,7 +3869,14 @@ export default function Installed() {
       setSoloBusy(false);
     }
   });
-  const deleteEntry = useStableCallback((entry: ModEntry) => {
+  const deleteEntry = useStableCallback(async (entry: ModEntry) => {
+    // A chat wheel add-on must be unbound in the game first, or the game can
+    // crash; the unbind warning is the confirmation for that case.
+    const targets = entry.kind === 'group' ? entry.variants : [entry.mod];
+    if (targets.some(isChatWheelAddon)) {
+      if (await confirmChatWheelUnbind(confirm, t, targets)) for (const target of targets) await deleteMod(target.id);
+      return;
+    }
     if (entry.kind === 'group') {
       setModToDelete({
         ids: entry.variants.map((v) => v.id),

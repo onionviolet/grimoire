@@ -101,3 +101,16 @@ edited by hand in Advanced YAML.
 The section is a projection of the YAML: Advanced YAML remains the single
 source of truth, so a manual edit there flows straight back into the controls,
 and nothing here edits `gameinfo.gi`.
+
+## Removing a wheel
+
+Deadlock binds a custom menu to the add-on that defines it, and only the
+game's own Chat Wheel settings can unbind it. Removing the add-on while a
+custom menu is still bound can crash the game when the chat wheel or the
+settings screen opens, and Grimoire cannot repair that binding afterwards.
+So `Remove wheel` on this page, and deleting a chat wheel add-on from the
+Installed page (singly or inside a bulk selection), first shows the unbind
+warning and removes nothing until it is confirmed. Ordinary mods keep their
+usual delete flow. The detection (`sourceSection === "ChatWheel"`) lives in
+`src/lib/chatWheelAddon.ts` and the dialog in
+`src/components/chatwheel/unbindWarning.ts`, so both surfaces share one copy.
