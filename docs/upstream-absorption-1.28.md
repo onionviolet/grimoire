@@ -202,6 +202,15 @@ None of this needs judgment beyond patience.
    `foundryTextureReplace`, `modinfoFormat`, `vpkIdentity`, `heroStageMode`,
    and `uiPrefs`. `tsc -b` exits 0 at baseline, so a type error after the merge
    is ours.
+
+   > **Corrected 2026-09-01.** Do not quote this figure as a gate. A truth pass
+   > on `main` measured 3 failing files / 26 failing tests, and found the number
+   > is not absorbed debt at all: 25 of the 26 (`uiPrefs` 19, `heroStageMode` 6)
+   > are Node 26 shadowing jsdom's `localStorage` with a native global that needs
+   > `--localstorage-file`, which passes on CI's Node 20; the 26th is a genuinely
+   > red `browserDownloadCapture` symlink-sweep case predating this absorption.
+   > The six other files listed here now pass. Phase 9.1 owns the repair; see
+   > ledger entries 4 and 5 in `.planning/WINDOWS.md`.
 5. Drive the real app from a numbered dev slot: Locker (user categories,
    General shuffle, sound and card pools), Installed (variants, inline
    profiles menu), Settings (promoted performance configs beside Game
@@ -360,7 +369,8 @@ and it is not a reason to strand the reviewed change.
 Automated evidence that *was* collected, on commit `8c90c37` at version
 `1.28.1`: all six gates pass (`tsc -b`, `eslint .`, `check-i18n`,
 `check-encoding`, `check-upstream-refs` all exit 0), and `vitest run` sits on
-the documented pre-merge baseline of 9 failing files and 26 failing tests, the
+the documented pre-merge baseline of 9 failing files and 26 failing tests (see
+the 2026-09-01 correction above: that baseline is mostly a Node 26 artifact), the
 same nine files listed in step 4. No new failure.
 
 Surfaces still owed a pass on real hardware:

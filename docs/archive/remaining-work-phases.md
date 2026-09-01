@@ -1,3 +1,11 @@
+> **Retired 2026-09-01.** This was a fourth planning register and it fell a
+> month behind the code: a truth pass on 2026-09-01 found that eleven of the
+> gaps below shipped during v1.27 and v1.27.1 and were never trued up here.
+> Do not plan from this file. Open work now lives in `.planning/BACKLOG.md`
+> (future), `.planning/ROADMAP.md` (current milestone), and
+> `.planning/WINDOWS.md` (defects and unrun verification). Kept for the
+> reasoning it records, not for its status claims.
+
 # Remaining work, phased
 
 Written 2026-07-28 against `main` at v1.25.170; reconciled the same day against

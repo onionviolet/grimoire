@@ -1,6 +1,12 @@
+> **Retired 2026-09-01.** The execution order for `remaining-work-phases.md`,
+> which is itself retired. Both were superseded by the `.planning/` lifecycle.
+> Current-milestone sequencing lives in `.planning/ROADMAP.md`; unscheduled
+> work lives in `.planning/BACKLOG.md`. Kept for the serial-vs-parallel
+> reasoning in "Why serial, mostly", which still holds.
+
 # Work order
 
-The order to actually do the work in [remaining-work-phases.md](./remaining-work-phases.md).
+The order to actually do the work in [remaining-work-phases.md](./remaining-work-phases.md) (also archived).
 Written 2026-07-28. Replaces the eight-lane parallel plan, which was more
 coordination than this project can pay for.
 
@@ -161,4 +167,4 @@ and, if any translation key changed, `pnpm i18n:check` then `pnpm i18n:manifest`
 
 Step 0's prompt is [spec-audit-prompt.md](./spec-audit-prompt.md). The rest are
 in the session that produced this plan; regenerate from
-[remaining-work-phases.md](./remaining-work-phases.md) if lost.
+[remaining-work-phases.md](./remaining-work-phases.md) (also archived) if lost.

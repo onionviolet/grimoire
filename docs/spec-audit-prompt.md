@@ -136,6 +136,6 @@ The audit's job is to make the code, not the prose, the source of truth.
 
 - Sections A-C are the highest value; if the audit must be split, run A-C first.
 - The audit is read-only by design. Feed its output into
-  [remaining-work-phases.md](./remaining-work-phases.md) and promote that
+  [.planning/BACKLOG.md](../.planning/BACKLOG.md) and promote that
   document's `[doc]` tags to `[verified]`.
 - Re-run after any release that touches Foundry or the Locker.

@@ -22,7 +22,8 @@ of the code and no such work was needed. Verified before starting:
   through preload.
 - `HeroPoseViewer.tsx` already has the two-attempt loader: rigged first, static
   posed preview as fallback.
-- `docs/remaining-work-phases.md` Phase 7a already records this as BUILT.
+- `docs/archive/remaining-work-phases.md` Phase 7a recorded this as BUILT.
+  Superseded: the rigged path shipped and was measured (RP-03).
 
 So this spike measured the existing path end to end instead of building one.
 

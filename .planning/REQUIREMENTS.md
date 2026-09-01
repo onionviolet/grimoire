@@ -26,7 +26,7 @@ tree at the milestone start:
 
 ### Base command catalogue
 
-- [ ] **REQ-cw-command-catalogue**: A typed, readonly catalogue of base-game
+- [x] **REQ-cw-command-catalogue**: A typed, readonly catalogue of base-game
       voice commands (stable command ID, user-facing label, category, default
       availability) is captured and owned in `src/lib/chatWheelCommands.ts`,
       versioned to the upstream ChatLane commit it was vendored from, with a
@@ -34,13 +34,23 @@ tree at the milestone start:
       the bundled fork binary's exact build point is unverified (the fork repo
       is not publicly readable). A small YAML fixture with known and unknown
       entries keeps parser compatibility independent of the whole catalogue.
-- [ ] **REQ-cw-override-editing**: Users can search, filter, and browse the
+- [x] **REQ-cw-override-editing**: Users can search, filter, and browse the
       catalogue, and toggle each command's availability for the stock Chat
       Wheel (`override_bindable`) and the Ping wheel
       (`override_ping_wheel_bindable`) from form controls, without touching
       YAML. Unknown YAML override entries stay visible and editable in an
       "Other commands in this file" group; unknown root keys and unknown
       command IDs round-trip byte-for-byte.
+
+### Suite integrity
+
+- [ ] **REQ-green-suite**: `vitest run` is green on the toolchain the
+      repository declares, that toolchain is declared explicitly (`engines` or
+      `.nvmrc`) or the jsdom/native-`localStorage` collision is removed at its
+      source, the `browserDownloadCapture` symlink-sweep case passes or is
+      quarantined with a reason and a ledger entry, and the stale
+      "9 failing files / 26 failing tests" figure is corrected wherever it is
+      quoted as a gate. No phase exits against a remembered failure count.
 
 ### Wheel interaction and disclosure
 
@@ -73,7 +83,7 @@ tree at the milestone start:
 
 ### Test gap and release
 
-- [ ] **REQ-cw-test-gap**: `chat-wheel:read` and `chat-wheel:starter` gain
+- [x] **REQ-cw-test-gap**: `chat-wheel:read` and `chat-wheel:starter` gain
       main-process coverage (flagged untested by the 2026-07-28 audit), beside
       the existing round-trip test.
 - [ ] **REQ-release-v1.27.5**: The fork ships v1.27.5 as a GitHub Release on
@@ -99,12 +109,13 @@ tree at the milestone start:
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | REQ-cw-editor-base | delivered (pre-milestone) | [x] |
-| REQ-cw-command-catalogue | 9 | [ ] |
-| REQ-cw-override-editing | 9 | [ ] |
+| REQ-cw-command-catalogue | 9 | [x] |
+| REQ-cw-override-editing | 9 | [x] |
+| REQ-green-suite | 9.1 | [ ] |
 | REQ-cw-limitations-disclosures | 10 | [ ] |
 | REQ-cw-keyboard-nav | 10 | [ ] |
 | REQ-cw-drag-drop | 10 | [ ] |
 | REQ-cw-unbind-warning | 11 | [ ] |
 | REQ-cw-game-asset-dressing | 11 | [ ] |
-| REQ-cw-test-gap | 9 | [ ] |
+| REQ-cw-test-gap | 9 | [x] |
 | REQ-release-v1.27.5 | 12 | [ ] |

@@ -38,6 +38,7 @@ Phase 9 onward. Decimal phases (9.1, 10.1) are urgent insertions marked INSERTED
 and appear between their surrounding integers in numeric order.
 
 - [x] **Phase 9: The Base Command Catalogue** - Capture the base-game voice commands as typed, provenance-pinned data, give `override_bindable` and `override_ping_wheel_bindable` a searchable, editable form surface that preserves unknown entries byte-for-byte, and close the `chat-wheel:read`/`starter` test gap
+- [ ] **Phase 9.1: Green Suite And Honest Baseline** (INSERTED 2026-09-01) - Repair the two genuinely failing test paths and correct the mis-attributed "v1.28 absorption baseline", so the suite is green rather than green-except-a-number-we-remember
 - [ ] **Phase 10: Wheel Interaction And Disclosure** - Disclose the game's documented limitations near the controls they affect, finish arrow-key ring navigation on the radial preview, and add drag-and-drop menu building with keyboard alternatives
 - [ ] **Phase 11: Safety And Dressing** - Warn before removing a Chat Wheel add-on that must be unbound first, and prove the game-asset dressing spike with the pure-SVG wheel kept as the permanent fallback
 - [ ] **Phase 12: Release Engineering** - Ship v1.27.5: package.json version, CHANGELOG entry, tag `v1.27.5`, and a GitHub Release with notes from the changelog
@@ -59,6 +60,46 @@ and appear between their surrounding integers in numeric order.
 **Plans**: TBD
 
 **Notes**: The catalogue is versioned data tied to the pinned ChatLane source or release used to build the bundled CLI, not a scrape of game files or a remote fetch. A small YAML fixture with known and unknown entries keeps parser compatibility independent of the whole catalogue. The override controls live on the Chat Wheel page as a separate collapsible section beneath "Menus and commands", and Advanced YAML stays the escape hatch: manual edits flow back into the controls through the existing `parseChatWheelYaml` path. The IPC handlers under test are the two-delegation lines in `electron/main/ipc/chatWheel.ts`; the round-trip test they join already exists.
+
+### Phase 9.1: Green Suite And Honest Baseline (INSERTED 2026-09-01)
+
+**Goal**: `vitest run` is green on a supported toolchain, and no phase can ever
+again be exited by comparing a failure count against a number nobody re-derived
+**Depends on**: Phase 9
+**Requirements**: REQ-green-suite
+**Inserted because**: the Phase 9 exit note settled success criterion 4 by
+matching 26 failures against a recorded "v1.28 absorption baseline". A truth
+pass on 2026-09-01 found that attribution is wrong, and that the real content of
+the number is two unrelated things:
+
+  - **25 of the 26 are a local toolchain artifact, not absorbed debt.** Node 26
+    ships a native `localStorage` global that is unavailable without
+    `--localstorage-file`, and it shadows jsdom's. Every storage-touching test
+    fails on Node 26 (`uiPrefs` 19, `heroStageMode` 6) and passes on CI's Node
+    20. Nothing was absorbed; the local runtime moved.
+  - **1 is a real failing test on `main`**: `browserDownloadCapture.test.ts`
+    "a symlink entry in the root is skipped and never followed" expects 1 and
+    gets 2. Known since v1.27.1 and never fixed.
+
+**Success Criteria** (what must be TRUE):
+
+  1. `./node_modules/.bin/vitest run` is green on the toolchain the repository
+     declares, and the declaration is explicit: an `engines` field or `.nvmrc`
+     pins the supported Node, or the jsdom/native-`localStorage` collision is
+     removed at its source so both Node 20 and Node 26 pass
+  2. The symlink-sweep case either passes or is quarantined with a stated
+     reason and a ledger entry; it is not left silently red inside a baseline
+  3. The stale "9 failing files / 26 failing tests" figure is corrected wherever
+     it is quoted as a gate: this roadmap's Phase 9 exit note and
+     `docs/upstream-absorption-1.28.md`
+  4. No future phase may exit against a remembered failure count: exit criteria
+     cite a command and its expected exit code
+
+**Plans**: TBD
+
+**Notes**: This is small and mechanical, and it is inserted here rather than
+banked because the cost of leaving it is that the next real regression hides
+inside a number people have learned to expect. It must land before Phase 12.
 
 ### Phase 10: Wheel Interaction And Disclosure
 
@@ -108,6 +149,29 @@ and appear between their surrounding integers in numeric order.
 
 **Notes**: The version stays below upstream (1.27.5, not 1.28) so a fork patch can never overtake the upstream version line. Windows artifacts are produced with `GRIMOIRE_FORK_BUILD` and `GRIMOIRE_SOCIAL_BASE_URL` set, and the packaged smoke record does not gate the release (decided 2026-07-28).
 
+## Not in this milestone
+
+Rescoped 2026-09-01. Two classes of work were being carried in prose across
+`docs/feature-status.md` and `docs/remaining-work-phases.md`, where they were
+neither scheduled nor trued up, and eleven items sat there for a month after
+they had shipped. Both now have one home each:
+
+- **Future feature work** moved to [BACKLOG.md](./BACKLOG.md): the Foundry
+  model serializer and model/VFX browsing (B-01, B-02), advanced merge
+  composition (B-03), animation retarget and in-preview VFX (B-04), the social
+  TOS-gate decision (B-05), Locker overflow polish (B-06), and the
+  fork-owned-`grimoire-social` question (B-07). None of it is Chat Wheel work
+  and none of it belongs in v1.27.5.
+- **Verification debt stays deferred by decision (2026-09-01).** The three
+  `unrun-verify` entries in [WINDOWS.md](./WINDOWS.md) need a real Deadlock
+  install or a Windows machine. They are waived for this milestone with that
+  reason recorded, so they do not block Phase 12, and they are not re-scoped
+  onto the roadmap. The app-tier record is already green and strict
+  (42 rows, 0 blank); what is owed is the engine tier.
+
+`docs/remaining-work-phases.md` and `docs/work-order.md` are retired to
+`docs/archive/` so there is no fourth register to drift.
+
 ## Progress
 
 **Execution Order:**
@@ -116,9 +180,17 @@ Phases execute in numeric order: 9 → 10 → 11 → 12. Each phase depends on t
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 9. The Base Command Catalogue | 3/3 | Complete | 2026-08-31 |
+| 9.1. Green Suite And Honest Baseline | 0/0 | Planned (INSERTED) |  |
 | 10. Wheel Interaction And Disclosure | 0/0 | Planned |  |
 | 11. Safety And Dressing | 0/0 | Planned |  |
 | 12. Release Engineering | 0/0 | Planned |  |
+
+**Phase 9 exit note, corrected 2026-09-01.** The note below stands as the
+record of how the phase was exited, but its central claim does not survive a
+truth pass: 25 of the 26 failures are a Node 26 native-`localStorage` collision
+with jsdom on this machine, not absorbed debt, and the 26th is a real failing
+test on `main`. Phase 9's own work is still clear of both. Phase 9.1 repairs
+this. Original note follows.
 
 **Phase 9 exit note (2026-08-31):** success criterion 4 was settled by a full
 `./node_modules/.bin/vitest run` on the working tree: 26 failing tests across 3

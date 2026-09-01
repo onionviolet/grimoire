@@ -1,12 +1,16 @@
 # Feature status
 
-Status snapshot: 2026-07-28, re-verified against the working tree at v1.25.171
-by the audit in [spec-audit-prompt.md](./spec-audit-prompt.md), then updated on
-2026-07-28 for wave 1 (Foundry source actions and merge review), wave 2
-(combined Foundry output, performance ConVar provenance), and wave 3 (rigged
-preview measurement, social phase 1.5). This is an
-implementation inventory, not a substitute for the manual in-game validation
-required before a release.
+Status snapshot: **2026-09-01**, reconciled against the working tree by reading
+the code rather than the docs. The two "Shipped" sections date from the
+2026-07-28 audit ([spec-audit-prompt.md](./spec-audit-prompt.md)) and its three
+waves and are kept as shipped history; the gap and verification sections were
+rewritten on 2026-09-01, when eleven entries turned out to have shipped during
+v1.27 and v1.27.1 without ever being trued up here.
+
+This is an implementation inventory, not a substitute for in-game validation.
+It holds **no forward plan**: see [.planning/ROADMAP.md](../.planning/ROADMAP.md)
+for the current milestone and [.planning/BACKLOG.md](../.planning/BACKLOG.md)
+for everything else.
 
 ## Shipped 2026-07-30
 
@@ -143,347 +147,68 @@ required before a release.
 
 ## Confirmed gaps
 
-1. **Combined output covers sound and texture only.** `FoundryForgeEdit`
-   (`src/types/foundry.ts:320`) admits `sound` and `texture`; recolor and model
-   edits have no staged-edit serializer and cannot enter a combined build.
-1b. **Social phase 1.5 is unrunnable until the Worker ships.** Migration 0005
-   has not been applied anywhere and the profile routes select its columns, so
-   they fail against a pre-migration DB. The revalidation cron has never run:
-   its GameBanana probe shape is unverified against a real deleted or archived
-   submission, and the `ViewCounterDO` `v2` migration entry is deploy-time
-   behaviour that was never exercised. Nothing here is verified end to end.
-1c. **No fps measurement exists for the rigged preview.** The flag is no longer
-   welded to cloth (fixed 2026-07-28: rigged has its own dev switch, so the
-   animated path can be measured without the WIP cloth sim riding along), but
-   nobody has taken the reading yet. Until someone measures Seven
-   (`gigawatt_prisoner`, the worst case on every axis) per section 8 of
-   [rigged-preview-spike.md](./rigged-preview-spike.md), the release flag stays
-   false and the static posed preview remains the default.
-1d. **The updater never cleans up after itself.** `services/updater.ts` has no
-   pruning path: electron-updater's download cache keeps old installers and
-   stale partial downloads, and nothing removes them. Banked in Phase 8.5 of
-   [remaining-work-phases.md](./remaining-work-phases.md).
-1a. **Performance ConVar game defaults are unverified against the game.** The
-   eight advanced defaults were moved out of the renderer constant that held
-   them, not read off a running build, so a wrong number badges an untagged
-   stock line as "Your override". All eight HUD toggles carry a null game
-   default, so an unset toggle is badged honestly but cannot preview what the
-   game will do. Both are data-only fixes once someone reads the console.
-2. **Asset source actions are unverified in game.** The panel and
-   `My changes` now carry the full action set, but no in-game check has
-   confirmed that an audition of an installed VPK's clip matches what the
-   engine plays, or that a re-forged swap sounds identical to the original.
-2a. **The forge-install path has never been run.** `foundry:forgeInstall` is
-   covered only where the old export path was: `describeFoundryBuild` has unit
-   tests for its provenance derivation, and the build itself is the same
-   already-tested `buildFoundryForgeVpk`. Nobody has installed a real build,
-   confirmed it appears in `My changes` and the Locker, confirmed the recorded
-   write set matches what the engine loads, or exercised the rollback when slot
-   allocation or metadata fails. Treat it as written but unproven.
-2d. **Nothing validates that an installed file is actually a VPK.** Every install
-   path tests the filename extension (`ipc/mods.ts:1176`) and never the magic
-   bytes, though the app already checks magic on merge output
-   (`services/modMerger.ts:251`). On 2026-07-29 this was found to have let six
-   archives into one library as `*_dir.vpk`: two 7-Zip (`0xafbc7a37`) and four
-   ZIP (`0x04034b50`), each wrapping a real VPK that extraction never unpacked.
-   The game cannot load them, so those mods had never worked, and because
-   `AssetSourcesPanel` gates on `unreadableMods.length > 0` globally they also
-   disabled every source action app-wide. Both halves are lanes A and B of
-   [foundry-changes-parallel-plan.md](./foundry-changes-parallel-plan.md).
-   **Both lanes have now landed** (`services/vpk.ts` magic validation on every
-   adoption path, `services/vpkImpostors.ts` reconcile, and the split
-   toggle/replacement gate in `components/foundry/sourceGating.ts`). See 2e for
-   what that did and did not prove.
-2e. **What the 2026-07-29 parallel-lane run proved.** Six lanes of
-   [foundry-changes-parallel-plan.md](./foundry-changes-parallel-plan.md) landed
-   together: A (VPK identity gate), B (scoped source blocking), C (grouped pool
-   view), D (alternatives gallery), E (portrait editor), F (sound tool
-   surfacing). Repository gate is green: `typecheck`, `lint`, 983 tests across
-   91 files, `i18n:check` at 2244 referenced keys, and a regenerated manifest
-   that passes `--check`. A live drive over CDP confirmed all six new IPC
-   bridges reach the renderer, that a forced `reconcileVpkImpostors` pass swept
-   125 installed mods in 60ms and reported **zero false positives** against a
-   library of genuine VPKs, and that `My changes` mounts with the new
-   List/Pools toggle in the sort row and switches to pool mode without error.
-   What the drive could **not** show is the substance of most of it: the drive
-   library contained **zero authored Foundry changes and zero contended pools**,
-   so the pool cards, the alternatives thumbnails, the audition preview, the
-   sound trim/gain badges, and the portrait editor were never rendered against
-   real content. Their pure models are unit-tested; their rendering is not.
-   Vitest runs in a node environment with no DOM, so no lane has a render test.
-   The impostor reconcile has likewise never met a real impostor, the six
-   originals having been removed before this run. And as with 2c, nobody has
-   started Deadlock: no claim is made that the engine loads any of it.
-2f. **Lane A surfaces nothing yet.** The reconcile detects impostors, and
-   `mods:getVpkImpostors` / `mods:repairVpkImpostor` are wired through preload,
-   but the startup pass emits `vpk-impostors-found` with **no listener**. The
-   lane board's done-condition for A was "no non-VPK can be installed; existing
-   ones are surfaced": the first clause holds, the second does not. Separately,
-   `services/dmmMigration.ts` adopts files as installed mods and was **not**
-   gated, because it is not among the paths the lane plan enumerates. It is a
-   real hole in the same invariant. Lane F's retune route **no longer opens
-   `SoundImportEditor` unseeded**: the editor takes an optional `initialEdits`
-   seed (recorded trim window, gain, loop mode), and `seedTrimWindow` in
-   `components/foundry/soundTuning.ts` fits that seed to the clip the user
-   actually decodes, clamping a window that overruns the file and dropping one
-   that cannot survive at all rather than producing an invalid selection
-   (`components/foundry/soundSeed.test.ts`). Every unseeded call site is
-   unchanged. The seeding math is unit-tested; no retune has been executed
-   against a real clip, so the seeded editor has never been rendered.
-2c. **What the live drive did and did not prove.** Driven through
-   `scripts/dev-driver.mjs` against a real 131-mod library: forge-install builds
-   a verified VPK and records provenance; the row, filters, sort, and both
-   Locker links behave; stale-review, empty-name, and missing-source are all
-   rejected with no half-install; two contending builds form one pool, and six
-   consecutive `runLaunchShuffle` calls alternated between them with zero
-   failures. What is still unproven is the only thing this cannot show: nobody
-   has started Deadlock and confirmed the chosen VPK is what the engine loads.
-2b. **An installed build is deliberately not a Locker skin.** It carries a hero
-   tag for Foundry's own shelving, which is the same shape `isLockerManagedMod`
-   reads as "manage as a skin". It is excluded there
-   (`lib/lockerUtils.ts`, `lib/lockerFoundryBuild.test.ts`) because a build may
-   be a portrait, an icon, a sound, or several at once, and an active-skin card,
-   a skin load-order slot, a launch-shuffle entry, and a 3D-preview merge source
-   are all claims it cannot honour. It stays visible in Installed and in
-   `My changes`; the Locker reaches it by link. A build carrying hero ability
-   sounds still routes to that hero's Sounds tab through the existing
-   `abilitySounds` classification, which is non-destructive.
-3. **Foundry models and broad asset browsing.** There is no usable Foundry
-   model-export/viewer entry point. Thumbnail browsing is intentionally limited
-   to ability icons, item icons, and hero images; model, VFX, and other large
-   categories remain deferred.
-4. **Advanced merge composition.** The review and reviewed source order have
-   landed. Merge recipes, editable include/exclude path policy, merge-content
-   presets, and rebuild diffs are still absent, and a reviewed order cannot be
-   applied to a selection containing a merged mod (flattening contributes
-   leaves the review never showed, so the merger rejects it).
-5. **High-fidelity animated 3D previews.** Material/lighting parity, NPR, and
-   cloth have landed, and a rigged (no-`--pose`) export path exists
-   (`services/heroPoseModels.ts:972`). Animation retarget and in-preview ability
-   VFX remain unbuilt.
+**Reconciled 2026-09-01** against the working tree. The previous list dated
+from 2026-07-28 and had gone badly stale: eleven of its entries shipped during
+v1.27 and v1.27.1. Those are recorded, with evidence, in the "Closed by the
+truth pass" table of [.planning/BACKLOG.md](../.planning/BACKLOG.md); do not
+re-derive them from an older revision of this file.
+
+What is genuinely still missing, in the order it would be worth building:
+
+1. **Foundry model edits have no forge serializer.** `FoundryForgeEdit`
+   (`src/types/foundry.ts:423`) admits `sound`, `texture`, and `recolor`. The
+   tray refuses a model edit explicitly rather than dropping it silently, and
+   there is no model surface to stage one from anyway. Backlog B-01.
+2. **Foundry models, VFX, and broad thumbnail browsing.** No model
+   export/viewer entry point; browsing stays deliberately limited to ability
+   icons, item icons, and hero images. Backlog B-02.
+3. **Advanced merge composition.** Merge recipes, editable include/exclude
+   path policy, merge-content presets, and rebuild diffs are absent, and a
+   reviewed order cannot be applied to a selection containing a merged mod.
+   Backlog B-03.
+4. **Animation retarget and in-preview ability VFX.** The rigged export path
+   ships and its frame cost was measured; retarget and in-preview VFX were
+   never built. Backlog B-04.
+
+Two further items are decisions rather than gaps: where the social TOS gate
+fires (B-05) and whether to fork `grimoire-social` or upstream the dormant
+wave 3 work (B-07, disposition recorded in ADR-018).
+
+## Verification status
+
+The Foundry and Locker verification debt that dominated this document in July
+is largely discharged. `node scripts/check-verification-record.mjs --strict`
+passes: 42 rows, 0 blank, every verdict filled, with the app tier settled
+unattended by `scripts/verify-in-app.mjs` and the engine tier carrying reasoned
+per-row deferrals.
+
+What remains is three `unrun-verify` entries in
+[.planning/WINDOWS.md](../.planning/WINDOWS.md), each needing a real Deadlock
+install or a Windows machine. **They are deferred by decision (2026-09-01) and
+gate nothing.** That register is their only home; do not copy them back here.
+
+The standing caveat still holds and should not be overstated in user-facing
+copy: a pass in the app tier proves Grimoire wrote the intended bytes to the
+intended path. It proves nothing about whether the Source 2 engine loads,
+plays, or draws them.
 
 ## History and branch safety
 
-- No local branch is ahead of `main` with unmerged feature commits, and the
-  recent reflog shows the Foundry sound-workbench work landed before v1.25.169.
+- `main` is the only branch. The v1.27.5 phase branches and the v1.28
+  absorption branch were merged and deleted on 2026-09-01; `upstream/main` is
+  fully absorbed as of that date.
 - `codex/chat-wheel-tab` is not a feature branch to merge: compared with
   `main`, it removes Chat Wheel and many other fork features. Treat it as an
   old/reductive experiment, not recovery material.
 
 ## Release follow-up
 
-The forked `vpkmerge` sidecar workflow shipped in the published
-`v1.25.170` release.
+The packaged Windows smoke record does not block a release (decided
+2026-07-28, unchanged). The fork's support destination was decided and applied
+during v1.27; the updater modal no longer points at the upstream Discord.
 
-**The packaged Windows smoke record no longer blocks a release** (decided
-2026-07-28). It is tracked as post-release verification, not as a gate. The
-factual position is unchanged and should not be overstated in user-facing copy:
-no packaged build has been exercised against the game for this line of work, and
-the combined Foundry forge in particular has never been run end to end by a
-human. Run the checklist in section 1 below when a build and the game are both
-in front of you, and fix forward if it finds something.
-
-**Deferred fork-support cleanup.** Before treating this fork as a supported
-public build, remove or replace the upstream Discord invite in fork-owned
-surfaces. In particular, the updater modal (`src/components/UpdateModal.tsx`)
-currently sends users to the main Grimoire Discord, where they could
-accidentally request help for this fork. Decide on a fork-specific support
-destination first (or omit the link entirely), then apply that decision
-consistently to the updater and other in-app support links.
-
-## Next-version implementation plan
-
-### Delivery contract and sequencing
-
-This roadmap is intentionally split into independently releasable slices. A
-slice is complete only when its data contract, UI, error/rollback behaviour,
-and automated checks land together; a visible control is not a substitute for
-the corresponding exact-path inspection or preflight.
-
-| Slice | Depends on | Deliverable | Exit gate |
-| --- | --- | --- | --- |
-| Release integrity | pinned sidecar workflow | a newly versioned packaged build using the forked engine | Windows smoke test and reported engine version |
-| Chat Wheel Editor v1 | ChatLane converter | understandable creation flow, editable YAML with immediate converter feedback, and non-destructive preview | reset/validation/round-trip tests; manual conversion smoke |
-| Asset sources foundation | mod store + read-only merge analysis | normalized-path owner query with enabled/disabled contenders, provenance, uncertainty, and winner | fixture tests for ordering, third-party and unreadable VPKs |
-| Sound sources and pools | asset sources foundation | event-row source inspection, safe actions, assignment preview and persisted seed | discovery, seed, cancel and rollback tests |
-| Visual replacement preflight | asset sources foundation | source panel and explicit preflight on existing visual cards | portrait-family and single-icon path fixtures |
-| Combined Foundry output | staged-edit serializers for every supported kind | one confirmed named VPK with the reviewed write set | collision, cancellation and installed-state regression tests (landed wave 2; a live forge and a real save-dialog cancel are still unrun) |
-| Models, VFX and advanced composition | trustworthy catalog paths + composition design | only bounded, inspectable extensions of the source/preflight model | performance and correctness budgets agreed before UI exposure |
-
-**Non-negotiable invariants.** Exact normalized VPK paths are the ownership
-key; labels, hero names, and mod metadata are never used as a substitute.
-Installed/Locker remains the only enabled-state authority. A Foundry action may
-open, request, or display a mod-store change, but may not silently change load
-order or overwrite a third-party VPK. A failed or unreadable inspection blocks
-ambiguous forge operations and leaves all installed mods unchanged. New IPC
-responses must be serializable and have renderer-side empty/error states.
-
-**Implementation order.** Implement and verify the first five slices before
-attempting combined output. Keep the experimental Chat Wheel gate until its
-validation and usability gates pass. Do not start models, arbitrary global
-shuffle, format conversion, merge recipes, or broad thumbnail classes merely
-because adjacent UI exists; each remains separately gated by the requirements
-below.
-
-### Parallel execution board
-
-The work below is runnable in parallel when each lane changes only its stated
-contract. An integration owner lands shared type/preload/IPC additions first
-or resolves the small additive conflicts before merging; no lane may change the
-mod-store enabled-state rules or VPK priority semantics.
-
-| Lane | Can start now | Owns | Consumes / must wait for | Completion handoff |
-| --- | --- | --- | --- | --- |
-| A — release integrity | yes | workflow, sidecar packaging, version and smoke checklist | none | exact packaged build version, sidecar version, Windows smoke record |
-| B — Chat Wheel | yes | page, ChatLane IPC/service, Chat Wheel tests | converter fixture | validated YAML contract; no parser/model changes without a round-trip fixture |
-| C — source foundation | yes | normalized path inspector, ownership types, VPK-directory fixtures | mod scan + directory parser | serializable `AssetSourcesInspection`; lower priority is the winner |
-| D — visual sources | after C contract is stable | shared source panel and portrait/icon/texture callers | C only | path-family mapping tests and no write-side effects |
-| E — sound sources/pools | after C contract is stable; existing sound inspector may bridge the gap | sound-row panel, pool assignment/seed metadata, My sound changes | C for the generic panel; sound swap contract | exact compiled clip/event paths and cancellation/rollback tests |
-| F — combined output | after D and E have staged-edit serializers | tray forge IPC and final named-VPK confirmation | D + E + collision model | atomic build/cancel behaviour, final write set, collision winners |
-| G — models/VFX/composition | blocked until trustworthy path catalog and F are complete | viewer/export, bounded browsing, merge-review extensions | F plus performance budget | explicit supported-path list, cache budget, manual fidelity sign-off |
-
-**Suggested batches.** Run A, B, and C together. Once C's IPC/type contract
-is merged, run D and E together. Run F only after both report their supported
-write-set serializers; G remains intentionally blocked. Every batch finishes
-with focused tests in its lane, then integration runs the repository gate.
-When a lane needs a new shared field, it must add it additively and provide a
-fixture before another lane consumes it. This prevents parallel UI work from
-guessing source ownership or priority rules.
-
-### Current implementation update
-
-The automated portions of A-C are complete: the release workflow is published,
-Chat Wheel has form authoring, Advanced YAML, and a live radial preview, and
-`AssetSourcesInspection` has
-fixture coverage for normalized ownership, priority winners, third-party
-entries, and unreadable VPKs. The Windows smoke record is still outstanding.
-
-D and E are **partial**. Visual cards and sound rows can inspect exact source
-paths; visual replacement preflight blocks unreadable VPKs and asks before an
-enabled conflict creates a separate managed replacement. Portrait-family path
-grouping and compiled sound clip/event inspection are covered by unit tests.
-The shared panel is inspect-only: it does not yet provide the planned audition,
-open-in-Installed, or normal-mod-store enable/disable actions. `My sound
-changes` currently supports normal-state enable/disable, rename, and delete,
-but not annotation access, jump-to-conflict, or re-forge.
-
-F has **landed**. Both live authoring flows stage into one reviewed write set
-(`SoundBrowse.tsx:1034`, `LibraryBrowse.tsx:66`), the tray shows the write set
-and collision winners before an explicit confirm
-(`FoundryBuildTray.tsx:48`-`:79`), and `foundryForge.ts` builds each part in an
-isolated temp directory, merges once, re-derives the review server-side, and
-rejects a stale confirmation (`services/foundryForge.ts:50`) or a built VPK
-whose entries do not match the confirmed write set (`:73`). The build was
-export-only by design; it now has an install output too, running through the
-same `buildFoundryForgeVpk` so neither output can drift from the confirmed
-write set.
-
-On 2026-07-28 the staged sound path gained the exact-path preflight it was
-missing (`SoundBrowse.tsx:1043`): an uninspectable VPK now blocks staging with
-an explanation, and an enabled owner requires an explicit acknowledgement,
-mirroring `LibraryBrowse.tsx:57` without offering the install path's
-disable/replace resolutions, which would mutate enabled state at staging time.
-One exit-gate item remains open: there is no installed-state regression test for
-cancellation. Models, VFX, and advanced composition (G) remain blocked.
-
-**Repository verification gate.** Each implementation batch must run the
-relevant Vitest files, then `pnpm typecheck`, `pnpm lint`, and the full
-`pnpm test` suite. Release integrity additionally requires the packaged Windows
-smoke listed below. Any test that invokes a converter or VPK parser must use a
-fixture/fake in unit tests and retain one manual packaged smoke test.
-
-### 1. v1.25.170 — engine hotfix and release integrity
-
-1. Commit the release-workflow change that builds the pinned forked
-   `vpkmerge` sidecar.
-2. Run a packaged Windows smoke test: open Global sounds, confirm
-   `catalog globalsounds` works, replace a normal and YCoCg icon, and inspect
-   the engine version in Settings.
-3. Publish a new version; never replace the v1.25.169 assets.
-
-### 2. Foundry sources, existing mods, and randomization
-
-**What exists now**
-
-- In the hero workshop, `HeroSoundPicker` already shows compatible installed
-  hero sound mods—including downloaded and forged mods—before the base-game
-  sound browser. Launcher sound shuffling also exists in Locker for eligible
-  hero sound mods.
-- Before a new sound forge, Foundry scans enabled and disabled VPKs by exact
-  write path, including third-party mods. It can disable conflicts or replace a
-  managed Foundry change.
-- Per-event randomizer-pool authoring already supports replace-all, selected
-  targets, N-to-N mapping, and seeded user-library assignments.
-
-**Still missing, and planned for the next feature version**
-
-1. Add a per-sound-row **Existing sources** panel to Foundry. For the exact
-   event and compiled clip(s) shown on that row (for example
-   `charged_melee_full.vsnd_c`), it must show the current winner and every
-   installed or disabled VPK that writes one of those paths. Include
-   provenance (`Downloaded`, `Imported`, `Forged`, `Third-party`), write paths,
-   priority, and expected load-order winner. Hero-wide `HeroSoundPicker`
-   results are supplementary only; both hero and global rows must discover
-   third-party sources by VPK entry-path inspection rather than metadata guesses.
-2. Provide explicit source actions: audition, enable/disable through the normal
-   mod store, open in Installed, add/remove from a launch shuffle pool, and
-   create a replacement from that source. Never silently change precedence or
-   overwrite a third-party VPK.
-3. Surface the existing **hero sound launch-shuffle** controls in Foundry with a
-   link back to Locker. Add global-sound shuffle only after defining a safe,
-   event-level persisted pool; do not randomize arbitrary installed VPKs.
-4. Complete the pool editor: show the exact target-to-audio assignment before
-   Forge, persist/display its seed in the forged-mod metadata, and add a
-   `Shuffle now` preview. Correct the audio picker so it either accepts only
-   MP3 or transparently converts the other advertised formats.
-5. Expand `My sound changes` with event-level active-winner context, jump to
-   the source/conflict row, annotation access, and re-forge from recorded
-   assignments. Keep Installed/Locker as the sole authority for enabled state.
-6. Verify hero, voice, and global cases against a downloaded third-party sound
-   mod, a forged mod, a disabled mod, and a multi-clip pool. Add regression
-   tests for source discovery, winner ordering, seed persistence, cancellation,
-   and rollback.
-
-### 3a. Asset-level existing-source inspection across Foundry
-
-Apply the same model to every Foundry catalog target, not only sounds. A player
-viewing a portrait, ability icon, item icon, texture, VFX asset, or future model
-must be able to answer: **what is currently winning for this exact game path,
-what else overrides it, and what happens if I make a new replacement?**
-
-1. Add a shared `Asset sources` panel keyed by exact normalized VPK entry path
-   (or an explicit set of paths for one logical asset). Show enabled and
-   disabled owners, priority, provenance, affected paths, expected winner, and
-   unreadable-VPK uncertainty. Never infer ownership from a display label or
-   hero name alone.
-2. Start with existing visual catalog cards: hero portraits/cards, ability
-   icons, item icons, and replaceable textures. A portrait family must inspect
-   every relevant variant together (normal, low-HP, gloat, minimap, and other
-   discovered variants), while still showing which individual variant has an
-   override.
-3. Reuse the panel for sounds by passing the row's event clip paths, then extend
-   it to VFX and models only when their catalog/export paths are precise enough
-   to compute a trustworthy write set.
-4. Provide consistent safe actions: preview the current source where possible;
-   open the owner in Installed; enable/disable through the normal mod store;
-   inspect conflicts; and create a new replacement. Do not provide a direct
-   overwrite action for third-party VPKs.
-5. Before forging any texture, portrait, icon, sound, VFX, or model replacement,
-   run the same exact-path preflight and require an explicit conflict resolution.
-   If a mod cannot be inspected, block the destructive/ambiguous action and
-   explain why.
-6. Test multi-variant portrait ownership, one-path icon ownership, disabled and
-   enabled contenders, priority winner calculation, untracked third-party
-   VPKs, and unreadable VPK handling.
-
-### 4. Foundry composition and asset follow-through
-
-1. Wire actual forge flows into the existing build tray and build one named VPK
-   only after the user confirms its selected write set and collision winners.
-2. Add the first usable model-export/viewer slice, then broaden catalog
-   thumbnailing with bounded caching and explicit performance limits.
-3. Decide whether to bundle audio conversion. If approved, add conversion,
-   licensing notices, size-budget review, and per-format tests; otherwise make
-   the UI MP3-only.
-4. Add merge-review UI over the existing read-only analysis before attempting
-   recipes or path-policy composition.
+Forward-looking plans no longer live in this file. Current-milestone work is in
+[.planning/ROADMAP.md](../.planning/ROADMAP.md); everything else is in
+[.planning/BACKLOG.md](../.planning/BACKLOG.md). The v1.25-era plan that used
+to sit here is archived at
+[archive/feature-status-next-version-plan.md](./archive/feature-status-next-version-plan.md).
