@@ -65,9 +65,10 @@ function chatWheelTempDirsCreatedSince(before: string[]): string[] {
 describe.skipIf(!binaryAvailable)('Chat Wheel VPK round trip (real ChatLane.exe)', () => {
     // Observed fidelity (run locally against the tracked binary before writing
     // this assertion, per D-05): the bundled starter.yml, including its two
-    // leading comment lines, blank lines, key order, and CRLF line endings,
-    // comes back byte-for-byte identical after a build-then-read round trip.
-    // Plain string equality after trim is therefore the correct assertion;
+    // leading comment lines, blank lines and key order, comes back unchanged
+    // after a build-then-read round trip. The file is LF-only, and the
+    // assertion below compares the two strings after trim (not byte-for-byte,
+    // which would also pin trailing whitespace the converter is free to move);
     // ChatLane does not reformat this input.
     it('survives a build -> read round trip of the starter YAML', async () => {
         const yaml = await readChatWheelStarter();
@@ -76,6 +77,53 @@ describe.skipIf(!binaryAvailable)('Chat Wheel VPK round trip (real ChatLane.exe)
         try {
             const roundTripped = await readChatWheelVpk(built.vpkPath);
             expect(roundTripped.trim()).toBe(yaml.trim());
+        } finally {
+            await built.cleanup();
+        }
+
+        expect(existsSync(built.vpkPath)).toBe(false);
+    });
+
+    // The override maps are the half of "round-trips through save and reopen"
+    // the model unit tests cannot reach: they prove our own text handling, not
+    // the converter's. ChatLane embeds chatlane.yml verbatim per its CLI
+    // contract, so every override line must survive character for character,
+    // including a parenthesized key, an apostrophe key and an id the converter
+    // has never heard of.
+    it('survives a build -> read round trip of populated override maps', async () => {
+        const overrides = [
+            'name: Overrides',
+            '',
+            'override_bindable:',
+            '  Flank: true',
+            '  Good Game (Post Game) - All Chat: true',
+            "  You're Welcome: false",
+            '  Totally Unknown Cmd: true',
+            '',
+            'override_ping_wheel_bindable:',
+            '  Good Game (Post Game) - All Chat: true',
+            '',
+            'custom_menus:',
+            '  - name: Calls',
+            '    icon: quick',
+            '    items:',
+            '      - Help',
+            '      - Thanks',
+            '',
+        ].join('\n');
+
+        const built = await buildChatWheelVpk(overrides);
+        try {
+            const roundTripped = await readChatWheelVpk(built.vpkPath);
+            expect(roundTripped.trim()).toBe(overrides.trim());
+            for (const line of [
+                '  Flank: true',
+                '  Good Game (Post Game) - All Chat: true',
+                "  You're Welcome: false",
+                '  Totally Unknown Cmd: true',
+            ]) {
+                expect(roundTripped.split(/\r?\n/)).toContain(line);
+            }
         } finally {
             await built.cleanup();
         }

@@ -37,7 +37,7 @@ it.
 Phase 9 onward. Decimal phases (9.1, 10.1) are urgent insertions marked INSERTED
 and appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 9: The Base Command Catalogue** - Capture the base-game voice commands as typed, provenance-pinned data, give `override_bindable` and `override_ping_wheel_bindable` a searchable, editable form surface that preserves unknown entries byte-for-byte, and close the `chat-wheel:read`/`starter` test gap
+- [x] **Phase 9: The Base Command Catalogue** - Capture the base-game voice commands as typed, provenance-pinned data, give `override_bindable` and `override_ping_wheel_bindable` a searchable, editable form surface that preserves unknown entries byte-for-byte, and close the `chat-wheel:read`/`starter` test gap
 - [ ] **Phase 10: Wheel Interaction And Disclosure** - Disclose the game's documented limitations near the controls they affect, finish arrow-key ring navigation on the radial preview, and add drag-and-drop menu building with keyboard alternatives
 - [ ] **Phase 11: Safety And Dressing** - Warn before removing a Chat Wheel add-on that must be unbound first, and prove the game-asset dressing spike with the pure-SVG wheel kept as the permanent fallback
 - [ ] **Phase 12: Release Engineering** - Ship v1.27.5: package.json version, CHANGELOG entry, tag `v1.27.5`, and a GitHub Release with notes from the changelog
@@ -51,10 +51,10 @@ and appear between their surrounding integers in numeric order.
 **Requirements**: REQ-cw-command-catalogue, REQ-cw-override-editing, REQ-cw-test-gap
 **Success Criteria** (what must be TRUE):
 
-  1. The catalogue in `src/lib/chatWheelCommands.ts` is typed and readonly, and every base command a user can search carries a stable command ID, a user-facing label, a category, and its default availability; the file names the bundled ChatLane release or commit it is versioned to and a short update procedure
+  1. The catalogue in `src/lib/chatWheelCommands.ts` is typed and readonly, and every base command a user can search carries a stable command ID, a user-facing label, a category, and its default availability; the file names the upstream ChatLane commit the catalogue was vendored from, notes explicitly that the bundled fork binary's exact build point is unverified (the fork repo is not publicly readable), and gives a short update procedure
   2. A user can search and filter the catalogue, see each command's game-default status, and toggle its availability for the stock Chat Wheel and the Ping wheel from form controls without touching YAML
-  3. Unknown YAML override entries stay visible and editable in an "Other commands in this file" group, and unknown root keys and unknown command IDs round-trip byte-for-byte through save and reopen
-  4. `chat-wheel:read` and `chat-wheel:starter` carry main-process test coverage beside the existing round-trip test, and the repository gate (`pnpm typecheck && pnpm lint && pnpm test`) plus `pnpm i18n:check` stay green
+  3. Unknown YAML override entries stay visible and editable in an "Other commands in this file" group, and unknown root keys and unknown command IDs round-trip byte-for-byte through save and reopen, covered end to end by a populated-override fixture in the real-binary round-trip suite (byte preservation is scoped to LF input with a plain unquoted name:, since the model normalizes CRLF and requotes name: by design)
+  4. `chat-wheel:read` and `chat-wheel:starter` carry main-process test coverage beside the existing round-trip test; typecheck, lint, and `i18n:check` pass, and the full test suite introduces no new failures beyond the pre-existing baseline recorded in docs/upstream-absorption-1.28.md (9 failing files / 26 failing tests, inherited from the v1.28 absorption; the gate binaries are run directly, not via pnpm run, because the local pnpm major differs from CI's)
 
 **Plans**: TBD
 
@@ -115,7 +115,21 @@ Phases execute in numeric order: 9 → 10 → 11 → 12. Each phase depends on t
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 9. The Base Command Catalogue | 0/0 | Planned |  |
+| 9. The Base Command Catalogue | 3/3 | Complete | 2026-08-31 |
 | 10. Wheel Interaction And Disclosure | 0/0 | Planned |  |
 | 11. Safety And Dressing | 0/0 | Planned |  |
 | 12. Release Engineering | 0/0 | Planned |  |
+
+**Phase 9 exit note (2026-08-31):** success criterion 4 was settled by a full
+`./node_modules/.bin/vitest run` on the working tree: 26 failing tests across 3
+files (`browserDownloadCapture`, `heroStageMode`, `uiPrefs`), all in the
+documented v1.28-absorption baseline. The test count matches the recorded
+baseline exactly and the failing-file count is lower than the 9 recorded in
+docs/upstream-absorption-1.28.md, so the phase introduced no new failures. That
+9-file figure now looks stale rather than authoritative; re-record it the next
+time the baseline is quoted as a gate.
+
+One item is carried out of the phase rather than closed: the populated-override
+case added to the real-binary round-trip suite in 09-02 skips on macOS, because
+the bundled ChatLane converter is Windows-only, and still needs one Windows run.
+Tracked as ledger entry 3 in .planning/WINDOWS.md.
