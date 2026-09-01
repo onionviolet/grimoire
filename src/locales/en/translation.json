@@ -3934,6 +3934,25 @@
       "ariaChatWheel": "{{command}}: Chat Wheel",
       "ariaPingWheel": "{{command}}: Ping wheel"
     },
+    "limits": {
+      "archmotherOrder": "In game, players on the Archmother team see the items of a custom menu in reverse order. The preview shows the order as written.",
+      "topSlot": "A custom menu bound to the top slot of the game's Chat Wheel opens in the wrong direction and cannot be used there. Bind custom menus to other slots in the game's settings.",
+      "slotSelect": "Depending on which slot a custom menu is bound to in game, some of its items may not be selectable.",
+      "unbindCrash": "If this add-on goes missing while its custom menus are still bound, for example after a game update resets gameinfo.gi, opening the chat wheel or the settings can crash the game. Unbind custom menus in the game's Chat Wheel settings before removing the add-on.",
+      "placeholderVoice": "Opening a custom menu without picking one of its entries plays a placeholder voice line in game."
+    },
+    "dnd": {
+      "wheelHint": "Drag a slot onto another to reorder, or drop a command here to add it. Arrow keys move around the ring; Alt+Arrow moves the command.",
+      "listHint": "Drag commands here from the catalogue or another menu. Alt+Up and Alt+Down also move a command.",
+      "moveUp": "Move {{command}} up",
+      "moveDown": "Move {{command}} down",
+      "moveToMenu": "Move {{command}} to menu",
+      "dragItem": "Drag {{command}}",
+      "columnAdd": "Add",
+      "addToMenu": "Add {{command}} to {{menu}}",
+      "addToMenuNone": "Add a menu first to add commands to it.",
+      "catalogHint": "Drag a command onto a menu, or use its Add button to add it to {{menu}}."
+    },
     "disabled": {
       "title": "Chat Wheel is off",
       "description": "Enable the Chat Wheel in Settings to use this page."

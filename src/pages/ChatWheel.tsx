@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AlertTriangle, FileUp, Save, Sparkles } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronUp, FileUp, Save, Sparkles } from 'lucide-react';
 import { getMods, readChatWheel, saveChatWheel, getChatWheelStarter, getChatWheelStatus, validateChatWheel } from '../lib/api';
 import { useAppStore } from '../stores/appStore';
 import { Button } from '../components/common/ui';
@@ -12,6 +12,16 @@ import { applyOverride, parseChatWheelYaml, updateChatWheelYaml, type ChatWheelM
 import { CHAT_WHEEL_ICONS, chatWheelIconUrl } from '../lib/chatWheelIcons';
 import RadialWheelPreview from '../components/chatwheel/RadialWheelPreview';
 import BaseCommandCatalog from '../components/chatwheel/BaseCommandCatalog';
+import LimitationNote from '../components/chatwheel/LimitationNote';
+import {
+  hasChatWheelDrag,
+  insertMenuItem,
+  moveMenuItem,
+  readChatWheelDrag,
+  transferMenuItem,
+  writeChatWheelDrag,
+  type ChatWheelDragPayload,
+} from '../lib/chatWheelMenuEdit';
 
 export default function ChatWheel() {
   const { t } = useTranslation();
@@ -36,6 +46,8 @@ export default function ChatWheel() {
   const [activeMenu, setActiveMenu] = useState(0);
   const [focusedItem, setFocusedItem] = useState<number | null>(null);
   const [catalogOpen, setCatalogOpen] = useState(true);
+  /** The menu whose item list is under a drag, for the drop highlight. */
+  const [dropMenu, setDropMenu] = useState<number | null>(null);
 
   const refreshWheels = async () => {
     const mods = await getMods();
@@ -62,6 +74,38 @@ export default function ChatWheel() {
 
   const changeMenu = (index: number, patch: Partial<ChatWheelModel['menus'][number]>) => {
     applyModel({ ...model, menus: model.menus.map((menu, menuIndex) => menuIndex === index ? { ...menu, ...patch } : menu) });
+  };
+
+  const focusItemInput = (menuIndex: number, itemIndex: number) => {
+    requestAnimationFrame(() => document.getElementById(`chat-wheel-slot-${menuIndex}-${itemIndex}`)?.focus());
+  };
+
+  /** Reorder one menu's items, keeping focus on the item that moved. Shared by
+   *  the Move up / Move down buttons, Alt+Arrow, and wedge drag-and-drop. */
+  const moveItem = (menuIndex: number, from: number, to: number) => {
+    const menu = model.menus[menuIndex];
+    if (!menu || to < 0 || to >= menu.items.length || to === from) return;
+    applyModel({ ...model, menus: moveMenuItem(model.menus, menuIndex, from, to) });
+    setFocusedItem(to);
+    focusItemInput(menuIndex, to);
+  };
+
+  /** Land a drag payload in a menu: a catalogue command is copied in, an
+   *  existing item is moved (within or across menus). `at` undefined appends. */
+  const dropInto = (menuIndex: number, payload: ChatWheelDragPayload, at?: number) => {
+    const menus =
+      payload.kind === 'command'
+        ? insertMenuItem(model.menus, menuIndex, payload.id, at)
+        : transferMenuItem(model.menus, payload, { menu: menuIndex, index: at });
+    applyModel({ ...model, menus });
+    setActiveMenu(menuIndex);
+    const landed = at === undefined ? (menus[menuIndex]?.items.length ?? 1) - 1 : Math.min(at, (menus[menuIndex]?.items.length ?? 1) - 1);
+    setFocusedItem(landed);
+  };
+
+  const addToActiveMenu = (id: string) => {
+    if (!model.menus[activeMenu]) return;
+    dropInto(activeMenu, { kind: 'command', id });
   };
 
   const selectPreviewSlot = (slot: number) => {
@@ -326,6 +370,10 @@ export default function ChatWheel() {
                     <Tx k="chatWheel.addMenu" fallback="Add menu" />
                   </Button>
                 </div>
+                <div className="mb-3 space-y-1">
+                  <LimitationNote limitation="topSlot" />
+                  <LimitationNote limitation="placeholderVoice" />
+                </div>
                 {model.menus.length === 0 ? (
                   <p className="text-sm text-text-secondary"><Tx k="chatWheel.noMenus" fallback="No custom menus yet. Add one to begin." /></p>
                 ) : model.menus.map((menu, menuIndex) => (
@@ -344,14 +392,95 @@ export default function ChatWheel() {
                       </div>
                       <Button size="sm" variant="secondary" onClick={() => { applyModel({ ...model, menus: model.menus.filter((_, index) => index !== menuIndex) }); }}><Tx k="chatWheel.remove" fallback="Remove" /></Button>
                     </div>
-                    <div className="mt-2 space-y-2">
+                    <div
+                      className={`mt-2 space-y-2 rounded transition-shadow ${dropMenu === menuIndex ? 'ring-2 ring-accent/50' : ''}`}
+                      data-drop-menu={dropMenu === menuIndex ? 'true' : undefined}
+                      onDragOver={(event) => {
+                        if (!hasChatWheelDrag(event.dataTransfer)) return;
+                        event.preventDefault();
+                        event.dataTransfer.dropEffect = event.dataTransfer.effectAllowed === 'copy' ? 'copy' : 'move';
+                        if (dropMenu !== menuIndex) setDropMenu(menuIndex);
+                      }}
+                      onDragLeave={(event) => {
+                        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropMenu(null);
+                      }}
+                      onDrop={(event) => {
+                        const payload = readChatWheelDrag(event.dataTransfer);
+                        setDropMenu(null);
+                        if (!payload) return;
+                        event.preventDefault();
+                        // A drop on a row inserts before it; anywhere else appends.
+                        const row = (event.target as HTMLElement).closest('[data-item-index]');
+                        const at = row ? Number(row.getAttribute('data-item-index')) : undefined;
+                        dropInto(menuIndex, payload, at);
+                      }}
+                    >
                       {menu.items.map((item, itemIndex) => (
-                        <div key={`${itemIndex}-${item}`} className="flex gap-2">
-                          <input id={`chat-wheel-slot-${menuIndex}-${itemIndex}`} aria-label={t('chatWheel.command', 'Command')} value={item} onFocus={() => { setActiveMenu(menuIndex); setFocusedItem(itemIndex); }} onChange={(event) => changeMenu(menuIndex, { items: menu.items.map((value, index) => index === itemIndex ? event.target.value : value) })} className="min-w-0 flex-1 rounded border border-border bg-bg-tertiary px-2 py-1.5 text-sm text-text-primary" />
+                        <div
+                          key={`${itemIndex}-${item}`}
+                          data-item-index={itemIndex}
+                          draggable
+                          onDragStart={(event) => {
+                            writeChatWheelDrag(event.dataTransfer, { kind: 'item', menu: menuIndex, index: itemIndex });
+                            event.dataTransfer.effectAllowed = 'move';
+                          }}
+                          className="flex flex-wrap items-center gap-2"
+                        >
+                          <input
+                            id={`chat-wheel-slot-${menuIndex}-${itemIndex}`}
+                            aria-label={t('chatWheel.command', 'Command')}
+                            value={item}
+                            onFocus={() => { setActiveMenu(menuIndex); setFocusedItem(itemIndex); }}
+                            onChange={(event) => changeMenu(menuIndex, { items: menu.items.map((value, index) => index === itemIndex ? event.target.value : value) })}
+                            onKeyDown={(event) => {
+                              if (!event.altKey || (event.key !== 'ArrowUp' && event.key !== 'ArrowDown')) return;
+                              event.preventDefault();
+                              moveItem(menuIndex, itemIndex, event.key === 'ArrowUp' ? itemIndex - 1 : itemIndex + 1);
+                            }}
+                            className="min-w-0 flex-1 rounded border border-border bg-bg-tertiary px-2 py-1.5 text-sm text-text-primary"
+                          />
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            icon={ChevronUp}
+                            aria-label={t('chatWheel.dnd.moveUp', 'Move {{command}} up', { command: item })}
+                            disabled={itemIndex === 0}
+                            onClick={() => moveItem(menuIndex, itemIndex, itemIndex - 1)}
+                          />
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            icon={ChevronDown}
+                            aria-label={t('chatWheel.dnd.moveDown', 'Move {{command}} down', { command: item })}
+                            disabled={itemIndex === menu.items.length - 1}
+                            onClick={() => moveItem(menuIndex, itemIndex, itemIndex + 1)}
+                          />
+                          {model.menus.length > 1 && (
+                            <select
+                              aria-label={t('chatWheel.dnd.moveToMenu', 'Move {{command}} to menu', { command: item })}
+                              value={menuIndex}
+                              onChange={(event) => {
+                                const target = Number(event.target.value);
+                                if (target !== menuIndex) dropInto(target, { kind: 'item', menu: menuIndex, index: itemIndex });
+                              }}
+                              className="rounded border border-border bg-bg-tertiary px-2 py-1.5 text-xs text-text-primary"
+                            >
+                              {model.menus.map((option, optionIndex) => (
+                                <option key={`${optionIndex}-${option.name}`} value={optionIndex}>
+                                  {option.name || t('chatWheel.untitled', 'Untitled')}
+                                </option>
+                              ))}
+                            </select>
+                          )}
                           <Button size="sm" variant="secondary" onClick={() => changeMenu(menuIndex, { items: menu.items.filter((_, index) => index !== itemIndex) })}><Tx k="chatWheel.remove" fallback="Remove" /></Button>
                         </div>
                       ))}
-                      <Button size="sm" variant="secondary" onClick={() => changeMenu(menuIndex, { items: [...menu.items, 'New command'] })}><Tx k="chatWheel.addCommand" fallback="Add command" /></Button>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button size="sm" variant="secondary" onClick={() => changeMenu(menuIndex, { items: [...menu.items, 'New command'] })}><Tx k="chatWheel.addCommand" fallback="Add command" /></Button>
+                        <span className="text-[11px] text-text-secondary">
+                          <Tx k="chatWheel.dnd.listHint" fallback="Drag commands here from the catalogue or another menu. Alt+Up and Alt+Down also move a command." />
+                        </span>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -366,13 +495,20 @@ export default function ChatWheel() {
               </div>
               {model.menus[activeMenu] ? (
                 <RadialWheelPreview
+                  menuIndex={activeMenu}
                   menuName={model.menus[activeMenu].name}
                   icon={model.menus[activeMenu].icon}
                   items={model.menus[activeMenu].items}
                   focusedSlot={focusedItem}
                   onSelectSlot={selectPreviewSlot}
+                  onMoveItem={(from, to) => moveItem(activeMenu, from, to)}
+                  onDrop={(payload, at) => dropInto(activeMenu, payload, at)}
                 />
               ) : <div className="mt-5 rounded border border-dashed border-border p-6 text-center text-xs text-text-secondary"><Tx k="chatWheel.previewEmpty" fallback="Add a menu to preview its wheel." /></div>}
+              <div className="mt-3 space-y-1">
+                <LimitationNote limitation="archmotherOrder" />
+                <LimitationNote limitation="slotSelect" />
+              </div>
             </div>
           </div>
 
@@ -394,6 +530,8 @@ export default function ChatWheel() {
               loading={starterLoading}
               disabled={starterLoading || busy !== null}
               onSetOverride={(id, map, state: OverrideState) => applyModel(applyOverride(model, map, id, state))}
+              activeMenuName={model.menus[activeMenu] ? (model.menus[activeMenu].name || t('chatWheel.untitled', 'Untitled')) : null}
+              onAddToMenu={addToActiveMenu}
             />
           </details>
 
@@ -408,6 +546,7 @@ export default function ChatWheel() {
               <textarea value={yaml} onChange={(event) => setYaml(event.target.value)} spellCheck={false} className="mt-1 min-h-[28rem] w-full resize-y rounded border border-border bg-bg-primary p-3 font-mono text-xs leading-5 text-text-primary" />
             </label>
           </details>
+          <LimitationNote limitation="unbindCrash" />
           <div className="flex items-center justify-between gap-3">
             <span className={validation?.state === 'invalid' ? 'text-xs text-red-300' : 'text-xs text-text-secondary'}>
               {validation?.state === 'checking' && t('chatWheel.validationChecking', 'Checking YAML with ChatLane…')}

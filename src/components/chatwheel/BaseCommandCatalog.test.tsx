@@ -6,6 +6,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import BaseCommandCatalog from './BaseCommandCatalog';
 import { CHAT_WHEEL_COMMANDS, CHAT_WHEEL_COMMAND_COUNTS } from '../../lib/chatWheelCommands';
+import { CHAT_WHEEL_DRAG_TYPE } from '../../lib/chatWheelMenuEdit';
 import type { ChatWheelModel, OverrideState } from '../../lib/chatWheelModel';
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean })
@@ -212,5 +213,60 @@ describe('BaseCommandCatalog', () => {
     await render();
     expect(host.querySelector('[role="tab"]')).toBeNull();
     expect(host.querySelector('[role="tablist"]')).toBeNull();
+  });
+
+  describe('adding to a menu', () => {
+    const addButton = (command: string, menu: string) =>
+      host.querySelector<HTMLButtonElement>(`button[aria-label="Add ${command} to ${menu}"]`);
+
+    it('hides the Add column and drag handles unless the page offers a target', async () => {
+      await render();
+      expect(host.querySelector('button[aria-label^="Add "]')).toBeNull();
+      expect(host.querySelector('[draggable="true"]')).toBeNull();
+      expect(host.textContent).not.toContain('Drag a command onto a menu');
+    });
+
+    it('offers a keyboard Add button per row that names the active menu', async () => {
+      const onAddToMenu = vi.fn<(id: string) => void>();
+      await render({ activeMenuName: 'My Messages', onAddToMenu });
+      expect(host.textContent).toContain('add it to My Messages');
+      const button = addButton('Can Heal', 'My Messages')!;
+      expect(button).not.toBeNull();
+      expect(button.disabled).toBe(false);
+      await click(button);
+      expect(onAddToMenu).toHaveBeenCalledWith('Can Heal');
+      expect(onSetOverride).not.toHaveBeenCalled();
+    });
+
+    it('disables Add with an explanation while the wheel has no menu', async () => {
+      const onAddToMenu = vi.fn<(id: string) => void>();
+      await render({ activeMenuName: null, onAddToMenu });
+      const button = host.querySelector<HTMLButtonElement>('button[aria-label^="Add Can Heal to"]')!;
+      expect(button.disabled).toBe(true);
+      expect(button.title).toContain('Add a menu first');
+      await click(button);
+      expect(onAddToMenu).not.toHaveBeenCalled();
+    });
+
+    it('writes a command payload when a row is dragged', async () => {
+      await render({ activeMenuName: 'My Messages', onAddToMenu: vi.fn() });
+      const handle = host.querySelector('[draggable="true"][aria-label="Drag Can Heal"]')!;
+      const store: Record<string, string> = {};
+      const event = new Event('dragstart', { bubbles: true, cancelable: true });
+      Object.defineProperty(event, 'dataTransfer', {
+        value: {
+          effectAllowed: 'uninitialized',
+          setData: (format: string, data: string) => {
+            store[format] = data;
+          },
+          getData: (format: string) => store[format] ?? '',
+        },
+      });
+      await act(async () => {
+        handle.dispatchEvent(event);
+      });
+      expect(JSON.parse(store[CHAT_WHEEL_DRAG_TYPE])).toEqual({ kind: 'command', id: 'Can Heal' });
+      expect(store['text/plain']).toBe('Can Heal');
+    });
   });
 });

@@ -28,6 +28,54 @@ supported and unsupported ChatLane option. The editor preserves text outside
 the fields it owns, but editing unfamiliar YAML in Advanced YAML should be
 validated before saving.
 
+## Building menus
+
+Menus can be built by drag-and-drop, the way ChatLane's own GUI worked, and
+every drag-only interaction has a keyboard alternative. Every edit goes through
+the same `updateChatWheelYaml` path as a typed change, so the byte-preserving
+round trip is untouched.
+
+- Catalogue rows carry a drag handle and an `Add` button. Dropping a row onto a
+  menu's item list inserts the command before the row it lands on, or appends
+  it anywhere else in the list; the `Add` button appends it to the menu the
+  preview is showing.
+- Item rows are draggable between and within menus. `Move up` / `Move down`
+  buttons and Alt+Up / Alt+Down on the command input reorder within a menu;
+  when there is more than one menu, a `Move to menu` select moves an item to
+  another menu.
+- On the preview, dragging a wedge onto another wedge reorders the menu, and
+  dropping a catalogue command onto a wedge inserts it at that slot (or appends
+  it when dropped on the surrounding surface). The wedges are one roving tab
+  stop: arrow keys move focus around the ring and wrap, Home and End jump to
+  the first and last slot, Enter or Space select the focused slot, and
+  Alt+Arrow moves the focused command one slot.
+
+Drag-and-drop does not recreate the game's own slot-binding editor: the game
+still owns which Chat Wheel slot a custom menu is bound to.
+
+## Known limitations
+
+These are the ChatLane limitations documented upstream (RedMser/ChatLane,
+"Known issues") that affect a saved wheel. The page discloses each one next
+to the control it affects, as a statement of what the game and ChatLane do,
+not a guarantee about any given match.
+
+- Custom menu item order is reversed for players on the Archmother team. The
+  preview shows the order as written.
+- A custom menu bound to the top slot of the game's Chat Wheel opens in the
+  wrong direction and cannot be used there.
+- Depending on which slot a custom menu is bound to, some of its items cannot
+  be selected.
+- Opening the chat wheel or the settings can crash the game when a custom menu
+  is still bound but its add-on is gone: after a game update resets
+  `gameinfo.gi`, after removing a custom menu without unbinding it, or after
+  uninstalling the add-on without unbinding its menus. Unbind custom menus in
+  the game's Chat Wheel settings first.
+- Selecting a custom menu itself, without picking one of its entries, plays a
+  placeholder voice line.
+- A custom menu holds at most 12 entries, filling the whole circle (the preview
+  already shows this as the overflow warning).
+
 ## Base command catalogue
 
 Beneath the menu editor, the `Base command catalogue` section lists every

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AlertTriangle, Check, SearchX, X } from 'lucide-react';
+import { AlertTriangle, Check, GripVertical, Plus, SearchX, X } from 'lucide-react';
 import SearchInput from '../common/SearchInput';
 import { Skeleton } from '../common/Skeleton';
 import { Button, Tag } from '../common/ui';
@@ -12,6 +12,7 @@ import {
   type ChatWheelCommandCategory,
 } from '../../lib/chatWheelCommands';
 import { overrideStateFor, type ChatWheelModel, type OverrideState } from '../../lib/chatWheelModel';
+import { writeChatWheelDrag } from '../../lib/chatWheelMenuEdit';
 import TriStateControl from './TriStateControl';
 import { chipClass, rovingArrowKeyDown } from './chipStyles';
 
@@ -38,6 +39,12 @@ interface BaseCommandCatalogProps {
   /** Wider than `loading`: also true while a save is in flight. */
   disabled: boolean;
   onSetOverride: (id: string, map: OverrideMap, state: OverrideState) => void;
+  /** Name of the menu an "Add" button targets; null when the wheel has no
+   *  menu yet. Omit both add props to hide the column and the drag handles. */
+  activeMenuName?: string | null;
+  /** Add a catalogue command to the active menu: the keyboard twin of
+   *  dragging a row onto a menu. */
+  onAddToMenu?: (id: string) => void;
 }
 
 const FILTERS: ReadonlyArray<{ value: CategoryFilter; key: string; fallback: string; count: number }> = [
@@ -47,8 +54,24 @@ const FILTERS: ReadonlyArray<{ value: CategoryFilter; key: string; fallback: str
   { value: 'broken', key: 'chatWheel.catalog.filterBroken', fallback: 'Broken', count: CHAT_WHEEL_COMMAND_COUNTS.broken },
 ];
 
-export default function BaseCommandCatalog({ model, loading, disabled, onSetOverride }: BaseCommandCatalogProps) {
+const ROW_GRID = 'sm:grid-cols-[minmax(0,1fr)_9rem_11rem_11rem]';
+const ROW_GRID_WITH_ADD = 'sm:grid-cols-[minmax(0,1fr)_9rem_11rem_11rem_auto]';
+
+export default function BaseCommandCatalog({
+  model,
+  loading,
+  disabled,
+  onSetOverride,
+  activeMenuName,
+  onAddToMenu,
+}: BaseCommandCatalogProps) {
   const { t } = useTranslation();
+  const canAdd = Boolean(onAddToMenu);
+  const rowGrid = canAdd ? ROW_GRID_WITH_ADD : ROW_GRID;
+  const addTitle =
+    activeMenuName == null
+      ? t('chatWheel.dnd.addToMenuNone', 'Add a menu first to add commands to it.')
+      : undefined;
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<CategoryFilter>('all');
 
@@ -143,6 +166,14 @@ export default function BaseCommandCatalog({ model, loading, disabled, onSetOver
           'chatWheel.catalog.legend',
           'Each command has a game default. Inherit keeps it, On forces it enabled in the saved YAML, Off forces it disabled.',
         )}
+        {canAdd && activeMenuName != null && (
+          <>
+            {' '}
+            {t('chatWheel.dnd.catalogHint', 'Drag a command onto a menu, or use its Add button to add it to {{menu}}.', {
+              menu: activeMenuName,
+            })}
+          </>
+        )}
       </p>
 
       {loading ? (
@@ -153,11 +184,12 @@ export default function BaseCommandCatalog({ model, loading, disabled, onSetOver
         </div>
       ) : (
         <>
-          <div className="hidden grid-cols-[minmax(0,1fr)_9rem_11rem_11rem] gap-2 px-1 pb-1 text-xs font-semibold text-text-secondary sm:grid">
+          <div className={`hidden gap-2 px-1 pb-1 text-xs font-semibold text-text-secondary sm:grid ${rowGrid}`}>
             <span>{t('chatWheel.catalog.columnCommand', 'Command')}</span>
             <span>{t('chatWheel.catalog.columnDefault', 'Game default')}</span>
             <span>{t('chatWheel.catalog.columnChatWheel', 'Chat Wheel')}</span>
             <span>{t('chatWheel.catalog.columnPingWheel', 'Ping wheel')}</span>
+            {canAdd && <span>{t('chatWheel.dnd.columnAdd', 'Add')}</span>}
           </div>
 
           {rows.length === 0 ? (
@@ -189,11 +221,27 @@ export default function BaseCommandCatalog({ model, loading, disabled, onSetOver
                 <div
                   key={command.id}
                   role="listitem"
-                  className="grid items-center gap-2 border-b border-border/50 py-2 sm:grid-cols-[minmax(0,1fr)_9rem_11rem_11rem]"
+                  className={`grid items-center gap-2 border-b border-border/50 py-2 ${rowGrid}`}
                 >
-                  <span className="truncate text-sm text-text-primary" title={command.id}>
-                    {command.id}
-                  </span>
+                  {canAdd ? (
+                    <span
+                      draggable
+                      aria-label={t('chatWheel.dnd.dragItem', 'Drag {{command}}', { command: command.id })}
+                      title={command.id}
+                      onDragStart={(event) => {
+                        writeChatWheelDrag(event.dataTransfer, { kind: 'command', id: command.id });
+                        event.dataTransfer.effectAllowed = 'copy';
+                      }}
+                      className="flex min-w-0 cursor-grab items-center gap-1 text-sm text-text-primary active:cursor-grabbing"
+                    >
+                      <GripVertical className="h-3.5 w-3.5 shrink-0 text-text-secondary" aria-hidden="true" />
+                      <span className="truncate">{command.id}</span>
+                    </span>
+                  ) : (
+                    <span className="truncate text-sm text-text-primary" title={command.id}>
+                      {command.id}
+                    </span>
+                  )}
                   <span className="flex flex-wrap items-center gap-1">
                     {statusTag(command)}
                     {command.pingWheelBindable !== command.bindable && (
@@ -216,6 +264,20 @@ export default function BaseCommandCatalog({ model, loading, disabled, onSetOver
                     ariaLabel={t('chatWheel.catalog.ariaPingWheel', '{{command}}: Ping wheel', { command: command.id })}
                     disabled={disabled}
                   />
+                  {canAdd && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      icon={Plus}
+                      aria-label={t('chatWheel.dnd.addToMenu', 'Add {{command}} to {{menu}}', {
+                        command: command.id,
+                        menu: activeMenuName ?? '',
+                      })}
+                      title={addTitle}
+                      disabled={disabled || activeMenuName == null}
+                      onClick={() => onAddToMenu?.(command.id)}
+                    />
+                  )}
                 </div>
               ))}
             </div>
