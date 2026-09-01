@@ -44,7 +44,7 @@ tree at the milestone start:
 
 ### Suite integrity
 
-- [ ] **REQ-green-suite**: `vitest run` is green on the toolchain the
+- [x] **REQ-green-suite**: `vitest run` is green on the toolchain the
       repository declares, that toolchain is declared explicitly (`engines` or
       `.nvmrc`) or the jsdom/native-`localStorage` collision is removed at its
       source, the `browserDownloadCapture` symlink-sweep case passes or is
@@ -111,7 +111,7 @@ tree at the milestone start:
 | REQ-cw-editor-base | delivered (pre-milestone) | [x] |
 | REQ-cw-command-catalogue | 9 | [x] |
 | REQ-cw-override-editing | 9 | [x] |
-| REQ-green-suite | 9.1 | [ ] |
+| REQ-green-suite | 9.1 | [x] |
 | REQ-cw-limitations-disclosures | 10 | [ ] |
 | REQ-cw-keyboard-nav | 10 | [ ] |
 | REQ-cw-drag-drop | 10 | [ ] |

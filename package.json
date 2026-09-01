@@ -16,6 +16,9 @@
       "electron"
     ]
   },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "prepare": "husky",
     "preinstall": "node scripts/check-sibling-repos.mjs",

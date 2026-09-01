@@ -535,7 +535,13 @@ describe('sweepToolDownloadTempRoot (WR-05)', () => {
     it.skipIf(process.platform === 'win32')(
         'a symlink entry in the root is skipped and never followed',
         async () => {
-            const targetPath = join(dir, 'target.download');
+            // The target must live OUTSIDE the swept root. A regular file
+            // inside the root is orphaned by construction and the sweep is
+            // right to delete it, so an inside target proves nothing about
+            // following links and made this case expect 1 while correctly
+            // getting 2. Outside, surviving means the link was not followed.
+            const outside = mkdtempSync(join(tmpdir(), 'browser-download-link-target-'));
+            const targetPath = join(outside, 'target.download');
             writeFileSync(targetPath, 'target');
             const linkPath = join(dir, 'link.download');
             try {

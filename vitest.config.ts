@@ -6,6 +6,9 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     environment: 'node',
+    // Repairs the Node 26 native-`localStorage` shadow under jsdom; a no-op
+    // otherwise. See the file for why.
+    setupFiles: ['./vitest.setup.ts'],
     include: [
       'src/**/*.test.ts',
       'src/**/*.test.tsx',

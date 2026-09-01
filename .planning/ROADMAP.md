@@ -37,8 +37,15 @@ it.
 Phase 9 onward. Decimal phases (9.1, 10.1) are urgent insertions marked INSERTED
 and appear between their surrounding integers in numeric order.
 
+**Standing exit rule (Phase 9.1, 2026-09-01):** a phase exits against a command
+and its expected exit code, never against a remembered failure count. Phase 9
+exited by matching 26 failures to a recorded baseline; the number turned out to
+describe two unrelated defects and neither the count nor its attribution had
+been re-derived in a month. `./node_modules/.bin/vitest run` now exits 0, so
+"green" is checkable rather than recalled.
+
 - [x] **Phase 9: The Base Command Catalogue** - Capture the base-game voice commands as typed, provenance-pinned data, give `override_bindable` and `override_ping_wheel_bindable` a searchable, editable form surface that preserves unknown entries byte-for-byte, and close the `chat-wheel:read`/`starter` test gap
-- [ ] **Phase 9.1: Green Suite And Honest Baseline** (INSERTED 2026-09-01) - Repair the two genuinely failing test paths and correct the mis-attributed "v1.28 absorption baseline", so the suite is green rather than green-except-a-number-we-remember
+- [x] **Phase 9.1: Green Suite And Honest Baseline** (INSERTED 2026-09-01) - Repair the two genuinely failing test paths and correct the mis-attributed "v1.28 absorption baseline", so the suite is green rather than green-except-a-number-we-remember
 - [ ] **Phase 10: Wheel Interaction And Disclosure** - Disclose the game's documented limitations near the controls they affect, finish arrow-key ring navigation on the radial preview, and add drag-and-drop menu building with keyboard alternatives
 - [ ] **Phase 11: Safety And Dressing** - Warn before removing a Chat Wheel add-on that must be unbound first, and prove the game-asset dressing spike with the pure-SVG wheel kept as the permanent fallback
 - [ ] **Phase 12: Release Engineering** - Ship v1.27.5: package.json version, CHANGELOG entry, tag `v1.27.5`, and a GitHub Release with notes from the changelog
@@ -95,11 +102,41 @@ the number is two unrelated things:
   4. No future phase may exit against a remembered failure count: exit criteria
      cite a command and its expected exit code
 
-**Plans**: TBD
+**Plans**: executed directly, 2026-09-01 (one sitting, no plan file: the work
+was two defects with known causes)
 
-**Notes**: This is small and mechanical, and it is inserted here rather than
-banked because the cost of leaving it is that the next real regression hides
-inside a number people have learned to expect. It must land before Phase 12.
+**Notes**: This is small and mechanical, and it was inserted rather than banked
+because the cost of leaving it is that the next real regression hides inside a
+number people have learned to expect.
+
+**Exit (2026-09-01):** `./node_modules/.bin/vitest run` exits 0 with 2436
+passing and 0 failing, on the Node 26 that used to fail. `tsc -b`, `eslint`,
+`check-i18n`, and `check-encoding` all exit 0.
+
+  - **Criterion 1.** Both halves, not either. `.nvmrc` and `engines.node`
+    declare Node 20, matching CI, and `vitest.setup.ts` removes the collision
+    so Node 26 passes too. The repair takes `localStorage` from the
+    `sessionStorage` instance, which Node does not shadow and which nothing in
+    `src/` or `electron/` uses. One trap found while fixing it: the `Storage`
+    vitest publishes globally is not the class backing that instance, so
+    `vi.spyOn(Storage.prototype, 'getItem')` would have silently never applied
+    and the three "storage being unavailable" cases in `uiPrefs.test.ts` would
+    have passed vacuously, since a throwing getter and an empty store both
+    yield the fallback. The setup file republishes `Storage` from the live
+    instance, and `src/lib/domStorage.test.ts` guards all of it by name.
+  - **Criterion 2.** Passes rather than quarantined, and the defect was the
+    test: it created the symlink's target *inside* the swept root, where a
+    regular file is orphaned by construction, so the sweep was correct to
+    delete 2 and the assertion of 1 was wrong. The target moved outside the
+    root, which is what "skipped and never followed" actually requires.
+  - **Criterion 3.** Corrected in this file's Phase 9 exit note and in
+    `docs/upstream-absorption-1.28.md`.
+  - **Criterion 4.** Recorded as the standing exit rule under "Phases" above.
+
+**Not verified here:** Node 20 itself, which is not installed on this machine.
+The setup file's guard makes it a no-op wherever `localStorage` is already
+defined, so the Node 20 path is unchanged by construction; CI is what confirms
+it by execution.
 
 ### Phase 10: Wheel Interaction And Disclosure
 
@@ -180,7 +217,7 @@ Phases execute in numeric order: 9 → 10 → 11 → 12. Each phase depends on t
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 9. The Base Command Catalogue | 3/3 | Complete | 2026-08-31 |
-| 9.1. Green Suite And Honest Baseline | 0/0 | Planned (INSERTED) |  |
+| 9.1. Green Suite And Honest Baseline | 1/1 | Complete | 2026-09-01 |
 | 10. Wheel Interaction And Disclosure | 0/0 | Planned |  |
 | 11. Safety And Dressing | 0/0 | Planned |  |
 | 12. Release Engineering | 0/0 | Planned |  |

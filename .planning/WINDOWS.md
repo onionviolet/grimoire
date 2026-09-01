@@ -1,8 +1,8 @@
 ---
 schema_version: 1
-open_count: 2
+open_count: 0
 waived_count: 3
-fixed_count: 0
+fixed_count: 2
 total_count: 5
 last_updated: 2026-09-01T00:00:00.000Z
 ---
@@ -13,18 +13,18 @@ last_updated: 2026-09-01T00:00:00.000Z
 > Waive with `gsd-tools windows waive <id> "<reason>"` (reason required).
 > Mark fixed with `gsd-tools windows fixed <id>`.
 
-**2026-09-01.** Entries 1-3 (all `unrun-verify`) are waived: verification debt is
-deferred by decision and gates nothing. Entries 4 and 5 are new and open. They
-are not new breakage: both were already failing, hidden inside the "26 failing
-tests" figure that Phase 9 exited against. Phase 9.1 owns them.
+**2026-09-01.** Ledger clear: entries 1-3 (all `unrun-verify`) waived, because
+verification debt is deferred by decision and gates nothing; entries 4 and 5
+fixed in Phase 9.1. Neither was new breakage: both were already failing, hidden
+inside the "26 failing tests" figure that Phase 9 exited against.
 
 | id | phase | kind | file | line | description | status | reason | recorded_at | resolved_at |
 |----|-------|------|------|------|-------------|--------|--------|-------------|-------------|
 | 1 | 3 | unrun-verify | src/components/foundry/recolorStagedEdit.ts |  | In-app UAT not run: Foundry Recolor Stage button producing a tray row with non-zero affected files and installing nothing (needs Deadlock install) | waived | deferred by decision 2026-09-01: each needs a real Deadlock install or a Windows machine, none gates a release, and the app-tier verification record is already green and strict (42 rows, 0 blank) | 2026-08-09T05:42:51.916Z | 2026-09-01T00:00:00.000Z |
 | 2 | 04 | unrun-verify | src/components/common/HeroDetailFrame.tsx |  | In-game visual verification of the 3D model as the hero stage (Locker + Foundry), the veil-over-canvas reading, and the stale pill behavior was auto-approved under auto mode and remains for end-of-milestone UAT | waived | deferred by decision 2026-09-01: each needs a real Deadlock install or a Windows machine, none gates a release, and the app-tier verification record is already green and strict (42 rows, 0 blank) | 2026-08-09T06:59:08.794Z | 2026-09-01T00:00:00.000Z |
 | 3 | 09 | unrun-verify | electron/main/services/chatWheel.roundtrip.test.ts |  | The populated-override real-binary round-trip case added in 09-02 skips on macOS (the bundled ChatLane converter is Windows-only), so byte-for-byte preservation of unknown root keys and unknown command IDs is proven by the model unit tests but not yet by the real converter | waived | deferred by decision 2026-09-01: each needs a real Deadlock install or a Windows machine, none gates a release, and the app-tier verification record is already green and strict (42 rows, 0 blank) | 2026-08-31T00:00:00.000Z | 2026-09-01T00:00:00.000Z |
-| 4 | 9.1 | failing-test | electron/main/services/browserDownloadCapture.test.ts | 553 | sweepToolDownloadTempRoot (WR-05) 'a symlink entry in the root is skipped and never followed' expects 1 deletion and gets 2. Genuinely red on main since v1.27.1, not absorbed debt; it was hiding inside the quoted 26-failure baseline. | open |  | 2026-09-01T00:00:00.000Z |  |
-| 5 | 9.1 | toolchain | vitest.config.ts |  | Node 26 ships a native localStorage global that is unavailable without --localstorage-file and shadows jsdom's, so all 25 storage-touching tests (uiPrefs 19, heroStageMode 6) fail locally and pass on CI's Node 20. The repository declares no supported Node (no engines field, no .nvmrc), so the split is invisible until someone reads a failure count. | open |  | 2026-09-01T00:00:00.000Z |  |
+| 4 | 9.1 | failing-test | electron/main/services/browserDownloadCapture.test.ts | 553 | sweepToolDownloadTempRoot (WR-05) 'a symlink entry in the root is skipped and never followed' expects 1 deletion and gets 2. Genuinely red on main since v1.27.1, not absorbed debt; it was hiding inside the quoted 26-failure baseline. | fixed | Fixed: the symlink target lived inside the swept root, where a regular file is orphaned by construction, so the sweep was right to delete 2. Target moved outside the root, which is what "never followed" actually requires. | 2026-09-01T00:00:00.000Z | 2026-09-01T00:00:00.000Z |
+| 5 | 9.1 | toolchain | vitest.config.ts |  | Node 26 ships a native localStorage global that is unavailable without --localstorage-file and shadows jsdom's, so all 25 storage-touching tests (uiPrefs 19, heroStageMode 6) fail locally and pass on CI's Node 20. The repository declares no supported Node (no engines field, no .nvmrc), so the split is invisible until someone reads a failure count. | fixed | Fixed by vitest.setup.ts: localStorage is repaired from the unshadowed sessionStorage instance and Storage is republished from that instance so Storage.prototype spies still reach it. .nvmrc and engines.node declare Node 20. Guarded by src/lib/domStorage.test.ts. | 2026-09-01T00:00:00.000Z | 2026-09-01T00:00:00.000Z |
 
 ````json
 [
@@ -71,10 +71,10 @@ tests" figure that Phase 9 exited against. Phase 9.1 owns them.
     "file": "electron/main/services/browserDownloadCapture.test.ts",
     "line": 553,
     "description": "sweepToolDownloadTempRoot (WR-05) 'a symlink entry in the root is skipped and never followed' expects 1 deletion and gets 2. Genuinely red on main since v1.27.1, not absorbed debt; it was hiding inside the quoted 26-failure baseline.",
-    "status": "open",
-    "reason": "",
+    "status": "fixed",
+    "reason": "Fixed: the symlink target lived inside the swept root, where a regular file is orphaned by construction, so the sweep was right to delete 2. Target moved outside the root, which is what \"never followed\" actually requires.",
     "recorded_at": "2026-09-01T00:00:00.000Z",
-    "resolved_at": null
+    "resolved_at": "2026-09-01T00:00:00.000Z"
   },
   {
     "id": 5,
@@ -83,10 +83,10 @@ tests" figure that Phase 9 exited against. Phase 9.1 owns them.
     "file": "vitest.config.ts",
     "line": null,
     "description": "Node 26 ships a native localStorage global that is unavailable without --localstorage-file and shadows jsdom's, so all 25 storage-touching tests (uiPrefs 19, heroStageMode 6) fail locally and pass on CI's Node 20. The repository declares no supported Node (no engines field, no .nvmrc), so the split is invisible until someone reads a failure count.",
-    "status": "open",
-    "reason": "",
+    "status": "fixed",
+    "reason": "Fixed by vitest.setup.ts: localStorage is repaired from the unshadowed sessionStorage instance and Storage is republished from that instance so Storage.prototype spies still reach it. .nvmrc and engines.node declare Node 20. Guarded by src/lib/domStorage.test.ts.",
     "recorded_at": "2026-09-01T00:00:00.000Z",
-    "resolved_at": null
+    "resolved_at": "2026-09-01T00:00:00.000Z"
   }
 ]
 ````

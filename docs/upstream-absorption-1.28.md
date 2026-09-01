@@ -209,8 +209,10 @@ None of this needs judgment beyond patience.
    > are Node 26 shadowing jsdom's `localStorage` with a native global that needs
    > `--localstorage-file`, which passes on CI's Node 20; the 26th is a genuinely
    > red `browserDownloadCapture` symlink-sweep case predating this absorption.
-   > The six other files listed here now pass. Phase 9.1 owns the repair; see
-   > ledger entries 4 and 5 in `.planning/WINDOWS.md`.
+   > The six other files listed here already passed. **Both were fixed in Phase
+   > 9.1 on 2026-09-01** and `vitest run` now exits 0 with 2436 passing; ledger
+   > entries 4 and 5 in `.planning/WINDOWS.md` are closed. There is no baseline
+   > of failing tests any more, so nothing here should be quoted as one.
 5. Drive the real app from a numbered dev slot: Locker (user categories,
    General shuffle, sound and card pools), Installed (variants, inline
    profiles menu), Settings (promoted performance configs beside Game
