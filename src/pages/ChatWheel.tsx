@@ -12,6 +12,7 @@ import { applyOverride, parseChatWheelYaml, updateChatWheelYaml, type ChatWheelM
 import { CHAT_WHEEL_ICONS, chatWheelIconUrl } from '../lib/chatWheelIcons';
 import RadialWheelPreview from '../components/chatwheel/RadialWheelPreview';
 import BaseCommandCatalog from '../components/chatwheel/BaseCommandCatalog';
+import RemoveWheelButton from '../components/chatwheel/RemoveWheelButton';
 
 export default function ChatWheel() {
   const { t } = useTranslation();
@@ -288,6 +289,12 @@ export default function ChatWheel() {
             <FileUp className="mr-1 h-4 w-4" />
             <Tx k="chatWheel.openVpk" fallback="Open VPK…" />
           </Button>
+          <RemoveWheelButton
+            wheel={selected}
+            disabled={busy !== null}
+            onRemoved={async () => { setSelectedId(''); await Promise.all([refreshWheels(), loadMods()]); }}
+            onError={setError}
+          />
           <p className="text-xs leading-relaxed text-text-secondary">
             <Tx
               k="chatWheel.helpNote"

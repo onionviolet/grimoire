@@ -37,6 +37,7 @@ const apiMock = vi.hoisted(() => ({
   ),
   getChatWheelStatus: vi.fn(async () => ({ available: true })),
   validateChatWheel: vi.fn(async () => undefined),
+  deleteMod: vi.fn(async () => undefined),
 }));
 
 vi.mock('../stores/appStore', () => ({
@@ -161,5 +162,99 @@ describe('ChatWheel page gate', () => {
     );
     expect(after[2].getAttribute('aria-pressed')).toBe('true');
     expect(after[1].getAttribute('aria-pressed')).toBe('false');
+  });
+});
+
+/**
+ * 11-01: removing an installed wheel goes through the unbind warning, and the
+ * VPK is deleted only when that warning is confirmed. The dialog is the
+ * page's `useConfirm` provider, so the test observes the request it receives
+ * rather than any rendered modal.
+ */
+describe('ChatWheel page remove wheel', () => {
+  let host: HTMLDivElement;
+  let root: Root;
+  let confirmFn: ReturnType<typeof vi.fn<ConfirmFn>>;
+  const wheel = { id: 'wheel-1', name: 'Wheel One', path: '/addons/pak05_dir.vpk', sourceSection: 'ChatWheel' };
+
+  beforeEach(() => {
+    host = document.createElement('div');
+    document.body.append(host);
+    root = createRoot(host);
+    confirmFn = vi.fn<ConfirmFn>().mockResolvedValue(true);
+    appStoreMock.settings = { experimentalChatWheel: true };
+    apiMock.getMods.mockResolvedValue([wheel] as never);
+  });
+
+  afterEach(() => {
+    act(() => root.unmount());
+    host.remove();
+    vi.clearAllMocks();
+    apiMock.getMods.mockResolvedValue([]);
+  });
+
+  const removeButton = () =>
+    Array.from(document.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Remove wheel')
+    )!;
+
+  const renderWithWheelSelected = async () => {
+    await act(async () => {
+      root.render(
+        <ConfirmContext.Provider value={confirmFn}>
+          <ChatWheel />
+        </ConfirmContext.Provider>
+      );
+    });
+    await act(async () => {
+      await flush();
+      await flush();
+    });
+    // Nothing is selected on load, so the button starts disabled.
+    expect(removeButton().disabled).toBe(true);
+    const select = document.querySelector('select') as HTMLSelectElement;
+    const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')!.set!;
+    await act(async () => {
+      setter.call(select, wheel.id);
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    expect(removeButton().disabled).toBe(false);
+  };
+
+  const clickRemove = async () => {
+    await act(async () => {
+      removeButton().dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    await act(async () => {
+      await flush();
+      await flush();
+    });
+  };
+
+  it('warns about unbinding the custom menus and removes the wheel once confirmed', async () => {
+    await renderWithWheelSelected();
+    await clickRemove();
+
+    expect(confirmFn).toHaveBeenCalledTimes(1);
+    const request = confirmFn.mock.calls[0][0];
+    expect(request.variant).toBe('danger');
+    expect(request.items).toEqual(['Wheel One']);
+    expect(String(request.message)).toContain('Chat Wheel settings');
+    expect(String(request.message)).toContain('crash');
+    expect(apiMock.deleteMod).toHaveBeenCalledWith('wheel-1');
+    expect(appStoreMock.loadMods).toHaveBeenCalled();
+    // The page falls back to a new-wheel draft rather than pointing at a
+    // wheel that no longer exists.
+    expect((document.querySelector('select') as HTMLSelectElement).value).toBe('');
+  });
+
+  it('removes nothing when the warning is declined', async () => {
+    confirmFn.mockResolvedValue(false);
+    await renderWithWheelSelected();
+    await clickRemove();
+
+    expect(confirmFn).toHaveBeenCalledTimes(1);
+    expect(apiMock.deleteMod).not.toHaveBeenCalled();
+    expect((document.querySelector('select') as HTMLSelectElement).value).toBe('wheel-1');
   });
 });

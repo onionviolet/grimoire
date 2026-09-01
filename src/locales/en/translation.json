@@ -3865,6 +3865,15 @@
     "installedWheels": "Installed wheels",
     "createNew": "Create new wheel",
     "confirmDiscard": "Discard unsaved changes and create a new chat wheel?",
+    "unbind": {
+      "removeWheel": "Remove wheel",
+      "title_one": "Unbind its custom menus in the game first",
+      "title_other": "Unbind their custom menus in the game first",
+      "message_one": "Custom menus from this add-on must be unbound in Deadlock's Chat Wheel settings before it is removed. If a custom menu is still bound after the add-on is gone, the game can crash when the chat wheel or the settings screen opens. Grimoire cannot undo that binding for you. Remove the add-on only once its menus are unbound.",
+      "message_other": "Custom menus from these add-ons must be unbound in Deadlock's Chat Wheel settings before they are removed. If a custom menu is still bound after an add-on is gone, the game can crash when the chat wheel or the settings screen opens. Grimoire cannot undo those bindings for you. Remove the add-ons only once their menus are unbound.",
+      "confirm_one": "Remove add-on",
+      "confirm_other": "Remove {{count}} add-ons"
+    },
     "newWheelDraft": "New wheel draft: this is not installed yet. Save & install creates the managed add-on.",
     "loadSelected": "Load selected",
     "openVpk": "Open VPK…",
