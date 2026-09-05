@@ -46,9 +46,9 @@ been re-derived in a month. `./node_modules/.bin/vitest run` now exits 0, so
 
 - [x] **Phase 9: The Base Command Catalogue** - Capture the base-game voice commands as typed, provenance-pinned data, give `override_bindable` and `override_ping_wheel_bindable` a searchable, editable form surface that preserves unknown entries byte-for-byte, and close the `chat-wheel:read`/`starter` test gap
 - [x] **Phase 9.1: Green Suite And Honest Baseline** (INSERTED 2026-09-01) - Repair the two genuinely failing test paths and correct the mis-attributed "v1.28 absorption baseline", so the suite is green rather than green-except-a-number-we-remember
-- [ ] **Phase 10: Wheel Interaction And Disclosure** - Disclose the game's documented limitations near the controls they affect, finish arrow-key ring navigation on the radial preview, and add drag-and-drop menu building with keyboard alternatives
-- [ ] **Phase 11: Safety And Dressing** - Warn before removing a Chat Wheel add-on that must be unbound first, and prove the game-asset dressing spike with the pure-SVG wheel kept as the permanent fallback
-- [ ] **Phase 12: Release Engineering** - Ship v1.27.5: package.json version, CHANGELOG entry, tag `v1.27.5`, and a GitHub Release with notes from the changelog
+- [x] **Phase 10: Wheel Interaction And Disclosure** - Disclose the game's documented limitations near the controls they affect, finish arrow-key ring navigation on the radial preview, and add drag-and-drop menu building with keyboard alternatives
+- [x] **Phase 11: Safety And Dressing** - Warn before removing a Chat Wheel add-on that must be unbound first, and prove the game-asset dressing spike with the pure-SVG wheel kept as the permanent fallback
+- [ ] **Phase 12: Release Engineering** (RESCOPED 2026-09-05 to v1.28.2) - Ship the fork release: package.json version, CHANGELOG entry, tag `v1.27.5`, and a GitHub Release with notes from the changelog
 
 ## Phase Details
 
@@ -154,6 +154,28 @@ it by execution.
 
 **Notes**: All three requirements touch the same `ChatWheel.tsx` page and the `RadialWheelPreview` component, so they share one phase even though the disclosure copy, the ring traversal, and the drag-and-drop are separate deliverables. The disclosures state game and ChatLane capability, not a guarantee of an in-match outcome, and only cover the limitations that actually affect a saved wheel. Drag-and-drop does not recreate the game's own slot-binding editor; the game still owns where enabled commands are assigned.
 
+**Exit (2026-09-05):** one plan (10-01), executed by a background agent and
+merged as `f4dfa85`. `tsc -b`, `eslint .`, `check-i18n`, `check-encoding`, and
+`gen-locale-manifest --check` exit 0.
+
+  - **Criterion 1.** `LimitationNote` renders one `role="note"` per
+    limitation: `topSlot` and `placeholderVoice` head the menu editor,
+    `archmotherOrder` and `slotSelect` sit under the preview, `unbindCrash`
+    sits above Save and install. Copy checked against the upstream ChatLane
+    README and recorded in `docs/chat-wheel.md`.
+  - **Criterion 2.** The wedges are one roving tab stop; arrows wrap, Home and
+    End jump, Enter and Space select, Alt+Arrow moves the command.
+  - **Criterion 3.** Native HTML5 drag from catalogue rows, item rows, and
+    wedges over a private MIME payload. Keyboard twins: Move up and Move down,
+    Alt+Up and Alt+Down, an Add button per catalogue row, and a Move-to-menu
+    select. Every edit flows through `applyModel`, so the byte-preserving YAML
+    path is the one exercised.
+  - **Criterion 4.** 15 new keys under `chatWheel.limits.*` and
+    `chatWheel.dnd.*`; the manifest is regenerated.
+
+**Not verified here:** a pointer drag in the running app. jsdom has no
+`DragEvent`, so drops are tested with a hand-made `dataTransfer`.
+
 ### Phase 11: Safety And Dressing
 
 **Goal**: Removing a Chat Wheel add-on can no longer crash the game silently, and the preview can wear the game's own art when the user's paks provide it, with the pure-SVG wheel as the permanent fallback
@@ -170,6 +192,44 @@ it by execution.
 
 **Notes**: The dressing half is explicitly a spike that must end with a written verdict, because the extraction cost is unknown until the paks are opened; the pure-SVG wheel is permanent, not provisional, so a failed spike still ships with the fallback intact. The unbind warning is the user-visible safety item and may not be gated on the spike's outcome.
 
+**Exit (2026-09-05):** two plans (11-01 unbind warning, 11-02 dressing spike),
+executed by background agents in isolated worktrees and merged as `27797c7`
+and `6538da7`. Static gates exit 0.
+
+  - **Criterion 1.** `isChatWheelAddon` (source section `ChatWheel`) gates
+    `confirmChatWheelUnbind`, which reuses the page's `useConfirm` provider.
+    The Chat Wheel page had no removal action at all, so a Remove wheel button
+    was added; on Installed both `deleteEntry` and the bulk delete path warn.
+    Ordinary mods keep their existing flow.
+  - **Criterion 2.** Landed as gated plumbing with a runtime resolver rather
+    than a proven texture. The spike verdict (11-02-SUMMARY.md): the stock
+    icons need no extraction because the vendored ChatLane set carries the
+    game's `ping_icon_<name>` names, and no wheel backplate `.vtex_c` is
+    known to exist because the in-game ring is Panorama layout and style.
+    When a user's pak does yield a qualifying HUD texture the preview is
+    dressed; otherwise null is the normal answer and the SVG wheel renders
+    with byte-identical markup. The gate (Foundry flag and game path) is a
+    pure function under test.
+  - **Criterion 3.** The resolver calls the Foundry catalog's `getTextures`
+    and `ensureFullImage` and decodes nothing itself.
+  - **Criterion 4.** See the standing note below on the local suite.
+
+**Not verified here:** the resolver against a real pak (no Deadlock install on
+this macOS machine), and the removal warning in the running app.
+
+**Local suite, 2026-09-05.** `./node_modules/.bin/vitest run` on the merged
+tree: 2496 passed, 2 failed, 18 skipped. Neither failure touches Phase 10 or
+11 code. `downloadTransfer` "resumes on the next server when a connected
+response stalls" is a load flake: it passes alone. `forgeBridge` "serves more
+concurrent connections than a browser will open" reproduces on `main` before
+this work and is ledger entry 6 in WINDOWS.md: with 8 concurrent loopback
+connects, only 6 ever reach the server's `connection` event, while the same
+40-connection burst against a plain `node:http` server on the same port
+completes in 22 ms, both bare and under vitest. The bridge file is unchanged
+since v1.27.1 and the case passed on 2026-09-01, so it is environmental and
+not yet explained. Per the standing exit rule the gate is `vitest run` exit
+0, which CI on Node 20 confirms on push; this machine has no Node 20.
+
 ### Phase 12: Release Engineering
 
 **Goal**: The fork ships v1.27.5 as a GitHub Release on `onionviolet/grimoire`, produced by the release workflow and verified end to end
@@ -185,6 +245,19 @@ it by execution.
 **Plans**: TBD
 
 **Notes**: The version stays below upstream (1.27.5, not 1.28) so a fork patch can never overtake the upstream version line. Windows artifacts are produced with `GRIMOIRE_FORK_BUILD` and `GRIMOIRE_SOCIAL_BASE_URL` set, and the packaged smoke record does not gate the release (decided 2026-07-28).
+
+**Rescope (2026-09-05):** the release is **v1.28.2**, not v1.27.5. The
+roadmap was written before the v1.28 absorption; `package.json` has been at
+1.28.2 since `93096e7` and tags `v1.28.0` and `v1.28.1` already exist in the
+fork, so "stay below upstream" no longer describes the tree, and 1.27.5 would
+be rejected by `verify-release-version.mjs` against the package version. Read
+every `1.27.5` in the criteria above as `1.28.2`. Prepared so far: the
+CHANGELOG entry for 1.28.2 and a passing `node scripts/verify-release-version.mjs`.
+Not done, deliberately: the tag push and the GitHub Release are outward-facing
+and the release policy says a published release is never deleted, so they wait
+for an explicit go. Also note that the `gh` login on this machine is a
+different account from the fork's git author, so push rights to
+`onionviolet/grimoire` are unverified.
 
 ## Not in this milestone
 
@@ -218,9 +291,9 @@ Phases execute in numeric order: 9 → 10 → 11 → 12. Each phase depends on t
 |-------|----------------|--------|-----------|
 | 9. The Base Command Catalogue | 3/3 | Complete | 2026-08-31 |
 | 9.1. Green Suite And Honest Baseline | 1/1 | Complete | 2026-09-01 |
-| 10. Wheel Interaction And Disclosure | 0/0 | Planned |  |
-| 11. Safety And Dressing | 0/0 | Planned |  |
-| 12. Release Engineering | 0/0 | Planned |  |
+| 10. Wheel Interaction And Disclosure | 1/1 | Complete | 2026-09-05 |
+| 11. Safety And Dressing | 2/2 | Complete | 2026-09-05 |
+| 12. Release Engineering | 0/1 | In progress (changelog and version ready; tag and Release await a go) |  |
 
 **Phase 9 exit note, corrected 2026-09-01.** The note below stands as the
 record of how the phase was exited, but its central claim does not survive a

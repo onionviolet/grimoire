@@ -2,6 +2,68 @@
 
 All notable changes to this project are documented here. Format is loosely based on [Keep a Changelog](https://keepachangelog.com/), and the project adheres to semantic versioning.
 
+## [1.28.2] - 2026-09-05
+
+The fork's release after absorbing upstream v1.28.0 and v1.28.1. The version
+line moves to 1.28.2 (upstream 1.28.1 plus this fork's divergence), which
+supersedes the v1.27.5 number the Chat Wheel milestone was planned under. The
+theme is Chat Wheel parity with ChatLane's GUI.
+
+### Added
+- **Base command catalogue for the Chat Wheel.** The game's stock voice
+  commands are vendored as typed, provenance-pinned data. A searchable,
+  filterable list shows each command's game-default status and lets it be
+  switched on or off for the stock Chat Wheel and the Ping wheel from form
+  controls. Unknown YAML override entries stay visible and editable in an
+  "Other commands in this file" group, and unknown keys round-trip
+  byte-for-byte through save and reopen.
+- **Honest limitation disclosures on the wheel page.** The five documented
+  game and ChatLane limitations that affect a saved wheel (item order
+  reversed on the Archmother team, top-slot menus opening the wrong way,
+  items unselectable depending on the bound slot, the crash risk of a wheel
+  add-on that is removed while still bound, and the placeholder voice line)
+  are stated next to the control each one affects.
+- **Keyboard navigation around the radial preview.** Arrow keys move focus
+  around the ring and wrap, Home and End jump to the ends, Enter and Space
+  select the focused slot, and Alt+Arrow moves the focused command.
+- **Drag-and-drop menu building.** Commands can be dragged from the catalogue
+  or the item list into a menu, and reordered on the wheel itself. Every
+  drag-only interaction has a keyboard twin: Move up and Move down, an Add
+  button on each catalogue row, and a Move-to-menu selector.
+- **A warning before removing a still-bound wheel.** Removing a Chat Wheel
+  add-on, from the new Remove wheel button on the Chat Wheel page or from
+  single and bulk delete on Installed, now explains that its custom menus
+  must be unbound in the game's Chat Wheel settings first, or the game can
+  crash when the wheel or settings open, and asks for confirmation.
+- **Game-asset dressing behind the Foundry flag.** With Foundry on and a
+  game path set, the preview can draw the game's own wheel backplate texture
+  behind the ring, decoded through the existing Foundry catalog and cache.
+  The pure-SVG wheel is the permanent fallback and renders unchanged when
+  the flag is off, no game path is set, no qualifying texture exists, or the
+  decode fails. Stock icons need no extraction: the vendored ChatLane set
+  already carries the game's names.
+
+### Changed
+- **Absorbed upstream v1.28.0 and v1.28.1.** Local mods managed as variants,
+  the performance lane (latest-release tracking, browsing and pinning older
+  versions, settings promotion), profiles over local mods with an inline
+  profiles menu, merged-mod update detection and Global placement
+  preservation, live download state, the card tag taxonomy, macOS CrossOver
+  bottles with CI builds, and flatpak publishing. Where upstream and the fork
+  had both changed a surface, the fork's Locker and Foundry work was kept and
+  upstream's behaviour ported underneath. The record of what was taken,
+  kept, or ported is `docs/upstream-absorption-1.28.md`.
+
+### Fixed
+- **The test suite is green on Node 26 as well as the declared Node 20.**
+  Node 26 ships a native `localStorage` that shadows jsdom's and made every
+  storage-touching test fail locally; the test setup now repairs it, and
+  `.nvmrc` plus `engines.node` declare the supported runtime. A
+  download-sweep test that had been silently red since v1.27.1 placed its
+  symlink target inside the swept root and is corrected.
+- **The Chat Wheel read and starter IPC paths are covered by tests**, closing
+  the gap flagged by the 2026-07-28 audit.
+
 ## [1.27.2] - 2026-08-10
 
 ### Fixed

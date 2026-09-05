@@ -54,27 +54,27 @@ tree at the milestone start:
 
 ### Wheel interaction and disclosure
 
-- [ ] **REQ-cw-limitations-disclosures**: The game/ChatLane limitations that
+- [x] **REQ-cw-limitations-disclosures**: The game/ChatLane limitations that
       actually affect a saved wheel (custom menu item order reversed on the
       Archmother team, top-slot menus opening in the wrong direction, some
       items unselectable depending on bound slot, the gameinfo-reset crash
       risk, the placeholder voice line) are surfaced near the relevant
       controls with concise, honest copy.
-- [ ] **REQ-cw-keyboard-nav**: Arrow-key focus movement around the radial wheel
+- [x] **REQ-cw-keyboard-nav**: Arrow-key focus movement around the radial wheel
       ring is completed (the preview currently supports Enter/Space activation
       but not ring traversal).
-- [ ] **REQ-cw-drag-drop**: Commands can be reordered on the wheel and menus
+- [x] **REQ-cw-drag-drop**: Commands can be reordered on the wheel and menus
       can be built by dragging commands from the catalogue/list into a menu,
       matching the original ChatLane GUI, with keyboard-accessible
       alternatives preserved for every drag-only interaction.
 
 ### Safety and dressing
 
-- [ ] **REQ-cw-unbind-warning**: Removing a Chat Wheel add-on (from the Chat
+- [x] **REQ-cw-unbind-warning**: Removing a Chat Wheel add-on (from the Chat
       Wheel page or the Installed page) warns that custom menus must be
       unbound in the game's Chat Wheel settings first, or the game can crash
       on opening the chat wheel/settings.
-- [ ] **REQ-cw-game-asset-dressing**: Spike: extract the game's chat wheel
+- [x] **REQ-cw-game-asset-dressing**: Spike: extract the game's chat wheel
       panorama/backplate art and the stock ChatLane icon set from the user's
       own paks and dress the preview with them when a game path is configured;
       the pure-SVG wheel is the permanent fallback (no game path, no Foundry
@@ -86,7 +86,7 @@ tree at the milestone start:
 - [x] **REQ-cw-test-gap**: `chat-wheel:read` and `chat-wheel:starter` gain
       main-process coverage (flagged untested by the 2026-07-28 audit), beside
       the existing round-trip test.
-- [ ] **REQ-release-v1.27.5**: The fork ships v1.27.5 as a GitHub Release on
+- [ ] **REQ-release-v1.27.5** (rescoped 2026-09-05: the version is 1.28.2, see ROADMAP Phase 12): The fork ships v1.28.2 as a GitHub Release on
       `onionviolet/grimoire`: `package.json` version 1.27.5, a CHANGELOG entry
       for the fork release, tag `v1.27.5` pushed to `origin` (matching
       `package.json`; `scripts/verify-release-version.mjs` must pass), the
@@ -112,10 +112,10 @@ tree at the milestone start:
 | REQ-cw-command-catalogue | 9 | [x] |
 | REQ-cw-override-editing | 9 | [x] |
 | REQ-green-suite | 9.1 | [x] |
-| REQ-cw-limitations-disclosures | 10 | [ ] |
-| REQ-cw-keyboard-nav | 10 | [ ] |
-| REQ-cw-drag-drop | 10 | [ ] |
-| REQ-cw-unbind-warning | 11 | [ ] |
-| REQ-cw-game-asset-dressing | 11 | [ ] |
+| REQ-cw-limitations-disclosures | 10 | [x] |
+| REQ-cw-keyboard-nav | 10 | [x] |
+| REQ-cw-drag-drop | 10 | [x] |
+| REQ-cw-unbind-warning | 11 | [x] |
+| REQ-cw-game-asset-dressing | 11 | [x] |
 | REQ-cw-test-gap | 9 | [x] |
 | REQ-release-v1.27.5 | 12 | [ ] |

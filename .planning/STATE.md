@@ -2,18 +2,18 @@
 gsd_state_version: 1.0
 milestone: v1.27.5
 milestone_name: Chat Wheel parity
-current_phase: 9.1
-current_phase_name: Green Suite And Honest Baseline
-status: phase-complete
-stopped_at: "Phase 9.1 complete: suite green, ledger clear. Next phase is 10 (Wheel Interaction And Disclosure)"
-last_updated: "2026-09-01T00:00:00.000Z"
-last_activity: "2026-09-01: phase 9 merged and pushed, registers reconciled, phase 9.1 inserted and executed"
+current_phase: 12
+current_phase_name: Release Engineering
+status: in-progress
+stopped_at: "Phases 10 and 11 complete and merged; 1.28.2 changelog written; tag push and GitHub Release await an explicit go"
+last_updated: "2026-09-05T00:00:00.000Z"
+last_activity: "2026-09-05: phases 10 and 11 executed by parallel agents and merged, phase 12 rescoped to v1.28.2 and prepared up to the tag"
 progress:
-  total_phases: 4
-  completed_phases: 2
-  total_plans: 4
-  completed_plans: 4
-last_activity_desc: "Phase 9.1 executed directly. vitest run now exits 0 (2436 passing, 0 failing) on Node 26, which used to fail 26 tests. 25 were Node 26 shadowing jsdom localStorage, repaired in vitest.setup.ts from the unshadowed sessionStorage instance with Storage republished from it so Storage.prototype spies do not silently stop applying; 1 was a genuinely wrong test fixture that placed a symlink target inside the swept root. .nvmrc and engines.node declare Node 20, src/lib/domStorage.test.ts guards the invariant, and a standing exit rule now forbids exiting a phase against a remembered failure count."
+  total_phases: 5
+  completed_phases: 4
+  total_plans: 8
+  completed_plans: 7
+last_activity_desc: "Phase 10 (disclosures, ring navigation, drag-and-drop) and Phase 11 (unbind warning, dressing spike) landed as f4dfa85, 27797c7, 6538da7. Static gates green. Local vitest: 2496 passed, 2 failed, both pre-existing and outside this work (forgeBridge concurrency, ledger 6; downloadTransfer load flake). Phase 12 rescoped from v1.27.5 to v1.28.2 because package.json and the tag line already moved with the v1.28 absorption; CHANGELOG entry written and verify-release-version passes."
 ---
 
 # Project State
@@ -27,14 +27,14 @@ See: .planning/PROJECT.md (updated 2026-08-11)
 
 ## Current Position
 
-Phase: 9.1 (Green Suite And Honest Baseline) - complete
-Next: 10 (Wheel Interaction And Disclosure) - not yet planned
-Plan: 09-01, 09-02, 09-03 complete; 9.1 executed directly without a plan file
-Status (9.1): Complete. Suite green, `vitest run` exits 0, ledger clear
-(0 open, 3 waived, 2 fixed).
-
-Status (9): Complete and committed (ec11e16 feature, a62949c planning). All four roadmap success criteria hold; criterion 4 was settled by a full vitest run showing 26 failing tests across 3 files, all inside the v1.28-absorption baseline, so no new failures. One carried item: the 09-02 real-binary round-trip case skips on macOS and still needs a Windows run (ledger entry 3 in WINDOWS.md).
-Last activity: 2026-09-01: merge, reconciliation, rescope
+Phase: 12 (Release Engineering) - in progress, rescoped to v1.28.2
+Next: an explicit go for `git tag v1.28.2 && git push origin main v1.28.2`,
+then the release workflow and the GitHub Release with the changelog notes
+Plans: 10-01, 11-01, 11-02 complete (see the phase directories)
+Status (12): CHANGELOG entry and package version ready; tag and Release not
+done because they are outward-facing and irreversible under the release policy.
+Status (10, 11): Complete and merged 2026-09-05; exit notes in ROADMAP.md.
+Last activity: 2026-09-05: phases 10 and 11, phase 12 preparation
 
 ## Register map
 
@@ -50,13 +50,15 @@ One home per kind of open item. A duplicate elsewhere is stale, not a second cop
 
 ## Blockers
 
-(none). Ledger entries 4 and 5 are fixed; 1-3 are waived as deferred
-verification debt. One thing is unverified rather than blocked: Node 20 is not
-installed on this machine, so the setup file's no-op path there is guaranteed by
-its guard rather than by execution. CI confirms it on push.
+- **Phase 12 tag and Release need a go**, and push rights are unverified: the
+  `gh` login on this machine is a different account from the fork's author.
+- **Ledger entry 6 (open):** `forgeBridge` "serves more concurrent
+  connections" fails on this machine only. Environmental and unexplained; CI
+  on Node 20 is the authoritative run. No Node 20 is installed here.
 
 ## Session
 
-**Last session:** 2026-09-01
-**Stopped at:** Phase 9.1 done and the suite green. Next step is planning Phase 10 (Wheel Interaction And Disclosure).
+**Last session:** 2026-09-05
+**Stopped at:** Phase 12 prepared up to the tag. Next step is the tag push and
+GitHub Release for v1.28.2 once given the go, then closing the milestone.
 **Resume file:** .planning/ROADMAP.md
