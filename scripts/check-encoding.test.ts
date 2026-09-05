@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 // @ts-expect-error -- plain .mjs script, no type declarations
-import { findMojibake } from './check-encoding.mjs';
+import { CP1252_HIGH_CODES, findMojibake } from './check-encoding.mjs';
 
 // This file is pure ASCII on purpose, like the checker it tests: the guard
 // scans scripts/, so literal mojibake fixtures here would fail the very check
@@ -13,11 +13,18 @@ const EM_DASH = '\u2014';
 const NBSP = '\u00A0';
 
 /** Builds the mojibake form of a string the way the bug does: encode as UTF-8,
- *  then decode those bytes as cp1252. Using the real transform rather than
- *  hand-typed sequences means the fixtures cannot drift from the fault. */
+ *  then read those bytes as cp1252. The 0x80-0x9F bytes go through the
+ *  checker's own table rather than TextDecoder('windows-1252'), because Node
+ *  builds disagree on that label: CI's Node 20 decoded 0x80 as U+0080 (plain
+ *  Latin-1) and every cp1252-specific case passed vacuously or failed. Using
+ *  the table keeps the fixtures tied to the fault the checker hunts. */
 function corrupt(text: string): string {
   const bytes = new TextEncoder().encode(text);
-  return new TextDecoder('windows-1252').decode(bytes);
+  let out = '';
+  for (const byte of bytes) {
+    out += String.fromCharCode(byte >= 0x80 && byte <= 0x9f ? (CP1252_HIGH_CODES as number[])[byte - 0x80] : byte);
+  }
+  return out;
 }
 
 describe('findMojibake', () => {

@@ -34,7 +34,7 @@ const SKIP_DIRS = new Set(['node_modules', 'dist', 'out', 'build', '.git']);
 // forms and would have caught only 3 of the 77 sequences that shipped. The five
 // slots cp1252 leaves undefined (0x81, 0x8D, 0x8F, 0x90, 0x9D) do survive as C1
 // controls and are included so the class stays contiguous with the byte range.
-const CP1252_HIGH_CODES = [
+export const CP1252_HIGH_CODES = [
   0x20ac, 0x0081, 0x201a, 0x0192, 0x201e, 0x2026, 0x2020, 0x2021,
   0x02c6, 0x2030, 0x0160, 0x2039, 0x0152, 0x008d, 0x017d, 0x008f,
   0x0090, 0x2018, 0x2019, 0x201c, 0x201d, 0x2022, 0x2013, 0x2014,
