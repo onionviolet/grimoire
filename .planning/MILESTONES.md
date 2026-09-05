@@ -1,5 +1,22 @@
 # Milestones
 
+## v1.28.2 Chat Wheel parity (Shipped: 2026-09-05)
+
+Planned as v1.27.5; renumbered because the v1.28 absorption moved the
+version line first.
+
+**Phases completed:** 5 phases (9, 9.1, 10, 11, 12), 7 plans
+
+**Key accomplishments:**
+
+- The base game's voice command catalogue is vendored, typed, provenance-pinned data with a searchable form surface for both override maps, and unknown YAML entries round-trip byte-for-byte.
+- The suite is green on Node 26 as well as the declared Node 20, and no phase may exit against a remembered failure count.
+- The five documented wheel limitations are disclosed beside the controls they affect; the radial preview has full keyboard ring traversal; menus can be built and reordered by drag-and-drop with a keyboard twin for every drag.
+- Removing a still-bound Chat Wheel add-on warns and confirms from both pages; the dressing spike shipped gated plumbing over the Foundry decoders with a written verdict and the SVG wheel as the permanent fallback.
+- v1.28.2 released on onionviolet/grimoire with installers for all three platforms, flatpak, checksums, and attestations; CI and Nix green on main afterward.
+
+---
+
 ## v1.27.1 absorb, review, ship (Shipped: 2026-08-10)
 
 **Phases completed:** 2 phases, 2 plans, 0 tasks

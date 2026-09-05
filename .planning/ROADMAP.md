@@ -48,7 +48,7 @@ been re-derived in a month. `./node_modules/.bin/vitest run` now exits 0, so
 - [x] **Phase 9.1: Green Suite And Honest Baseline** (INSERTED 2026-09-01) - Repair the two genuinely failing test paths and correct the mis-attributed "v1.28 absorption baseline", so the suite is green rather than green-except-a-number-we-remember
 - [x] **Phase 10: Wheel Interaction And Disclosure** - Disclose the game's documented limitations near the controls they affect, finish arrow-key ring navigation on the radial preview, and add drag-and-drop menu building with keyboard alternatives
 - [x] **Phase 11: Safety And Dressing** - Warn before removing a Chat Wheel add-on that must be unbound first, and prove the game-asset dressing spike with the pure-SVG wheel kept as the permanent fallback
-- [ ] **Phase 12: Release Engineering** (RESCOPED 2026-09-05 to v1.28.2) - Ship the fork release: package.json version, CHANGELOG entry, tag `v1.27.5`, and a GitHub Release with notes from the changelog
+- [x] **Phase 12: Release Engineering** (RESCOPED 2026-09-05 to v1.28.2) - Ship the fork release: package.json version, CHANGELOG entry, tag `v1.27.5`, and a GitHub Release with notes from the changelog
 
 ## Phase Details
 
@@ -259,6 +259,18 @@ for an explicit go. Also note that the `gh` login on this machine is a
 different account from the fork's git author, so push rights to
 `onionviolet/grimoire` are unverified.
 
+**Exit (2026-09-05):** on the user's go, `main` (f457b8b) and tag `v1.28.2`
+were pushed to `origin`. Release workflow run 33946054821 succeeded on all
+three builders plus the release and flatpak-publish jobs (apt and aur skipped
+by design). The GitHub Release exists, not draft, at
+https://github.com/onionviolet/grimoire/releases/tag/v1.28.2 with the Windows
+setup and portable installers, the arm64 mac dmg and zip, AppImage, deb,
+flatpak, blockmaps, updater manifests, and SHA256SUMS. Two follow-up pushes
+made CI green on `main`: `79099cd` fixed the encoding-checker fixtures for
+Node 20 and `cbdd674` refreshed the Nix pnpmDeps hash; CI and Nix both
+succeed at `cbdd674`, which also shows the forgeBridge case (ledger 6) passes
+on Node 20, so it is waived as machine-local.
+
 ## Not in this milestone
 
 Rescoped 2026-09-01. Two classes of work were being carried in prose across
@@ -293,7 +305,7 @@ Phases execute in numeric order: 9 → 10 → 11 → 12. Each phase depends on t
 | 9.1. Green Suite And Honest Baseline | 1/1 | Complete | 2026-09-01 |
 | 10. Wheel Interaction And Disclosure | 1/1 | Complete | 2026-09-05 |
 | 11. Safety And Dressing | 2/2 | Complete | 2026-09-05 |
-| 12. Release Engineering | 0/1 | In progress (changelog and version ready; tag and Release await a go) |  |
+| 12. Release Engineering | 1/1 | Complete | 2026-09-05 |
 
 **Phase 9 exit note, corrected 2026-09-01.** The note below stands as the
 record of how the phase was exited, but its central claim does not survive a

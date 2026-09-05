@@ -4,14 +4,14 @@ milestone: v1.27.5
 milestone_name: Chat Wheel parity
 current_phase: 12
 current_phase_name: Release Engineering
-status: in-progress
-stopped_at: "v1.28.2 tagged and pushed 2026-09-05 (f457b8b); Release workflow run 33946054821 in progress"
+status: milestone-complete
+stopped_at: "v1.28.2 released 2026-09-05; milestone complete; next milestone not yet chosen (see BACKLOG.md)"
 last_updated: "2026-09-05T00:00:00.000Z"
 last_activity: "2026-09-05: phases 10 and 11 executed by parallel agents and merged, phase 12 rescoped to v1.28.2 and prepared up to the tag"
 progress:
   total_phases: 5
-  completed_phases: 4
-  total_plans: 8
+  completed_phases: 5
+  total_plans: 7
   completed_plans: 7
 last_activity_desc: "Phase 10 (disclosures, ring navigation, drag-and-drop) and Phase 11 (unbind warning, dressing spike) landed as f4dfa85, 27797c7, 6538da7. Static gates green. Local vitest: 2496 passed, 2 failed, both pre-existing and outside this work (forgeBridge concurrency, ledger 6; downloadTransfer load flake). Phase 12 rescoped from v1.27.5 to v1.28.2 because package.json and the tag line already moved with the v1.28 absorption; CHANGELOG entry written and verify-release-version passes."
 ---
@@ -27,15 +27,12 @@ See: .planning/PROJECT.md (updated 2026-08-11)
 
 ## Current Position
 
-Phase: 12 (Release Engineering) - in progress, rescoped to v1.28.2
-Next: an explicit go for `git tag v1.28.2 && git push origin main v1.28.2`,
-then the release workflow and the GitHub Release with the changelog notes
-Plans: 10-01, 11-01, 11-02 complete (see the phase directories)
-Status (12): main and tag v1.28.2 pushed to origin on the user's go
-(2026-09-05). Release workflow run 33946054821 builds installer, checksums,
-attestations and creates the GitHub Release; not yet confirmed complete.
-Status (10, 11): Complete and merged 2026-09-05; exit notes in ROADMAP.md.
-Last activity: 2026-09-05: phases 10 and 11, phase 12 preparation
+Milestone v1.28.2 "Chat Wheel parity" is shipped (2026-09-05). Release:
+https://github.com/onionviolet/grimoire/releases/tag/v1.28.2. CI and Nix are
+green on `main` at cbdd674. No phase is in progress. The next milestone has
+not been chosen; candidates are B-01..B-07 in BACKLOG.md, and the three
+waived verification-debt entries in WINDOWS.md still need a Deadlock install
+or a Windows machine.
 
 ## Register map
 
@@ -51,14 +48,11 @@ One home per kind of open item. A duplicate elsewhere is stale, not a second cop
 
 ## Blockers
 
-- **Ledger entry 6 (open):** `forgeBridge` "serves more concurrent
-  connections" fails on this machine only. Environmental and unexplained; CI
-  on Node 20 is the authoritative run. No Node 20 is installed here.
+(none). Ledger clear: 0 open, 4 waived, 2 fixed.
 
 ## Session
 
 **Last session:** 2026-09-05
-**Stopped at:** v1.28.2 pushed and tagged. Next step is confirming the Release
-workflow succeeded and the GitHub Release exists, then closing the milestone
-(MILESTONES.md entry, REQ-release checked, Phase 12 exit note).
-**Resume file:** .planning/ROADMAP.md
+**Stopped at:** milestone shipped and closed out. Next step is choosing the
+next milestone from BACKLOG.md.
+**Resume file:** .planning/BACKLOG.md

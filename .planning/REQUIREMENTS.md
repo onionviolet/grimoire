@@ -86,7 +86,7 @@ tree at the milestone start:
 - [x] **REQ-cw-test-gap**: `chat-wheel:read` and `chat-wheel:starter` gain
       main-process coverage (flagged untested by the 2026-07-28 audit), beside
       the existing round-trip test.
-- [ ] **REQ-release-v1.27.5** (rescoped 2026-09-05: the version is 1.28.2, see ROADMAP Phase 12): The fork ships v1.28.2 as a GitHub Release on
+- [x] **REQ-release-v1.27.5** (rescoped 2026-09-05: the version is 1.28.2, see ROADMAP Phase 12): The fork ships v1.28.2 as a GitHub Release on
       `onionviolet/grimoire`: `package.json` version 1.27.5, a CHANGELOG entry
       for the fork release, tag `v1.27.5` pushed to `origin` (matching
       `package.json`; `scripts/verify-release-version.mjs` must pass), the
@@ -118,4 +118,4 @@ tree at the milestone start:
 | REQ-cw-unbind-warning | 11 | [x] |
 | REQ-cw-game-asset-dressing | 11 | [x] |
 | REQ-cw-test-gap | 9 | [x] |
-| REQ-release-v1.27.5 | 12 | [ ] |
+| REQ-release-v1.27.5 | 12 | [x] |
