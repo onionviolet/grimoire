@@ -1,8 +1,9 @@
-import { useMemo, useRef, useState, type DragEvent, type KeyboardEvent } from 'react';
+import { useId, useMemo, useRef, useState, type DragEvent, type KeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Plus } from 'lucide-react';
 import { MAX_WHEEL_SLOTS, wheelSlots, type WheelLayout } from '../../lib/chatWheelGeometry';
 import { chatWheelIconUrl } from '../../lib/chatWheelIcons';
+import type { ChatWheelDressing } from '../../types/chatWheelDressing';
 import {
   hasChatWheelDrag,
   readChatWheelDrag,
@@ -28,6 +29,10 @@ interface RadialWheelPreviewProps {
   /** A drop onto the wheel: onto a wedge (`at` is that slot) or onto the
    *  surrounding surface (`at` undefined, meaning append). */
   onDrop?: (payload: ChatWheelDragPayload, at: number | undefined) => void;
+  /** The game's own backplate art, drawn behind the ring. Absent or null
+   *  renders the pure-SVG wheel with no extra markup at all: that wheel is
+   *  the permanent fallback, so it must not change shape when undressed. */
+  dressing?: ChatWheelDressing | null;
 }
 
 // One fixed drawing space; the SVG scales to its container.
@@ -89,6 +94,7 @@ export default function RadialWheelPreview({
   onSelectSlot,
   onMoveItem,
   onDrop,
+  dressing,
 }: RadialWheelPreviewProps) {
   const { t } = useTranslation();
   const shown = items.slice(0, MAX_WHEEL_SLOTS);
@@ -96,6 +102,10 @@ export default function RadialWheelPreview({
   const iconUrl = chatWheelIconUrl(icon);
   const overflow = items.length - shown.length;
   const budget = labelBudget(shown.length);
+  const backplateUrl = dressing?.backplateUrl ?? null;
+  // useId's separators are not safe inside an unquoted url(); keep the id plain.
+  const clipId = `chat-wheel-backplate-${useId().replace(/[^A-Za-z0-9_-]/g, '')}`;
+  const plateRadius = LAYOUT.rOuter + 4;
   const paths = useRef<Array<SVGPathElement | null>>([]);
 
   // The roving tab stop follows focus around the ring, and jumps to whichever
@@ -169,7 +179,27 @@ export default function RadialWheelPreview({
     >
       <svg viewBox="0 0 300 300" role="group" aria-label={t('chatWheel.previewWheel', 'Chat wheel preview')} className="block w-full select-none">
         {/* Backplate so the wheel reads as one object, like the in-game HUD. */}
-        <circle cx={LAYOUT.cx} cy={LAYOUT.cy} r={LAYOUT.rOuter + 4} className="fill-bg-primary stroke-border" strokeWidth="1" />
+        <circle cx={LAYOUT.cx} cy={LAYOUT.cy} r={plateRadius} className="fill-bg-primary stroke-border" strokeWidth="1" />
+        {backplateUrl && (
+          <>
+            {/* The game's own art, clipped to the plate; wedges go translucent
+                over it so it stays visible. Decorative only. */}
+            <clipPath id={clipId}>
+              <circle cx={LAYOUT.cx} cy={LAYOUT.cy} r={plateRadius} />
+            </clipPath>
+            <image
+              href={backplateUrl}
+              x={LAYOUT.cx - plateRadius}
+              y={LAYOUT.cy - plateRadius}
+              width={plateRadius * 2}
+              height={plateRadius * 2}
+              preserveAspectRatio="xMidYMid slice"
+              clipPath={`url(#${clipId})`}
+              aria-hidden="true"
+              data-testid="chat-wheel-backplate"
+            />
+          </>
+        )}
         {slots.map((slot) => {
           const item = shown[slot.index];
           const active = focusedSlot === slot.index;
@@ -201,7 +231,9 @@ export default function RadialWheelPreview({
                     ? 'fill-accent/15 stroke-accent'
                     : active
                       ? 'fill-accent/25 stroke-accent'
-                      : 'fill-bg-tertiary stroke-border hover:fill-bg-secondary focus-visible:fill-bg-secondary focus-visible:stroke-accent/60'
+                      : backplateUrl
+                        ? 'fill-bg-tertiary/60 stroke-border hover:fill-bg-secondary/70 focus-visible:fill-bg-secondary/70 focus-visible:stroke-accent/60'
+                        : 'fill-bg-tertiary stroke-border hover:fill-bg-secondary focus-visible:fill-bg-secondary focus-visible:stroke-accent/60'
                 }`}
                 strokeWidth={over ? '2' : '1'}
               >

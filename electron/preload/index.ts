@@ -125,6 +125,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     chatWheelValidate: (yaml: string) => ipcRenderer.invoke('chat-wheel:validate', yaml),
     chatWheelSave: (args: ChatWheelSaveArgs) => ipcRenderer.invoke('chat-wheel:save', args),
     chatWheelStatus: () => ipcRenderer.invoke('chat-wheel:status'),
+    chatWheelDressing: () => ipcRenderer.invoke('chat-wheel:dressing'),
 
     // Discord Rich Presence (opt-in; talks only to the local Discord client)
     discord: {

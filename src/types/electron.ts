@@ -953,6 +953,9 @@ export interface ElectronAPI {
     chatWheelValidate: (yaml: string) => Promise<void>;
     chatWheelSave: (args: ChatWheelSaveArgs) => Promise<Mod | null>;
     chatWheelStatus: () => Promise<{ available: boolean; path?: string; error?: string }>;
+    /** Game-asset dressing for the preview, or null (no game path, no
+     *  qualifying pak entry, or decode failure). Never rejects. */
+    chatWheelDressing: () => Promise<import('./chatWheelDressing').ChatWheelDressing | null>;
 
     // Discord Rich Presence (opt-in; talks only to the local Discord client)
     discord: {

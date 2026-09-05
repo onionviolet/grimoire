@@ -121,6 +121,12 @@ export async function saveChatWheel(args: import('../types/electron').ChatWheelS
   return withGameRunningWarning(() => window.electronAPI.chatWheelSave(args));
 }
 
+/** The game's own wheel art for the preview, decoded through the Foundry
+ *  cache, or null when the pure-SVG wheel should render unchanged. */
+export async function getChatWheelDressing(): Promise<import('../types/chatWheelDressing').ChatWheelDressing | null> {
+  return window.electronAPI.chatWheelDressing();
+}
+
 export async function enableMod(modId: string): Promise<Mod> {
   return window.electronAPI.enableMod(modId);
 }
