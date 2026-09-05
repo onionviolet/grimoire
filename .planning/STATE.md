@@ -5,7 +5,7 @@ milestone_name: Chat Wheel parity
 current_phase: 12
 current_phase_name: Release Engineering
 status: in-progress
-stopped_at: "Phases 10 and 11 complete and merged; 1.28.2 changelog written; tag push and GitHub Release await an explicit go"
+stopped_at: "v1.28.2 tagged and pushed 2026-09-05 (f457b8b); Release workflow run 33946054821 in progress"
 last_updated: "2026-09-05T00:00:00.000Z"
 last_activity: "2026-09-05: phases 10 and 11 executed by parallel agents and merged, phase 12 rescoped to v1.28.2 and prepared up to the tag"
 progress:
@@ -31,8 +31,9 @@ Phase: 12 (Release Engineering) - in progress, rescoped to v1.28.2
 Next: an explicit go for `git tag v1.28.2 && git push origin main v1.28.2`,
 then the release workflow and the GitHub Release with the changelog notes
 Plans: 10-01, 11-01, 11-02 complete (see the phase directories)
-Status (12): CHANGELOG entry and package version ready; tag and Release not
-done because they are outward-facing and irreversible under the release policy.
+Status (12): main and tag v1.28.2 pushed to origin on the user's go
+(2026-09-05). Release workflow run 33946054821 builds installer, checksums,
+attestations and creates the GitHub Release; not yet confirmed complete.
 Status (10, 11): Complete and merged 2026-09-05; exit notes in ROADMAP.md.
 Last activity: 2026-09-05: phases 10 and 11, phase 12 preparation
 
@@ -50,8 +51,6 @@ One home per kind of open item. A duplicate elsewhere is stale, not a second cop
 
 ## Blockers
 
-- **Phase 12 tag and Release need a go**, and push rights are unverified: the
-  `gh` login on this machine is a different account from the fork's author.
 - **Ledger entry 6 (open):** `forgeBridge` "serves more concurrent
   connections" fails on this machine only. Environmental and unexplained; CI
   on Node 20 is the authoritative run. No Node 20 is installed here.
@@ -59,6 +58,7 @@ One home per kind of open item. A duplicate elsewhere is stale, not a second cop
 ## Session
 
 **Last session:** 2026-09-05
-**Stopped at:** Phase 12 prepared up to the tag. Next step is the tag push and
-GitHub Release for v1.28.2 once given the go, then closing the milestone.
+**Stopped at:** v1.28.2 pushed and tagged. Next step is confirming the Release
+workflow succeeded and the GitHub Release exists, then closing the milestone
+(MILESTONES.md entry, REQ-release checked, Phase 12 exit note).
 **Resume file:** .planning/ROADMAP.md
