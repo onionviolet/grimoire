@@ -53,3 +53,31 @@ edited by hand in Advanced YAML.
 The section is a projection of the YAML: Advanced YAML remains the single
 source of truth, so a manual edit there flows straight back into the controls,
 and nothing here edits `gameinfo.gi`.
+
+## Game-asset dressing (spike, behind the Foundry flag)
+
+The radial preview is a pure SVG wheel and that wheel is permanent, not a
+placeholder. On top of it, and only when all three of the following hold, the
+preview draws the game's own backplate art behind the ring:
+
+- the Foundry experimental flag is on (`experimentalFoundry`),
+- a game path is configured (the dev dummy path counts while dev mode is on),
+- the base pak's texture catalog yields a `.vtex_c` under
+  `panorama/images/hud/` whose name contains `wheel` and is not an icon, and
+  the Foundry full-image decoder turns it into a PNG.
+
+Any of those failing, including an unavailable catalog engine or a decode
+error, resolves to null and the SVG wheel renders unchanged, with no extra
+markup. The resolver (`electron/main/services/chatWheelDressing.ts`) owns no
+decoding: it calls the existing Foundry `getTextures` and `ensureFullImage`,
+so the PNG lands in the same `grimoire-foundry:` cache the Foundry lightbox
+uses and the renderer never receives a filesystem path. The gate lives in
+`useChatWheelDressing`; the IPC channel is `chat-wheel:dressing`.
+
+The stock icons need no extraction. ChatLane embeds the game's
+`scripts/ping_wheel_messages.vdata`, which names the in-game set as
+`panorama/images/hud/ping/ping_icon_<name>.svg`; those are compiled `.vsvg_c`
+entries the texture catalog does not index, and the eleven vendored ChatLane
+icons in `src/lib/chatWheelIcons.ts` carry exactly those names. See
+`.planning/phases/11-safety-and-dressing/11-02-SUMMARY.md` for the spike
+verdict and what the pak was and was not found to contain.

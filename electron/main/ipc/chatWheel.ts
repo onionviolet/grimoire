@@ -6,8 +6,24 @@ import { metaKeyFor } from '../services/deadlock';
 import { setModMetadataWithHash } from '../services/metadata';
 import { assertCanMoveLoadedGameMod } from '../services/gameSessionMods';
 import { buildChatWheelVpk, readChatWheelStarter, readChatWheelVpk, chatLaneBinaryPath, validateChatWheelYaml } from '../services/chatWheel';
+import { resolveChatWheelDressing } from '../services/chatWheelDressing';
+import type { ChatWheelDressing } from '../../../src/types/chatWheelDressing';
 
 interface ChatWheelSaveArgs { yaml: string; name: string; replaceModId?: string; }
+
+// Game-asset dressing for the preview (Phase 11 spike). Null is the normal
+// answer whenever there is no game path, no qualifying pak entry, or the
+// Foundry decode fails; the renderer then keeps its pure-SVG wheel. The
+// Foundry flag itself is checked renderer-side, where the settings store is,
+// so this handler never rejects: it is read-only over the base pak and the
+// existing thumbnail cache.
+ipcMain.handle('chat-wheel:dressing', async (): Promise<ChatWheelDressing | null> => {
+    try {
+        return await resolveChatWheelDressing(getActiveDeadlockPath());
+    } catch {
+        return null;
+    }
+});
 
 ipcMain.handle('chat-wheel:status', async (): Promise<{ available: boolean; path?: string; error?: string }> => {
     try {

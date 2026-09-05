@@ -11,6 +11,7 @@ import type { Mod } from '../types/mod';
 import { applyOverride, parseChatWheelYaml, updateChatWheelYaml, type ChatWheelModel, type OverrideState } from '../lib/chatWheelModel';
 import { CHAT_WHEEL_ICONS, chatWheelIconUrl } from '../lib/chatWheelIcons';
 import RadialWheelPreview from '../components/chatwheel/RadialWheelPreview';
+import { useChatWheelDressing } from '../components/chatwheel/useChatWheelDressing';
 import BaseCommandCatalog from '../components/chatwheel/BaseCommandCatalog';
 
 export default function ChatWheel() {
@@ -30,6 +31,9 @@ export default function ChatWheel() {
   const validationRequest = useRef(0);
   const loadMods = useAppStore((state) => state.loadMods);
   const settings = useAppStore((state) => state.settings);
+  // Null unless the Foundry flag is on, a game path is set, and the pak yields
+  // a backplate; the preview then draws the pure-SVG wheel unchanged.
+  const dressing = useChatWheelDressing(settings);
 
   const selected = useMemo(() => wheels.find((wheel) => wheel.id === selectedId), [selectedId, wheels]);
   const model = useMemo(() => parseChatWheelYaml(yaml), [yaml]);
@@ -371,6 +375,7 @@ export default function ChatWheel() {
                   items={model.menus[activeMenu].items}
                   focusedSlot={focusedItem}
                   onSelectSlot={selectPreviewSlot}
+                  dressing={dressing}
                 />
               ) : <div className="mt-5 rounded border border-dashed border-border p-6 text-center text-xs text-text-secondary"><Tx k="chatWheel.previewEmpty" fallback="Add a menu to preview its wheel." /></div>}
             </div>
