@@ -1,10 +1,10 @@
+import { devSlotSeeding } from './devUserData';
 import { app, BrowserWindow, shell, session, protocol, nativeTheme, screen } from 'electron';
 import { windowBackgroundColor } from '../../src/lib/oledMode';
 import { join, resolve } from 'path';
 import { pathToFileURL } from 'url';
 import { electronApp, optimizer, is } from '@electron-toolkit/utils';
 import { devSlotConfig } from './devSlot';
-import { seedDevSlotUserData, type SeedOutcome } from './devSlotSeed';
 import { SOUL_MODEL_SCHEME, registerSoulModelProtocol } from './services/soulContainerModels';
 import { HERO_POSE_SCHEME, registerHeroPoseProtocol, sweepHeroPoseCache } from './services/heroPoseModels';
 import { FOUNDRY_THUMB_SCHEME, registerFoundryThumbnailProtocol } from './services/foundryCatalog';
@@ -60,20 +60,6 @@ app.commandLine.appendSwitch(
 );
 
 const dev = devSlotConfig();
-
-// Each non-default slot gets independent SQLite databases, settings, and
-// caches. Set this before Electron creates any of its per-user state.
-let devSlotSeeding: SeedOutcome | undefined;
-if (dev.slot !== undefined && dev.slot !== 0) {
-    const base = app.getPath('userData');
-    const slotDir = `${base}-dev${dev.slot}`;
-    // On creation only, so the slot starts with real mods, settings and caches
-    // instead of looking like a fresh install. Must happen before setPath: after
-    // it, `base` is no longer resolvable. Set GRIMOIRE_DEV_SEED=0 for a blank
-    // slot (onboarding, first-run, and migration work want that).
-    devSlotSeeding = seedDevSlotUserData(base, slotDir);
-    app.setPath('userData', slotDir);
-}
 
 // Initialize runtime services only after a slot has selected its user-data
 // directory, so their logs and persistent state are isolated too.
