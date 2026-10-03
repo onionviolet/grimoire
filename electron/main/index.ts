@@ -121,6 +121,7 @@ import './ipc/launch';
 import './ipc/social';
 import './ipc/locales';
 import './ipc/diagnostics';
+import './ipc/recovery';
 import './ipc/portraits';
 import './ipc/abilitySounds';
 import './ipc/abilityColors';
@@ -621,7 +622,7 @@ if (!gotTheLock) {
                             // blob: URL and loads it via ImageBitmapLoader, which fetch()es
                             // it; without blob: here the textures fail and models render
                             // untextured (white).
-                            "connect-src 'self' blob: data: grimoire-soul: grimoire-hero: https://gamebanana.com https://*.gamebanana.com https://api.deadlock-api.com https://*.workers.dev"
+                            "connect-src 'self' blob: data: grimoire-soul: grimoire-hero: grimoire-foundry: https://gamebanana.com https://*.gamebanana.com https://api.deadlock-api.com https://*.workers.dev"
                         ]
                     }
                 });

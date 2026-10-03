@@ -29,6 +29,7 @@ import {
   VolumeX,
   MessageCircle,
   SlidersHorizontal,
+  ShieldCheck,
 } from 'lucide-react';
 import {
   getConflicts,
@@ -504,6 +505,7 @@ export default function Sidebar() {
       { to: '/stats', icon: Activity, labelKey: 'nav.stats', label: t('nav.stats'), tooltip: t('sidebar.tooltip.stats'), experimental: 'stats' },
       { to: '/conflicts', icon: Swords, labelKey: 'nav.conflicts', label: t('nav.conflicts'), tooltip: t('sidebar.tooltip.conflicts'), badge: conflictCount, badgeTone: 'warning' },
       { to: '/profiles', icon: BookMarked, labelKey: 'nav.profiles', label: t('nav.profiles'), tooltip: t('sidebar.tooltip.profiles') },
+      { to: '/recovery', icon: ShieldCheck, labelKey: 'nav.recovery', label: t('nav.recovery'), tooltip: t('sidebar.tooltip.recovery') },
     ];
 
     return items.filter((item) => {

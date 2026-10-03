@@ -28,6 +28,26 @@ record is [upstream-absorption-1.30.md](./upstream-absorption-1.30.md).
   catalog database as well as settings and Chromium state.
 - Release builds use the fork engine on Windows, macOS and Linux with the pinned
   optional-checksum repair. All-platform artifact builds are not yet verified.
+- Profiles retain ten local restore points before application, covering scanned
+  user VPK sets, enabled/order state, raw configuration and the active marker.
+  Restore requires exact original directory/chunk bytes, rejects stale reviews
+  and rolls back failures. It does not back up deleted files or promise recovery
+  across a process crash. Reserved Locker cosmetics are outside this snapshot.
+- Local/Foundry profile identities are captured by the existing canonical hash
+  helper, so ordinary enable/disable renames no longer detach saved entries.
+- Recovery scans local configuration, VPK headers/trees, metadata and free space
+  on request, without repairing files. Its diagnostic report is redacted and
+  reviewed before copying. Guided crash isolation is not implemented.
+- Foundry's Models tool lists exact base-game model paths, previews static GLBs
+  on demand and exports through the native save dialog. The cache is bounded to
+  256 MiB. This is basic asset inspection, not a model authoring/forge surface or
+  an in-engine fidelity claim.
+- Chat Wheel keeps YAML editing and export available on macOS/Linux while
+  disabling converter-dependent VPK actions. Native converters are not bundled;
+  release packaging verifies the Windows converter resources explicitly.
+
+Validation and limits for these follow-ups are recorded in
+[recovery-and-models-2026-10-03.md](./recovery-and-models-2026-10-03.md).
 
 ## Shipped 2026-07-30
 
@@ -87,10 +107,10 @@ record is [upstream-absorption-1.30.md](./upstream-absorption-1.30.md).
   their own retry, split out from the generic error banner
   (`components/social/availability.ts`, `socialErrors.ts`, `Discover.tsx`).
   Requires migration 0005 applied and the Worker deployed: see below.
-- **Rigged hero preview (dev-only, measured not shipped).** The no-`--pose`
-  rigged export, its clip ranking, and the viewer fallback all exist and are
-  measured in [rigged-preview-spike.md](./rigged-preview-spike.md). It is dark in
-  every shipped build and is not user-reachable. Do not describe it as a feature.
+- **Rigged hero preview.** The no-`--pose` rigged export, clip ranking and static
+  fallback exist. `RELEASE_RENDER_FLAGS.rigged` is true in the current source;
+  the older dev-only description was stale. This does not include animation
+  retargeting or ability-specific particle playback.
 - **Per-ConVar provenance in the performance card.** Every user-facing HUD and
   advanced ConVar carries a main-process-computed state (game default, managed
   preset, user override, unsupported) plus an out-of-range flag, badged per
@@ -176,9 +196,9 @@ What is genuinely still missing, in the order it would be worth building:
    (`src/types/foundry.ts:423`) admits `sound`, `texture`, and `recolor`. The
    tray refuses a model edit explicitly rather than dropping it silently, and
    there is no model surface to stage one from anyway. Backlog B-01.
-2. **Foundry models, VFX, and broad thumbnail browsing.** No model
-   export/viewer entry point; browsing stays deliberately limited to ability
-   icons, item icons, and hero images. Backlog B-02.
+2. **Foundry VFX and broad thumbnail browsing.** The base-model browser and
+   static preview/export are implemented in source. Broader material/texture
+   and particle browsing remain open. Backlog B-02.
 3. **Advanced merge composition.** Merge recipes, editable include/exclude
    path policy, merge-content presets, and rebuild diffs are absent, and a
    reviewed order cannot be applied to a selection containing a merged mod.

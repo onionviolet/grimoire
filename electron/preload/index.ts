@@ -636,6 +636,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     updateProfile: (profileId: string, crosshairSettings?: ProfileCrosshairSettings) => ipcRenderer.invoke('update-profile', profileId, crosshairSettings),
     previewProfile: (profileId: string) => ipcRenderer.invoke('preview-profile', profileId),
     applyProfile: (profileId: string, reviewToken?: string) => ipcRenderer.invoke('apply-profile', profileId, reviewToken),
+    listProfileRecoveryPoints: () => ipcRenderer.invoke('list-profile-recovery-points'),
+    previewProfileRecovery: (id: string) => ipcRenderer.invoke('preview-profile-recovery', id),
+    restoreProfileRecovery: (id: string, reviewToken: string) => ipcRenderer.invoke('restore-profile-recovery', id, reviewToken),
+    recovery: {
+        scan: () => ipcRenderer.invoke('recovery:scan'),
+    },
     deleteProfile: (profileId: string) => ipcRenderer.invoke('delete-profile', profileId),
     renameProfile: (profileId: string, newName: string) => ipcRenderer.invoke('rename-profile', profileId, newName),
     removeProfileCrosshair: (profileId: string) => ipcRenderer.invoke('remove-profile-crosshair', profileId),
@@ -782,6 +788,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     // Foundry: catalog browse backed by the bundled vpkmerge sidecar.
     foundry: {
+        models: () => ipcRenderer.invoke('foundry:models'),
+        modelPreview: (entryPath: string) => ipcRenderer.invoke('foundry:modelPreview', entryPath),
+        exportModel: (entryPath: string) => ipcRenderer.invoke('foundry:exportModel', entryPath),
         heroes: () => ipcRenderer.invoke('foundry:heroes'),
         scanNonStandard: () => ipcRenderer.invoke('foundry:scanNonStandard'),
         buildDiff: () => ipcRenderer.invoke('foundry:buildDiff'),

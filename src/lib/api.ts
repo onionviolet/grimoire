@@ -1756,6 +1756,28 @@ export async function foundryReleaseTrayPreview(previewId: string): Promise<void
   return window.electronAPI.foundry.releaseTrayPreview(previewId);
 }
 
-export async function getChatWheelStatus(): Promise<{ available: boolean; path?: string; error?: string }> {
+export async function getChatWheelStatus(): Promise<import('../types/chatWheelPlatform').ChatWheelConverterStatus> {
   return window.electronAPI.chatWheelStatus();
+}
+
+export async function listProfileRecoveryPoints(): Promise<import('../types/profileRecovery').ProfileRecoverySummary[]> {
+  return window.electronAPI.listProfileRecoveryPoints();
+}
+export async function previewProfileRecovery(id: string): Promise<import('../types/profileRecovery').ProfileRecoveryPreview> {
+  return window.electronAPI.previewProfileRecovery(id);
+}
+export async function restoreProfileRecovery(id: string, reviewToken: string): Promise<void> {
+  return withGameRunningWarning(() => window.electronAPI.restoreProfileRecovery(id, reviewToken));
+}
+export async function scanInstallationHealth(): Promise<import('../types/recovery').InstallationHealthReport> {
+  return window.electronAPI.recovery.scan();
+}
+export async function foundryModels(): Promise<import('../types/foundryModels').FoundryModelEntry[]> {
+  return window.electronAPI.foundry.models();
+}
+export async function foundryModelPreview(entryPath: string): Promise<import('../types/foundryModels').FoundryModelPreview> {
+  return window.electronAPI.foundry.modelPreview(entryPath);
+}
+export async function foundryExportModel(entryPath: string): Promise<import('../types/foundry').FoundryAssetExportResult> {
+  return window.electronAPI.foundry.exportModel(entryPath);
 }

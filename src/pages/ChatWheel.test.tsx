@@ -5,6 +5,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConfirmContext, type ConfirmFn } from '../components/common/confirmContext';
+import type { ChatWheelConverterStatus } from '../types/chatWheelPlatform';
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean })
   .IS_REACT_ACT_ENVIRONMENT = true;
@@ -35,7 +36,7 @@ const apiMock = vi.hoisted(() => ({
     async () =>
       'name: My Chat Wheel\n\noverride_bindable: {}\noverride_ping_wheel_bindable: {}\n\ncustom_menus:\n'
   ),
-  getChatWheelStatus: vi.fn(async () => ({ available: true })),
+  getChatWheelStatus: vi.fn<() => Promise<ChatWheelConverterStatus>>(async () => ({ available: true, platform: 'win32' })),
   validateChatWheel: vi.fn(async () => undefined),
   deleteMod: vi.fn(async () => undefined),
 }));
@@ -112,6 +113,52 @@ describe('ChatWheel page gate', () => {
         button.textContent?.includes('Save & install')
       )
     ).toBe(true);
+  });
+
+  it('keeps YAML editing and export available without offering VPK actions on unsupported platforms', async () => {
+    appStoreMock.settings = { experimentalChatWheel: true };
+    apiMock.getChatWheelStatus.mockResolvedValueOnce({ available: false, platform: 'darwin', reason: 'unsupported-platform' });
+    await renderPage();
+
+    expect(document.querySelector('textarea')).not.toBeNull();
+    const textarea = document.querySelector('textarea') as HTMLTextAreaElement;
+    expect(textarea.value).toContain('override_bindable: {}');
+    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!;
+    await act(async () => {
+      setter.call(textarea, `${textarea.value}# editable on this platform\n`);
+      textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    expect(textarea.value).toContain('# editable on this platform');
+
+    const create = Array.from(document.querySelectorAll('button')).find((button) => button.textContent?.includes('Create new wheel'))!;
+    expect(create.disabled).toBe(false);
+    const createObjectUrl = vi.fn(() => 'blob:chat-wheel-yaml');
+    const revokeObjectUrl = vi.fn();
+    const originalCreateObjectUrl = Object.getOwnPropertyDescriptor(URL, 'createObjectURL');
+    const originalRevokeObjectUrl = Object.getOwnPropertyDescriptor(URL, 'revokeObjectURL');
+    const originalAnchorClick = Object.getOwnPropertyDescriptor(HTMLAnchorElement.prototype, 'click');
+    const anchorClick = vi.fn();
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: createObjectUrl });
+    Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: revokeObjectUrl });
+    Object.defineProperty(HTMLAnchorElement.prototype, 'click', { configurable: true, value: anchorClick });
+    const exportButton = Array.from(document.querySelectorAll('button')).find((button) => button.textContent?.includes('Export YAML'))!;
+    expect(exportButton.disabled).toBe(false);
+    await act(async () => exportButton.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    await act(async () => { await flush(); });
+    if (originalCreateObjectUrl) Object.defineProperty(URL, 'createObjectURL', originalCreateObjectUrl);
+    else Reflect.deleteProperty(URL, 'createObjectURL');
+    if (originalRevokeObjectUrl) Object.defineProperty(URL, 'revokeObjectURL', originalRevokeObjectUrl);
+    else Reflect.deleteProperty(URL, 'revokeObjectURL');
+    if (originalAnchorClick) Object.defineProperty(HTMLAnchorElement.prototype, 'click', originalAnchorClick);
+    else Reflect.deleteProperty(HTMLAnchorElement.prototype, 'click');
+    expect(createObjectUrl).toHaveBeenCalledOnce();
+    expect(anchorClick).toHaveBeenCalledOnce();
+    expect(Array.from(document.querySelectorAll('button')).some((button) => button.textContent?.includes('Save & install'))).toBe(false);
+    const load = Array.from(document.querySelectorAll('button')).find((button) => button.textContent?.includes('Load selected'))!;
+    const open = Array.from(document.querySelectorAll('button')).find((button) => button.textContent?.includes('Open VPK'))!;
+    expect(load.disabled).toBe(true);
+    expect(open.disabled).toBe(true);
+    expect(apiMock.validateChatWheel).not.toHaveBeenCalled();
   });
 
   it('renders the disabled state before settings have loaded, when settings is still undefined', async () => {

@@ -26,6 +26,7 @@ import { Input } from '../components/common/forms';
 import { ConfirmModal, EmptyState, PageLayout, LoadingState } from '../components/common/PageComponents';
 import CrosshairPreview from '../components/crosshair/CrosshairPreview';
 import ExportProfileModal from '../components/profiles/ExportProfileModal';
+import ProfileRecoveryPanel from '../components/profiles/ProfileRecoveryPanel';
 import ImportProfileDialog from '../components/profiles/ImportProfileDialog';
 import { useReviewedProfileApply } from '../components/profiles/useReviewedProfileApply';
 import PublishDialog from '../components/social/PublishDialog';
@@ -477,6 +478,11 @@ export default function Profiles() {
               <p>{error}</p>
             </div>
           )}
+
+          <ProfileRecoveryPanel revision={`${activeProfileId ?? ''}:${applyingId ?? ''}`} onRestored={async () => {
+            await useAppStore.getState().loadMods({ silent: true, force: true });
+            await loadProfileList({ silent: true });
+          }} />
 
           {/* Create New Profile */}
           <Card title={<Tx k="profiles.create.title" fallback="Create New Profile" />} icon={Plus}>
