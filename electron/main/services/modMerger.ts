@@ -4,6 +4,8 @@ import { tmpdir } from 'os';
 import { spawn } from 'child_process';
 import { randomUUID } from 'crypto';
 import { app } from 'electron';
+import { assertVpkSafety, carryVpkSafety, moveSafetySnapshot } from './modSafety';
+import { modTempPath } from './modTemps';
 import { metaKeyFor } from './deadlock';
 import { loadSettings } from './settings';
 import {
@@ -17,6 +19,9 @@ import {
 import { getModMetadata, setModMetadata, removeModMetadata } from './metadata';
 import { resolveVpkIdentity, type OriginalIdentity } from './vpkIdentity';
 import { parseVpkDirectoriesAsync, parseVpkEntryStats } from './vpk';
+import { parseVpkDirectoryCached } from './vpk';
+import { IGNORED_CONFLICT_FILES } from './conflicts';
+import { VPKMERGE_BINARY_BY_PLATFORM, type SupportedPlatform } from './vpkmergeBinary';
 import {
     computeOriginalIdentity,
     serializeAddonInfo,
@@ -91,14 +96,6 @@ function describeSources(sources: MergedModSource[]): string {
 function stalePakSources(sources: MergedModSource[]): MergedModSource[] {
     return sources.filter((s) => /^pak\d+_dir\.vpk$/i.test(s.fileName));
 }
-
-type SupportedPlatform = 'linux-x64' | 'darwin-arm64' | 'win32-x64';
-
-const VPKMERGE_BINARY_BY_PLATFORM: Record<SupportedPlatform, string> = {
-    'linux-x64':    'vpkmerge-linux-x86_64',
-    'darwin-arm64': 'vpkmerge-macos-aarch64',
-    'win32-x64':    'vpkmerge-windows-x86_64.exe',
-};
 
 function firstExistingPath(paths: string[]): string | null {
     for (const path of paths) {
@@ -346,7 +343,7 @@ export async function embedMergeIdentity(
         sources,
     };
     const metaText = serializeModinfo(record);
-    await repackWithEmbeddedEntries(mergedPath, addonText, metaText);
+    await repackWithEmbeddedEntries(mergedPath, addonText, metaText, title);
 }
 
 /**
@@ -376,7 +373,8 @@ export async function embedMergeIdentity(
 export async function repackWithEmbeddedEntries(
     vpkPath: string,
     addonText: string,
-    modinfoText: string
+    modinfoText: string,
+    name: string
 ): Promise<void> {
     const inputEntries = parseVpkEntryStats(vpkPath);
     if (!inputEntries) {
@@ -384,7 +382,7 @@ export async function repackWithEmbeddedEntries(
     }
     const addonTmp = join(tmpdir(), `grimoire-imprint-addoninfo-${randomUUID()}.txt`);
     const modinfoTmp = join(tmpdir(), `grimoire-imprint-modinfo-${randomUUID()}.json`);
-    const embedOut = join(dirname(vpkPath), `.imprint-embed-${randomUUID()}.vpk`);
+    const embedOut = modTempPath(dirname(vpkPath), 'imprint-embed');
     const droppedEntries = hasLegacyGrimoireMergeMetaEntry(vpkPath) ? [LEGACY_GRIMOIRE_META_ENTRY] : [];
     try {
         await fs.writeFile(addonTmp, addonText);
@@ -413,7 +411,14 @@ export async function repackWithEmbeddedEntries(
         // idiom): either the embedded VPK fully takes the slot or, if the rename
         // fails, the original un-embedded VPK is left untouched. Avoids a
         // window where the slot is missing on disk.
+        // Repacking changes the reviewed bytes, so inspect the actual output.
+        // It keeps the input's trust state (approved, or still to be reviewed
+        // on activation) unless it carries a finding the input did not.
+        if (await carryVpkSafety([vpkPath], embedOut) === 'differs') {
+            await assertVpkSafety(embedOut, { name });
+        }
         await fs.rename(embedOut, vpkPath);
+        moveSafetySnapshot(embedOut, vpkPath);
     } catch (err) {
         try { await fs.unlink(embedOut); } catch { /* ignore partial-output cleanup */ }
         throw err;
@@ -456,10 +461,10 @@ export async function extractVfxLayer(
 
 /**
  * Exclusively create an empty file at `path` so the priority slot is
- * reserved on disk before we hand it to vpkmerge. Closes the TOCTOU
- * window between slot allocation (allocateEnabledVpkPath) and runVpkmerge()
- * where a concurrent download or 1-Click install could otherwise claim the slot.
- * Throws a friendly error if the slot was lost to a race.
+ * reserved on disk before a staged output is renamed into it. Closes the
+ * TOCTOU window after slot allocation (allocateEnabledVpkPath) where a
+ * concurrent download or 1-Click install could otherwise claim the slot and
+ * be overwritten. Throws a friendly error if the slot was lost to a race.
  */
 export async function reserveOutputSlot(path: string): Promise<void> {
     try {
@@ -476,13 +481,47 @@ export async function reserveOutputSlot(path: string): Promise<void> {
     }
 }
 
+/** A merge output made only of trusted sources inherits their approval (see
+ *  carryVpkSafety); anything else is reviewed like any activation. */
+async function assertMergeOutputSafety(sourcePaths: string[], outputPath: string, name: string): Promise<void> {
+    if (await carryVpkSafety(sourcePaths, outputPath) !== 'trusted') {
+        await assertVpkSafety(outputPath, { name });
+    }
+}
+
+/**
+ * Strict-mode collision check, run in place of vpkmerge's own --strict. That
+ * flag refuses every shared path, so two mods that each ship a readme.txt or
+ * credits.txt could never be strictly merged. Benign files (the same list
+ * conflict detection ignores) are skipped here and left to vpkmerge's normal
+ * last-input-wins rule.
+ */
+export function assertNoStrictCollisions(vpkPaths: string[]): void {
+    const seen = new Set<string>();
+    const collisions = new Set<string>();
+    for (const vpkPath of vpkPaths) {
+        for (const entry of new Set(parseVpkDirectoryCached(vpkPath) ?? [])) {
+            const fileName = entry.toLowerCase().split('/').pop() ?? '';
+            if (IGNORED_CONFLICT_FILES.has(fileName)) continue;
+            if (seen.has(entry)) collisions.add(entry);
+            else seen.add(entry);
+        }
+    }
+    if (collisions.size === 0) return;
+    const sample = Array.from(collisions).slice(0, 5).join(', ');
+    throw new Error(
+        `Strict merge refused: ${collisions.size} file${collisions.size === 1 ? '' : 's'} `
+        + `shared between the selected mods. First few: ${sample}`
+    );
+}
+
 export interface MergeOptions {
     name: string;
     /** PNG/JPEG data URL for the collage thumbnail. Generated by the renderer
      *  from the source mod thumbnails. */
     thumbnailDataUrl?: string;
-    /** Pass --strict to vpkmerge so any file-path collision aborts the merge
-     *  instead of silently picking a winner. Off by default to match Deadlock's
+    /** Abort on any non-benign file-path collision instead of silently
+     *  picking a winner. Off by default to match Deadlock's
      *  runtime model, where the LOWER pakNN wins a file collision. */
     strict?: boolean;
     /** Composition order chosen in the merge review, winner first. Absent on
@@ -747,6 +786,7 @@ async function mergeModsLocked(
         );
     }
     const sources = locatedSources.map((source) => source.mod);
+    if (options.strict) assertNoStrictCollisions(sources.map((source) => source.path));
 
     mergeTrace(
         `merge start "${trimmedName}": ${sources.length} sources -> ${sources
@@ -772,21 +812,25 @@ async function mergeModsLocked(
     const mergedPath = await allocateEnabledVpkPath(deadlockPath);
     const mergedMetaKey = metaKeyFor(mergedPath);
 
-    // Reserve the slot on disk before spawning vpkmerge so a concurrent
-    // download or 1-Click install can't claim it mid-spawn. wx errors with
-    // EEXIST if anything else got there first.
-    await reserveOutputSlot(mergedPath);
-
-    const args: string[] = [];
-    if (options.strict) args.push('--strict');
-    args.push(mergedPath);
-    for (const src of sources) args.push(src.path);
+    const stagingPath = modTempPath(dirname(mergedPath), 'safety-merge');
+    const args = [stagingPath, ...sources.map((src) => src.path)];
+    let reserved = false;
 
     try {
         await runVpkmerge(args);
-        await verifyVpkOutput(mergedPath);
+        await verifyVpkOutput(stagingPath);
+        await assertMergeOutputSafety(args.slice(1), stagingPath, trimmedName);
+        // Claim the slot only once the output is accepted: a review can take
+        // minutes, and a claim left behind by quitting mid-review would be an
+        // empty VPK in a live slot. wx errors with EEXIST if a concurrent
+        // install took the slot meanwhile, instead of overwriting it.
+        await reserveOutputSlot(mergedPath);
+        reserved = true;
+        await fs.rename(stagingPath, mergedPath);
+        moveSafetySnapshot(stagingPath, mergedPath);
     } catch (err) {
-        try { await fs.unlink(mergedPath); } catch { /* ignore partial-output cleanup */ }
+        await fs.unlink(stagingPath).catch(() => {});
+        if (reserved) await fs.unlink(mergedPath).catch(() => {});
         throw err;
     }
 
@@ -1077,6 +1121,22 @@ function makeSourceLocator(candidates: Mod[]): SourceLocator {
 }
 
 /**
+ * Re-enable a source that was active when merged. A declined review ("Keep
+ * disabled") or a check that can't pass leaves just that source disabled
+ * rather than aborting an unmerge that has already restored others next to the
+ * still-enabled merge.
+ */
+async function restoreMergeSource(deadlockPath: string, snapshot: MergedModSource, onDisk: Mod): Promise<Mod> {
+    if (!snapshot.enabledAtMergeTime || onDisk.enabled) return onDisk;
+    try {
+        return await enableModUnlocked(deadlockPath, onDisk.id);
+    } catch (err) {
+        if (!String(err).includes('MOD_SAFETY_')) throw err;
+        return onDisk;
+    }
+}
+
+/**
  * Reverse a merge: re-enable the source VPKs (if they're still on disk) and
  * delete the merged VPK. Sources that are missing are reported via
  * missingSourceFileNames so the caller can offer the share code via the
@@ -1118,11 +1178,7 @@ async function unmergeModLocked(
             missingSourceFileNames.push(src.fileName);
             continue;
         }
-        if (src.enabledAtMergeTime && !onDisk.enabled) {
-            recovered.push(await enableModUnlocked(deadlockPath, onDisk.id));
-        } else {
-            recovered.push(onDisk);
-        }
+        recovered.push(await restoreMergeSource(deadlockPath, src, onDisk));
     }
 
     await fs.unlink(target.path);
@@ -1136,8 +1192,8 @@ async function unmergeModLocked(
 }
 
 export interface AddMergeSourcesOptions {
-    /** Pass --strict to vpkmerge so any file collision aborts before the
-     *  existing merge is replaced. */
+    /** Abort on any non-benign file collision before the existing merge is
+     *  replaced. */
     strict?: boolean;
 }
 
@@ -1285,13 +1341,13 @@ async function addMergeSourcesLocked(
     ]);
 
     const targetDir = dirname(target.path);
-    const buildPath = join(targetDir, `.merge-rebuild-${randomUUID()}.vpk`);
+    const buildPath = modTempPath(targetDir, 'merge-rebuild');
     const disabledForRollback: Mod[] = [];
     let swapped = false;
 
     try {
         // Move enabled additions out of their live slots before building. On
-        // any pre-swap failure they are restored, so --strict remains atomic
+        // any pre-swap failure they are restored, so strict mode remains atomic
         // from the user's point of view.
         for (const source of additionSnapshots) {
             if (!source.mod.enabled) continue;
@@ -1304,9 +1360,8 @@ async function addMergeSourcesLocked(
         const ordered = [...existing, ...additionSnapshots].sort(
             (a, b) => b.snapshot.priorityAtMergeTime - a.snapshot.priorityAtMergeTime
         );
-        const args: string[] = [];
-        if (options.strict) args.push('--strict');
-        args.push(buildPath, ...ordered.map((source) => source.mod.path));
+        const args = [buildPath, ...ordered.map((source) => source.mod.path)];
+        if (options.strict) assertNoStrictCollisions(args.slice(1));
 
         mergeTrace(
             `add-sources start merge=${oldManifest.id} key=${target.metaKey}: `
@@ -1353,7 +1408,9 @@ async function addMergeSourcesLocked(
         // Atomic same-directory replacement preserves filename, slot, mod id,
         // and metaKey. The metadata setter merges this patch with unrelated
         // fields already stored for the merge.
+        await assertMergeOutputSafety(args.slice(1), buildPath, targetMeta.modName || target.name);
         await fs.rename(buildPath, target.path);
+        moveSafetySnapshot(buildPath, target.path);
         swapped = true;
         setModMetadata(target.metaKey, {
             modName: targetMeta.modName,
@@ -1556,7 +1613,7 @@ async function replaceMergeSourcesLocked(
     ]);
 
     const targetDir = dirname(target.path);
-    const buildPath = join(targetDir, `.merge-rebuild-${randomUUID()}.vpk`);
+    const buildPath = modTempPath(targetDir, 'merge-rebuild');
     const disabledForRollback: Mod[] = [];
     let swapped = false;
 
@@ -1575,9 +1632,8 @@ async function replaceMergeSourcesLocked(
         const ordered = [...pending].sort(
             (a, b) => b.snapshot.priorityAtMergeTime - a.snapshot.priorityAtMergeTime
         );
-        const args: string[] = [];
-        if (options.strict) args.push('--strict');
-        args.push(buildPath, ...ordered.map((source) => source.mod.path));
+        const args = [buildPath, ...ordered.map((source) => source.mod.path)];
+        if (options.strict) assertNoStrictCollisions(args.slice(1));
 
         mergeTrace(
             `replace-sources start merge=${oldManifest.id} key=${target.metaKey}: `
@@ -1621,7 +1677,9 @@ async function replaceMergeSourcesLocked(
         );
         await verifyVpkOutput(buildPath);
 
+        await assertMergeOutputSafety(args.slice(1), buildPath, targetMeta.modName || target.name);
         await fs.rename(buildPath, target.path);
+        moveSafetySnapshot(buildPath, target.path);
         swapped = true;
         setModMetadata(target.metaKey, {
             modName: targetMeta.modName,
@@ -1730,12 +1788,7 @@ async function extractMergeSourceLocked(
     // until after the rebuild/collapse so the slot math below sees a stable
     // disabled set.
     const restoreExtracted = async (): Promise<void> => {
-        if (!removedOnDisk) return;
-        if (removedSnapshot.enabledAtMergeTime && !removedOnDisk.enabled) {
-            restored.push(await enableModUnlocked(deadlockPath, removedOnDisk.id));
-        } else {
-            restored.push(removedOnDisk);
-        }
+        if (removedOnDisk) restored.push(await restoreMergeSource(deadlockPath, removedSnapshot, removedOnDisk));
     };
 
     // ---- Collapse: fewer than two sources would remain, so fully unmerge. ----
@@ -1743,13 +1796,7 @@ async function extractMergeSourceLocked(
         const survivor = remainingSnapshots[0];
         if (survivor) {
             const onDisk = await locator.locate(survivor);
-            if (onDisk) {
-                if (survivor.enabledAtMergeTime && !onDisk.enabled) {
-                    restored.push(await enableModUnlocked(deadlockPath, onDisk.id));
-                } else {
-                    restored.push(onDisk);
-                }
-            }
+            if (onDisk) restored.push(await restoreMergeSource(deadlockPath, survivor, onDisk));
         }
         await fs.unlink(target.path);
         removeModMetadata(target.metaKey);
@@ -1791,25 +1838,30 @@ async function extractMergeSourceLocked(
     // a base-only "next free pakNN" + setModPriority path would wrongly fail (or
     // move the merge to the base folder) for a merge that lives in an overflow folder.
     const targetDir = dirname(target.path);
-    const buildPath = join(targetDir, `.merge-rebuild-${randomUUID()}.vpk`);
+    const buildPath = modTempPath(targetDir, 'merge-rebuild');
     mergeTrace(
         `rebuild start merge=${manifest.id} key=${target.metaKey}: ${ordered.length} sources -> ${basename(buildPath)} (removed "${sourceFileName}")`
     );
+    let rebuiltOriginal: OriginalIdentity;
     try {
         await runVpkmerge([buildPath, ...ordered.map((m) => m.path)]);
         await verifyVpkOutput(buildPath);
+        // Capture the rebuilt output's canonical identity from its PRE-EMBED bytes,
+        // exactly like mergeModsLocked does for a fresh merge: the rebuilt VPK is a
+        // new file, so its "original" is the hash of the freshly-rebuilt-but-not-
+        // yet-embedded output. Stored as metadata.sha256 AND embedded below, so
+        // resolveVpkIdentity returns it whether or not the embed pass succeeds.
+        rebuiltOriginal = await computeOriginalIdentity(buildPath);
+        // Inspect before atomically replacing the old VPK. A refused rebuild keeps
+        // the previous file, metadata and load order intact.
+        await assertMergeOutputSafety(ordered.map((m) => m.path), buildPath, meta.modName || target.name);
+        await fs.rename(buildPath, target.path);
+        moveSafetySnapshot(buildPath, target.path);
     } catch (err) {
         try { await fs.unlink(buildPath); } catch { /* ignore partial-output cleanup */ }
         mergeTrace(`rebuild FAILED merge=${manifest.id}: ${String(err)} (build temp removed)`);
         throw err;
     }
-
-    // Capture the rebuilt output's canonical identity from its PRE-EMBED bytes,
-    // exactly like mergeModsLocked does for a fresh merge: the rebuilt VPK is a
-    // new file, so its "original" is the hash of the freshly-rebuilt-but-not-
-    // yet-embedded output. Stored as metadata.sha256 AND embedded below, so
-    // resolveVpkIdentity returns it whether or not the embed pass succeeds.
-    const rebuiltOriginal = await computeOriginalIdentity(buildPath);
     const sha256 = rebuiltOriginal.sha256;
 
     // Each remaining source's stamped vpkIndex, same capture the merge path
@@ -1827,12 +1879,7 @@ async function extractMergeSourceLocked(
         sources: remainingSnapshots,
     };
 
-    // Swap: drop the old merged VPK, then move the freshly built one into its
-    // exact path. Same folder + pakNN means the metaKey (and load order) is
-    // preserved, so the metadata re-stamps under the unchanged key.
-    await fs.unlink(target.path);
     removeModMetadata(target.metaKey);
-    await fs.rename(buildPath, target.path);
     setModMetadata(target.metaKey, {
         modName: meta.modName,
         thumbnailUrl: meta.thumbnailUrl,

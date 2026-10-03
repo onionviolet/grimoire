@@ -93,13 +93,23 @@ pnpm package:win
 
 ### Engine build policy (D-02)
 
-As of this phase (2026-08-06) the fork engine reaches a packaged build by
-building `onionviolet/vpkmerge` from a pinned commit SHA in the release
-workflow (`.github/workflows/release.yml`). That is the supported path: the
-workflow checks out the pinned SHA, runs `cargo build`, and bundles the
-result via `pnpm use-local-vpkmerge` before packaging.
+As of 2026-10-03, the release workflow builds `onionviolet/vpkmerge` from
+pinned SHA `798f3a7d28f3ef314d8f6ebf51ced0d9fe049445` on Windows, macOS and
+Linux. Before building, `scripts/patch-release-engine.mjs` applies the reader
+repair from immutable upstream commit
+`4396ad7a00528ce3b70af9a7d7bb74ceac9b3747`. It carries the vendored MIT
+`valve_pak` fix and its five optional-checksum regression tests. Neither engine
+remote is mutated. The engine reports 0.19.0 because its fork CLI version is
+unchanged; the build includes the behavioral repair shipped in upstream 0.19.1.
 
-The stock `v0.19.0` download that `scripts/fetch-vpkmerge.mjs` performs on
+This keeps the fork catalog and YCoCg capabilities on every release platform.
+The patch applied cleanly to the pinned checkout and its five tests passed on
+macOS. Windows/Linux artifacts still require release-matrix verification.
+For a local source build, run the patch script before cargo, then use the
+existing `pnpm use-local-vpkmerge` bundling step. The engine pin guard now
+requires every platform to run the checkout, patch/test/build and bundle steps.
+
+The stock `v0.19.1` download that `scripts/fetch-vpkmerge.mjs` performs on
 `pnpm install` is the dev-machine bootstrap only, and is expected to stay
 that way; it is not the packaged release's engine source. Promoting a
 published, checksum-pinned `onionviolet/vpkmerge` release into that script's

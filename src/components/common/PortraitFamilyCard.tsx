@@ -29,7 +29,7 @@ const STATUS_CHIP_CLASS: Readonly<Record<string, string>> = {
   stock: 'border-border/70 text-text-secondary',
   installed: 'border-accent/50 bg-accent/10 text-accent',
   disabled: 'border-border/70 text-text-secondary',
-  conflict: 'border-amber-400/50 bg-amber-400/10 text-amber-200',
+  conflict: 'border-state-warning/50 bg-state-warning/10 text-state-warning',
   unknown: 'border-border/70 text-text-secondary',
 };
 
@@ -103,7 +103,7 @@ export default function PortraitFamilyCard({
         </span>
 
         {overriddenWithoutArt && (
-          <span className="text-[10px] leading-snug text-amber-200">
+          <span className="text-[10px] leading-snug text-state-warning">
             {t('portrait.family.thumbIsStock')}
           </span>
         )}

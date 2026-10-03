@@ -30,6 +30,8 @@ import {
   EyeOff,
   Star,
   Bookmark,
+  Archive,
+  Replace,
 } from 'lucide-react';
 import DOMPurify from 'dompurify';
 import type {
@@ -44,11 +46,13 @@ import { getModComments, getModUpdates } from '../lib/api';
 import { useAppStore } from '../stores/appStore';
 import AudioPreviewPlayer from './AudioPreviewPlayer';
 import { Skeleton } from './common/Skeleton';
-import { ArchivedTag, Button, IconButton } from './common/ui';
+import { ArchivedTag, Button, IconButton, Tag } from './common/ui';
+import { ConfirmModal } from './common/PageComponents';
 import ImageContextMenu from './ImageContextMenu';
 import { MenuContent, MenuItem, MenuRoot, MenuTrigger } from './common/menu';
 import { showToast } from '../stores/toastStore';
 import { selectFileDownloadActivity, useDownloadActivity } from '../lib/downloadActivity';
+import type { ReplaceableFile } from '../lib/updateActions';
 
 type ModDetailsNavigationDirection = 'previous' | 'next';
 
@@ -88,6 +92,15 @@ interface ModDetailsModalProps {
    *  separate from the mod-level badge prevents alternate variants from all
    *  being mislabeled as updates. */
   updateFileIds?: Set<number>;
+  /** The installed file was archived by its author and no clear replacement
+   *  was found. Shown as a quiet tag: it is not an update. */
+  archivedByAuthor?: boolean;
+  /** Installed files the author deleted with no confident successor. Every
+   *  current row offers "Replace <file> with this" (installed rows included,
+   *  which only removes the old file), confirming exactly what gets deleted
+   *  before calling `onReplace`. */
+  replaceableFiles?: ReplaceableFile[];
+  onReplace?: (fileId: number, fileName: string, replacedFileId: number) => void;
   /** When provided, render a toggle next to the Update/Installed badge that
    *  flips the underlying mod's ignoreUpdates flag. Only meaningful in the
    *  installed-mod path; Browse leaves both undefined. */
@@ -116,6 +129,9 @@ interface ModDetailsModalProps {
   /** Browse-only visibility action. Installed details intentionally omit it so
    *  hiding a creator never implies hiding content the user already owns. */
   onHideArtist?: (artist: { id: number; name: string }) => void;
+  /** Browse-only: hide this one submission from Browse results. Omitted in
+   *  Installed for the same reason as onHideArtist. */
+  onHideMod?: (mod: { id: number; name: string }) => void;
   /**
    * When provided, primary-clicks on GameBanana *item* links inside HTML bodies
    * (description, changelog, comments) open that mod in-app instead of the
@@ -147,6 +163,9 @@ function ModDetailsModal({
   savedFileIds = new Set(),
   onToggleSavedFile,
   updateFileIds = new Set<number>(),
+  archivedByAuthor = false,
+  replaceableFiles = [],
+  onReplace,
   ignoreUpdates,
   onToggleIgnoreUpdates,
   onClose,
@@ -160,6 +179,7 @@ function ModDetailsModal({
   onChangeView,
   onViewArtist,
   onHideArtist,
+  onHideMod,
   onOpenGameBananaItem,
 }: ModDetailsModalProps) {
   const { t } = useTranslation();
@@ -239,6 +259,7 @@ function ModDetailsModal({
   const [comments, setComments] = useState<GameBananaComment[]>([]);
   const [commentsLoading, setCommentsLoading] = useState(true);
   const [commentsTotalCount, setCommentsTotalCount] = useState(0);
+  const [commentsError, setCommentsError] = useState(false);
   const [updates, setUpdates] = useState<GameBananaModUpdate[]>([]);
   const [updatesLoading, setUpdatesLoading] = useState(true);
   const [updatesTotalCount, setUpdatesTotalCount] = useState(0);
@@ -258,6 +279,9 @@ function ModDetailsModal({
   const [imageRatios, setImageRatios] = useState<Record<number, number>>({});
   const [deleteCandidate, setDeleteCandidate] = useState<{ modId: string; fileName: string } | null>(null);
   const [deleteInProgress, setDeleteInProgress] = useState(false);
+  const [replaceCandidate, setReplaceCandidate] = useState<
+    { fileId: number; fileName: string; installed: boolean; replaced: ReplaceableFile } | null
+  >(null);
   // Backdrop dismissal for the two nested overlays. The hook ignores drags
   // that only end on the backdrop, so releasing a text selection (or the
   // lightbox drag) outside the panel no longer closes them.
@@ -289,11 +313,13 @@ function ModDetailsModal({
     if (offline) {
       setComments([]);
       setCommentsTotalCount(0);
+      setCommentsError(false);
       setCommentsLoading(false);
       return;
     }
     let cancelled = false;
     setCommentsLoading(true);
+    setCommentsError(false);
     getModComments(mod.id, section)
       .then((res) => {
         if (!cancelled) {
@@ -302,7 +328,12 @@ function ModDetailsModal({
         }
       })
       .catch((err) => {
-        console.error('[ModDetailsModal] Failed to load comments:', err);
+        if (!cancelled) {
+          console.error('[ModDetailsModal] Failed to load comments:', err);
+          setComments([]);
+          setCommentsTotalCount(0);
+          setCommentsError(true);
+        }
       })
       .finally(() => {
         if (!cancelled) setCommentsLoading(false);
@@ -369,6 +400,8 @@ function ModDetailsModal({
       if (!deleteInProgress) setDeleteCandidate(null);
       return;
     }
+    // The replacement confirmation handles its own Escape; keep details open.
+    if (replaceCandidate) return;
     // Lightbox eats ESC before the modal does, so users can dismiss the
     // zoomed view without losing their place on the detail card.
     if (lightboxOpen) {
@@ -385,7 +418,7 @@ function ModDetailsModal({
       if (lightboxOpen && images.length > 1) {
         if (e.key === 'ArrowLeft') goToPrevious();
         if (e.key === 'ArrowRight') goToNext();
-      } else if (!deleteCandidate && !isNavigating) {
+      } else if (!deleteCandidate && !replaceCandidate && !isNavigating) {
         const target = e.target as HTMLElement | null;
         const tag = target?.tagName?.toLowerCase();
         const editing =
@@ -440,6 +473,7 @@ function ModDetailsModal({
     lightboxOpen,
     deleteCandidate,
     deleteInProgress,
+    replaceCandidate,
     isNavigating,
     onNavigatePrevious,
     onNavigateNext,
@@ -467,12 +501,11 @@ function ModDetailsModal({
   };
 
   const actionLabel = (fileId: number, archived = false) => {
-    // A file you already own re-downloads itself = "Reinstall". A not-installed
-    // current file shown while an update is available is the update target:
-    // clicking it replaces the now-superseded installed version, so call it
-    // "Update". Archived files are never update targets (they're the old ones).
-    // Both hosts set updateAvailable, so a file the author replaced reads the
-    // same way whether you reach it from Installed or from Browse.
+    // A file you already own re-downloads itself = "Reinstall". A current file
+    // in updateFileIds is the confident successor of a stale install: clicking
+    // it replaces that install, so it reads "Update". Every other file is a
+    // plain Install that deletes nothing. Both hosts classify the same way, so
+    // a file reads the same from Installed or from Browse.
     if (updateFileIds.has(fileId) && !archived) return t('profiles.actions.update');
     if (installedFileIds.has(fileId)) return t('modDetails.actions.reinstall');
     return t('modDetails.actions.install');
@@ -545,23 +578,23 @@ function ModDetailsModal({
     switch (category.toLowerCase()) {
       case 'feature':
       case 'addition':
-        return 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30';
+        return 'bg-state-success/15 text-state-success border-state-success/30';
       case 'bugfix':
-        return 'bg-rose-500/15 text-rose-300 border-rose-500/30';
+        return 'bg-state-danger/15 text-state-danger border-state-danger/30';
       case 'improvement':
       case 'optimization':
       case 'overhaul':
       case 'rewrite':
-        return 'bg-sky-500/15 text-sky-300 border-sky-500/30';
+        return 'bg-state-info/15 text-state-info border-state-info/30';
       case 'adjustment':
       case 'tweak':
       case 'amendment':
       case 'refactor':
-        return 'bg-amber-500/15 text-amber-300 border-amber-500/30';
+        return 'bg-state-warning/15 text-state-warning border-state-warning/30';
       case 'removal':
-        return 'bg-zinc-500/15 text-zinc-300 border-zinc-500/40';
+        return 'bg-bg-tertiary/15 text-text-secondary border-bg-tertiary/40';
       case 'suggestion':
-        return 'bg-violet-500/15 text-violet-300 border-violet-500/30';
+        return 'bg-state-info/15 text-state-info border-state-info/30';
       default:
         return 'bg-bg-secondary text-text-secondary border-border';
     }
@@ -569,9 +602,9 @@ function ModDetailsModal({
 
   const renderFileRow = (file: GameBananaFile, archived = false) => {
     const isInstalled = installedFileIds.has(file.id);
-    // Highlight the actual replacement target, not every uninstalled sibling.
-    // A target can already be installed: in that case Update promotes it and
-    // removes the stale predecessor without downloading a duplicate.
+    // Highlight the actual replacement target, not every sibling. A target can
+    // already be installed: then Update promotes it and removes the stale
+    // predecessor without downloading a duplicate.
     const isUpdate = updateFileIds.has(file.id) && !archived;
     const installedFileState = installedFileStates?.get(file.id);
     const isActive = activeFileIds.has(file.id) || installedFileState?.enabled === true;
@@ -591,6 +624,9 @@ function ModDetailsModal({
       !!onEnableFile &&
       !isBusyThis;
     const showDeleteButton = !!installedFileState && !!onDeleteFile;
+    const replaceOptions = !archived && onReplace ? replaceableFiles : [];
+    const pickReplacement = (replaced: ReplaceableFile) =>
+      setReplaceCandidate({ fileId: file.id, fileName: file.fileName, installed: isInstalled, replaced });
     const fileProgress = 'progress' in fileDownload ? fileDownload.progress : null;
     const pct = fileProgress && fileProgress.total > 0
       ? Math.round((fileProgress.downloaded / fileProgress.total) * 100)
@@ -605,7 +641,7 @@ function ModDetailsModal({
             : isActive
               ? 'border-accent/50 bg-accent/10'
               : isInstalled
-                ? 'border-green-500/30 bg-green-500/5'
+                ? 'border-state-success/30 bg-state-success/5'
                 : archived
                   ? 'border-border/70 bg-bg-secondary/70'
                   : 'border-border bg-bg-tertiary'
@@ -617,7 +653,7 @@ function ModDetailsModal({
             : isActive
               ? 'bg-accent/20 text-accent'
               : isInstalled
-                ? 'bg-green-500/15 text-green-400'
+                ? 'bg-state-success/15 text-state-success'
                 : archived
                   ? 'bg-bg-tertiary text-text-tertiary'
                   : 'bg-bg-secondary text-text-secondary'
@@ -692,8 +728,30 @@ function ModDetailsModal({
               icon={Bookmark}
               label={savedFileIds.has(file.id) ? 'Remove saved file' : 'Save this file variant'}
               onClick={() => onToggleSavedFile(file)}
-              className={savedFileIds.has(file.id) ? 'text-yellow-300' : undefined}
+              className={savedFileIds.has(file.id) ? 'text-state-warning' : undefined}
             />
+          )}
+          {replaceOptions.length === 1 && (
+            <IconButton
+              icon={Replace}
+              label={t('modDetails.replace.action', { name: replaceOptions[0].label })}
+              onClick={() => pickReplacement(replaceOptions[0])}
+              disabled={isBusyThis}
+            />
+          )}
+          {replaceOptions.length > 1 && (
+            <MenuRoot kind="dropdown">
+              <MenuTrigger asChild disabled={isBusyThis}>
+                <IconButton icon={Replace} label={t('modDetails.replace.menu')} disabled={isBusyThis} />
+              </MenuTrigger>
+              <MenuContent>
+                {replaceOptions.map((replaced) => (
+                  <MenuItem key={replaced.fileId} onSelect={() => pickReplacement(replaced)}>
+                    {t('modDetails.replace.action', { name: replaced.label })}
+                  </MenuItem>
+                ))}
+              </MenuContent>
+            </MenuRoot>
           )}
           <Button
             type="button"
@@ -753,12 +811,12 @@ function ModDetailsModal({
                 )}
                 <span className="font-medium truncate">{t('modDetails.files.archived')}</span>
                 {installedFileIsArchived && (
-                  <span className="flex-shrink-0 rounded-full border border-green-500/40 bg-green-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-green-400">
+                  <span className="flex-shrink-0 rounded-full border border-state-success/40 bg-state-success/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-state-success">
                     {t('modDetails.files.yourVersion')}
                   </span>
                 )}
               </span>
-              <span className="flex-shrink-0 text-[11px] leading-none text-text-tertiary">
+              <span className="flex-shrink-0 text-2xs leading-none text-text-tertiary">
                 ({archivedFiles.length})
               </span>
             </button>
@@ -976,10 +1034,15 @@ function ModDetailsModal({
               </span>
             )}
             {installed && !updateAvailable && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-green-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-green-400 border border-green-500/40">
+              <span className="inline-flex items-center gap-1 rounded-full bg-state-success/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-state-success border border-state-success/40">
                 <CheckCircle2 className="w-2.5 h-2.5" />
                 {t('modDetails.status.installed')}
               </span>
+            )}
+            {archivedByAuthor && (
+              <Tag icon={Archive} title={t('modDetails.status.archivedByAuthorTitle')}>
+                {t('modDetails.status.archivedByAuthor')}
+              </Tag>
             )}
             {/* Only surface the ignore-updates pill in the installed-mod
                 context (handler provided) and when it's actually relevant:
@@ -1014,7 +1077,7 @@ function ModDetailsModal({
               </button>
             )}
             {outdated && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-yellow-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-yellow-400 border border-yellow-500/40">
+              <span className="inline-flex items-center gap-1 rounded-full bg-state-warning/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-state-warning border border-state-warning/40">
                 <AlertTriangle className="w-2.5 h-2.5" />
                 {t('modDetails.status.outdated')}
               </span>
@@ -1076,14 +1139,14 @@ function ModDetailsModal({
                 )}
                 {showModified && (
                   <span
-                    className={`flex items-center gap-1 ${outdated ? 'text-yellow-400' : ''}`}
+                    className={`flex items-center gap-1 ${outdated ? 'text-state-warning' : ''}`}
                     title={outdated
                       ? `Last updated ${modifiedStr} (may be outdated for the current game version)`
                       : `Last updated ${modifiedStr}`}
                   >
                     <RefreshCw className="w-3 h-3" />
-                    <span className={outdated ? 'text-yellow-300/80' : 'text-text-tertiary'}>{t('profiles.updated')}</span>
-                    <span className={outdated ? 'text-yellow-300' : 'text-text-primary'}>{modifiedStr}</span>
+                    <span className={outdated ? 'text-state-warning/80' : 'text-text-tertiary'}>{t('profiles.updated')}</span>
+                    <span className={outdated ? 'text-state-warning' : 'text-text-primary'}>{modifiedStr}</span>
                   </span>
                 )}
                 {totalDownloads > 0 && (
@@ -1095,6 +1158,13 @@ function ModDetailsModal({
               </div>
             );
           })()}
+          {onHideMod && !isNavigating && (
+            <IconButton
+              icon={EyeOff}
+              label={t('hiddenMods.hideMod')}
+              onClick={() => onHideMod({ id: mod.id, name: mod.name })}
+            />
+          )}
           {onChangeView && (
             <IconButton
               icon={isSidebar ? Maximize2 : PanelRight}
@@ -1107,7 +1177,7 @@ function ModDetailsModal({
               icon={Star}
               label={saved ? 'Remove saved mod' : 'Save mod for later'}
               onClick={onToggleSaved}
-              className={saved ? 'text-yellow-300' : undefined}
+              className={saved ? 'text-state-warning' : undefined}
             />
           )}
           <IconButton
@@ -1170,8 +1240,32 @@ function ModDetailsModal({
           </div>
         )}
 
+        {replaceCandidate && onReplace && (
+          <ConfirmModal
+            isOpen
+            title={t('modDetails.replace.confirmTitle')}
+            message={
+              replaceCandidate.installed
+                ? t('modDetails.replace.confirmBodyInstalled', {
+                    newName: replaceCandidate.fileName,
+                    oldName: replaceCandidate.replaced.label,
+                  })
+                : t('modDetails.replace.confirmBody', {
+                    newName: replaceCandidate.fileName,
+                    oldName: replaceCandidate.replaced.label,
+                  })
+            }
+            confirmLabel={t('modDetails.replace.confirm')}
+            onCancel={() => setReplaceCandidate(null)}
+            onConfirm={() => {
+              setReplaceCandidate(null);
+              onReplace(replaceCandidate.fileId, replaceCandidate.fileName, replaceCandidate.replaced.fileId);
+            }}
+          />
+        )}
+
         {offline && (
-          <div className="flex items-center gap-2 border-b border-amber-500/20 bg-amber-500/10 px-5 py-2 text-xs text-amber-300">
+          <div className="flex items-center gap-2 border-b border-state-warning/20 bg-state-warning/10 px-5 py-2 text-xs text-state-warning">
             <CloudOff className="h-3.5 w-3.5 flex-shrink-0" />
             {t('modDetails.offlineNotice')}
           </div>
@@ -1231,11 +1325,11 @@ function ModDetailsModal({
                             }`}
                           />
                           {imageHidden && (
-                            <div className="absolute inset-0 flex items-center justify-center text-[11px] uppercase tracking-wide text-white/80 bg-black/40">
+                            <div className="absolute inset-0 flex items-center justify-center text-2xs uppercase tracking-wide text-white/80 bg-black/40">
                               {t('modDetails.nsfw.previewHidden')}
                             </div>
                           )}
-                          <span className="absolute top-2 right-2 p-1.5 rounded-md bg-black/55 backdrop-blur-sm text-white/80 border border-white/10 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <span className="absolute top-2 right-2 p-1.5 rounded-md bg-black/55 backdrop-blur-sm text-white/80 border border-hl/10 opacity-0 group-hover:opacity-100 transition-opacity">
                             <Maximize2 className="w-3.5 h-3.5" />
                           </span>
                         </button>
@@ -1245,7 +1339,7 @@ function ModDetailsModal({
                               type="button"
                               onClick={(e) => { e.stopPropagation(); goToPrevious(); }}
                               aria-label={t('modDetails.aria.previousImage')}
-                              className="absolute left-2 top-1/2 z-10 -translate-y-1/2 p-1.5 rounded-full bg-black/55 backdrop-blur-sm text-white/90 hover:bg-black/80 hover:text-white border border-white/15 transition-colors cursor-pointer"
+                              className="absolute left-2 top-1/2 z-10 -translate-y-1/2 p-1.5 rounded-full bg-black/55 backdrop-blur-sm text-white/90 hover:bg-black/80 hover:text-white border border-hl/15 transition-colors cursor-pointer"
                             >
                               <ChevronLeft className="w-5 h-5" />
                             </button>
@@ -1253,11 +1347,11 @@ function ModDetailsModal({
                               type="button"
                               onClick={(e) => { e.stopPropagation(); goToNext(); }}
                               aria-label={t('modDetails.aria.nextImage')}
-                              className="absolute right-2 top-1/2 z-10 -translate-y-1/2 p-1.5 rounded-full bg-black/55 backdrop-blur-sm text-white/90 hover:bg-black/80 hover:text-white border border-white/15 transition-colors cursor-pointer"
+                              className="absolute right-2 top-1/2 z-10 -translate-y-1/2 p-1.5 rounded-full bg-black/55 backdrop-blur-sm text-white/90 hover:bg-black/80 hover:text-white border border-hl/15 transition-colors cursor-pointer"
                             >
                               <ChevronRight className="w-5 h-5" />
                             </button>
-                            <div className="absolute bottom-2 right-2 px-2 py-0.5 rounded-md bg-black/55 backdrop-blur-sm text-white/85 text-[11px] border border-white/10">
+                            <div className="absolute bottom-2 right-2 px-2 py-0.5 rounded-md bg-black/55 backdrop-blur-sm text-white/85 text-2xs border border-hl/10">
                               {idx + 1} / {images.length}
                             </div>
                           </>
@@ -1335,16 +1429,16 @@ function ModDetailsModal({
                           }`}
                         />
                         {imageHidden && (
-                          <div className="absolute inset-0 flex items-center justify-center text-[11px] uppercase tracking-wide text-white/80 bg-black/40">
+                          <div className="absolute inset-0 flex items-center justify-center text-2xs uppercase tracking-wide text-white/80 bg-black/40">
                             {t('modDetails.nsfw.previewHidden')}
                           </div>
                         )}
                         {images.length > 1 && (
-                          <div className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-black/55 backdrop-blur-sm text-white/85 text-[11px] border border-white/10">
+                          <div className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-black/55 backdrop-blur-sm text-white/85 text-2xs border border-hl/10">
                             {index + 1} / {images.length}
                           </div>
                         )}
-                        <span className="absolute top-2 right-2 p-1.5 rounded-md bg-black/55 backdrop-blur-sm text-white/80 border border-white/10 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <span className="absolute top-2 right-2 p-1.5 rounded-md bg-black/55 backdrop-blur-sm text-white/80 border border-hl/10 opacity-0 group-hover:opacity-100 transition-opacity">
                           <Maximize2 className="w-3.5 h-3.5" />
                         </span>
                       </button>
@@ -1379,7 +1473,7 @@ function ModDetailsModal({
                     <Volume2 className="w-4 h-4 text-accent" />
                     <h3 className="font-medium text-sm text-text-primary">{t('modDetails.audio.preview')}</h3>
                   </div>
-                  <div className="backdrop-blur-md bg-bg-primary/50 rounded-lg border border-white/10 p-1">
+                  <div className="backdrop-blur-md bg-bg-primary/50 rounded-lg border border-hl/10 p-1">
                     <AudioPreviewPlayer
                       src={audioPreviewUrl}
                       className="w-full"
@@ -1390,8 +1484,8 @@ function ModDetailsModal({
               )}
 
               {outdated && (
-                <div className="flex items-start gap-2 rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-3 py-2.5 text-yellow-200 text-xs">
-                  <AlertTriangle className="w-4 h-4 text-yellow-400 flex-shrink-0 mt-0.5" />
+                <div className="flex items-start gap-2 rounded-lg border border-state-warning/30 bg-state-warning/10 px-3 py-2.5 text-state-warning text-xs">
+                  <AlertTriangle className="w-4 h-4 text-state-warning flex-shrink-0 mt-0.5" />
                   <span>{t('modDetails.outdatedWarning', { date: formatDate(dateModified!) })}</span>
                 </div>
               )}
@@ -1438,7 +1532,7 @@ function ModDetailsModal({
                         )}
                         {showModified && (
                           <span
-                            className={`flex items-center gap-1 ${outdated ? 'text-yellow-400' : ''}`}
+                            className={`flex items-center gap-1 ${outdated ? 'text-state-warning' : ''}`}
                             title={`Last updated ${modifiedStr}`}
                           >
                             <RefreshCw className="h-3 w-3" />
@@ -1618,7 +1712,7 @@ function ModDetailsModal({
                               </span>
                             )}
                             {update.dateAdded > 0 && (
-                              <span className="ml-auto flex flex-shrink-0 items-center gap-1 text-[11px] text-text-tertiary">
+                              <span className="ml-auto flex flex-shrink-0 items-center gap-1 text-2xs text-text-tertiary">
                                 <Clock className="w-3 h-3" />
                                 {formatDate(update.dateAdded)}
                               </span>
@@ -1671,7 +1765,7 @@ function ModDetailsModal({
                     </span>
                   </h3>
                   {!commentsLoading && commentsTotalCount > comments.length && comments.length > 0 && (
-                    <span className="flex-shrink-0 text-[11px] text-text-tertiary">
+                    <span className="flex-shrink-0 text-2xs text-text-tertiary">
                       {t('modDetails.comments.showing', { shown: comments.length.toLocaleString(), total: commentsTotalCount.toLocaleString() })}
                     </span>
                   )}
@@ -1692,6 +1786,10 @@ function ModDetailsModal({
                       </li>
                     ))}
                   </ul>
+                ) : commentsError ? (
+                  <p className="rounded-lg border border-border bg-bg-tertiary px-3 py-2 text-sm text-text-secondary">
+                    {t('modDetails.comments.unavailable')}
+                  </p>
                 ) : comments.length === 0 ? (
                   <div className="flex items-center gap-3 rounded-lg border border-dashed border-border bg-bg-tertiary/30 px-3 py-4 text-sm text-text-secondary">
                     <MessageSquare className="h-4 w-4 flex-shrink-0 text-text-tertiary" />
@@ -1729,7 +1827,7 @@ function ModDetailsModal({
                               <span className="min-w-0 max-w-full truncate text-sm font-semibold text-text-primary" title={comment.poster.name}>
                                 {comment.poster.name}
                               </span>
-                              <span className="inline-flex flex-shrink-0 items-center gap-1 text-[11px] text-text-tertiary">
+                              <span className="inline-flex flex-shrink-0 items-center gap-1 text-2xs text-text-tertiary">
                                 <Clock className="h-3 w-3" />
                                 {formatDate(comment.dateAdded)}
                               </span>
@@ -1779,7 +1877,7 @@ function ModDetailsModal({
             type="button"
             onClick={(e) => { e.stopPropagation(); setLightboxOpen(false); }}
             aria-label={t('modDetails.aria.closeFullSizeView')}
-            className="absolute top-4 right-4 p-2 rounded-full bg-black/60 backdrop-blur-sm text-white/90 hover:bg-black/80 hover:text-white border border-white/15 transition-colors cursor-pointer z-10"
+            className="absolute top-4 right-4 p-2 rounded-full bg-black/60 backdrop-blur-sm text-white/90 hover:bg-black/80 hover:text-white border border-hl/15 transition-colors cursor-pointer z-10"
           >
             <X className="w-5 h-5" />
           </button>
@@ -1789,7 +1887,7 @@ function ModDetailsModal({
                 type="button"
                 onClick={(e) => { e.stopPropagation(); goToPrevious(); }}
                 aria-label={t('modDetails.aria.previousImage')}
-                className="absolute left-4 top-1/2 -translate-y-1/2 p-2 rounded-full bg-black/60 backdrop-blur-sm text-white/90 hover:bg-black/80 hover:text-white border border-white/15 transition-colors cursor-pointer z-10"
+                className="absolute left-4 top-1/2 -translate-y-1/2 p-2 rounded-full bg-black/60 backdrop-blur-sm text-white/90 hover:bg-black/80 hover:text-white border border-hl/15 transition-colors cursor-pointer z-10"
               >
                 <ChevronLeft className="w-6 h-6" />
               </button>
@@ -1797,11 +1895,11 @@ function ModDetailsModal({
                 type="button"
                 onClick={(e) => { e.stopPropagation(); goToNext(); }}
                 aria-label={t('modDetails.aria.nextImage')}
-                className="absolute right-4 top-1/2 -translate-y-1/2 p-2 rounded-full bg-black/60 backdrop-blur-sm text-white/90 hover:bg-black/80 hover:text-white border border-white/15 transition-colors cursor-pointer z-10"
+                className="absolute right-4 top-1/2 -translate-y-1/2 p-2 rounded-full bg-black/60 backdrop-blur-sm text-white/90 hover:bg-black/80 hover:text-white border border-hl/15 transition-colors cursor-pointer z-10"
               >
                 <ChevronRight className="w-6 h-6" />
               </button>
-              <div className="absolute top-4 left-4 px-2.5 py-1 rounded-md bg-black/60 backdrop-blur-sm text-white/90 text-xs border border-white/15">
+              <div className="absolute top-4 left-4 px-2.5 py-1 rounded-md bg-black/60 backdrop-blur-sm text-white/90 text-xs border border-hl/15">
                 {currentImageIndex + 1} / {images.length}
               </div>
             </>

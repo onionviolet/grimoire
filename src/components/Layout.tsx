@@ -1,34 +1,36 @@
-import { useEffect, useState } from 'react';
-import { useTranslation, Trans } from 'react-i18next';
-import { Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { AlertTriangle, Loader2, X } from 'lucide-react';
-import Sidebar from './Sidebar';
-import WelcomeModal from './WelcomeModal';
-import SyncIndicator from './SyncIndicator';
-import DownloadQueueIndicator from './DownloadQueueIndicator';
+import { Loader2 } from 'lucide-react';
+import { useEffect,useState } from 'react';
+import { Trans,useTranslation } from 'react-i18next';
+import { Outlet,useLocation,useNavigate } from 'react-router-dom';
+import { applyAccentColor } from '../lib/accentColor';
+import type { ImportCustomModResult } from '../lib/api';
+import { getSettings,setSettings } from '../lib/api';
+import { getActiveDeadlockPath } from '../lib/appSettings';
+import { applyOledMode } from '../lib/applyOledMode';
+import { applyBackgroundGradient } from '../lib/backgroundGradient';
+import { useBrowserToolDownloadHandoff } from '../lib/useBrowserToolDownloadHandoff';
+import { useAppStore } from '../stores/appStore';
+import { useGameinfoStore } from '../stores/gameinfoStore';
+import { showToast } from '../stores/toastStore';
+import type {
+ForgeInstallRequestData,
+MultiVpkPickData,
+OneClickSuspiciousFilesData,
+} from '../types/electron';
 import AppUpdateBanner from './AppUpdateBanner';
+import DiscordPresence from './DiscordPresence';
+import DownloadQueueIndicator from './DownloadQueueIndicator';
+import ForgeInstallModal from './ForgeInstallModal';
+import GameinfoBanner from './GameinfoBanner';
+import ImportCustomModsModal from './ImportCustomModsModal';
+import { ModSafetyBanner } from './ModSafety';
+import MultiVpkPickerModal from './MultiVpkPickerModal';
+import Sidebar from './Sidebar';
+import SyncIndicator from './SyncIndicator';
 import VpkImpostorBanner from './VpkImpostorBanner';
-import { Button } from './common/ui';
+import WelcomeModal from './WelcomeModal';
 import { ConfirmModal } from './common/PageComponents';
 import { ToastStack } from './common/ToastStack';
-import { showToast } from '../stores/toastStore';
-import { getSettings, setSettings, getGameinfoStatus, fixGameinfo } from '../lib/api';
-import { getActiveDeadlockPath } from '../lib/appSettings';
-import { applyAccentColor } from '../lib/accentColor';
-import { applyBackgroundGradient } from '../lib/backgroundGradient';
-import { applyOledMode } from '../lib/applyOledMode';
-import { useAppStore } from '../stores/appStore';
-import type {
-  OneClickSuspiciousFilesData,
-  MultiVpkPickData,
-  ForgeInstallRequestData,
-} from '../types/electron';
-import MultiVpkPickerModal from './MultiVpkPickerModal';
-import ForgeInstallModal from './ForgeInstallModal';
-import ImportCustomModsModal from './ImportCustomModsModal';
-import type { ImportCustomModResult } from '../lib/api';
-import DiscordPresence from './DiscordPresence';
-import { useBrowserToolDownloadHandoff } from '../lib/useBrowserToolDownloadHandoff';
 
 export default function Layout() {
   const { t } = useTranslation();
@@ -37,11 +39,6 @@ export default function Layout() {
   const outletKey = location.pathname.startsWith('/locker') ? '/locker' : location.pathname;
   const [showWelcome, setShowWelcome] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [gameinfoAlert, setGameinfoAlert] = useState<string | null>(null);
-  const [isFixingGameinfo, setIsFixingGameinfo] = useState(false);
-  // Dismissal is keyed on the message so a different gameinfo problem still
-  // surfaces after the user hides the current one.
-  const [dismissedGameinfoAlert, setDismissedGameinfoAlert] = useState<string | null>(null);
   // Normal one-click download progress is handled by DownloadQueueIndicator.
   // This only catches failures before a download can be queued.
   const [suspiciousPrompt, setSuspiciousPrompt] = useState<OneClickSuspiciousFilesData | null>(null);
@@ -71,7 +68,10 @@ export default function Layout() {
   // non-empty mid-batch, which would unmount the dialog and throw away the rows
   // a partly-failed batch still needs in order to retry just the leftovers.
   const batchImportOpen = useAppStore((s) => s.batchImportOpen);
-  const setBatchImportOpen = useAppStore((s) => s.setBatchImportOpen);
+  const batchImportPendingPaths = useAppStore((s) => s.batchImportPendingPaths);
+  const consumeBatchImportPaths = useAppStore((s) => s.consumeBatchImportPaths);
+  const setBatchImportBusy = useAppStore((s) => s.setBatchImportBusy);
+  const closeBatchImport = useAppStore((s) => s.closeBatchImport);
   const importCustomMods = useAppStore((s) => s.importCustomMods);
   useEffect(() => {
     loadStoreSettings();
@@ -96,14 +96,7 @@ export default function Layout() {
       try {
         const settings = await getSettings();
         const activePath = getActiveDeadlockPath(settings);
-        if (activePath) {
-          try {
-            const status = await getGameinfoStatus();
-            setGameinfoAlert(status.configured ? null : status.message);
-          } catch (err) {
-            setGameinfoAlert(`Failed to check gameinfo.gi: ${err}`);
-          }
-        }
+        if (activePath) await useGameinfoStore.getState().refresh();
         if (!settings.hasCompletedSetup) {
           setShowWelcome(true);
         } else {
@@ -244,18 +237,6 @@ export default function Layout() {
     }
   };
 
-  const handleFixGameinfo = async () => {
-    setIsFixingGameinfo(true);
-    try {
-      const result = await fixGameinfo();
-      setGameinfoAlert(result.configured ? null : result.message);
-    } catch (err) {
-      setGameinfoAlert(`Failed to fix gameinfo.gi: ${err}`);
-    } finally {
-      setIsFixingGameinfo(false);
-    }
-  };
-
   // Summary toast for a finished batch. The dialog keeps the failed rows and
   // their per-row reasons; this is the at-a-glance count, and the only feedback
   // at all when every source landed and the dialog closed itself.
@@ -317,38 +298,11 @@ export default function Layout() {
       <DiscordPresence />
       <Sidebar />
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        {gameinfoAlert && gameinfoAlert !== dismissedGameinfoAlert && (
-          <div className="sticky top-0 z-40 border-b border-yellow-500/30 bg-yellow-500/10 backdrop-blur-sm">
-            <div className="mx-auto flex w-full max-w-6xl items-center gap-3 px-4 py-3 text-yellow-200">
-              <AlertTriangle className="h-5 w-5 text-yellow-400" />
-              <div className="flex-1 text-sm">
-                <span className="font-semibold">{t('layout.gameinfoIssue')}</span> {gameinfoAlert}
-              </div>
-              <div className="flex items-center gap-2">
-                <Button variant="warning" size="sm" onClick={handleFixGameinfo} isLoading={isFixingGameinfo}>
-                  {t('layout.fixNow')}
-                </Button>
-                <Button variant="secondary" size="sm" onClick={() => navigate('/settings')}>
-                  {t('layout.openSettings')}
-                </Button>
-                <button
-                  type="button"
-                  onClick={() => setDismissedGameinfoAlert(gameinfoAlert)}
-                  aria-label={t('layout.hideGameinfoBanner')}
-                  title={t('layout.hideGameinfoBannerShort')}
-                  className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-yellow-200/70 transition-colors hover:bg-white/10 hover:text-yellow-100 cursor-pointer"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        <GameinfoBanner />
         <AppUpdateBanner />
-        {/* Lane A's startup reconcile: installed files that are not VPKs.
-            Dismissible and non-blocking, like the update banner above. */}
         <VpkImpostorBanner />
-        <div key={outletKey} className="min-h-0 flex-1 overflow-auto animate-fade-in">
+        <ModSafetyBanner />
+        <div key={outletKey} className="min-h-0 flex-1 overflow-auto animate-fade-in [scrollbar-gutter:stable]">
           <Outlet />
         </div>
       </main>
@@ -429,9 +383,12 @@ export default function Layout() {
       )}
       {batchImportOpen && (
         <ImportCustomModsModal
-          onClose={() => setBatchImportOpen(false)}
+          onClose={closeBatchImport}
           onImport={importCustomMods}
           onFinished={reportBatchImport}
+          pendingPaths={batchImportPendingPaths}
+          onConsumedPaths={consumeBatchImportPaths}
+          onSubmittingChange={setBatchImportBusy}
         />
       )}
       {showWelcome && <WelcomeModal onComplete={handleSetupComplete} />}

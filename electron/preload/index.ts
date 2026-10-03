@@ -24,6 +24,7 @@ import type {
     ApplyUnknownCustomModArgs,
     ApplyUnknownModMatchArgs,
     AssociateUnknownModArgs,
+    DeleteModsProgress,
     GlobalModType,
     EditLocalModArgs,
     LockerClearScope,
@@ -141,10 +142,27 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
 
     // Mods
+    getModSafetyPrompts: () => ipcRenderer.invoke('get-mod-safety-prompts'),
+    respondModSafety: (id: string, accepted: boolean) => ipcRenderer.invoke('respond-mod-safety', id, accepted),
+    getInstalledModSafety: () => ipcRenderer.invoke('get-installed-mod-safety'),
+    rescanModSafety: () => ipcRenderer.invoke('rescan-mod-safety'),
+    reviewModSafety: (id: string, fingerprint: string) => ipcRenderer.invoke('review-mod-safety', id, fingerprint),
+    onModSafetyChanged: (callback: () => void) => {
+        const listener = () => callback();
+        ipcRenderer.on('mod-safety-changed', listener);
+        return () => ipcRenderer.removeListener('mod-safety-changed', listener);
+    },
     getMods: () => ipcRenderer.invoke('get-mods'),
     enableMod: (modId: string) => ipcRenderer.invoke('enable-mod', modId),
     disableMod: (modId: string) => ipcRenderer.invoke('disable-mod', modId),
     deleteMod: (modId: string) => ipcRenderer.invoke('delete-mod', modId),
+    deleteMods: (modIds: string[]) => ipcRenderer.invoke('delete-mods', modIds),
+    onDeleteModsProgress: (callback: (progress: DeleteModsProgress) => void) => {
+        const handler = (_event: Electron.IpcRendererEvent, progress: DeleteModsProgress) => callback(progress);
+        ipcRenderer.on('delete-mods-progress', handler);
+        return () => ipcRenderer.removeListener('delete-mods-progress', handler);
+    },
+    assertReplacementSafety: (modIds: string[]) => ipcRenderer.invoke('assert-replacement-safety', modIds),
     revealModInFolder: (modId: string) => ipcRenderer.invoke('reveal-mod-in-folder', modId),
     // Installed files that are not actually VPKs (archives renamed to *_dir.vpk).
     // Reporting only: nothing is deleted, and repair is an explicit user action.
@@ -457,6 +475,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
         optIns?: string[],
         version?: string | null
     ) => ipcRenderer.invoke('reset-performance-config-overrides', presetId, optIns, version),
+    reapplyWipedPerformanceConfig: () => ipcRenderer.invoke('reapply-wiped-performance-config'),
     restorePerformanceConfigBackup: () => ipcRenderer.invoke('restore-performance-config-backup'),
     getPerformanceLatestInfo: (presetId: string) =>
         ipcRenderer.invoke('get-performance-latest-info', presetId),
@@ -615,7 +634,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     createProfileFromGameBananaIds: (args: { name: string; gameBananaIds: number[] }) =>
         ipcRenderer.invoke('create-profile-from-gamebanana-ids', args),
     updateProfile: (profileId: string, crosshairSettings?: ProfileCrosshairSettings) => ipcRenderer.invoke('update-profile', profileId, crosshairSettings),
-    applyProfile: (profileId: string) => ipcRenderer.invoke('apply-profile', profileId),
+    previewProfile: (profileId: string) => ipcRenderer.invoke('preview-profile', profileId),
+    applyProfile: (profileId: string, reviewToken?: string) => ipcRenderer.invoke('apply-profile', profileId, reviewToken),
     deleteProfile: (profileId: string) => ipcRenderer.invoke('delete-profile', profileId),
     renameProfile: (profileId: string, newName: string) => ipcRenderer.invoke('rename-profile', profileId, newName),
     removeProfileCrosshair: (profileId: string) => ipcRenderer.invoke('remove-profile-crosshair', profileId),
@@ -700,6 +720,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     importCrosshairFromGame: (gamePath: string) => ipcRenderer.invoke('crosshair:importFromGame', gamePath),
     getAutoexecCommands: (gamePath: string) => ipcRenderer.invoke('autoexec:getCommands', gamePath),
     saveAutoexecCommands: (gamePath: string, commands: string[]) => ipcRenderer.invoke('autoexec:saveCommands', gamePath, commands),
+
+    // Cursor packs
+    getCursorPacks: () => ipcRenderer.invoke('cursors:get'),
+    setActiveCursorPack: (id: string | null) => ipcRenderer.invoke('cursors:set-active', id),
+    deleteCursorPack: (id: string) => ipcRenderer.invoke('cursors:delete', id),
+    getCursorPreview: (id: string | null) => ipcRenderer.invoke('cursors:preview', id),
+    importCursorPack: (paths: string[]) => ipcRenderer.invoke('cursors:import-files', paths),
 
     // Updater
     updater: {
@@ -979,7 +1006,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     deadworksServerContent: (serverId: string) => ipcRenderer.invoke('deadworks-server-content', serverId),
     deadworksRelayStats: () => ipcRenderer.invoke('deadworks-relay-stats'),
     deadworksPingServer: (addr: string) => ipcRenderer.invoke('deadworks-ping-server', addr),
-    deadworksConnect: (serverId: string, addr: string) => ipcRenderer.invoke('deadworks-connect', serverId, addr),
+    deadworksConnect: (serverId: string, addr: string, serverName: string) => ipcRenderer.invoke('deadworks-connect', serverId, addr, serverName),
     onDeadworksDownloadProgress: (callback: (p: DeadworksConnectProgress) => void) => {
         const handler = (_event: Electron.IpcRendererEvent, p: DeadworksConnectProgress) => callback(p);
         ipcRenderer.on('deadworks-download-progress', handler);

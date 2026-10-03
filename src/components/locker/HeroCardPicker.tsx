@@ -408,17 +408,17 @@ export default function HeroCardPicker({ heroName }: HeroCardPickerProps) {
       )}
 
       {claimOverlaps.length > 0 && (
-        <p className="rounded-md border border-amber-400/40 bg-amber-400/10 px-3 py-2 text-[11px] text-amber-200">{t('locker.cards.overlapNote', { count: claimOverlaps.length })}</p>
+        <p className="rounded-md border border-state-warning/40 bg-state-warning/10 px-3 py-2 text-2xs text-state-warning">{t('locker.cards.overlapNote', { count: claimOverlaps.length })}</p>
       )}
       {portraitFoundryChanges.length > 0 && (
         <div className="rounded-[10px] border border-border/70 bg-bg-sunken/55 p-3">
           <p className="text-xs font-semibold text-text-primary">{t('locker.cards.forgedPools')}</p>
-          <p className="mt-1 text-[11px] text-text-secondary">{t('locker.cards.forgedPoolsNote')}</p>
+          <p className="mt-1 text-2xs text-text-secondary">{t('locker.cards.forgedPoolsNote')}</p>
           {/* The scope caption belongs at this call site rather than inside
               ChangePools.tsx: that component also renders in the cross-hero
               Foundry view, where the pool list scopes to all forged portraits,
               not to this hero. One key, one wording for the same shared pool. */}
-          <p className="mt-1 text-[11px] text-text-secondary">{t('foundry.myChanges.shuffleScopeAllForged')}</p>
+          <p className="mt-1 text-2xs text-text-secondary">{t('foundry.myChanges.shuffleScopeAllForged')}</p>
           <div className="mt-2"><FoundryPoolList mods={portraitFoundryMods} changes={portraitFoundryChanges} included={foundryShuffleIncluded} onToggleShuffleKey={toggleFoundryShuffleIncluded} onToggleMod={(modId) => void toggleMod(modId)} onOpenInInstalled={(modId) => navigate(focusModPath(modId))} /></div>
         </div>
       )}
@@ -428,7 +428,7 @@ export default function HeroCardPicker({ heroName }: HeroCardPickerProps) {
               per card row: every row's shuffle button toggles the same per-hero
               shuffle set, keyed by hero and mod file, so they are one mechanism
               with one scope. */}
-          <p className="text-[11px] text-text-secondary">{t('locker.cards.shuffleScopeThisHero')}</p>
+          <p className="text-2xs text-text-secondary">{t('locker.cards.shuffleScopeThisHero')}</p>
           {fileGroups.map((group) => {
             const isApplied = activeSource === group.modFileName;
             const isBusy = busySource === group.modFileName;
@@ -446,8 +446,8 @@ export default function HeroCardPicker({ heroName }: HeroCardPickerProps) {
                 className={`group relative overflow-hidden rounded-[10px] border text-left backdrop-blur-sm transition-[border-color,background-color,box-shadow] duration-200 ${
                   isApplied
                     ? 'border-accent bg-accent/[0.08] shadow-[0_0_0_1px_var(--color-accent),0_0_18px_-6px_var(--color-accent)] hover:bg-accent/[0.12]'
-                    : 'border-white/[0.08] bg-bg-sunken/55 hover:border-white/[0.16]'
-                } ${busySource !== null && !isBusy ? 'opacity-60' : ''}`}
+                    : 'border-hl/[0.08] bg-bg-sunken/55 hover:border-hl/[0.16]'
+                } ${busySource !== null && !isBusy ? 'opacity-60' : 'cursor-pointer'}`}
               >
                 <div className="relative z-10 flex items-center justify-between gap-2 border-b border-border/50 px-3 py-2">
                   {/* The mod's own name, the same string the sources panel one
@@ -470,7 +470,7 @@ export default function HeroCardPicker({ heroName }: HeroCardPickerProps) {
                       onClick={() => toggleCardShuffleIncluded(shuffleKey)}
                       title={inShuffle ? t('locker.randomize.removeFromShuffle', { name: group.modFileName }) : t('locker.randomize.addToShuffle', { name: group.modFileName })}
                       aria-label={inShuffle ? t('locker.randomize.removeFromShuffle', { name: group.modFileName }) : t('locker.randomize.addToShuffle', { name: group.modFileName })}
-                      className={`rounded p-1 transition-colors ${inShuffle ? 'bg-accent text-accent-foreground' : 'text-text-secondary hover:bg-white/10 hover:text-text-primary'}`}
+                      className={`rounded p-1 transition-colors ${inShuffle ? 'bg-accent text-accent-foreground' : 'text-text-secondary hover:bg-hl/10 hover:text-text-primary'}`}
                     >
                       <Shuffle className="h-3.5 w-3.5" />
                     </button>
@@ -507,7 +507,7 @@ export default function HeroCardPicker({ heroName }: HeroCardPickerProps) {
                   ))}
                 </div>
                 <details className="relative z-10 border-t border-border/50 px-3 py-2">
-                  <summary className="cursor-pointer text-[11px] text-text-secondary hover:text-text-primary">{t('locker.cards.ownership')}</summary>
+                  <summary className="cursor-pointer text-2xs text-text-secondary hover:text-text-primary">{t('locker.cards.ownership')}</summary>
                   <AssetSourcesPanel paths={[...slotPaths]} pathLabels={slotLabels} />
                 </details>
                 {isBusy && (
@@ -534,7 +534,7 @@ export default function HeroCardPicker({ heroName }: HeroCardPickerProps) {
           className={`space-y-3 rounded-[10px] border p-3 backdrop-blur-sm transition-[border-color,box-shadow] duration-200 ${
             customApplied
               ? 'border-accent bg-accent/[0.08] shadow-[0_0_0_1px_var(--color-accent),0_0_18px_-6px_var(--color-accent)]'
-              : 'border-white/[0.08] bg-bg-sunken/55'
+              : 'border-hl/[0.08] bg-bg-sunken/55'
           }`}
         >
           <div className="flex items-center justify-between gap-2">
@@ -552,7 +552,7 @@ export default function HeroCardPicker({ heroName }: HeroCardPickerProps) {
               </span>
             )}
           </div>
-          <p className="text-[11px] leading-snug text-text-secondary">
+          <p className="text-2xs leading-snug text-text-secondary">
             {t('locker.cards.uploadInstructions')}
           </p>
 
@@ -587,7 +587,7 @@ export default function HeroCardPicker({ heroName }: HeroCardPickerProps) {
                       alt={`${heroName} ${variantLabel(slot.variant)}`}
                       className={variantPreviewClass(Boolean(pick))}
                     />
-                    <span className="pointer-events-none absolute bottom-1 right-1 flex items-center rounded-full bg-black/70 p-1 text-white/75 opacity-80 ring-1 ring-white/15 transition-[opacity,color] duration-200 group-hover:text-white group-hover:opacity-100 group-focus-within:text-white group-focus-within:opacity-100 motion-reduce:transition-none">
+                    <span className="pointer-events-none absolute bottom-1 right-1 flex items-center rounded-full bg-black/70 p-1 text-white/75 opacity-80 ring-1 ring-hl/15 transition-[opacity,color] duration-200 group-hover:text-white group-hover:opacity-100 group-focus-within:text-white group-focus-within:opacity-100 motion-reduce:transition-none">
                       <Upload className="h-3 w-3" />
                     </span>
                   </button>
@@ -603,7 +603,7 @@ export default function HeroCardPicker({ heroName }: HeroCardPickerProps) {
                       aria-label={t('locker.cards.clearVariantImage', {
                         variant: variantLabel(slot.variant),
                       })}
-                      className="absolute right-1 top-1 z-10 cursor-pointer rounded-full bg-black/75 p-1 text-white/90 shadow-sm ring-1 ring-white/10 transition-colors hover:bg-black/90 hover:text-white disabled:cursor-not-allowed"
+                      className="absolute right-1 top-1 z-10 cursor-pointer rounded-full bg-black/75 p-1 text-white/90 shadow-sm ring-1 ring-hl/10 transition-colors hover:bg-black/90 hover:text-white disabled:cursor-not-allowed"
                     >
                       <X className="h-3.5 w-3.5" />
                     </button>
@@ -625,7 +625,7 @@ export default function HeroCardPicker({ heroName }: HeroCardPickerProps) {
               stock art, so an incomplete card is a choice rather than a
               surprise noticed in-game. */}
           {uncoveredVariants.length > 0 && (
-            <p className="flex items-start gap-1.5 rounded-md border border-amber-400/40 bg-amber-400/10 px-2.5 py-1.5 text-[11px] leading-snug text-amber-300">
+            <p className="flex items-start gap-1.5 rounded-md border border-state-warning/40 bg-state-warning/10 px-2.5 py-1.5 text-2xs leading-snug text-state-warning">
               <AlertCircle className="mt-px h-3.5 w-3.5 flex-shrink-0" />
               <span>
                 {t('locker.cards.partialFamily', {
@@ -667,7 +667,7 @@ export default function HeroCardPicker({ heroName }: HeroCardPickerProps) {
               disabled={exporting || customBusy || !hasPicks}
               onClick={handleExportCustom}
               title={t('locker.cards.exportVpkTitle')}
-              className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-border/60 px-3 py-1.5 text-xs font-medium text-text-secondary transition-colors hover:border-white/20 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-border/60 px-3 py-1.5 text-xs font-medium text-text-secondary transition-colors hover:border-hl/20 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
             >
               {exporting ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -681,7 +681,7 @@ export default function HeroCardPicker({ heroName }: HeroCardPickerProps) {
                 type="button"
                 disabled={customBusy}
                 onClick={handleRevertCustom}
-                className="inline-flex cursor-pointer items-center rounded-md border border-border/60 px-3 py-1.5 text-xs font-medium text-text-secondary transition-colors hover:border-white/20 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex cursor-pointer items-center rounded-md border border-border/60 px-3 py-1.5 text-xs font-medium text-text-secondary transition-colors hover:border-hl/20 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {t('locker.cards.revert')}
               </button>

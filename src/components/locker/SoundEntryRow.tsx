@@ -241,7 +241,7 @@ export default function SoundEntryRow({
                 </p>
               )}
               {inspection && inspection.unreadableMods.length > 0 && (
-                <p className="flex items-start gap-1 text-[10px] text-amber-300/90">
+                <p className="flex items-start gap-1 text-[10px] text-state-warning/90">
                   <AlertTriangle className="mt-px h-3 w-3 shrink-0" />
                   <span>
                     {t('soundLocker.row.incomplete', 'Some installed VPKs could not be read: {{mods}}', {
@@ -280,7 +280,7 @@ export default function SoundEntryRow({
                       <span className="min-w-0 flex-1">
                         {/* The user's own name for the sound leads; the engine's
                             name for it follows, dimmer. */}
-                        <span className="block truncate text-[11px] text-text-primary" title={first}>
+                        <span className="block truncate text-2xs text-text-primary" title={first}>
                           {personal ? (
                             <span className="text-accent">{personal}</span>
                           ) : (
@@ -293,7 +293,7 @@ export default function SoundEntryRow({
                           )}
                         </span>
                         {winner && (
-                          <span className="block truncate text-[10px] text-amber-300/90">
+                          <span className="block truncate text-[10px] text-state-warning/90">
                             {t('soundLocker.row.overriddenBy', 'Overridden by {{winner}}', {
                               winner: winner.modName,
                             })}{' '}

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Mod, AppSettings, AppearanceSurface, EditLocalModArgs, GlobalModType } from '../types/mod';
+import type { Mod, AppSettings, AppearanceSurface, DeleteModsProgress, EditLocalModArgs, GlobalModType } from '../types/mod';
 import type { ImportCustomModArgs, ImportCustomModResult, LocalVariantGroupTarget } from '../types/electron';
 import { getActiveDeadlockPath } from '../lib/appSettings';
 import { readPref, writePref } from '../lib/uiPrefs';
@@ -10,6 +10,7 @@ import { showToast } from './toastStore';
 import { buildHeroList, getLockerSkinKey } from '../lib/lockerUtils';
 import { invalidateAssetClaims } from '../lib/inspectedAssetClaims';
 import { modPreferenceKey } from '../lib/disabledModPrefs';
+import { pathDedupeKey } from '../lib/customModImport';
 import { modRestoreKey, planSoloByKeys, planRestore } from '../lib/soloRestore';
 import {
   SHUFFLE_ON_LAUNCH_KEY,
@@ -202,7 +203,6 @@ async function migrateLockerImagePreferences(
 // query, view mode, and filters all reset when switching pages.
 export type BrowseSortOption = 'default' | 'popular' | 'recent' | 'updated' | 'views' | 'name';
 export type BrowseLayout = 'grid' | 'list';
-export type BrowseNsfwFilter = 'all' | 'sfw' | 'nsfw';
 
 export type BrowseTimeRange = 'all' | 'today' | 'week' | 'month' | 'custom';
 export interface BrowseUiState {
@@ -210,10 +210,9 @@ export interface BrowseUiState {
   layout: BrowseLayout;
   sort: BrowseSortOption;
   section: string;
-  // Content-rating filter and recency window. Both route browsing through the
-  // local catalog mirror (see useLocalSearch in Browse.tsx). addedFrom/addedTo
-  // are 'YYYY-MM-DD' inputs used only when addedWithin === 'custom'.
-  nsfw: BrowseNsfwFilter;
+  // Recency window. Routes browsing through the local catalog mirror (see
+  // useLocalSearch in Browse.tsx). addedFrom/addedTo are 'YYYY-MM-DD' inputs
+  // used only when addedWithin === 'custom'.
   addedWithin: BrowseTimeRange;
   addedFrom: string;
   addedTo: string;
@@ -261,7 +260,6 @@ const DEFAULT_BROWSE_UI: BrowseUiState = {
   layout: readPersistedLayout(),
   sort: readPersistedSort(),
   section: 'Mod',
-  nsfw: 'all',
   addedWithin: 'all',
   addedFrom: '',
   addedTo: '',
@@ -351,6 +349,22 @@ interface AppState {
   // made the list non-empty.
   batchImportOpen: boolean;
 
+  // Paths handed to the batch dialog by an app-wide file drop, waiting to be
+  // turned into editable rows. Short-lived: the dialog stages them and then
+  // acknowledges them through consumeBatchImportPaths. Row state itself stays
+  // inside the dialog.
+  batchImportPendingPaths: string[];
+
+  // Whether the batch dialog is mid-submission. The app-wide drop controller
+  // rejects drops while set rather than queueing files that reconciliation
+  // would discard when the batch finishes.
+  batchImportBusy: boolean;
+
+  // Set by the add-variants instance of ImportCustomModsModal for its mounted
+  // lifetime. While set, the app-wide drop controller yields supported mod
+  // drops to that modal's own drop zone instead of opening the batch dialog.
+  suppressGlobalModDrop: boolean;
+
   // Display name of the hero currently open in the Locker (e.g. "Abrams"), or
   // null. Published by the Locker page and read by DiscordPresence so Rich
   // Presence can show the viewed hero. Renderer-only, never persisted.
@@ -408,6 +422,9 @@ interface AppState {
   toggleMod: (modId: string) => Promise<boolean>;
   clearModsNotice: () => void;
   deleteMod: (modId: string) => Promise<void>;
+  /** Deletes the ids as one locked main-process batch, with a progress tick
+   *  per removed mod. Never throws. */
+  deleteMods: (modIds: string[], onProgress?: (progress: DeleteModsProgress) => void) => Promise<void>;
   setModPriority: (modId: string, priority: number) => Promise<void>;
   swapModPriority: (modIdA: string, modIdB: string) => Promise<void>;
   reorderMods: (orderedIds: string[]) => Promise<void>;
@@ -426,8 +443,10 @@ interface AppState {
   /** Disable every other mod and enable only `enableKeys` (one card's file(s)),
    *  snapshotting the prior enabled set for one-click restore. `applied` is
    *  false when the target no longer resolves or the whole batch was rejected
-   *  (e.g. game running), so the caller knows whether it's safe to launch. */
-  soloMod: (enableKeys: string[], label: string) => Promise<{ applied: boolean; failures: number; reason?: 'missing' | 'blocked' | 'gameRunning' }>;
+   *  (e.g. game running), so the caller knows whether it's safe to launch.
+   *  reason 'safety' means the swap applied but a target stayed off at the
+   *  safety gate, so launching would not test it. */
+  soloMod: (enableKeys: string[], label: string) => Promise<{ applied: boolean; failures: number; reason?: 'missing' | 'blocked' | 'gameRunning' | 'safety' }>;
   /** Re-apply the enabled set captured by the last soloMod call. */
   restoreSoloMods: () => Promise<{ failures: number }>;
   /** Drop the solo-restore snapshot without touching enablement. */
@@ -464,7 +483,13 @@ interface AppState {
   // Browse session cache (loaded mods + scroll position)
   setBrowseSession: (cache: BrowseSessionCache | null) => void;
   setInstalledScrollTop: (scrollTop: number) => void;
-  setBatchImportOpen: (open: boolean) => void;
+  /** Open the batch dialog, appending any dropped paths not already queued. */
+  openBatchImport: (paths?: string[]) => void;
+  /** Acknowledge paths the dialog has staged as rows. */
+  consumeBatchImportPaths: (paths: string[]) => void;
+  setBatchImportBusy: (busy: boolean) => void;
+  closeBatchImport: () => void;
+  setSuppressGlobalModDrop: (suppress: boolean) => void;
   setLockerHeroName: (name: string | null) => void;
   loadLockerModImages: () => Promise<void>;
   /** `source` is a `data:` URL (custom upload) or an `http(s)` gallery URL. */
@@ -524,6 +549,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   browseSession: null,
   installedScrollTop: 0,
   batchImportOpen: false,
+  batchImportPendingPaths: [],
+  batchImportBusy: false,
+  suppressGlobalModDrop: false,
   lockerHeroName: null,
   lockerModImages: {},
   lockerHideHeroName: {},
@@ -830,7 +858,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       // already moved), the second carries a dead id and the move throws "Mod not
       // found". The desired state is whatever the folder already reflects, so
       // resync silently instead of dropping the whole page to the error screen.
-      if (/Mod not found/.test(String(err))) {
+      if (/Mod not found|MOD_SAFETY_/.test(String(err))) {
         get().loadMods({ silent: true, force: true });
         return false;
       }
@@ -860,6 +888,20 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (isGameRunningModLockError(err)) {
         return;
       }
+      set({ modsError: String(err) });
+    }
+  },
+
+  // A failed batch may have deleted some files before stopping, so resync
+  // instead of guessing which ids are gone.
+  deleteMods: async (modIds, onProgress) => {
+    try {
+      await api.deleteMods(modIds, onProgress);
+      const removed = new Set(modIds);
+      set({ mods: get().mods.filter((m) => !removed.has(m.id)) });
+    } catch (err) {
+      await get().loadMods({ silent: true, force: true });
+      if (isGameRunningModLockError(err)) return;
       set({ modsError: String(err) });
     }
   },
@@ -1056,6 +1098,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       const { mods: updated, failures } = await api.applyModToggleBatch(enable, disable);
       set({ mods: updated, soloRestore: { keys, label } });
+      // Only enables pass the safety gate, so any safety failure is a target.
+      if (failures.some((failure) => failure.includes('MOD_SAFETY_'))) {
+        return { applied: true, failures: failures.length, reason: 'safety' };
+      }
       return { applied: true, failures: failures.length };
     } catch (err) {
       if (isEnableCapError(err)) { set({ modsNotice: ENABLE_CAP_NOTICE }); }
@@ -1299,8 +1345,54 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ installedScrollTop: Math.max(0, scrollTop) });
   },
 
-  setBatchImportOpen: (open: boolean) => {
-    set({ batchImportOpen: open });
+  openBatchImport: (paths?: string[]) => {
+    if (!paths?.length) {
+      set({ batchImportOpen: true });
+      return;
+    }
+    set((state) => {
+      const platform = window.electronAPI.platform;
+      const seen = new Set(state.batchImportPendingPaths.map((p) => pathDedupeKey(p, platform)));
+      const added = paths.filter((p) => {
+        const key = pathDedupeKey(p, platform);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+      return {
+        batchImportOpen: true,
+        batchImportPendingPaths: added.length
+          ? [...state.batchImportPendingPaths, ...added]
+          : state.batchImportPendingPaths,
+      };
+    });
+  },
+
+  // Functional so a drop that lands between the dialog reading pending paths
+  // and acknowledging them survives: only the named paths are removed.
+  consumeBatchImportPaths: (paths: string[]) => {
+    if (!paths.length) return;
+    set((state) => {
+      const platform = window.electronAPI.platform;
+      const consumed = new Set(paths.map((p) => pathDedupeKey(p, platform)));
+      return {
+        batchImportPendingPaths: state.batchImportPendingPaths.filter(
+          (p) => !consumed.has(pathDedupeKey(p, platform)),
+        ),
+      };
+    });
+  },
+
+  setBatchImportBusy: (busy: boolean) => {
+    set({ batchImportBusy: busy });
+  },
+
+  closeBatchImport: () => {
+    set({ batchImportOpen: false, batchImportPendingPaths: [], batchImportBusy: false });
+  },
+
+  setSuppressGlobalModDrop: (suppress: boolean) => {
+    set({ suppressGlobalModDrop: suppress });
   },
 
   setLockerHeroName: (name: string | null) => {

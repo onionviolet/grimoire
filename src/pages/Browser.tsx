@@ -100,8 +100,8 @@ export default function Browser() {
     // it), then bucket the survivors by declared kind (D-04) so the UI can
     // render Mod hosts, Tools, Reference and Community as separate rows.
     const groups = useMemo(
-        () => groupDestinationsByKind(visibleDestinations(BROWSER_DESTINATIONS, settings?.browseNsfwContentMode)),
-        [settings?.browseNsfwContentMode],
+        () => groupDestinationsByKind(visibleDestinations(BROWSER_DESTINATIONS, settings?.nsfwContentMode)),
+        [settings?.nsfwContentMode],
     );
 
     const go = useCallback((url: string) => {

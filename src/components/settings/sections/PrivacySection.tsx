@@ -1,20 +1,22 @@
+import { useSegmentedTabs } from '../../common/useSegmentedTabs';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { EyeOff, Shield } from 'lucide-react';
+import { Eye, EyeClosed, EyeOff, Shield } from 'lucide-react';
 import { useAppStore } from '../../../stores/appStore';
-import { shouldBlurNsfw } from '../../../lib/appSettings';
 import { showToast } from '../../../stores/toastStore';
-import { Badge, Button, Card, Toggle } from '../../common/ui';
+import { Badge, Button, Card, SegmentedControl, Toggle } from '../../common/ui';
 import Tx from '../../translation/Tx';
-import { HiddenCreatorsManager, HiddenCreatorsModal } from '../../HiddenCreatorsManager';
+import { HiddenCreatorsManager, HiddenCreatorsModal, HiddenModsManager, HiddenModsModal } from '../../HiddenContentManager';
 import type { SaltIngestStatus } from '../../../types/electron';
-import type { HiddenCreator } from '../../../types/mod';
+import type { HiddenCreator, HiddenMod, NsfwContentMode } from '../../../types/mod';
 
 // What Grimoire shows you and what it shares on your behalf.
 export default function PrivacySection() {
   const { t } = useTranslation();
+  const nsfwTabs = useSegmentedTabs<NsfwContentMode>();
   const { settings, saveSettings } = useAppStore();
   const [hiddenCreatorsOpen, setHiddenCreatorsOpen] = useState(false);
+  const [hiddenModsOpen, setHiddenModsOpen] = useState(false);
   const [saltIngestStatus, setSaltIngestStatus] = useState<SaltIngestStatus | null>(null);
 
   const refreshSaltIngestStatus = useCallback(async () => {
@@ -61,20 +63,49 @@ export default function PrivacySection() {
     showToast(t('hiddenCreators.shownToast', { name: creator.name }), { tone: 'success' });
   };
 
+  const handleShowMod = async (mod: HiddenMod) => {
+    if (!settings) return;
+    await saveSettings({
+      ...settings,
+      hiddenMods: (settings.hiddenMods ?? []).filter(
+        (entry) => entry.id !== mod.id || entry.section !== mod.section
+      ),
+    });
+    showToast(t('hiddenMods.shownToast', { name: mod.name }), { tone: 'success' });
+  };
+
   const hiddenCreators = settings?.hiddenCreators ?? [];
+  const hiddenMods = settings?.hiddenMods ?? [];
 
   return (
     <>
       <Card title={<Tx k="settings.nav.privacy" fallback="Privacy & Content" />} icon={Shield}>
         <div className="space-y-6">
-          <Toggle
-            checked={shouldBlurNsfw(settings)}
-            onChange={(checked) => settings && saveSettings({ ...settings, installedHideNsfwPreviews: checked })}
-            label={<Tx k="settings.preferences.hideNsfw" fallback="Hide NSFW Content" />}
-            description={<Tx k="settings.preferences.hideNsfwDescription" fallback="Blur thumbnail images for mods marked as NSFW." />}
-          />
+          <div>
+            <span className="block text-sm font-medium text-text-primary">
+              <Tx k="settings.privacy.nsfwContent" fallback="NSFW content" />
+            </span>
+            <p className="mt-0.5 mb-2.5 text-xs text-text-secondary">
+              <Tx
+                k="settings.privacy.nsfwContentDescription"
+                fallback="Applies across Grimoire. Blur covers thumbnails; Hide also removes NSFW mods from Browse results."
+              />
+            </p>
+            <div {...nsfwTabs.panelProps(settings?.nsfwContentMode ?? 'blur')} className="sr-only">{t(`browse.viewOptions.${settings?.nsfwContentMode ?? 'blur'}`)}</div>
+            <SegmentedControl<NsfwContentMode>
+              tabs={nsfwTabs}
+              label={t('settings.privacy.nsfwContent')}
+              value={settings?.nsfwContentMode ?? 'blur'}
+              onChange={(mode) => settings && saveSettings({ ...settings, nsfwContentMode: mode })}
+              options={[
+                { value: 'show', label: <><Eye className="h-3.5 w-3.5" />{t('browse.viewOptions.show')}</> },
+                { value: 'blur', label: <><EyeClosed className="h-3.5 w-3.5" />{t('browse.viewOptions.blur')}</> },
+                { value: 'hide', label: <><EyeOff className="h-3.5 w-3.5" />{t('browse.viewOptions.hide')}</> },
+              ]}
+            />
+          </div>
 
-          <div className="h-px bg-white/5" />
+          <div className="h-px bg-hl/5" />
 
           <div>
             <Toggle
@@ -123,11 +154,46 @@ export default function PrivacySection() {
         )}
       </Card>
 
+      <Card
+        title={<Tx k="hiddenMods.title" fallback="Hidden mods" />}
+        description={<Tx k="hiddenMods.description" fallback="Hide individual GameBanana mods from Browse. Installed mods remain visible." />}
+        icon={EyeOff}
+        action={
+          <div className="flex items-center gap-2">
+            <Badge>{hiddenMods.length}</Badge>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              icon={EyeOff}
+              onClick={() => setHiddenModsOpen(true)}
+            >
+              <Tx k="hiddenMods.manage" fallback="Manage hidden mods" />
+            </Button>
+          </div>
+        }
+      >
+        {hiddenMods.length > 0 ? (
+          <HiddenModsManager mods={hiddenMods} onRemove={handleShowMod} />
+        ) : (
+          <p className="text-xs text-text-secondary">
+            <Tx k="hiddenMods.none" fallback="No mods are hidden right now." />
+          </p>
+        )}
+      </Card>
+
       <HiddenCreatorsModal
         open={hiddenCreatorsOpen}
         onClose={() => setHiddenCreatorsOpen(false)}
         creators={hiddenCreators}
         onRemove={handleShowCreator}
+      />
+
+      <HiddenModsModal
+        open={hiddenModsOpen}
+        onClose={() => setHiddenModsOpen(false)}
+        mods={hiddenMods}
+        onRemove={handleShowMod}
       />
     </>
   );

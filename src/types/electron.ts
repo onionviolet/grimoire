@@ -1,6 +1,8 @@
+import type { ModSafetyPrompt, InstalledModSafety } from './modSafety';
 import type {
     Mod,
     AppSettings,
+    DeleteModsProgress,
     GlobalModType,
     ModConflict,
     UnknownModDetectionProgress,
@@ -104,10 +106,18 @@ export interface DownloadModArgs {
     modName?: string;
     section?: string;
     categoryId?: number;
+    /** The download replaces installed content (an update, a confirmed
+     *  replace, a reinstall, or a merge-source refresh). The caller removes
+     *  what it replaces and restores the enabled and Global state itself, so
+     *  the backend leaves the mod's other files enabled instead of switching
+     *  sibling variants off. */
+    isReplacement?: boolean;
 }
 
 export interface GetCategoriesArgs {
     categoryModelName: string;
+    /** Refetch a cached tree older than an hour and resolve with the fresh one. */
+    revalidate?: boolean;
 }
 
 export interface CleanupResult {
@@ -116,6 +126,10 @@ export interface CleanupResult {
 
 export interface GameinfoStatus {
     configured: boolean;
+    /** Why, as a code the renderer can word for users; `message` stays the
+     *  technical detail. 'language-paths-missing' and 'boot-paths-missing'
+     *  still load mods. */
+    reason: 'ok' | 'not-found' | 'mods-not-loaded' | 'language-paths-missing' | 'boot-paths-missing' | 'unrepairable' | 'error';
     message: string;
     missing: boolean;
     candidates: string[];
@@ -259,6 +273,12 @@ export interface PerformanceConfigStatus {
     bundledVersion: string;
     /** Opt-in convar keys the last apply wrote. */
     appliedOptIns?: string[];
+    /** Current values of the active ConVars lines Grimoire manages in
+     *  gameinfo.gi, hand edits included. */
+    managedConvarValues?: Record<string, string>;
+    /** ConVars values banked as overrides for the applied preset. A disabled
+     *  opt-in with one here comes back at this value when re-enabled. */
+    savedConvarValues?: Record<string, string>;
     /** Applied, but the file no longer matches what Grimoire wrote (hand edits). */
     handEdited?: boolean;
     /** Saved user deviations from the preset (hand edits harvested on reapply,
@@ -427,6 +447,8 @@ export interface ImportCustomModResult {
     ok: boolean;
     /** Mod slots this source produced (an archive can yield several). */
     imported: number;
+    /** Imported disabled; this source contains versions still needing consent. */
+    needsReview?: boolean;
     /** Resolved local group id when this source was imported as a variant.
      *  Returned even on failure so a retry joins files that already landed. */
     localGroupId?: string;
@@ -863,6 +885,26 @@ export interface CrosshairSettings {
     pipBorder: boolean;
 }
 
+export interface CursorPack {
+    id: string;
+    name: string;
+    /** Archive folder this set came from when the mod shipped several. */
+    variant?: string;
+    /** Lowercased file names the pack writes into the game's cursor folder. */
+    files: string[];
+    installedAt: string;
+    gameBananaId?: number;
+    gameBananaFileId?: number;
+}
+
+export interface CursorPacksState {
+    packs: CursorPack[];
+    /** The applied pack, or null when the game has its stock cursors. */
+    activeId: string | null;
+}
+
+export type CursorPreview = Record<string, string>;
+
 export interface CrosshairPreset {
     id: string;
     name: string;
@@ -970,10 +1012,19 @@ export interface ElectronAPI {
     };
 
     // Mods
+    getModSafetyPrompts: () => Promise<ModSafetyPrompt[]>;
+    respondModSafety: (id: string, accepted: boolean) => Promise<void>;
+    getInstalledModSafety: () => Promise<{ mods: InstalledModSafety[]; running: boolean; failed: boolean }>;
+    rescanModSafety: () => Promise<InstalledModSafety[]>;
+    reviewModSafety: (id: string, fingerprint: string) => Promise<Mod>;
+    onModSafetyChanged: (callback: () => void) => () => void;
     getMods: () => Promise<Mod[]>;
     enableMod: (modId: string) => Promise<Mod>;
     disableMod: (modId: string) => Promise<Mod>;
     deleteMod: (modId: string) => Promise<void>;
+    deleteMods: (modIds: string[]) => Promise<void>;
+    onDeleteModsProgress: (callback: (progress: DeleteModsProgress) => void) => () => void;
+    assertReplacementSafety: (modIds: string[]) => Promise<void>;
     revealModInFolder: (modId: string) => Promise<void>;
     /** Rescan every installed file for non-VPK impostors. Reporting only. */
     reconcileVpkImpostors: () => Promise<VpkImpostorReport[]>;
@@ -1287,6 +1338,7 @@ export interface ElectronAPI {
         optIns?: string[],
         version?: string | null
     ) => Promise<PerformanceConfigStatus>;
+    reapplyWipedPerformanceConfig: () => Promise<PerformanceConfigStatus>;
     restorePerformanceConfigBackup: () => Promise<PerformanceConfigStatus>;
     getPerformanceLatestInfo: (presetId: string) => Promise<PerformanceLatestInfo>;
     checkPerformanceLatest: (presetId: string, force?: boolean) => Promise<PerformanceLatestInfo>;
@@ -1378,7 +1430,8 @@ export interface ElectronAPI {
     createProfile: (name: string, crosshairSettings?: ProfileCrosshairSettings) => Promise<Profile>;
     createProfileFromGameBananaIds: (args: { name: string; gameBananaIds: number[] }) => Promise<Profile>;
     updateProfile: (profileId: string, crosshairSettings?: ProfileCrosshairSettings) => Promise<Profile>;
-    applyProfile: (profileId: string) => Promise<ApplyProfileResult>;
+    previewProfile: (profileId: string) => Promise<ProfileApplyPreview>;
+    applyProfile: (profileId: string, reviewToken?: string) => Promise<ApplyProfileResult>;
     deleteProfile: (profileId: string) => Promise<void>;
     renameProfile: (profileId: string, newName: string) => Promise<Profile>;
     removeProfileCrosshair: (profileId: string) => Promise<Profile>;
@@ -1469,6 +1522,16 @@ export interface ElectronAPI {
     importCrosshairFromGame: (gamePath: string) => Promise<{ found: boolean; settings: CrosshairSettings | null }>;
     getAutoexecCommands: (gamePath: string) => Promise<{ commands: string[]; manualCommands: string[]; exists: boolean }>;
     saveAutoexecCommands: (gamePath: string, commands: string[]) => Promise<{ success: boolean; path: string }>;
+
+    // Cursor packs (loose BMPs over game/citadel/resource/cursors, not VPKs)
+    getCursorPacks: () => Promise<CursorPacksState>;
+    /** Write a pack's files over the game's cursors, or put the stock set back for null. */
+    setActiveCursorPack: (id: string | null) => Promise<CursorPacksState>;
+    deleteCursorPack: (id: string) => Promise<CursorPacksState>;
+    /** Image data URLs by file name, for a pack or (null) the stock set. */
+    getCursorPreview: (id: string | null) => Promise<CursorPreview>;
+    /** Install one archive or a set of loose cursor files, then apply it. */
+    importCursorPack: (paths: string[]) => Promise<CursorPacksState>;
 
     // Updater
     updater: {
@@ -1744,7 +1807,7 @@ export interface ElectronAPI {
     deadworksServerContent: (serverId: string) => Promise<DeadworksContentItem[]>;
     deadworksRelayStats: () => Promise<DeadworksRelayStats | null>;
     deadworksPingServer: (addr: string) => Promise<number>;
-    deadworksConnect: (serverId: string, addr: string) => Promise<DeadworksConnectResult>;
+    deadworksConnect: (serverId: string, addr: string, serverName: string) => Promise<DeadworksConnectResult>;
     onDeadworksDownloadProgress: (callback: (p: DeadworksConnectProgress) => void) => () => void;
 }
 
@@ -1793,6 +1856,25 @@ export interface Profile {
 export interface ApplyProfileResult {
     profile: Profile;
     failures: string[];
+    unresolved: ProfileApplyEntry[];
+}
+
+export interface ProfileApplyEntry {
+    fileName: string;
+    enabled: boolean;
+    status: 'matched' | 'changed' | 'missing' | 'replaced' | 'ambiguous';
+    modName?: string;
+    modId?: string;
+}
+
+export interface ProfileApplyPreview {
+    profileId: string;
+    profileName: string;
+    entries: ProfileApplyEntry[];
+    issues: ProfileApplyEntry[];
+    enableCount: number;
+    disableCount: number;
+    reviewToken: string;
 }
 
 declare global {

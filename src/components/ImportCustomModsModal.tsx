@@ -13,7 +13,7 @@ import {
   UploadCloud,
   X,
 } from 'lucide-react';
-import { Modal } from './common/Modal';
+import { Modal, ModalFooter } from './common/Modal';
 import { Button, CheckboxMark, IconButton, ModalHeader, Tag } from './common/ui';
 import { Input } from './common/forms';
 import {
@@ -31,12 +31,15 @@ import type {
 import {
   IMAGE_EXTS,
   VPK_IMPORT_EXTS,
-  VPK_IMPORT_RE,
+  classifyDroppedModFiles,
   deriveModNameFromPath,
   deriveVariantLabel,
   fileNameOf,
   pathDedupeKey,
 } from '../lib/customModImport';
+import { useAppStore } from '../stores/appStore';
+import { useNavigate } from 'react-router-dom';
+import { useModSafetyStore } from '../stores/modSafetyStore';
 
 type RowStatus = 'pending' | 'importing' | 'done' | 'failed';
 
@@ -71,6 +74,14 @@ interface ImportCustomModsModalProps {
    *  the group when the target is still a standalone mod), which keeps uuid
    *  minting out of this dialog. */
   addToGroup?: { modName: string };
+  /** Paths handed over by the app-wide drop controller. Staged as rows on
+   *  arrival, then acknowledged through `onConsumedPaths`. */
+  pendingPaths?: string[];
+  onConsumedPaths?: (paths: string[]) => void;
+  /** Lets the host mirror submission state (the app-wide controller rejects
+   *  drops while a batch is running). Unused by the add-variants instance,
+   *  which ignores drops on its own while submitting. */
+  onSubmittingChange?: (submitting: boolean) => void;
 }
 
 const newRow = (path: string): ImportRow => ({
@@ -113,8 +124,21 @@ export default function ImportCustomModsModal({
   onImport,
   onFinished,
   addToGroup,
+  pendingPaths,
+  onConsumedPaths,
+  onSubmittingChange,
 }: ImportCustomModsModalProps) {
   const { t } = useTranslation();
+  const navigate = useNavigate();
+  const safetyReview = useAppStore(s => s.settings?.experimentalModSafety ?? false);
+  const reviewAfterClose = useRef(false);
+  const close = () => {
+    onClose();
+    if (reviewAfterClose.current) {
+      useModSafetyStore.setState({ detail: null });
+      navigate('/settings/mod-safety');
+    }
+  };
   const platform = window.electronAPI.platform;
   const [rows, setRows] = useState<ImportRow[]>([]);
   const [dragActive, setDragActive] = useState(false);
@@ -167,6 +191,7 @@ export default function ImportCustomModsModal({
                   ...row,
                   recognized: result,
                   name: result.title && !row.nameTouched ? result.title : row.name,
+                  thumbnailDataUrl: row.thumbnailDataUrl || result.thumbnailUrl || '',
                 }
               : row
           )
@@ -208,6 +233,29 @@ export default function ImportCustomModsModal({
     [platform]
   );
 
+  // Stage paths dropped anywhere in the app. addPaths owns the dedupe and the
+  // row defaults, and the peek effect above keys off rows, so files arriving
+  // after mount get imprint recognition with no extra wiring.
+  useEffect(() => {
+    if (!pendingPaths?.length) return;
+    addPaths(pendingPaths);
+    onConsumedPaths?.(pendingPaths);
+  }, [pendingPaths, addPaths, onConsumedPaths]);
+
+  useEffect(() => {
+    onSubmittingChange?.(submitting);
+  }, [submitting, onSubmittingChange]);
+
+  // Add-variants mode is itself a VPK drop target, so the app-wide controller
+  // must stand down for as long as this instance is mounted.
+  const ownsModDrops = !!addToGroup;
+  useEffect(() => {
+    if (!ownsModDrops) return;
+    const { setSuppressGlobalModDrop } = useAppStore.getState();
+    setSuppressGlobalModDrop(true);
+    return () => setSuppressGlobalModDrop(false);
+  }, [ownsModDrops]);
+
   const pickFiles = async () => {
     if (submitting) return;
     const picked = await showOpenDialogMulti({
@@ -218,6 +266,9 @@ export default function ImportCustomModsModal({
     addPaths(picked);
   };
 
+  // Live for the add-variants instance. The batch instance rarely sees this:
+  // the app-wide controller claims supported files in the capture phase and
+  // hands them over as pendingPaths instead.
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -226,23 +277,13 @@ export default function ImportCustomModsModal({
     const files = Array.from(e.dataTransfer.files ?? []);
     if (files.length === 0) return;
 
-    const paths: string[] = [];
-    const rejected: string[] = [];
-    let unresolved = 0;
-    for (const file of files) {
-      if (!VPK_IMPORT_RE.test(file.name)) {
-        rejected.push(file.name);
-        continue;
-      }
-      // No real on-disk path: almost always a file dragged out of Windows'
-      // built-in zip viewer (a virtual shell file). Point them at the zip itself.
-      const path = window.electronAPI.getDroppedFilePath(file);
-      if (!path) unresolved++;
-      else paths.push(path);
-    }
+    const { paths, rejectedNames, unresolvedCount } = classifyDroppedModFiles(files, (file) =>
+      window.electronAPI.getDroppedFilePath(file)
+    );
 
-    if (unresolved > 0) setError(t('installed.import.dropUnresolved'));
-    else if (rejected.length > 0) setError(t('installed.import.expectedVpk', { name: rejected[0] }));
+    if (unresolvedCount > 0) setError(t('installed.import.dropUnresolved'));
+    else if (rejectedNames.length > 0)
+      setError(t('installed.import.expectedVpk', { name: rejectedNames[0] }));
     else setError(null);
     addPaths(paths);
   };
@@ -359,12 +400,13 @@ export default function ImportCustomModsModal({
         const path = batch[index]?.path;
         if (path && !result.ok) failed.set(path, result.error);
       });
+      reviewAfterClose.current ||= results.some(result => result.ok && result.needsReview);
       onFinished?.(results);
 
       // Drop what landed, keep what didn't (with its reason) so the button
       // retries exactly the leftovers.
       if (failed.size === 0) {
-        onClose();
+        close();
         return;
       }
       setRows((prev) =>
@@ -400,11 +442,11 @@ export default function ImportCustomModsModal({
 
   return (
     <Modal
-      onClose={onClose}
+      onClose={close}
       labelledBy="import-custom-mods-title"
       size="xl"
       dismissable={!submitting}
-      panelClassName="flex max-h-[85vh] flex-col overflow-hidden"
+      panelClassName="max-h-[min(85vh,100%)]"
     >
       <ModalHeader
         title={
@@ -414,13 +456,13 @@ export default function ImportCustomModsModal({
         }
         titleId="import-custom-mods-title"
         subtitle={rows.length > 0 ? t('installed.batchImport.fileCount', { count: rows.length }) : undefined}
-        onClose={onClose}
+        onClose={close}
         closeLabel={t('common.actions.close')}
         closeDisabled={submitting}
       />
 
       <div
-        className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-3.5"
+        className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-4"
         onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); if (!submitting) setDragActive(true); }}
         onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = submitting ? 'none' : 'copy'; if (!submitting) setDragActive(true); }}
         onDragLeave={(e) => {
@@ -437,7 +479,9 @@ export default function ImportCustomModsModal({
         <p className="text-xs leading-5 text-text-secondary">
           {addToGroup
             ? t('installed.batchImport.addVariantsHelp', { name: addToGroup.modName })
-            : t('installed.batchImport.help')}
+            : safetyReview
+              ? t('installed.batchImport.help')
+              : t('installed.batchImport.helpEnabled')}
         </p>
 
         {rows.length === 0 ? (
@@ -455,7 +499,7 @@ export default function ImportCustomModsModal({
             className={`flex flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed px-4 py-10 text-center transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg-secondary ${
               dragActive
                 ? 'border-accent bg-accent/10'
-                : 'cursor-pointer border-border bg-bg-tertiary/40 hover:border-white/20 hover:bg-bg-tertiary'
+                : 'cursor-pointer border-border bg-bg-tertiary/40 hover:border-hl/20 hover:bg-bg-tertiary'
             }`}
           >
             <UploadCloud className="h-7 w-7 text-text-secondary" aria-hidden />
@@ -601,11 +645,11 @@ export default function ImportCustomModsModal({
                       />
                     )}
                     <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                      <span className="truncate font-mono text-[11px] text-text-secondary" title={row.path}>
+                      <span className="truncate font-mono text-2xs text-text-secondary" title={row.path}>
                         {fileNameOf(row.path)}
                       </span>
                       {nameMissing && (
-                        <span className="text-[11px] text-state-danger">
+                        <span className="text-2xs text-state-danger">
                           {t('installed.batchImport.nameRequired')}
                         </span>
                       )}
@@ -623,7 +667,7 @@ export default function ImportCustomModsModal({
                         <Tag tone="neutral">{t('installed.batchImport.importedCount', { count: row.imported })}</Tag>
                       )}
                       {row.error && (
-                        <span className="text-[11px] text-state-danger">{row.error}</span>
+                        <span className="text-2xs text-state-danger">{row.error}</span>
                       )}
                     </div>
                   </div>
@@ -636,10 +680,10 @@ export default function ImportCustomModsModal({
                     disabled={submitting}
                     aria-pressed={row.nsfw}
                     title={t('installed.imageField.nsfw')}
-                    className={`flex-shrink-0 rounded-md border px-2 py-1 text-[11px] font-medium uppercase tracking-wider transition-colors disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer ${
+                    className={`flex-shrink-0 rounded-md border px-2 py-1 text-2xs font-medium uppercase tracking-wider transition-colors disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer ${
                       row.nsfw
                         ? 'border-accent/50 bg-accent/15 text-accent'
-                        : 'border-border text-text-secondary hover:border-white/20 hover:text-text-primary'
+                        : 'border-border text-text-secondary hover:border-hl/20 hover:text-text-primary'
                     }`}
                   >
                     {t('installed.imageField.nsfw')}
@@ -674,14 +718,18 @@ export default function ImportCustomModsModal({
         )}
       </div>
 
-      <div className="flex flex-shrink-0 flex-col items-center gap-1.5 border-t border-border px-5 py-3">
+      <ModalFooter>
+        {unnamedCount > 0 && (
+          <span className="mr-auto text-2xs text-state-danger">
+            {t('installed.batchImport.unnamedBlocked', { count: unnamedCount })}
+          </span>
+        )}
         <Button
           variant="primary"
           icon={FilePlus}
           onClick={handleSubmit}
           disabled={!canSubmit}
           isLoading={submitting}
-          className="!px-10 !py-1.5"
         >
           {addToGroup
             ? t('installed.batchImport.addVariantCount', { count: rows.length })
@@ -691,12 +739,7 @@ export default function ImportCustomModsModal({
               ? t('installed.batchImport.importCount', { count: rows.length })
               : t('profiles.actions.import')}
         </Button>
-        {unnamedCount > 0 && (
-          <span className="text-[11px] text-state-danger">
-            {t('installed.batchImport.unnamedBlocked', { count: unnamedCount })}
-          </span>
-        )}
-      </div>
+      </ModalFooter>
     </Modal>
   );
 }

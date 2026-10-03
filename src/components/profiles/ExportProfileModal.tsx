@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { X, Download, ClipboardCopy, CheckCircle2, AlertTriangle, Loader2 } from 'lucide-react';
-import { Button } from '../common/ui';
-import { Modal } from '../common/Modal';
+import { Download, ClipboardCopy, CheckCircle2, AlertTriangle, Loader2 } from 'lucide-react';
+import { Button, ModalHeader } from '../common/ui';
+import { Modal, ModalBody, ModalFooter } from '../common/Modal';
 import { exportPortableProfile } from '../../lib/api';
 import { PORTABLE_PROFILE_FILE_EXTENSION } from '../../types/portableProfile';
 import type { PortableExportResult } from '../../types/portableProfile';
@@ -23,6 +23,7 @@ export default function ExportProfileModal({ profileId, profileName, onClose }: 
   const [result, setResult] = useState<PortableExportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const titleId = useId();
 
   useEffect(() => {
     let cancelled = false;
@@ -59,31 +60,16 @@ export default function ExportProfileModal({ profileId, profileName, onClose }: 
   };
 
   return (
-    <Modal
-      onClose={onClose}
-      labelledBy="export-profile-title"
-      size="md"
-      panelClassName="flex flex-col overflow-hidden"
-    >
-        <div className="flex items-start justify-between p-6 border-b border-white/10">
-          <div className="min-w-0">
-            <h2 id="export-profile-title" className="text-xl font-bold text-text-primary">
-              {t('profiles.actions.exportProfile')}
-            </h2>
-            <p className="text-sm text-text-secondary mt-1 truncate" title={profileName}>
-              {profileName}
-            </p>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-2 rounded-lg hover:bg-white/5 transition-colors cursor-pointer text-text-secondary hover:text-text-primary flex-shrink-0"
-            aria-label={t('common.actions.close')}
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        <div className="p-6 space-y-4">
+    <Modal onClose={onClose} labelledBy={titleId} size="md">
+      <ModalHeader
+        title={t('profiles.actions.exportProfile')}
+        titleId={titleId}
+        subtitle={profileName}
+        subtitleTitle={profileName}
+        onClose={onClose}
+        closeLabel={t('common.actions.close')}
+      />
+        <ModalBody className="space-y-4">
           {!result && !error && (
             <div className="text-text-secondary text-sm inline-flex items-center gap-2">
               <Loader2 className="w-4 h-4 animate-spin" />
@@ -142,18 +128,18 @@ export default function ExportProfileModal({ profileId, profileName, onClose }: 
               {result.shareCode && (
                 <div className="mt-2">
                   <div className="text-xs text-text-secondary mb-1">{t('exportProfile.shareCodePreview')}</div>
-                  <code className="block text-[11px] font-mono bg-bg-tertiary border border-white/5 rounded-md px-2 py-1.5 break-all text-text-secondary max-h-24 overflow-y-auto">
+                  <code className="block text-2xs font-mono bg-bg-tertiary border border-hl/5 rounded-md px-2 py-1.5 break-all text-text-secondary max-h-24 overflow-y-auto">
                     {result.shareCode}
                   </code>
                 </div>
               )}
             </>
           )}
-        </div>
+        </ModalBody>
 
-        <div className="p-4 border-t border-white/10 flex justify-end">
+        <ModalFooter>
           <Button variant="secondary" onClick={onClose}>{t('common.actions.close')}</Button>
-        </div>
+        </ModalFooter>
     </Modal>
   );
 }

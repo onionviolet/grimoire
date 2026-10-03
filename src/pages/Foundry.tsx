@@ -15,7 +15,7 @@ import {
   Flag,
 } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { EmptyState, PageHeader } from '../components/common/PageComponents';
+import { EmptyState, PageHeader, PageLayout } from '../components/common/PageComponents';
 import { canonicalHeroName } from '../lib/lockerUtils';
 import Tx from '../components/translation/Tx';
 import { useAppStore } from '../stores/appStore';
@@ -206,7 +206,7 @@ export default function Foundry() {
   // No game path: same gate regardless of mode.
   if (!hasGamePath) {
     return (
-      <div className="space-y-4 p-6">
+      <PageLayout>
         <PageHeader
           title={<Tx k="foundry.header.title" fallback="Foundry" />}
           description={
@@ -226,7 +226,7 @@ export default function Foundry() {
             />
           }
         />
-      </div>
+      </PageLayout>
     );
   }
 
@@ -256,7 +256,7 @@ export default function Foundry() {
   // Hero roster landing.
   if (activeMode === 'heroes') {
     return (
-      <div className="space-y-4 p-6">
+      <PageLayout>
         <PageHeader
           title={<Tx k="foundry.header.title" fallback="Foundry" />}
           description={
@@ -307,7 +307,7 @@ export default function Foundry() {
         />
         <FoundryHeroGrid heroes={heroes} onPick={setSelectedHero} />
         {nonStandardReport && <NonStandardReportView report={nonStandardReport} />}
-      </div>
+      </PageLayout>
     );
   }
 
@@ -326,7 +326,7 @@ export default function Foundry() {
           <ArrowLeft size={15} />
           <Tx k="foundry.backToHeroes" fallback="Heroes" />
         </button>
-        <span className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-text-secondary/70">
+        <span className="px-2 pb-1 text-2xs font-semibold text-text-secondary/70">
           <Tx k="foundry.subtools.heading" fallback="Workshop" />
         </span>
         {SUBTOOLS.filter(
@@ -357,7 +357,7 @@ export default function Foundry() {
               <Icon size={16} />
               <span className="flex-1 text-left"><Tx k={tool.labelKey} fallback={tool.id} /></span>
               {!tool.enabled && (
-                <span className="text-[9px] uppercase tracking-wide text-text-secondary/40">
+                <span className="text-2xs text-text-secondary/40">
                   <Tx k="foundry.subtools.soon" fallback="soon" />
                 </span>
               )}
@@ -370,7 +370,7 @@ export default function Foundry() {
           from a long catalog and back returns to where you were reading.
           Layout's shared container is keyed by route and remounts. */}
       <div ref={toolScrollRef} className="flex min-w-0 flex-1 flex-col overflow-y-auto">
-        <div className="space-y-4 p-6">
+        <PageLayout>
           <PageHeader
             title={<Tx k="foundry.header.title" fallback="Foundry" />}
             description={
@@ -403,7 +403,7 @@ export default function Foundry() {
           ) : (
             <LibraryBrowse heroNames={heroNames} hero={null} onStage={stageEdit} />
           )}
-        </div>
+        </PageLayout>
       </div>
       <FoundryBuildTray edits={stagedEdits} outputName={outputName} onOutputNameChange={setOutputName} onForge={forge} onInstall={install} onRemove={removeEdit} />
     </div>

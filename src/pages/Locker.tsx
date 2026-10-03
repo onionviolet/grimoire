@@ -16,6 +16,7 @@ import { getActiveDeadlockPath, shouldBlurNsfw } from '../lib/appSettings';
 import { getAssetPath } from '../lib/assetPath';
 import HeroSkinsPanel from '../components/locker/HeroSkinsPanel';
 import GlobalModPicker from '../components/locker/GlobalModPicker';
+import CursorPackPane, { CursorImportButton } from '../components/locker/CursorPackPane';
 import CategoryModPicker from '../components/locker/CategoryModPicker';
 import { CreateCategoryModal, ManageCategoriesModal } from '../components/locker/ManageCategoriesModal';
 import {
@@ -64,6 +65,7 @@ import {
   groupGlobalMods,
   groupLockerSkins,
   groupModsByCategory,
+  heroListMissesRoster,
   isLockerManagedMod,
   isLockerManagedSound,
   isPropContainerType,
@@ -115,6 +117,7 @@ import {
   type StableKeyPreferencesMigratedDetail,
 } from '../lib/stableKeyMigration';
 import { showToast } from '../stores/toastStore';
+import { useCursorPackStore } from '../stores/cursorPackStore';
 import {
   appendHeroTypeaheadCharacter,
   backspaceHeroTypeahead,
@@ -367,6 +370,9 @@ export default function Locker() {
     }
   }, [activeDeadlockPath, loadMods]);
 
+  const cursorPackCount = useCursorPackStore((s) => s.packs.length);
+  const loadCursorPacks = useCursorPackStore((s) => s.load);
+
   // Refresh on any completed download so a newly-installed mod (and its
   // freshly-classified globalType) surfaces here without leaving the page,
   // matching the Installed page's behavior.
@@ -374,9 +380,14 @@ export default function Locker() {
     if (!activeDeadlockPath) return;
     const unsubscribe = window.electronAPI.onDownloadComplete(() => {
       loadMods();
+      void loadCursorPacks();
     });
     return unsubscribe;
-  }, [activeDeadlockPath, loadMods]);
+  }, [activeDeadlockPath, loadMods, loadCursorPacks]);
+
+  useEffect(() => {
+    void loadCursorPacks();
+  }, [loadCursorPacks]);
 
   useEffect(() => {
     let active = true;
@@ -389,6 +400,12 @@ export default function Locker() {
         lockerCategoriesCache = data;
         if (!active) return;
         setCategories(data);
+        if (heroListMissesRoster(buildHeroList(data))) {
+          // Main throttles this to hourly and falls back to the cached tree.
+          const fresh = await getGamebananaCategories('ModCategory', { revalidate: true });
+          lockerCategoriesCache = fresh;
+          if (active) setCategories(fresh);
+        }
       } catch (err) {
         if (active) {
           setCategoriesError(String(err));
@@ -600,8 +617,8 @@ export default function Locker() {
     const ids = new Set(priorityMods.map((mod) => mod.id));
     for (const mod of mods) if (getEffectiveGlobalType(mod)) ids.add(mod.id);
     for (const entry of globalSoundInventory) ids.add(entry.modId);
-    return ids.size;
-  }, [mods, priorityMods, globalSoundInventory]);
+    return ids.size + cursorPackCount;
+  }, [mods, priorityMods, globalSoundInventory, cursorPackCount]);
   const [globalPickerOpen, setGlobalPickerOpen] = useState(false);
   // Sequential on purpose: each call renames a VPK under the main-process
   // mutation lock, so firing them concurrently would just queue anyway, and
@@ -617,8 +634,8 @@ export default function Locker() {
       (priorityMods.length > 0 ? 1 : 0) +
       GLOBAL_SOUND_SECTIONS.filter(
         (category) => entriesInCategory(globalSoundInventory, category).length > 0
-      ).length,
-    [globalGroups, priorityMods, globalSoundInventory]
+      ).length + (cursorPackCount > 0 ? 1 : 0),
+    [globalGroups, priorityMods, globalSoundInventory, cursorPackCount]
   );
 
   // User-defined categories for the General drill-in (see lib/lockerCategories.ts).
@@ -1351,7 +1368,7 @@ export default function Locker() {
               {shuffleOnLaunch && (
                 <span
                   className={`rounded-full px-1.5 text-xs tabular-nums ${
-                    shuffleIncluded.size > 0 ? 'bg-accent/15 text-accent' : 'bg-yellow-500/15 text-yellow-400'
+                    shuffleIncluded.size > 0 ? 'bg-accent/15 text-accent' : 'bg-state-warning/15 text-state-warning'
                   }`}
                 >
                   {shuffleIncluded.size + soundShuffleIncluded.size}
@@ -1378,7 +1395,7 @@ export default function Locker() {
             unassignedSkins.length + unassignedSounds.length > 0 && (
               <button
                 onClick={() => setViewMode('list')}
-                className="flex items-center gap-1.5 px-2 py-1 text-xs rounded-md bg-yellow-500/10 border border-yellow-500/50 text-yellow-400 hover:bg-yellow-500/20 transition-colors"
+                className="flex items-center gap-1.5 px-2 py-1 text-xs rounded-md bg-state-warning/10 border border-state-warning/50 text-state-warning hover:bg-state-warning/20 transition-colors"
                 title={t('locker.page.switchToListViewToSeeUnassigned')}
               >
                 <Layers className="w-3 h-3" />
@@ -1864,7 +1881,7 @@ function GlobalGalleryCard({ count, typeCount, onNavigate, typeaheadClassName = 
         <div className="font-reaver text-lg leading-tight tracking-wide text-white drop-shadow-[0_2px_12px_rgba(0,0,0,0.6)]">
           {t('locker.page.global')}
         </div>
-        <div className="text-[11px] text-white/70 drop-shadow-[0_2px_12px_rgba(0,0,0,0.6)]">
+        <div className="text-2xs text-white/70 drop-shadow-[0_2px_12px_rgba(0,0,0,0.6)]">
           {isEmpty
             ? t('locker.page.globalEmptyHint')
             : t('locker.page.categoryCount', { count: typeCount })}
@@ -1884,6 +1901,13 @@ function GlobalGalleryCard({ count, typeCount, onNavigate, typeaheadClassName = 
 const PRIORITY_TAB = 'priority' as const;
 
 /**
+ * Synthetic tab id for cursor packs. Not a GlobalModType either: cursor mods
+ * are loose BMPs over the game's cursor folder, not VPKs, so they have no
+ * Mod entry to classify (see CursorPackPane).
+ */
+const CURSOR_TAB = 'cursor' as const;
+
+/**
  * Tab id namespace for a user-defined category (src/lib/lockerCategories.ts).
  * Namespaced so a category id can never be mistaken for a GlobalModType or for
  * PRIORITY_TAB: categories are a third, view-only axis, and the same rule that
@@ -1900,7 +1924,7 @@ type CustomTabId = `${typeof CUSTOM_TAB_PREFIX}${string}`;
  */
 const SOUND_TAB_PREFIX = 'sound:';
 type SoundTabId = `${typeof SOUND_TAB_PREFIX}${string}`;
-type GeneralTabId = GlobalModType | typeof PRIORITY_TAB | CustomTabId | SoundTabId;
+type GeneralTabId = GlobalModType | typeof PRIORITY_TAB | typeof CURSOR_TAB | CustomTabId | SoundTabId;
 
 function customTabId(categoryId: string): CustomTabId {
   return `${CUSTOM_TAB_PREFIX}${categoryId}`;
@@ -1936,6 +1960,7 @@ function generalTabLabel(
   categories: readonly LockerCategory[]
 ): string {
   if (tab === PRIORITY_TAB) return t('installed.priority.chip');
+  if (tab === CURSOR_TAB) return t('locker.cursors.tab');
   if (isCustomTab(tab)) {
     const id = customTabCategoryId(tab);
     return categories.find((category) => category.id === id)?.name ?? '';
@@ -2051,9 +2076,11 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
   // kind of mod is this?"). The sound categories follow behind their own
   // separator, then the user's own categories behind a third, as further axes
   // again ("what does this VPK actually write?", "which pile did I put it in?").
-  const fixedTabIds: readonly GeneralTabId[] = [...GLOBAL_MOD_TYPE_ORDER, PRIORITY_TAB];
+  const cursorPackCount = useCursorPackStore((s) => s.packs.length);
+  const fixedTabIds: readonly GeneralTabId[] = [...GLOBAL_MOD_TYPE_ORDER, CURSOR_TAB, PRIORITY_TAB];
   const countForTab = (tab: GeneralTabId) => {
     if (tab === PRIORITY_TAB) return priorityMods.length;
+    if (tab === CURSOR_TAB) return cursorPackCount;
     if (isCustomTab(tab)) return categoryGroups.get(customTabCategoryId(tab))?.length ?? 0;
     if (isSoundTab(tab)) {
       const category = soundTabCategory(tab);
@@ -2114,6 +2141,7 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
   // none: its pane is the shelf, which renders sound entries rather than cards.
   const activeMods: Mod[] = useMemo(() => {
     if (activeType === PRIORITY_TAB) return priorityMods;
+    if (activeType === CURSOR_TAB) return [];
     if (isCustomTab(activeType)) return categoryGroups.get(customTabCategoryId(activeType)) ?? [];
     if (isSoundTab(activeType)) return [];
     return groups[activeType] ?? [];
@@ -2143,6 +2171,7 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
   // Never true on a sound tab: that pane is the shelf, not cards at all.
   const isPropContainer =
     activeType !== PRIORITY_TAB &&
+    activeType !== CURSOR_TAB &&
     !isCustomTab(activeType) &&
     !isSoundTab(activeType) &&
     isPropContainerType(activeType);
@@ -2152,7 +2181,7 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
     ...GLOBAL_MOD_TYPE_ORDER.flatMap((type) => groups[type].map((mod) => mod.id)),
     ...priorityMods.map((mod) => mod.id),
     ...soundEntries.map((entry) => entry.modId),
-  ]).size;
+  ]).size + cursorPackCount;
   // The scrollable card pane: the shared soul-container canvas clamps each
   // card's render rect to this element so models never bleed past the pane.
   const paneRef = useRef<HTMLDivElement>(null);
@@ -2162,7 +2191,7 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
   // small upward translation compensates for that heading so the card remains
   // visually centered in the pane as a whole.
   const emptyTabClass =
-    'my-auto flex min-h-60 w-full max-w-md -translate-y-5 self-center flex-col items-center justify-center gap-3 rounded-xl border border-white/15 bg-bg-secondary/70 px-8 py-10 text-center shadow-2xl shadow-black/25 backdrop-blur-md';
+    'my-auto flex min-h-60 w-full max-w-md -translate-y-5 self-center flex-col items-center justify-center gap-3 rounded-xl border border-hl/15 bg-bg-secondary/70 px-8 py-10 text-center shadow-2xl shadow-black/25 backdrop-blur-md';
 
   // Where each visible card shuffles, asked once per card. A custom tab mixes
   // hero skins, classified mods and non-shuffleable ones, so the affordance is
@@ -2222,7 +2251,7 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
               >
                 <span
                   className={`flex h-3.5 w-3.5 flex-shrink-0 items-center justify-center rounded-sm border ${
-                    isMember ? 'border-accent bg-accent text-accent-foreground' : 'border-white/25'
+                    isMember ? 'border-accent bg-accent text-accent-foreground' : 'border-hl/25'
                   }`}
                 >
                   {isMember && <Check className="h-2.5 w-2.5" />}
@@ -2268,7 +2297,7 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
         type="button"
         onClick={() => setSelectedType(type)}
         className={`relative z-10 flex cursor-pointer items-center gap-3 rounded-lg border border-transparent px-3 py-2.5 text-left transition-colors ${
-          isActive ? '' : 'hover:bg-white/10'
+          isActive ? '' : 'hover:bg-hl/10'
         }`}
       >
         <span className={`flex-1 truncate text-sm font-medium text-white ${isEmpty && !isActive ? 'opacity-50' : ''}`}>
@@ -2296,7 +2325,7 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
         <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-black/50 to-transparent" />
       </div>
 
-      {/* Progressive frosted-glass background — the same feathered, hard-edge-free
+      {/* Progressive frosted-glass background : the same feathered, hard-edge-free
           treatment as LockerHeroView. Three stacked blur layers, each masked with
           a longer taper so the effective blur softens from heavy to clear instead
           of stopping on a border. The container is far wider than the sidebar so
@@ -2381,14 +2410,14 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
               which is why they are a separate block and not more type tabs:
               retagging a card into one would be writing the wrong field. */}
           {soundRows.length > 0 && (
-            <div aria-hidden className="mx-3 my-1 h-px bg-white/10" />
+            <div aria-hidden className="mx-3 my-1 h-px bg-hl/10" />
           )}
           {soundRows.map((row) => renderTab(soundTabId(row.category)))}
           {/* The user's own categories, kept behind a divider so the rail reads
               as "what kind of mod", then "does it win", then "what does it
               write", then "my piles". */}
           {categories.length > 0 && (
-            <div aria-hidden className="mx-3 my-1 h-px bg-white/10" />
+            <div aria-hidden className="mx-3 my-1 h-px bg-hl/10" />
           )}
           {categories.map((category) => renderTab(customTabId(category.id)))}
           <div className="relative z-10 mt-1 flex flex-col items-start gap-0.5">
@@ -2466,8 +2495,9 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
                   {generalTabLabel(activeType, t, categories)}
                 </h3>
                 <span className="text-xs tabular-nums text-white/60">
-                  {t('locker.page.modCount', { count: activeMods.length })}
+                  {t('locker.page.modCount', { count: countForTab(activeType) })}
                 </span>
+                {activeType === CURSOR_TAB && <CursorImportButton />}
                 {isPriorityTab && (
                   <button
                     type="button"
@@ -2519,7 +2549,9 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
                   </button>
                 )}
               </div>
-              {activeMods.length === 0 && isPropContainer ? (
+              {activeType === CURSOR_TAB ? (
+                <CursorPackPane />
+              ) : activeMods.length === 0 && isPropContainer ? (
                 <div className={emptyTabClass}>
                   {activeType === 'spirit-urn' ? (
                     <Box className="h-8 w-8 text-white/40" />
@@ -2664,7 +2696,7 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
                       } ${
                         mod.enabled
                           ? 'border-accent bg-accent/[0.06] shadow-[0_0_0_1px_var(--color-accent)] hover:bg-accent/[0.10]'
-                          : 'border-white/[0.08] bg-bg-sunken/55 text-text-primary/75 hover:border-white/[0.16] hover:text-text-primary'
+                          : 'border-hl/[0.08] bg-bg-sunken/55 text-text-primary/75 hover:border-hl/[0.16] hover:text-text-primary'
                       } ${inShufflePool ? 'ring-2 ring-accent/45' : ''}`}
                     >
                       {/* Glass backdrop: a blurred copy of the cover art bleeds
@@ -2690,7 +2722,7 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
                           3D model over a frosted-glass panel so the environment
                           background shows through; other types keep a solid bg. */}
                       <div
-                        className={`relative mb-2 aspect-video w-full overflow-hidden rounded-lg border border-white/[0.08] ${
+                        className={`relative mb-2 aspect-video w-full overflow-hidden rounded-lg border border-hl/[0.08] ${
                           isPropContainer ? '' : 'bg-bg-tertiary'
                         }`}
                       >
@@ -2701,7 +2733,7 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
                             the retag kebab below) under the z-10 full-card toggle
                             and swallow the kebab's clicks. */}
                         {isPropContainer && (
-                          <div className="pointer-events-none absolute inset-0 bg-white/[0.04] backdrop-blur-md" />
+                          <div className="pointer-events-none absolute inset-0 bg-hl/[0.04] backdrop-blur-md" />
                         )}
                         {/* Prop containers show a live 3D model on a clear window
                             (no 2D thumbnail behind it); other types show their
@@ -2805,7 +2837,7 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
                             }}
                             aria-label={t('locker.page.changeCategoryForNamed', { name: mod.name })}
                             title={t('locker.page.changeCategory')}
-                            className="absolute right-20 top-2 z-20 flex h-7 w-7 items-center justify-center rounded-md border border-white/15 bg-black/45 text-white/85 opacity-0 backdrop-blur-sm transition-opacity hover:bg-black/65 focus:opacity-100 focus-visible:opacity-100 group-hover/card:opacity-100"
+                            className="absolute right-20 top-2 z-20 flex h-7 w-7 items-center justify-center rounded-md border border-hl/15 bg-black/45 text-white/85 opacity-0 backdrop-blur-sm transition-opacity hover:bg-black/65 focus:opacity-100 focus-visible:opacity-100 group-hover/card:opacity-100"
                           >
                             <MoreVertical className="h-4 w-4" />
                           </button>
@@ -2821,7 +2853,7 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
                           }}
                           aria-label={t('locker.global.deleteMod', { name: mod.name })}
                           title={t('locker.global.deleteMod', { name: mod.name })}
-                          className="absolute right-11 top-2 z-20 flex h-7 w-7 items-center justify-center rounded-md border border-white/15 bg-black/45 text-white/85 opacity-0 backdrop-blur-sm transition-[opacity,background-color,color] hover:bg-red-500/80 hover:text-white focus:opacity-100 focus-visible:opacity-100 group-hover/card:opacity-100"
+                          className="absolute right-11 top-2 z-20 flex h-7 w-7 items-center justify-center rounded-md border border-hl/15 bg-black/45 text-white/85 opacity-0 backdrop-blur-sm transition-[opacity,background-color,color] hover:bg-state-danger/80 hover:text-white focus:opacity-100 focus-visible:opacity-100 group-hover/card:opacity-100"
                         >
                           <Trash2 className="h-4 w-4" />
                         </button>
@@ -2853,7 +2885,7 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
                         ) : null}
                       </div>
 
-                      {/* Title only — the whole card is the enable/disable control. */}
+                      {/* Title only : the whole card is the enable/disable control. */}
                       <div className="mt-auto px-0.5">
                         {unnamedPakLabel === null ? (
                           <h3
@@ -2873,7 +2905,7 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
                               {unnamedPakLabel}
                             </h3>
                             <p
-                              className="truncate text-[11px] text-text-secondary"
+                              className="truncate text-2xs text-text-secondary"
                               title={mod.name}
                             >
                               {mod.name}
@@ -3008,7 +3040,7 @@ function LockerGlobalView({ groups, hideNsfw, onBack, onToggle, onSetGlobalType,
                 {priorityActionBusy ? t('installed.priority.busy') : t('installed.priority.clear')}
               </button>
               {priorityActionError && (
-                <p role="alert" className="px-2 py-1 text-[11px] text-state-danger">
+                <p role="alert" className="px-2 py-1 text-2xs text-state-danger">
                   {priorityActionError}
                 </p>
               )}
@@ -3228,7 +3260,7 @@ function HeroGalleryCard({
         }}
         aria-label={t('locker.page.browseHeroSkins', { hero: hero.name })}
         title={t('locker.page.browseHeroSkins', { hero: hero.name })}
-        className="absolute right-9 top-2 z-20 flex items-center justify-center rounded-full border border-white/30 bg-black/40 p-1 text-white/85 opacity-0 backdrop-blur-sm transition-opacity hover:bg-black/60 focus-visible:opacity-100 group-hover:opacity-100"
+        className="absolute right-9 top-2 z-20 flex items-center justify-center rounded-full border border-hl/30 bg-black/40 p-1 text-white/85 opacity-0 backdrop-blur-sm transition-opacity hover:bg-black/60 focus-visible:opacity-100 group-hover:opacity-100"
       >
         <ExternalLink className="h-3 w-3" />
       </button>
@@ -3243,8 +3275,8 @@ function HeroGalleryCard({
         title={isFavorite ? t('locker.page.unfavorite') : t('locker.page.favorite')}
         className={`absolute right-2 top-2 z-20 flex items-center justify-center rounded-full border p-1 transition-opacity ${
           isFavorite
-            ? 'border-yellow-400/60 bg-yellow-400/20 text-yellow-300 opacity-100'
-            : 'border-white/30 bg-black/40 text-white/85 backdrop-blur-sm opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-black/60'
+            ? 'border-state-warning/60 bg-state-warning/20 text-state-warning opacity-100'
+            : 'border-hl/30 bg-black/40 text-white/85 backdrop-blur-sm opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-black/60'
         }`}
       >
         <Star className={`w-3 h-3 ${isFavorite ? 'fill-current' : ''}`} />
@@ -3256,7 +3288,7 @@ function HeroGalleryCard({
           outline. Filled vs outline reads at a glance without the accent color. */}
       {(facetKeys.length > 0 || inShufflePool) && (
         <div
-          className="absolute left-2 top-2 z-20 flex items-center gap-1.5 rounded-full bg-black/55 px-2 py-1 ring-1 ring-inset ring-white/10 backdrop-blur-sm"
+          className="absolute left-2 top-2 z-20 flex items-center gap-1.5 rounded-full bg-black/55 px-2 py-1 ring-1 ring-inset ring-hl/10 backdrop-blur-sm"
           title={[facetTitle, inShufflePool ? t('locker.randomize.inPool') : ''].filter(Boolean).join(' • ')}
           aria-label={[facetTitle, inShufflePool ? t('locker.randomize.inPool') : ''].filter(Boolean).join(' • ')}
         >
@@ -3322,7 +3354,7 @@ function HeroGalleryCard({
         }}
         aria-label={t('locker.page.openHeroSounds', { hero: hero.name, count: soundCount })}
         title={t('locker.page.openHeroSounds', { hero: hero.name, count: soundCount })}
-        className="absolute bottom-2 left-2 z-20 flex items-center gap-1 rounded-full border border-white/30 bg-black/55 px-2 py-1 text-[11px] font-medium text-white/90 opacity-0 backdrop-blur-sm transition-opacity hover:bg-black/70 focus:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent group-hover:opacity-100"
+        className="absolute bottom-2 left-2 z-20 flex items-center gap-1 rounded-full border border-hl/30 bg-black/55 px-2 py-1 text-2xs font-medium text-white/90 opacity-0 backdrop-blur-sm transition-opacity hover:bg-black/70 focus:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent group-hover:opacity-100"
       >
         <Music className="h-3 w-3" aria-hidden />
         <span className="tabular-nums">{soundCount}</span>
@@ -3473,7 +3505,7 @@ function HeroCard({
           type="button"
           onClick={onToggleFavorite}
           className={`px-3 flex items-center transition-colors cursor-pointer ${
-            isFavorite ? 'text-yellow-400' : 'text-text-secondary hover:text-text-primary'
+            isFavorite ? 'text-state-warning' : 'text-text-secondary hover:text-text-primary'
           }`}
           title={isFavorite ? t('locker.page.unfavorite') : t('locker.page.favorite')}
         >

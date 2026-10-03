@@ -70,7 +70,7 @@ export default function GlobalSoundShelf({ category, shown }: GlobalSoundShelfPr
     // Same dashed empty box the visual pane uses for an empty type, so the two
     // sections of this drill-in differ only in their content.
     return (
-      <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-white/15 bg-bg-sunken/30 px-6 py-12 text-center">
+      <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-hl/15 bg-bg-sunken/30 px-6 py-12 text-center">
         <AudioLines className="h-8 w-8 text-white/40" />
         <p className="max-w-sm text-sm text-white/70">
           {t(
@@ -100,7 +100,7 @@ export default function GlobalSoundShelf({ category, shown }: GlobalSoundShelfPr
     // through the moment these rows moved onto it. The visual pane solves the
     // same problem per card, with `bg-bg-sunken` behind the artwork; rows get
     // one shared surface instead, so the tint lands on this and not on the art.
-    <div className="space-y-1.5 rounded-xl border border-white/10 bg-bg-sunken/60 p-3 backdrop-blur-sm">
+    <div className="space-y-1.5 rounded-xl border border-hl/10 bg-bg-sunken/60 p-3 backdrop-blur-sm">
       {shown.map((entry) => (
         <div key={entry.key} className="space-y-1">
           <SoundEntryRow
@@ -115,7 +115,7 @@ export default function GlobalSoundShelf({ category, shown }: GlobalSoundShelfPr
               act on is just a complaint. Saying which evidence ran out tells
               the reader whether to expect a rule fix or an unreadable VPK. */}
           {category === 'unclassified' && (
-            <p className="px-2 pb-0.5 text-[11px] text-white/45">
+            <p className="px-2 pb-0.5 text-2xs text-white/45">
               {unclassifiedReason(t, entry.basis)}
             </p>
           )}

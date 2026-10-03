@@ -34,7 +34,7 @@ export default function ForkBuildCard() {
       <div className="space-y-4">
         <EngineSwitcher />
 
-        <div className="h-px bg-white/5" />
+        <div className="h-px bg-hl/5" />
 
         <Toggle
           checked={settings?.forkGlobalSounds !== false}

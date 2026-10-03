@@ -1,12 +1,12 @@
-import { useMemo, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Layers, X, AlertTriangle, Info, ListTree } from 'lucide-react';
+import { Layers, AlertTriangle, Info, ListTree } from 'lucide-react';
 import type { Mod } from '../types/mod';
 import ModThumbnail from './ModThumbnail';
 import MergeReviewPanel from './MergeReviewPanel';
-import { Button } from './common/ui';
+import { Button, ModalHeader } from './common/ui';
 import { FormField, Input } from './common/forms';
-import { Modal } from './common/Modal';
+import { Modal, ModalBody, ModalFooter } from './common/Modal';
 
 interface Props {
   sources: Mod[];
@@ -37,6 +37,7 @@ interface Props {
  */
 export default function MergeModsModal({ sources, hideNsfw, onCancel, onConfirm }: Props) {
   const { t } = useTranslation();
+  const titleId = useId();
   const groups = useMemo(() => buildSourceGroups(sources), [sources]);
 
   // Picks: selected variant ids per multi-variant group. Singles + single-
@@ -137,22 +138,15 @@ export default function MergeModsModal({ sources, hideNsfw, onCancel, onConfirm 
   };
 
   return (
-    <Modal onClose={onCancel} labelledBy="merge-mods-title" size="none" panelClassName="max-w-xl">
-        <div className="flex items-center justify-between p-5 border-b border-border">
-          <h3 id="merge-mods-title" className="text-lg font-semibold text-text-primary flex items-center gap-2">
-            <Layers className="w-5 h-5" />
-            {t('mergeMods.title', { count: effectiveSources.length })}
-          </h3>
-          <button
-            onClick={onCancel}
-            className="p-1 text-text-secondary hover:text-text-primary rounded cursor-pointer"
-            aria-label={t('common.actions.close')}
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+    <Modal onClose={onCancel} labelledBy={titleId} size="none" panelClassName="max-w-xl">
+        <ModalHeader
+          title={t('mergeMods.title', { count: effectiveSources.length })}
+          titleId={titleId}
+          onClose={onCancel}
+          closeLabel={t('common.actions.close')}
+        />
 
-        <div className="p-5 space-y-4">
+        <ModalBody className="space-y-4">
           <div className="flex gap-4">
             <div className="w-32 aspect-square flex-shrink-0 rounded-lg overflow-hidden border border-border bg-bg-tertiary">
               <ModThumbnail
@@ -199,7 +193,7 @@ export default function MergeModsModal({ sources, hideNsfw, onCancel, onConfirm 
                     key={group.key}
                     className="flex items-center gap-2 px-2 py-1.5 rounded bg-bg-tertiary/60 text-sm"
                   >
-                    <span className="font-mono text-[11px] text-text-secondary tabular-nums w-6 text-right">
+                    <span className="font-mono text-2xs text-text-secondary tabular-nums w-6 text-right">
                       {String(group.mod.priority).padStart(2, '0')}
                     </span>
                     <span className="text-text-primary truncate" title={group.mod.name}>{group.mod.name}</span>
@@ -233,7 +227,7 @@ export default function MergeModsModal({ sources, hideNsfw, onCancel, onConfirm 
                             className={`flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer text-sm transition-colors ${
                               isPicked
                                 ? 'bg-accent/10 border border-accent/40 text-text-primary'
-                                : 'border border-transparent text-text-secondary hover:bg-white/5 hover:text-text-primary'
+                                : 'border border-transparent text-text-secondary hover:bg-hl/5 hover:text-text-primary'
                             }`}
                           >
                             <input
@@ -242,7 +236,7 @@ export default function MergeModsModal({ sources, hideNsfw, onCancel, onConfirm 
                               onChange={() => toggleVariantPick(group, variant.id)}
                               className="w-3.5 h-3.5 accent-accent cursor-pointer"
                             />
-                            <span className="font-mono text-[11px] text-text-secondary tabular-nums w-6 text-right">
+                            <span className="font-mono text-2xs text-text-secondary tabular-nums w-6 text-right">
                               {String(variant.priority).padStart(2, '0')}
                             </span>
                             <span className="truncate" title={variantLabelOf(variant)}>{variantLabelOf(variant)}</span>
@@ -324,9 +318,9 @@ export default function MergeModsModal({ sources, hideNsfw, onCancel, onConfirm 
               <div>{error}</div>
             </div>
           )}
-        </div>
+        </ModalBody>
 
-        <div className="flex justify-end gap-3 p-5 border-t border-border">
+        <ModalFooter>
           <Button variant="secondary" onClick={onCancel} disabled={submitting}>
             {t('common.actions.cancel')}
           </Button>
@@ -338,7 +332,7 @@ export default function MergeModsModal({ sources, hideNsfw, onCancel, onConfirm 
           >
             {submitting ? t('mergeMods.merging') : t('mergeMods.merge')}
           </Button>
-        </div>
+        </ModalFooter>
     </Modal>
   );
 }

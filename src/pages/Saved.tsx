@@ -179,7 +179,7 @@ export default function Saved() {
                 either control. */}
             <ResultSummary
               id={summaryId}
-              className="w-full text-right text-[11px]"
+              className="w-full text-right text-2xs"
               scope={t('saved.searchScope')}
               summary={
                 search.trim() || filter !== 'all'
@@ -245,12 +245,12 @@ export default function Saved() {
                   {(() => {
                     const result = watchResults.find((candidate) => `${candidate.section}:${candidate.modId}:${candidate.fileId ?? 'parent'}` === rowKey(row));
                     if (!result) return null;
-                    return <p className={`mt-1 text-xs ${result.status === 'current' ? 'text-green-400' : result.status === 'unavailable' ? 'text-text-secondary' : 'text-yellow-300'}`}>{t(`saved.watchStatus.${result.status}`)}</p>;
+                    return <p className={`mt-1 text-xs ${result.status === 'current' ? 'text-state-success' : result.status === 'unavailable' ? 'text-text-secondary' : 'text-state-warning'}`}>{t(`saved.watchStatus.${result.status}`)}</p>;
                   })()}
                   <div className="mt-2 flex flex-wrap gap-2">
                     <Button size="sm" variant="secondary" onClick={() => openInBrowse(row)}><ExternalLink className="mr-1.5 h-3.5 w-3.5" />{t('saved.openInBrowse')}</Button>
                     <Button size="sm" variant="ghost" onClick={() => beginEdit(row)}><Pencil className="mr-1.5 h-3.5 w-3.5" />{t('saved.editMetadata')}</Button>
-                    <span className="self-center text-[11px] text-text-secondary">{t('saved.savedAt', { date: formatDate(Math.floor(row.saved.savedAt / 1000)) })}</span>
+                    <span className="self-center text-2xs text-text-secondary">{t('saved.savedAt', { date: formatDate(Math.floor(row.saved.savedAt / 1000)) })}</span>
                   </div>
                   {editingKey === rowKey(row) && (
                     <div className="mt-3 space-y-2 rounded-lg border border-border bg-bg-primary/40 p-3">
@@ -280,7 +280,7 @@ export default function Saved() {
                 const selected = previewKeys.has(key);
                 const label = row.mod?.name ?? row.saved.titleSnapshot ?? t('saved.unavailable');
                 const unresolved = !row.mod || row.saved.fileId === null;
-                return <label key={key} className="flex items-center gap-3 rounded-lg border border-border bg-bg-primary/30 p-3 text-sm"><input type="checkbox" checked={selected} onChange={() => setPreviewKeys((current) => { const next = new Set(current); if (selected) next.delete(key); else next.add(key); return next; })} /><span className="min-w-0 flex-1"><span className="block truncate text-text-primary">{label}</span><span className="text-xs text-text-secondary">{row.saved.fileName ?? t('saved.parentBookmark')}</span></span><span className={`text-xs ${unresolved ? 'text-yellow-300' : 'text-green-400'}`}>{unresolved ? t('saved.profileUnresolved') : t('saved.profileReady')}</span></label>;
+                return <label key={key} className="flex items-center gap-3 rounded-lg border border-border bg-bg-primary/30 p-3 text-sm"><input type="checkbox" checked={selected} onChange={() => setPreviewKeys((current) => { const next = new Set(current); if (selected) next.delete(key); else next.add(key); return next; })} /><span className="min-w-0 flex-1"><span className="block truncate text-text-primary">{label}</span><span className="text-xs text-text-secondary">{row.saved.fileName ?? t('saved.parentBookmark')}</span></span><span className={`text-xs ${unresolved ? 'text-state-warning' : 'text-state-success'}`}>{unresolved ? t('saved.profileUnresolved') : t('saved.profileReady')}</span></label>;
               })}
             </div>
             <div className="flex items-center justify-between border-t border-border p-4"><span className="text-sm text-text-secondary">{t('saved.profileSelected', { count: previewKeys.size })}</span><Button onClick={() => setPreviewOpen(false)}>{t('saved.profileDone')}</Button></div>

@@ -7,7 +7,10 @@ import { fixGameinfo } from './system';
 import { getModMetadata, setModMetadata, removeModMetadata, migrateModMetadata, ensureModUids } from './metadata';
 import { compareFileContents } from './fileMatch';
 import { resolveVpkIdentity, readEmbeddedAddonInfo, carryForwardOriginalIdentity } from './vpkIdentity';
+import { findChunkSiblingNames } from './vpk';
 import { loadSettings } from './settings';
+import { assertVpkSafety, moveSafetySnapshot, forgetSafetySnapshot } from './modSafety';
+import { isStaleModTemp, modTempPath } from './modTemps';
 import {
     assertCanMoveLoadedGameMod,
     assertCanMoveLoadedGameMods,
@@ -15,6 +18,7 @@ import {
     beginModMutationRunningScope,
     endModMutationRunningScope,
 } from './gameSessionMods';
+import type { DeleteModsProgress } from '../../../src/types/mod';
 
 /** Verbose mod-mutation trace, gated on the `verboseModTrace` setting. Lands in
  *  main.log (captured by the diagnostic report) so a desync between the UI and
@@ -80,6 +84,65 @@ async function renameWithRetry(from: string, to: string, attempts = 5): Promise<
             await new Promise((resolve) => setTimeout(resolve, 80 * (i + 1)));
         }
     }
+}
+
+/**
+ * Rename a `_dir.vpk` together with the `_NNN.vpk` archives it resolves by
+ * name, so a move never strands chunks under a slot another mod can take.
+ * Chunks go first and a partial failure is rolled back. The safety snapshot
+ * moves with the bytes, so every rename of a managed VPK goes through here.
+ */
+async function renameVpkSet(from: string, to: string): Promise<void> {
+    const stem = basename(from).slice(0, -'_dir.vpk'.length);
+    const toStem = join(dirname(to), basename(to).slice(0, -'_dir.vpk'.length));
+    const moves = findChunkSiblingNames(basename(from), await fs.readdir(dirname(from)))
+        .map((chunk): [string, string] => [join(dirname(from), chunk), toStem + chunk.slice(stem.length)]);
+    moves.push([from, to]);
+    const done: Array<[string, string]> = [];
+    try {
+        for (const move of moves) {
+            await renameWithRetry(...move);
+            done.push(move);
+        }
+    } catch (err) {
+        for (const [source, destination] of done.reverse()) await fs.rename(destination, source).catch(() => {});
+        throw err;
+    }
+    moveSafetySnapshot(from, to);
+}
+
+/**
+ * Move several VPK sets at once: each goes to a unique temp name in its target
+ * folder, then to its final name, so slot swaps and cross-folder moves never
+ * land on a set that has not left yet. Any failure moves every set back.
+ */
+async function renameVpkSetsViaTemp(moves: Array<{ from: string; to: string }>): Promise<void> {
+    const tmpId = randomBytes(4).toString('hex');
+    const steps = moves.map(({ from, to }, i) => ({ from, to, tmp: join(dirname(to), `tmp${tmpId}_${i}_${basename(to)}`) }));
+    const staged: typeof steps = [];
+    const placed: typeof steps = [];
+    try {
+        for (const step of steps) {
+            await renameVpkSet(step.from, step.tmp);
+            staged.push(step);
+        }
+        for (const step of steps) {
+            await renameVpkSet(step.tmp, step.to);
+            placed.push(step);
+        }
+    } catch (err) {
+        for (const step of placed.reverse()) await renameVpkSet(step.to, step.tmp).catch(() => {});
+        for (const step of staged.reverse()) await renameVpkSet(step.tmp, step.from).catch(() => {});
+        throw err;
+    }
+}
+
+/** Delete a `_dir.vpk` and its chunks. The directory file goes first: chunks without it never mount. */
+async function deleteVpkSet(path: string): Promise<void> {
+    const chunks = findChunkSiblingNames(basename(path), await fs.readdir(dirname(path)));
+    await fs.unlink(path);
+    forgetSafetySnapshot(path);
+    for (const chunk of chunks) await fs.unlink(join(dirname(path), chunk));
 }
 
 /** Filesystem-level mod record produced by scanMods. NOT the renderer-facing
@@ -398,7 +461,7 @@ export async function scanMods(deadlockPath: string): Promise<Mod[]> {
     // addon roots, so a mod the user marked Global stays visible and fully
     // manageable in the list instead of vanishing when it moves there.
     const enabledFolders = getModScanRootPaths(deadlockPath);
-    await cleanupStaleMergeRebuildArtifacts(enabledFolders);
+    await cleanupStaleModTemps([...enabledFolders, disabledPath]);
     const scanned = await Promise.all([
         ...enabledFolders.map((folder) => scanFolder(folder, true)),
         scanFolder(disabledPath, false),
@@ -532,16 +595,11 @@ export async function scanMods(deadlockPath: string): Promise<Mod[]> {
     return mods;
 }
 
-/** Remove orphaned `.merge-rebuild-*.vpk` temps. A finished rebuild renames its
- *  temp into place and deletes it; a leftover means an interrupted rebuild (app
- *  killed mid-swap), whose merged mod's manifest may be half-written. The temp
- *  is harmless on disk (the scan skips non-`_dir.vpk`), but we clear it and log
- *  it -- always on, NOT gated on verboseModTrace, so it surfaces in any
- *  diagnostic. Age-gated so a temp from a rebuild still in flight is never
- *  touched (a rebuild completes in well under the threshold). */
-async function cleanupStaleMergeRebuildArtifacts(folders: string[]): Promise<void> {
-    const STALE_MS = 2 * 60 * 1000;
-    const now = Date.now();
+/** Remove staging temps an earlier run left behind (see isStaleModTemp). The
+ *  scan skips them, but each is a full-size archive, and a merge's manifest may
+ *  be half-written when its rebuild was interrupted. Always logged, NOT gated
+ *  on verboseModTrace, so it surfaces in any diagnostic. */
+async function cleanupStaleModTemps(folders: string[]): Promise<void> {
     let removed = 0;
     for (const folder of folders) {
         if (!existsSync(folder)) continue;
@@ -552,23 +610,17 @@ async function cleanupStaleMergeRebuildArtifacts(folders: string[]): Promise<voi
             continue;
         }
         for (const entry of entries) {
-            const lower = entry.toLowerCase();
-            if (!lower.includes('.merge-rebuild') || !lower.endsWith('.vpk')) continue;
-            const full = join(folder, entry);
+            if (!isStaleModTemp(entry)) continue;
             try {
-                const stats = await fs.stat(full);
-                if (now - stats.mtimeMs < STALE_MS) continue; // may be an in-flight rebuild
-                await fs.unlink(full);
+                await fs.unlink(join(folder, entry));
                 removed++;
             } catch {
-                /* best-effort: a concurrent rebuild may have renamed/removed it */
+                /* best-effort: retried on the next scan */
             }
         }
     }
     if (removed > 0) {
-        console.log(
-            `[merge] removed ${removed} stale .merge-rebuild artifact(s) (interrupted rebuild leftover)`
-        );
+        console.log(`[mods] removed ${removed} stale staging temp(s) left by an earlier run`);
     }
 }
 
@@ -597,7 +649,7 @@ async function reconcileEnabledDisabledCollisions(
             join(disabledPath, disabledEntry)
         );
         if (identical) {
-            await fs.unlink(join(disabledPath, disabledEntry));
+            await deleteVpkSet(join(disabledPath, disabledEntry));
             console.warn(
                 `[mods] Removed duplicate disabled VPK for ${enabledEntry}: ${disabledEntry}`
             );
@@ -618,7 +670,7 @@ async function reconcileEnabledDisabledCollisions(
         const owner = await getCollisionMetadataOwner(metadata?.sha256, join(disabledPath, disabledEntry));
         const preferredName = metadata?.modName ?? metadata?.sourceFileName ?? metadata?.variantLabel;
         const renamedFileName = makeDisabledFileName(disabledEntry, takenDisabledNames, preferredName);
-        await fs.rename(join(disabledPath, disabledEntry), join(disabledPath, renamedFileName));
+        await renameVpkSet(join(disabledPath, disabledEntry), join(disabledPath, renamedFileName));
         takenDisabledNames.add(renamedFileName.toLowerCase());
         moveCollisionMetadata(enabledEntry, renamedFileName, owner, metadata);
         console.warn(
@@ -712,13 +764,14 @@ async function moveModToFolderAs(
     enabled: boolean,
     rememberPriority?: number
 ): Promise<Mod> {
+    if (enabled) await assertVpkSafety(targetMod.path, { name: getModMetadata(targetMod.metaKey)?.modName ?? targetMod.name });
     if (rememberPriority != null) {
         setModMetadata(targetMod.metaKey, { lastPriority: rememberPriority });
     }
 
     await fs.mkdir(destinationFolder, { recursive: true });
     const destinationPath = join(destinationFolder, destinationFileName);
-    await renameWithRetry(targetMod.path, destinationPath);
+    await renameVpkSet(targetMod.path, destinationPath);
     const destMetaKey = metaKeyFor(destinationPath);
 
     if (destMetaKey !== targetMod.metaKey) {
@@ -812,6 +865,31 @@ export async function allocateEnabledVpkPath(deadlockPath: string): Promise<stri
 }
 
 /**
+ * Install a built or extracted VPK into an ENABLED slot and return its path.
+ * `replacePath` overwrites one of our own earlier imports in place instead.
+ *
+ * The bytes are staged and inspected before a slot is chosen: review can take
+ * minutes, and a slot allocated ahead of it is free on disk the whole time, so
+ * a concurrent import or enable would take it. Allocating and renaming in one
+ * locked step leaves no window and no placeholder VPK in a game folder.
+ */
+export async function installEnabledVpk(deadlockPath: string, sourcePath: string, replacePath?: string): Promise<string> {
+    const staged = modTempPath(replacePath ? dirname(replacePath) : getAddonsPath(deadlockPath), 'install');
+    try {
+        await fs.copyFile(sourcePath, staged);
+        await assertVpkSafety(staged, { context: 'installation', name: basename(sourcePath) });
+        return await withModMutationLock(async () => {
+            const destPath = replacePath ?? await allocateEnabledVpkPath(deadlockPath);
+            await fs.rename(staged, destPath);
+            moveSafetySnapshot(staged, destPath);
+            return destPath;
+        });
+    } finally {
+        await fs.unlink(staged).catch(() => {});
+    }
+}
+
+/**
  * Message for a full priority root. Distinct from ENABLE_LIMIT_MESSAGE because
  * the remedy is different (un-Global something, not disable something) and
  * because the priority root has no overflow: it is one folder with one
@@ -835,20 +913,6 @@ async function allocatePrioritySlot(deadlockPath: string): Promise<AllocatedSlot
         }
     }
     throw new Error(PRIORITY_LIMIT_MESSAGE);
-}
-
-/**
- * Reserve a destination for a NEW mod imported straight into the priority root
- * (a variant joining a Global local variant group). Mirrors
- * allocateEnabledVpkPath: the running-game snapshot is synced first, and the
- * slot scan reuses folderPakNumbers so a slot occupied only by chunk files
- * still counts as taken. Reserves nothing on disk; see allocateEnabledVpkPath
- * for the copy-before-next-allocate contract.
- */
-export async function allocatePriorityVpkPath(deadlockPath: string): Promise<string> {
-    await syncRunningGameModSnapshotFromMods(await scanMods(deadlockPath));
-    const { folder, fileName } = await allocatePrioritySlot(deadlockPath);
-    return join(folder, fileName);
 }
 
 /**
@@ -1062,6 +1126,19 @@ export function setModsEnabledBatch(
         const current = await scanMods(deadlockPath);
         await syncRunningGameModSnapshotFromMods(current);
         assertCanMoveLoadedGameMods(current.filter((m) => m.enabled && disable.has(m.id)));
+        // Review every incoming mod before any file moves, so prompts are
+        // answered while the current loadout is intact. A mod that fails the
+        // gate is dropped here so the enable pass does not ask about it again.
+        for (const mod of current) {
+            if (!enable.has(mod.id)) continue;
+            try {
+                await assertVpkSafety(mod.path, { name: getModMetadata(mod.metaKey)?.modName || mod.name });
+            } catch (err) {
+                enable.delete(mod.id);
+                failures.push(`enable ${mod.id}: ${String(err)}`);
+                console.warn(`[randomize] enable refused (continuing): ${mod.id}: ${String(err)}`);
+            }
+        }
 
         for (const modId of disable) {
             try {
@@ -1100,6 +1177,7 @@ async function enableModImpl(deadlockPath: string, modId: string): Promise<Mod> 
     }
 
     if (targetMod.enabled) {
+        await assertVpkSafety(targetMod.path, { name: getModMetadata(targetMod.metaKey)?.modName || targetMod.name });
         return targetMod;
     }
 
@@ -1182,6 +1260,27 @@ async function disableModImpl(deadlockPath: string, modId: string): Promise<Mod>
 }
 
 /**
+ * Gate replacements an update promotes instead of downloading. They skipped
+ * the download gate, and a candidate the user kept disabled still carries its
+ * new file id, so the update must not delete the version they supersede until
+ * this passes. Unlocked because the check can wait on the user's review.
+ */
+export async function assertReplacementSafety(deadlockPath: string, modIds: string[]): Promise<void> {
+    const mods = await scanMods(deadlockPath);
+    const replacements = modIds.map((modId) => {
+        const mod = mods.find((m) => m.id === modId);
+        if (!mod) throw new Error(`Mod not found: ${modId}`);
+        return mod;
+    });
+    for (const mod of replacements) {
+        await assertVpkSafety(mod.path, {
+            context: 'installation',
+            name: getModMetadata(mod.metaKey)?.modName ?? mod.name,
+        });
+    }
+}
+
+/**
  * Delete a mod completely (async)
  */
 export function deleteMod(deadlockPath: string, modId: string): Promise<void> {
@@ -1198,12 +1297,41 @@ async function deleteModImpl(deadlockPath: string, modId: string): Promise<void>
     }
     assertCanMoveLoadedGameMod(targetMod);
 
-    await fs.unlink(targetMod.path);
+    await deleteVpkSet(targetMod.path);
 
     // Metadata is keyed by metaKey. If we leave it behind, the next mod that
     // is assigned the same slot will inherit the deleted mod's gameBananaId,
     // thumbnail, category, etc. via setModMetadata's merge.
     removeModMetadata(targetMod.metaKey);
+}
+
+/**
+ * Delete several mods as one locked batch with a single scan up front (deleteMod
+ * per id rescans the whole library for every file). Deleting never renames the
+ * survivors, so the scan's ids stay valid across the batch. Ids missing from the
+ * scan are already gone and count as done. A loaded mod refuses the whole batch
+ * before anything is deleted, like applyProfile.
+ */
+export function deleteMods(
+    deadlockPath: string,
+    modIds: string[],
+    onProgress?: (progress: DeleteModsProgress) => void
+): Promise<void> {
+    return withModMutationLock(async () => {
+        const mods = await scanMods(deadlockPath);
+        await syncRunningGameModSnapshotFromMods(mods);
+        const byId = new Map(mods.map((m) => [m.id, m]));
+        const targets = modIds.map((id) => byId.get(id));
+        assertCanMoveLoadedGameMods(targets.filter((m) => m !== undefined));
+
+        for (const [i, target] of targets.entries()) {
+            if (target) {
+                await deleteVpkSet(target.path);
+                removeModMetadata(target.metaKey);
+            }
+            onProgress?.({ done: i + 1, total: targets.length });
+        }
+    });
 }
 
 /**
@@ -1247,7 +1375,8 @@ async function setModPriorityImpl(
         return targetMod;
     }
 
-    // Reject a slot already taken in the mod's OWN folder. For a base-folder mod
+    // Reject a slot already taken in the mod's OWN folder, chunk files left
+    // without their _dir.vpk included. For a base-folder mod
     // also reject one held by a disabled file: the two share the bare-filename id
     // namespace, so reconcile would otherwise rename the disabled file on the next
     // scan and a merged-mod manifest pointing at it would lose its source.
@@ -1255,13 +1384,14 @@ async function setModPriorityImpl(
     // can't collide there.)
     const collides =
         existsSync(join(parentDir, newFileName)) ||
+        findChunkSiblingNames(newFileName, await fs.readdir(parentDir)).length > 0 ||
         (addonFolderIndex(targetMod.path) === 0 &&
             existsSync(join(getDisabledPath(deadlockPath), newFileName)));
     if (collides) {
         throw new Error(`Priority ${newPriority} is already in use`);
     }
     const newPath = join(parentDir, newFileName);
-    await fs.rename(join(parentDir, targetMod.fileName), newPath);
+    await renameVpkSet(targetMod.path, newPath);
     const newMetaKey = metaKeyFor(newPath);
 
     // migrateModMetadata rather than setModMetadata + remove: it OVERWRITES the
@@ -1320,21 +1450,35 @@ async function reorderModsImpl(deadlockPath: string, orderedIds: string[]): Prom
         if (mod.enabled && !isPriorityFolderPath(mod.path)) targets.push(mod);
     }
     if (targets.length === 0) return;
-    const targetIds = new Set(targets.map((m) => m.id));
 
-    // Reserve slots held by mods NOT being reordered, per folder index.
+    // Reserve slots held by files NOT being reordered, per folder index. That
+    // includes chunks whose _dir.vpk is gone: a set moved onto them would
+    // resolve archives that are not its own.
     const reservedByIndex = new Map<number, Set<number>>();
     const reserve = (idx: number, slot: number) => {
         const set = reservedByIndex.get(idx) ?? new Set<number>();
         set.add(slot);
         reservedByIndex.set(idx, set);
     };
+    const listings = new Map<string, string[]>();
+    for (const folder of getAddonFolderPaths(deadlockPath)) listings.set(folder, await fs.readdir(folder));
+    const moving = new Set<string>();
+    for (const m of targets) {
+        const folder = dirname(m.path);
+        for (const name of [m.fileName, ...findChunkSiblingNames(m.fileName, listings.get(folder)!)]) {
+            moving.add(join(folder, name));
+        }
+    }
+    for (const [folder, entries] of listings) {
+        for (const entry of entries) {
+            const slot = parseVpkPriority(entry);
+            if (slot !== null && !moving.has(join(folder, entry))) reserve(addonFolderIndex(join(folder, entry)), slot);
+        }
+    }
     for (const m of allMods) {
-        if (targetIds.has(m.id)) continue;
         const slot = parseVpkPriority(m.fileName);
-        if (slot === null) continue; // free-form disabled: reserves nothing
-        if (m.enabled) reserve(addonFolderIndex(m.path), slot);
-        else reserve(0, slot); // legacy disabled pakNN blocks the base slot
+        // Legacy disabled pakNN blocks the base slot; free-form names reserve nothing.
+        if (!m.enabled && slot !== null) reserve(0, slot);
     }
 
     // Generate dense (folderIndex, slot) addresses in priority order, skipping
@@ -1367,68 +1511,21 @@ async function reorderModsImpl(deadlockPath: string, orderedIds: string[]): Prom
         }
     }
 
-    type Assignment = { mod: Mod; toFolder: string; toFileName: string; toMetaKey: string };
-    const assignments: Assignment[] = [];
+    const assignments: Array<{ mod: Mod; toPath: string }> = [];
     for (let i = 0; i < targets.length; i++) {
         const mod = targets[i];
         const { idx: toIdx, slot: toSlot } = addresses[i];
         const toFolder = toIdx === 0 ? getAddonsPath(deadlockPath) : overflowAddonsPath(deadlockPath, toIdx);
-        const toFileName = `pak${String(toSlot).padStart(2, '0')}_dir.vpk`;
-        const toPath = join(toFolder, toFileName);
-        if (mod.path !== toPath) {
-            assignments.push({ mod, toFolder, toFileName, toMetaKey: metaKeyFor(toPath) });
-        }
+        const toPath = join(toFolder, `pak${String(toSlot).padStart(2, '0')}_dir.vpk`);
+        if (mod.path !== toPath) assignments.push({ mod, toPath });
     }
     if (assignments.length === 0) return;
     assertCanMoveLoadedGameMods(assignments.map(({ mod }) => mod));
 
-    // Two-phase rename: source -> temp (in the TARGET folder) -> final. Unique
-    // temp names make cross-folder moves and same-folder slot swaps collision-free.
-    const tmpId = randomBytes(4).toString('hex');
-    type RenameStep = { fromPath: string; tmpPath: string; finalPath: string };
-    const steps: RenameStep[] = assignments.map(({ mod, toFolder, toFileName }, i) => ({
-        fromPath: mod.path,
-        tmpPath: join(toFolder, `tmp${tmpId}_${i}_${toFileName}`),
-        finalPath: join(toFolder, toFileName),
-    }));
-
-    const phase1Done: RenameStep[] = [];
-    try {
-        for (const step of steps) {
-            await renameWithRetry(step.fromPath, step.tmpPath);
-            phase1Done.push(step);
-        }
-    } catch (err) {
-        for (const done of phase1Done.reverse()) {
-            try {
-                await fs.rename(done.tmpPath, done.fromPath);
-            } catch { /* best-effort rollback */ }
-        }
-        throw err;
-    }
-
-    const phase2Done: RenameStep[] = [];
-    try {
-        for (const step of steps) {
-            await renameWithRetry(step.tmpPath, step.finalPath);
-            phase2Done.push(step);
-        }
-    } catch (err) {
-        for (const done of phase2Done.reverse()) {
-            try {
-                await fs.rename(done.finalPath, done.tmpPath);
-            } catch { /* ignore */ }
-        }
-        for (const step of steps) {
-            try {
-                await fs.rename(step.tmpPath, step.fromPath);
-            } catch { /* ignore */ }
-        }
-        throw err;
-    }
+    await renameVpkSetsViaTemp(assignments.map(({ mod, toPath }) => ({ from: mod.path, to: toPath })));
 
     migrateModMetadata(
-        assignments.map(({ mod, toMetaKey }) => ({ from: mod.metaKey, to: toMetaKey }))
+        assignments.map(({ mod, toPath }) => ({ from: mod.metaKey, to: metaKeyFor(toPath) }))
     );
 }
 
@@ -1486,27 +1583,12 @@ async function swapModPriorityImpl(
  * Used when one or both mods live in the disabled folder.
  */
 async function directSwap(a: Mod, b: Mod): Promise<void> {
-    const parentA = dirname(a.path);
-    const parentB = dirname(b.path);
-    const tmpId = randomBytes(4).toString('hex');
-    const steps = [
-        {
-            from: join(parentA, a.fileName),
-            tmp: join(parentA, `tmp${tmpId}_${a.fileName}`),
-            final: join(parentA, renameWithPriority(a.fileName, b.priority)),
-        },
-        {
-            from: join(parentB, b.fileName),
-            tmp: join(parentB, `tmp${tmpId}_${b.fileName}`),
-            final: join(parentB, renameWithPriority(b.fileName, a.priority)),
-        },
-    ];
-
-    for (const step of steps) await fs.rename(step.from, step.tmp);
-    for (const step of steps) await fs.rename(step.tmp, step.final);
+    const finalA = join(dirname(a.path), renameWithPriority(a.fileName, b.priority));
+    const finalB = join(dirname(b.path), renameWithPriority(b.fileName, a.priority));
+    await renameVpkSetsViaTemp([{ from: a.path, to: finalA }, { from: b.path, to: finalB }]);
 
     migrateModMetadata([
-        { from: a.metaKey, to: metaKeyFor(steps[0].final) },
-        { from: b.metaKey, to: metaKeyFor(steps[1].final) },
+        { from: a.metaKey, to: metaKeyFor(finalA) },
+        { from: b.metaKey, to: metaKeyFor(finalB) },
     ]);
 }

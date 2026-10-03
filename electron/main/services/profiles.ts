@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync, unlinkSync } from 'fs';
 import { join, dirname } from 'path';
 import { getUserDataPath } from '../utils/paths';
+import { assertVpkSafety } from './modSafety';
 import {
     scanMods,
     runExclusiveModMutation,
@@ -23,6 +24,8 @@ import {
     syncRunningGameModSnapshotFromMods,
 } from './gameSessionMods';
 import { generateCrosshairCommands, normalizeCrosshairSettings } from '../../../src/lib/crosshair';
+import { assertProfileReview, buildProfileApplyPlan } from './profileApplyPlan';
+import type { ProfileApplyEntry, ProfileApplyPreview } from '../../../src/types/electron';
 
 // The Profile wire types are single-sourced in src/types/electron.ts
 // (docstrings included); re-exported because portableProfile.ts and the
@@ -352,7 +355,14 @@ function describeProfileMod(pm: ProfileMod): string {
 /**
  * Apply a profile - enable/disable mods, restore autoexec and crosshair
  */
-export async function applyProfile(deadlockPath: string, profileId: string): Promise<ApplyProfileResult> {
+export async function previewProfile(deadlockPath: string, profileId: string): Promise<ProfileApplyPreview> {
+    const profile = loadProfiles().find((entry) => entry.id === profileId);
+    if (!profile) throw new Error(`Profile not found: ${profileId}`);
+    const mods = (await scanMods(deadlockPath)).filter((mod) => !isLockerManaged(mod.metaKey));
+    return buildProfileApplyPlan(profile, mods, getModMetadata).preview;
+}
+
+export async function applyProfile(deadlockPath: string, profileId: string, reviewToken?: string): Promise<ApplyProfileResult> {
     const profiles = loadProfiles();
     const profile = profiles.find(p => p.id === profileId);
 
@@ -392,21 +402,24 @@ export async function applyProfile(deadlockPath: string, profileId: string): Pro
     let disabledCount = 0;
     let orphanedDisabledCount = 0;
     const failures: string[] = [];
+    let unresolved: ProfileApplyEntry[] = [];
 
     await runExclusiveModMutation(async () => {
         // Resolve by archive id first, using vpkIndex for multi-VPK siblings.
         // FileName fallback is only for stable-id-less local mods.
         const currentMods = await scanMods(deadlockPath);
+        const plan = buildProfileApplyPlan(profile, currentMods.filter((mod) => !isLockerManaged(mod.metaKey)), getModMetadata);
+        assertProfileReview(plan.preview, reviewToken);
+        unresolved = plan.preview.entries.filter((entry) => entry.enabled && !entry.modId);
         await syncRunningGameModSnapshotFromMods(currentMods);
         const resolveProfileMod = buildProfileModResolver(currentMods);
 
         // currentMod.id -> ProfileMod, when matched. Drives the enable/disable
         // loop and the reorder pass below.
-        const profileModByCurrentId = new Map<string, ProfileMod>();
+        const profileModByCurrentId = plan.matches;
         for (const profileMod of profile.mods) {
             const resolution = resolveProfileMod(profileMod);
-            if (resolution.mod !== undefined) {
-                profileModByCurrentId.set(resolution.mod.id, profileMod);
+            if (resolution.mod !== undefined && profileModByCurrentId.has(resolution.mod.id)) {
                 if (resolution.via === 'stable') {
                     stableHits++;
                     console.log(
@@ -452,6 +465,13 @@ export async function applyProfile(deadlockPath: string, profileId: string): Pro
             const profileMod = profileModByCurrentId.get(mod.id);
             return !profileMod || !profileMod.enabled || profileMod.priority !== mod.priority;
         }));
+
+        // Review the whole incoming selection before changing the current profile.
+        for (const mod of currentMods) {
+            if (profileModByCurrentId.get(mod.id)?.enabled) {
+                await assertVpkSafety(mod.path, { name: getModMetadata(mod.metaKey)?.modName || mod.name });
+            }
+        }
 
         // Two passes, disables BEFORE enables. The disabled library is uncapped now,
         // so a profile that swaps a large enabled set for a large disabled one could,
@@ -521,6 +541,7 @@ export async function applyProfile(deadlockPath: string, profileId: string): Pro
         let reorderSkippedUnmatched = 0;
         for (const pm of [...profile.mods].sort((a, b) => a.priority - b.priority)) {
             if (!pm.enabled) continue;
+            if (![...profileModByCurrentId.values()].includes(pm)) continue;
             const resolution = resolveAgainstRefreshed(pm);
             if (resolution.mod === undefined) {
                 reorderSkippedUnmatched++;
@@ -573,7 +594,7 @@ export async function applyProfile(deadlockPath: string, profileId: string): Pro
     writeAutoexec(deadlockPath, currentAutoexec);
 
     console.log(`[profiles] apply '${profile.name}' complete`);
-    return { profile, failures };
+    return { profile, failures, unresolved };
 }
 
 /**

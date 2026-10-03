@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
-import { X, Download, ArrowDownCircle, RefreshCw, Sparkles, AlertTriangle, Package, Github } from 'lucide-react';
+import { Download, ArrowDownCircle, RefreshCw, Sparkles, AlertTriangle, Package, Github } from 'lucide-react';
 import DOMPurify from 'dompurify';
-import { Button } from './common/ui';
-import { Modal } from './common/Modal';
+import { Button, ModalHeader } from './common/ui';
+import { Modal, ModalBody, ModalFooter } from './common/Modal';
 
 type InstallSource = 'managed' | 'appimage' | 'standard' | 'fork' | 'manual';
 
@@ -37,6 +37,7 @@ interface Props {
 
 export default function UpdateModal({ onClose }: Props) {
     const { t } = useTranslation();
+    const titleId = useId();
     const [appVersion, setAppVersion] = useState('');
     const [status, setStatus] = useState<UpdateStatus | null>(null);
     const [checkedOnce, setCheckedOnce] = useState(false);
@@ -82,22 +83,18 @@ export default function UpdateModal({ onClose }: Props) {
     const hasNotes = Array.isArray(releaseNotes) ? releaseNotes.length > 0 : Boolean(releaseNotes);
 
     return (
-        <Modal
-            onClose={onClose}
-            labelledBy="update-modal-title"
-            size="lg"
-            panelClassName="max-h-[85vh] flex flex-col overflow-hidden"
-        >
-                <div className="flex items-start justify-between p-6 border-b border-white/10">
-                    <div className="min-w-0">
-                        <h2 id="update-modal-title" className="text-xl font-bold text-text-primary">
-                            {status?.downloaded
-                                ? t('updateModal.titleReady', { version: status.updateInfo?.version })
-                                : status?.available
-                                    ? t('updateModal.titleAvailable', { version: status.updateInfo?.version })
-                                    : t('updateModal.appUpdates')}
-                        </h2>
-                        <p className="text-sm text-text-secondary mt-1">
+        <Modal onClose={onClose} labelledBy={titleId} size="lg">
+                <ModalHeader
+                    title={
+                        status?.downloaded
+                            ? t('updateModal.titleReady', { version: status.updateInfo?.version })
+                            : status?.available
+                                ? t('updateModal.titleAvailable', { version: status.updateInfo?.version })
+                                : t('updateModal.appUpdates')
+                    }
+                    titleId={titleId}
+                    subtitle={
+                        <>
                             <Trans
                                 i18nKey="updateModal.youReOn"
                                 values={{ version: appVersion || '...' }}
@@ -106,20 +103,15 @@ export default function UpdateModal({ onClose }: Props) {
                             {status?.updateInfo?.releaseDate && status.available && (
                                 <> {t('updateModal.releasedOn', { date: new Date(status.updateInfo.releaseDate).toLocaleDateString() })}</>
                             )}
-                        </p>
-                    </div>
-                    <button
-                        onClick={onClose}
-                        className="p-2 rounded-lg hover:bg-white/5 transition-colors cursor-pointer text-text-secondary hover:text-text-primary flex-shrink-0"
-                        aria-label={t('common.actions.close')}
-                    >
-                        <X className="w-5 h-5" />
-                    </button>
-                </div>
+                        </>
+                    }
+                    onClose={onClose}
+                    closeLabel={t('common.actions.close')}
+                />
 
-                <div className="p-6 overflow-y-auto flex-1 min-h-0">
+                <ModalBody>
                     {installSource === 'fork' && (
-                        <div className="flex items-start gap-3 p-4 rounded-lg bg-bg-tertiary border border-white/10 mb-4">
+                        <div className="flex items-start gap-3 p-4 rounded-lg bg-bg-tertiary border border-hl/10 mb-4">
                             <Package className="w-5 h-5 flex-shrink-0 mt-0.5 text-accent" />
                             <div className="text-sm text-text-secondary space-y-2">
                                 <p className="text-text-primary font-medium">
@@ -135,7 +127,7 @@ export default function UpdateModal({ onClose }: Props) {
                         </div>
                     )}
                     {installSource === 'managed' && (
-                        <div className="flex items-start gap-3 p-4 rounded-lg bg-bg-tertiary border border-white/10 mb-4">
+                        <div className="flex items-start gap-3 p-4 rounded-lg bg-bg-tertiary border border-hl/10 mb-4">
                             <Package className="w-5 h-5 flex-shrink-0 mt-0.5 text-accent" />
                             <div className="text-sm text-text-secondary space-y-2">
                                 <p className="text-text-primary font-medium">{t('updateModal.managedByPackageManager')}</p>
@@ -162,7 +154,7 @@ export default function UpdateModal({ onClose }: Props) {
                     )}
 
                     {installSource === 'manual' && (
-                        <div className="flex items-start gap-3 p-4 rounded-lg bg-bg-tertiary border border-white/10 mb-4">
+                        <div className="flex items-start gap-3 p-4 rounded-lg bg-bg-tertiary border border-hl/10 mb-4">
                             <Package className="w-5 h-5 flex-shrink-0 mt-0.5 text-accent" />
                             <div className="text-sm text-text-secondary space-y-2">
                                 <p className="text-text-primary font-medium">{t('updateModal.manualDownloadRequired')}</p>
@@ -180,7 +172,7 @@ export default function UpdateModal({ onClose }: Props) {
                     )}
 
                     {status?.error && (
-                        <div className="flex items-start gap-2 p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-300 text-sm mb-4">
+                        <div className="flex items-start gap-2 p-3 rounded-lg bg-state-danger/10 border border-state-danger/30 text-state-danger text-sm mb-4">
                             <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
                             <span>{status.error}</span>
                         </div>
@@ -231,7 +223,7 @@ export default function UpdateModal({ onClose }: Props) {
                                     dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(releaseNotes) }}
                                 />
                             ) : (
-                                <div className="space-y-5 divide-y divide-white/5">
+                                <div className="space-y-5 divide-y divide-hl/5">
                                     {(releaseNotes as { version: string; note: string | null }[]).map((note, idx) => (
                                         <div key={`${note.version}-${idx}`} className={idx > 0 ? 'pt-5' : ''}>
                                             <h4 className="font-semibold text-accent mb-2">v{note.version}</h4>
@@ -253,9 +245,9 @@ export default function UpdateModal({ onClose }: Props) {
                             {t('updateModal.deliveredViaGithub')}
                         </p>
                     )}
-                </div>
+                </ModalBody>
 
-                <div className="flex items-center justify-between gap-3 p-6 border-t border-white/10">
+                <ModalFooter>
                     <a
                         href={FORK_ISSUES}
                         target="_blank"
@@ -266,7 +258,7 @@ export default function UpdateModal({ onClose }: Props) {
                         <Github className="w-4 h-4" aria-hidden="true" />
                         {t('settings.support.githubIssues')}
                     </a>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
                         <Button onClick={onClose} variant="secondary">
                             {t('common.actions.close')}
                         </Button>
@@ -291,7 +283,7 @@ export default function UpdateModal({ onClose }: Props) {
                             </Button>
                         )}
                     </div>
-                </div>
+                </ModalFooter>
         </Modal>
     );
 }

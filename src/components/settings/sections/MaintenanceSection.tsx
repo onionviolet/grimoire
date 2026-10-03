@@ -194,7 +194,7 @@ export default function MaintenanceSection() {
             </Button>
           </div>
 
-          <div className="h-px bg-white/5" />
+          <div className="h-px bg-hl/5" />
 
           <div className="flex justify-between items-start gap-4">
             <div>
@@ -221,7 +221,7 @@ export default function MaintenanceSection() {
             </Button>
           </div>
 
-          <div className="h-px bg-white/5" />
+          <div className="h-px bg-hl/5" />
 
           <div className="flex justify-between items-start gap-4">
             <div>

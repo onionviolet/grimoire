@@ -1,12 +1,13 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Layers, X, Share2, Scissors, Check, PackageOpen, Loader2, AlertTriangle, Plus, ListTree } from 'lucide-react';
+import { Layers, Share2, Scissors, Check, PackageOpen, Loader2, AlertTriangle, Plus, ListTree, Search } from 'lucide-react';
 import type { Mod, MergedModSource } from '../types/mod';
 import type { MergeSourceUpdateOutcome, MergeSourceUpdateSkip } from '../lib/mergeSourceUpdate';
 import ModThumbnail from './ModThumbnail';
 import MergeReviewPanel from './MergeReviewPanel';
-import { Button, Tag } from './common/ui';
-import { Modal } from './common/Modal';
+import { Button, ModalHeader, Tag } from './common/ui';
+import { Modal, ModalBody, ModalFooter } from './common/Modal';
+import { Input } from './common/forms';
 import { formatRelativeDate } from '../lib/dates';
 
 interface Props {
@@ -45,6 +46,7 @@ export default function MergedContentsModal({
   onAddSources,
 }: Props) {
   const { t } = useTranslation();
+  const titleId = useId();
   const [copied, setCopied] = useState(false);
   // The fileName of the source row currently being extracted, and the last
   // error surfaced by an extract.
@@ -52,6 +54,7 @@ export default function MergedContentsModal({
   const [actionError, setActionError] = useState<string | null>(null);
   const [addPickerOpen, setAddPickerOpen] = useState(false);
   const [selectedAddIds, setSelectedAddIds] = useState<Set<string>>(new Set());
+  const [addSearch, setAddSearch] = useState('');
   const [strict, setStrict] = useState(false);
   const [addingSources, setAddingSources] = useState(false);
   // Read-only preflight over "this merge plus the picked sources". Add-sources
@@ -67,6 +70,12 @@ export default function MergedContentsModal({
 
   const canExtract = !!onExtractSource;
   const canAdd = !!onAddSources;
+  const addQuery = addSearch.trim().toLowerCase();
+  const pickerMods = eligibleMods
+    .filter((eligible) => !addQuery
+      || eligible.name.toLowerCase().includes(addQuery)
+      || eligible.fileName.toLowerCase().includes(addQuery))
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true }));
 
   const handleExtract = async (src: MergedModSource) => {
     if (!onExtractSource || busyFileName || addingSources) return;
@@ -117,6 +126,7 @@ export default function MergedContentsModal({
     try {
       await onAddSources([...selectedAddIds], strict);
       setSelectedAddIds(new Set());
+      setAddSearch('');
       setAddPickerOpen(false);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : String(err));
@@ -152,26 +162,16 @@ export default function MergedContentsModal({
     : 0;
 
   return (
-    <Modal onClose={onClose} labelledBy="merged-contents-title" size="lg">
-        <div className="flex items-center justify-between p-5 border-b border-border">
-          <h3
-            id="merged-contents-title"
-            className="text-lg font-semibold text-text-primary flex items-center gap-2 min-w-0"
-          >
-            <Layers className="w-5 h-5 text-text-secondary flex-shrink-0" />
-            <span className="truncate">{mod.name}</span>
-          </h3>
-          <button
-            onClick={onClose}
-            disabled={addingSources || busyFileName !== null}
-            className="p-1 text-text-secondary hover:text-text-primary rounded cursor-pointer flex-shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
-            aria-label={t('common.actions.close')}
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+    <Modal onClose={onClose} labelledBy={titleId} size="lg">
+        <ModalHeader
+          title={mod.name}
+          titleId={titleId}
+          onClose={onClose}
+          closeLabel={t('common.actions.close')}
+          closeDisabled={addingSources || busyFileName !== null}
+        />
 
-        <div className="p-5 space-y-4">
+        <ModalBody className="space-y-4">
           <div className="flex gap-4">
             <div className="w-28 aspect-square flex-shrink-0 rounded-lg overflow-hidden border border-border bg-bg-tertiary">
               <ModThumbnail
@@ -185,7 +185,7 @@ export default function MergedContentsModal({
             </div>
             <div className="flex-1 min-w-0 space-y-1 text-sm">
               <div className="flex flex-wrap items-center gap-2">
-                <Tag className="border-white/20 text-white/90" icon={Layers}>
+                <Tag className="border-hl/20 text-white/90" icon={Layers}>
                   {t('mergedContents.merged', { count: merged.sources.length })}
                 </Tag>
                 <span className="text-text-secondary text-xs">{t('mergedContents.created', { date: createdLabel })}</span>
@@ -217,7 +217,7 @@ export default function MergedContentsModal({
                 </div>
               )}
               {updateSkips.length > 0 && (
-                <ul className="text-amber-200/80 text-[11px] leading-relaxed pt-1 space-y-0.5">
+                <ul className="text-amber-200/80 text-2xs leading-relaxed pt-1 space-y-0.5">
                   {updateSkips.map((skip) => (
                     <li key={`${skip.modName}:${skip.reason}`}>
                       {t(`mergedContents.skipReason.${skip.reason}`, { modName: skip.modName })}
@@ -234,7 +234,7 @@ export default function MergedContentsModal({
                 {t('mergedContents.sources', { count: merged.sources.length })}
               </div>
               {canExtract && merged.sources.length === 2 && (
-                <div className="text-[11px] text-amber-400/90">
+                <div className="text-2xs text-amber-400/90">
                   {t('mergedContents.extractingDissolves')}
                 </div>
               )}
@@ -261,7 +261,7 @@ export default function MergedContentsModal({
                       <div className="text-sm text-text-primary truncate" title={src.modName}>
                         {src.modName}
                       </div>
-                      <div className="text-[11px] text-text-secondary font-mono truncate" title={src.fileName}>
+                      <div className="text-2xs text-text-secondary font-mono truncate" title={src.fileName}>
                         {src.fileName}
                       </div>
                     </div>
@@ -324,36 +324,53 @@ export default function MergedContentsModal({
                     {t('mergedContents.noEligibleMods')}
                   </div>
                 ) : (
-                  <ul className="space-y-1.5 max-h-52 overflow-y-auto pr-1">
-                    {eligibleMods.map((eligible) => (
-                      <li key={eligible.id}>
-                        <label className="flex items-center gap-3 rounded border border-border/60 bg-bg-tertiary/50 px-2.5 py-2 cursor-pointer hover:border-border">
-                          <input
-                            type="checkbox"
-                            checked={selectedAddIds.has(eligible.id)}
-                            disabled={addingSources}
-                            onChange={() => toggleAddSelection(eligible.id)}
-                            className="accent-accent"
-                          />
-                          <div className="w-9 h-9 flex-shrink-0 rounded overflow-hidden bg-bg-tertiary">
-                            <ModThumbnail
-                              src={eligible.thumbnailUrl}
-                              alt={eligible.name}
-                              hideNsfw={hideNsfw}
-                              nsfw={eligible.nsfw}
-                              className="w-full h-full"
-                            />
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="text-sm text-text-primary truncate">{eligible.name}</div>
-                            <div className="text-[11px] text-text-secondary font-mono truncate">
-                              {eligible.fileName}
-                            </div>
-                          </div>
-                        </label>
-                      </li>
-                    ))}
-                  </ul>
+                  <>
+                    <Input
+                      icon={Search}
+                      inputSize="sm"
+                      type="search"
+                      value={addSearch}
+                      onChange={(event) => setAddSearch(event.target.value)}
+                      placeholder={t('mergedContents.searchMods')}
+                      aria-label={t('mergedContents.searchMods')}
+                    />
+                    {pickerMods.length === 0 ? (
+                      <div className="text-sm text-text-secondary py-2">
+                        {t('mergedContents.noMatchingMods')}
+                      </div>
+                    ) : (
+                      <ul className="space-y-1.5 max-h-52 overflow-y-auto pr-1">
+                        {pickerMods.map((eligible) => (
+                          <li key={eligible.id}>
+                            <label className="flex items-center gap-3 rounded border border-border/60 bg-bg-tertiary/50 px-2.5 py-2 cursor-pointer hover:border-border">
+                              <input
+                                type="checkbox"
+                                checked={selectedAddIds.has(eligible.id)}
+                                disabled={addingSources}
+                                onChange={() => toggleAddSelection(eligible.id)}
+                                className="accent-accent"
+                              />
+                              <div className="w-9 h-9 flex-shrink-0 rounded overflow-hidden bg-bg-tertiary">
+                                <ModThumbnail
+                                  src={eligible.thumbnailUrl}
+                                  alt={eligible.name}
+                                  hideNsfw={hideNsfw}
+                                  nsfw={eligible.nsfw}
+                                  className="w-full h-full"
+                                />
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="text-sm text-text-primary truncate">{eligible.name}</div>
+                                <div className="text-2xs text-text-secondary font-mono truncate">
+                                  {eligible.fileName}
+                                </div>
+                              </div>
+                            </label>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </>
                 )}
                 {selectedAddIds.size > 0 && (
                   <div className="space-y-2">
@@ -392,6 +409,7 @@ export default function MergedContentsModal({
                     disabled={addingSources}
                     onClick={() => {
                       setSelectedAddIds(new Set());
+                      setAddSearch('');
                       setAddPickerOpen(false);
                     }}
                   >
@@ -419,9 +437,9 @@ export default function MergedContentsModal({
               </div>
             )}
           </div>
-        </div>
+        </ModalBody>
 
-        <div className="flex flex-wrap items-center gap-2 justify-end p-4 border-t border-border">
+        <ModalFooter className="flex-wrap">
           {canAdd && (
             <Button
               variant="secondary"
@@ -464,7 +482,7 @@ export default function MergedContentsModal({
           >
             {t('common.actions.close')}
           </Button>
-        </div>
+        </ModalFooter>
     </Modal>
   );
 }

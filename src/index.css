@@ -101,14 +101,19 @@
   --color-text-secondary: #a1a1aa;
   --color-text-tertiary: #8a8a94;
   --color-border: #2d2d2d;
+  /* Highlight ink for translucent surface tints: hover fills, hairline
+     borders, bevels (`bg-hl/5`, `border-hl/10`). White on the dark theme, so
+     it renders identically to the old `white/N` tints, but it is one token a
+     future light theme can flip to dark ink. Never use it for text. */
+  --color-hl: #ffffff;
   /* Warm off-white for the Browse "readable" card title, deliberately softer
      than pure white. */
   --color-mod-title: #eee8df;
 
-  /* Semantic state tokens. Use these for card states, toasts, badges —
-     anything that communicates status. The raw Tailwind colors
-     (green-400/yellow-400/etc) stay available for non-semantic use. */
+  /* Semantic state tokens: card states, toasts, badges, anything that
+     communicates status. Never decoration. */
   --color-state-success: #4ade80;
+  --color-state-accepted: color-mix(in srgb, var(--color-state-success) 30%, var(--color-text-secondary));
   --color-state-warning: #facc15;
   --color-state-danger:  #f87171;
   --color-state-info:    #60a5fa;
@@ -117,6 +122,11 @@
   --color-brand-discord: #5865F2;
   --color-brand-kofi: #FF5E5B;
   --color-brand-kofi-hover: #ff4542;
+
+  /* Type scale: 2xs (11) meta and labels, xs (12) secondary UI, sm (14) body,
+     base (16) emphasis, 2xl (24) page titles. Tailwind ships xs..2xl; 2xs is
+     the one step it lacks. */
+  --text-2xs: 11px;
 
   --font-radiance: 'Radiance', system-ui, sans-serif;
   --font-reaver: 'Reaver', serif;
@@ -159,6 +169,12 @@
     rgb(from var(--color-bg-primary) r g b / 0.65),
     rgb(from var(--color-bg-primary) r g b / 0.88)
   );
+}
+
+/* Trims a text box to cap-height/baseline so flex centering centers the
+   letters instead of the line box. Needed because Radiance sits high. */
+@utility text-trim-cap {
+  text-box: trim-both cap alphabetic;
 }
 
 /* Base styles */
@@ -366,13 +382,13 @@ body {
   justify-content: center;
   gap: clamp(4px, 2.2cqw, 7px);
   flex: 0 0 auto;
-  border-radius: 7px;
-  border: 1px solid rgba(120, 140, 170, 0.28);
-  background: rgba(255, 255, 255, 0.025);
+  border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in srgb, var(--color-hl) 12%, transparent);
+  background: color-mix(in srgb, var(--color-hl) 2.5%, transparent);
   color: color-mix(in srgb, var(--color-text-secondary) 86%, transparent);
   font-size: clamp(10px, 4.3cqw, 13px);
   line-height: 16px;
-  font-weight: 650;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   transition:
@@ -398,8 +414,8 @@ body {
 
 .browse-action-button:hover {
   color: var(--color-text-primary);
-  border-color: rgba(120, 140, 170, 0.4);
-  background: rgba(255, 255, 255, 0.055);
+  border-color: color-mix(in srgb, var(--color-hl) 22%, transparent);
+  background: color-mix(in srgb, var(--color-hl) 5.5%, transparent);
 }
 
 .browse-action-button--icon {
@@ -408,7 +424,6 @@ body {
   padding: 0;
   align-items: center;
   gap: 0;
-  border-radius: 4px;
 }
 
 .browse-action-button--install:hover {
@@ -418,21 +433,19 @@ body {
 }
 
 .browse-action-button--install {
-  border-color: rgba(120, 140, 170, 0.28);
-  background: rgba(255, 255, 255, 0.025);
   color: var(--color-text-primary);
 }
 
 .browse-action-button--installed {
-  border-color: rgb(74 222 128 / 0.3);
-  background: rgb(74 222 128 / 0.055);
-  color: rgb(74 222 128);
+  border-color: color-mix(in srgb, var(--color-state-success) 30%, transparent);
+  background: color-mix(in srgb, var(--color-state-success) 5.5%, transparent);
+  color: var(--color-state-success);
 }
 
 .browse-action-button--installed:hover {
-  border-color: rgb(74 222 128 / 0.5);
-  background: rgb(74 222 128 / 0.09);
-  color: rgb(74 222 128);
+  border-color: color-mix(in srgb, var(--color-state-success) 50%, transparent);
+  background: color-mix(in srgb, var(--color-state-success) 9%, transparent);
+  color: var(--color-state-success);
 }
 
 .browse-action-button--enable {
@@ -448,15 +461,15 @@ body {
 }
 
 .browse-action-button--queued {
-  border-color: rgb(96 165 250 / 0.3);
-  background: rgb(96 165 250 / 0.055);
-  color: rgb(96 165 250);
+  border-color: color-mix(in srgb, var(--color-state-info) 30%, transparent);
+  background: color-mix(in srgb, var(--color-state-info) 5.5%, transparent);
+  color: var(--color-state-info);
 }
 
 .browse-action-button--downloading {
-  border-color: rgb(249 115 22 / 0.3);
-  background: rgb(249 115 22 / 0.055);
-  color: rgb(249 115 22);
+  border-color: color-mix(in srgb, var(--color-accent) 30%, transparent);
+  background: color-mix(in srgb, var(--color-accent) 5.5%, transparent);
+  color: color-mix(in srgb, var(--color-accent) 82%, var(--color-text-primary));
 }
 
 .browse-action-button--downloading::after {
@@ -474,12 +487,12 @@ body {
   inset: -2px;
   pointer-events: none;
   border-radius: inherit;
-  border: 1px solid rgb(74 222 128 / 0.68);
+  border: 1px solid color-mix(in srgb, var(--color-state-success) 68%, transparent);
   animation: browseActionCompleteRing 620ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .browse-action-button--queue-shift {
-  border-color: rgb(96 165 250 / 0.48);
+  border-color: color-mix(in srgb, var(--color-state-info) 48%, transparent);
 }
 
 .browse-action-button-icon {
@@ -552,11 +565,15 @@ body {
 }
 
 .browse-action-button-label {
-  display: inline-flex;
-  align-items: center;
+  display: block;
   line-height: 16px;
   flex: 0 0 auto;
-  overflow: hidden;
+  /* Radiance's metrics put glyphs high in the line box; trimming to
+     cap-height/baseline lets flex centering center the letters. The clip
+     margin keeps descenders visible while still masking the queue swap. */
+  text-box: trim-both cap alphabetic;
+  overflow: clip;
+  overflow-clip-margin: 0.35em;
 }
 
 .browse-action-button-queue-value {
@@ -1000,6 +1017,71 @@ body {
 
 .animate-drop-in {
   animation: dropIn 0.3s ease-out forwards;
+}
+
+/* Default cap for the Modal panel. In the components layer so any max-h-*
+   utility a dialog passes wins regardless of generated-CSS order. */
+@layer components {
+  .modal-panel {
+    max-height: 100%;
+  }
+}
+
+/* Overlay motion: quick and small. Exit must finish inside MODAL_EXIT_MS. */
+@keyframes panelIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes panelOut {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+
+  to {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+}
+
+@keyframes popoverIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.animate-overlay-in {
+  animation: fadeIn 0.16s ease-out forwards;
+}
+
+.animate-overlay-out {
+  animation: fadeOut 0.15s ease-in forwards;
+}
+
+.animate-panel-in {
+  animation: panelIn 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-panel-out {
+  animation: panelOut 0.15s ease-in forwards;
+}
+
+.animate-popover-in {
+  animation: popoverIn 0.12s ease-out forwards;
 }
 
 /* ============================================================================
@@ -1577,6 +1659,11 @@ body {
   .animate-fade-out,
   .animate-scale-in,
   .animate-drop-in,
+  .animate-overlay-in,
+  .animate-overlay-out,
+  .animate-panel-in,
+  .animate-panel-out,
+  .animate-popover-in,
   .mod-details-body--loading-next .mod-details-body-content,
   .mod-details-body--loading-previous .mod-details-body-content,
   .mod-details-body--loading-next .mod-details-navigation-skeleton,

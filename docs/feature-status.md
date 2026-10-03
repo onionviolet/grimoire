@@ -12,6 +12,23 @@ It holds **no forward plan**: see [.planning/ROADMAP.md](../.planning/ROADMAP.md
 for the current milestone and [.planning/BACKLOG.md](../.planning/BACKLOG.md)
 for everything else.
 
+## Source improvements 2026-10-03 (not released)
+
+The current source takes upstream through v1.30.1. The intake and verification
+record is [upstream-absorption-1.30.md](./upstream-absorption-1.30.md).
+
+- Profile apply previews missing, changed, replaced and ambiguous entries from
+  both Profiles and Installed. Cancellation writes nothing; stale reviews are
+  rejected under the mod lock. Partial results remain visibly incomplete.
+- The six new heroes resolve through the fork's portrait and sound identities;
+  their unverified ability/model mappings remain unavailable.
+- Fork UI uses semantic color tokens and keyboard focus rules, enforced by the
+  upstream design-system ratchet without increasing its baseline.
+- Dev-slot profile selection runs before service initialization, isolating the
+  catalog database as well as settings and Chromium state.
+- Release builds use the fork engine on Windows, macOS and Linux with the pinned
+  optional-checksum repair. All-platform artifact builds are not yet verified.
+
 ## Shipped 2026-07-30
 
 - **Global sound categorisation reads the mods, not their download titles.**

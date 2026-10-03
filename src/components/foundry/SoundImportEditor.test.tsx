@@ -149,7 +149,7 @@ describe('SoundImportEditor seeded trim window', () => {
     return calls[calls.length - 1]![0];
   };
 
-  it('fit: none — opens on the whole clip at unity gain when nothing was seeded', async () => {
+  it('fit: none : opens on the whole clip at unity gain when nothing was seeded', async () => {
     const buffer = fakeAudioBuffer(2500);
     await renderEditor(buffer, undefined);
 
@@ -171,7 +171,7 @@ describe('SoundImportEditor seeded trim window', () => {
     expect(document.body.textContent).not.toContain('does not fit this clip');
   });
 
-  it('fit: exact — opens exactly on a seed that fits inside the decoded clip', async () => {
+  it('fit: exact : opens exactly on a seed that fits inside the decoded clip', async () => {
     const buffer = fakeAudioBuffer(2500);
     const seed: SoundImportSeed = { trimStartMs: 300, trimEndMs: 1200, gainDb: -2.5, loop: 'on' };
     await renderEditor(buffer, seed);
@@ -192,7 +192,7 @@ describe('SoundImportEditor seeded trim window', () => {
     expect(document.body.textContent).toContain('The rebuild keeps looping on.');
   });
 
-  it('fit: clamped — pulls a seed whose end runs past the decoded clip back to the clip', async () => {
+  it('fit: clamped : pulls a seed whose end runs past the decoded clip back to the clip', async () => {
     const buffer = fakeAudioBuffer(2500);
     const seed: SoundImportSeed = { trimStartMs: 300, trimEndMs: 5000, gainDb: 3, loop: 'off' };
     await renderEditor(buffer, seed);
@@ -215,7 +215,7 @@ describe('SoundImportEditor seeded trim window', () => {
     expect(document.body.textContent).toContain('The rebuild keeps looping off.');
   });
 
-  it('fit: dropped — opens on the whole clip when the seed is narrower than the minimum window', async () => {
+  it('fit: dropped : opens on the whole clip when the seed is narrower than the minimum window', async () => {
     const buffer = fakeAudioBuffer(2500);
     // 2500 - 2480 = 20ms wide, under MIN_WINDOW_MS (50ms): drops, not clamps.
     const seed: SoundImportSeed = { trimStartMs: 2480, trimEndMs: 5000, gainDb: 1 };

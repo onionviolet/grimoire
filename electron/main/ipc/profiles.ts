@@ -6,6 +6,7 @@ import {
     createProfileFromGameBananaIds,
     updateProfile,
     applyProfile,
+    previewProfile,
     deleteProfile,
     renameProfile,
     removeProfileCrosshair,
@@ -72,7 +73,13 @@ ipcMain.handle('update-profile', async (_, profileId: string, crosshairSettings?
 });
 
 // apply-profile
-ipcMain.handle('apply-profile', async (_, profileId: string): Promise<ApplyProfileResult> => {
+ipcMain.handle('preview-profile', async (_, profileId: string) => {
+    const deadlockPath = getActiveDeadlockPath();
+    if (!deadlockPath) throw new Error('No Deadlock path configured');
+    return previewProfile(deadlockPath, profileId);
+});
+
+ipcMain.handle('apply-profile', async (_, profileId: string, reviewToken?: string): Promise<ApplyProfileResult> => {
     const deadlockPath = getActiveDeadlockPath();
     if (!deadlockPath) {
         throw new Error('No Deadlock path configured');
@@ -87,11 +94,11 @@ ipcMain.handle('apply-profile', async (_, profileId: string): Promise<ApplyProfi
         console.warn('[ApplyProfile] failed to capture pre-apply snapshot:', err);
     }
 
-    const result = await applyProfile(deadlockPath, profileId);
+    const result = await applyProfile(deadlockPath, profileId, reviewToken);
 
     // Save as active profile
     const settings = loadSettings();
-    settings.activeProfileId = profileId;
+    settings.activeProfileId = result.failures.length === 0 && result.unresolved.length === 0 ? profileId : null;
     saveSettings(settings);
 
     return result;

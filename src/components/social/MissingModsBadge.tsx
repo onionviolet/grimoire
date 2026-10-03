@@ -21,11 +21,11 @@ export default function MissingModsBadge({ summary, className = '' }: MissingMod
   if (summary.total === 0) return null;
 
   const base =
-    'inline-flex items-center gap-1 text-[11px] leading-tight px-1.5 py-0.5 rounded-sm border';
+    'inline-flex items-center gap-1 text-2xs leading-tight px-1.5 py-0.5 rounded-sm border';
 
   if (summary.missing === 0) {
     return (
-      <span className={`${base} border-white/10 bg-white/[0.03] text-text-secondary ${className}`}>
+      <span className={`${base} border-hl/10 bg-hl/[0.03] text-text-secondary ${className}`}>
         <CircleCheck className="w-3 h-3 flex-shrink-0" />
         {t('discover.card.haveAll')}
       </span>

@@ -23,14 +23,13 @@ import {
   MenuSeparator,
   MenuTrigger,
 } from '../common/menu';
-import { Modal } from '../common/Modal';
+import { Modal, ModalBody, ModalFooter } from '../common/Modal';
 import { Button, IconButton, ModalHeader } from '../common/ui';
 import { Input } from '../common/forms';
 import { ConfirmModal } from '../common/PageComponents';
 import { showToast } from '../../stores/toastStore';
 import { useCrosshairStore } from '../../stores/crosshairStore';
 import {
-  applyProfile,
   createProfile,
   deleteProfile,
   getProfiles,
@@ -38,6 +37,7 @@ import {
   isGameRunningModLockError,
   updateProfile,
 } from '../../lib/api';
+import { useReviewedProfileApply } from '../profiles/useReviewedProfileApply';
 import type { Profile } from '../../lib/api';
 
 interface InstalledProfilesMenuProps {
@@ -64,6 +64,7 @@ export function InstalledProfilesMenu({ onApplied, className = '' }: InstalledPr
 
   const [open, setOpen] = useState(false);
   const [applyingId, setApplyingId] = useState<string | null>(null);
+  const { apply: applyReviewedProfile, reviewDialog } = useReviewedProfileApply();
   const [saveOpen, setSaveOpen] = useState(false);
   const [saveName, setSaveName] = useState('');
   const [saving, setSaving] = useState(false);
@@ -122,7 +123,9 @@ export function InstalledProfilesMenu({ onApplied, className = '' }: InstalledPr
     setApplyingId(profileId);
     setOpen(false);
     try {
-      const { profile, failures } = await applyProfile(profileId);
+      const result = await applyReviewedProfile(profileId);
+      if (!result) return;
+      const { profile, failures, unresolved } = result;
 
       if (profile.crosshair) {
         // We cast to any to satisfy the Preset type since loadSettingsFromPreset only uses the .settings property
@@ -130,7 +133,7 @@ export function InstalledProfilesMenu({ onApplied, className = '' }: InstalledPr
         loadSettingsFromPreset({ settings: profile.crosshair } as any);
       }
 
-      setActiveProfileId(profileId);
+      setActiveProfileId(failures.length === 0 && unresolved.length === 0 ? profileId : null);
       onApplied();
       await refresh();
 
@@ -139,6 +142,8 @@ export function InstalledProfilesMenu({ onApplied, className = '' }: InstalledPr
       // thrown, so the partial case gets its own warning instead of a success.
       if (failures.length > 0) {
         showToast(t('profiles.errors.applyPartial', { count: failures.length }), { tone: 'warning' });
+      } else if (unresolved.length > 0) {
+        showToast(t('profiles.review.partial', { count: unresolved.length }), { tone: 'warning' });
       } else {
         showToast(t('installed.profiles.appliedToast', { name: profile.name }), { tone: 'success' });
       }
@@ -224,6 +229,7 @@ export function InstalledProfilesMenu({ onApplied, className = '' }: InstalledPr
 
   return (
     <>
+      {reviewDialog}
       <MenuRoot kind="dropdown" open={open} onOpenChange={handleOpenChange}>
         <MenuTrigger asChild>
           <Button
@@ -312,7 +318,7 @@ export function InstalledProfilesMenu({ onApplied, className = '' }: InstalledPr
           size="sm"
           dismissable={!saving}
         >
-          <form onSubmit={handleCreate}>
+          <form onSubmit={handleCreate} className="flex min-h-0 flex-col">
             <ModalHeader
               titleId="installed-save-profile-title"
               title={t('installed.profiles.saveTitle')}
@@ -320,7 +326,7 @@ export function InstalledProfilesMenu({ onApplied, className = '' }: InstalledPr
               closeLabel={t('common.actions.close')}
               closeDisabled={saving}
             />
-            <div className="p-5">
+            <ModalBody>
               <Input
                 autoFocus
                 value={saveName}
@@ -333,15 +339,15 @@ export function InstalledProfilesMenu({ onApplied, className = '' }: InstalledPr
               {/* The page's search and filters narrow what you see, not what a
                   save captures. Say so, or a filtered view reads as a subset. */}
               <p className="mt-2 text-xs text-text-secondary">{t('installed.profiles.saveHint')}</p>
-            </div>
-            <div className="flex justify-end gap-2 border-t border-border px-5 py-4">
+            </ModalBody>
+            <ModalFooter>
               <Button type="button" variant="ghost" onClick={() => setSaveOpen(false)} disabled={saving}>
                 {t('common.actions.cancel')}
               </Button>
               <Button type="submit" disabled={!saveName.trim()} isLoading={saving}>
                 {t('common.actions.save')}
               </Button>
-            </div>
+            </ModalFooter>
           </form>
         </Modal>
       )}
@@ -355,7 +361,7 @@ export function InstalledProfilesMenu({ onApplied, className = '' }: InstalledPr
           // flight, so Escape answers the confirmation instead of yanking the
           // list out from under it.
           dismissable={deleteConfirmId === null && deletingId === null}
-          panelClassName="flex max-h-[min(600px,calc(100vh-2rem))] flex-col overflow-hidden"
+          panelClassName="max-h-[min(600px,100%)]"
         >
           <ModalHeader
             titleId="installed-delete-profile-title"
@@ -364,7 +370,7 @@ export function InstalledProfilesMenu({ onApplied, className = '' }: InstalledPr
             closeLabel={t('common.actions.close')}
             closeDisabled={deleteConfirmId !== null || deletingId !== null}
           />
-          <div className="min-h-0 overflow-y-auto p-5">
+          <ModalBody>
             {profiles.length === 0 ? (
               <p className="text-sm text-text-secondary">{t('installed.profiles.none')}</p>
             ) : (
@@ -389,7 +395,7 @@ export function InstalledProfilesMenu({ onApplied, className = '' }: InstalledPr
                 ))}
               </ul>
             )}
-          </div>
+          </ModalBody>
         </Modal>
       )}
 

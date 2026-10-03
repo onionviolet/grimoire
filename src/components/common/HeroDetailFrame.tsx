@@ -219,7 +219,7 @@ export default function HeroDetailFrame<Id extends string>({
                     ? 'cursor-default border-transparent opacity-40'
                     : isActive
                       ? 'border-accent/60 bg-accent/15 cursor-pointer focus-visible:ring-2 focus-visible:ring-accent'
-                      : 'border-transparent hover:bg-white/10 cursor-pointer focus-visible:ring-2 focus-visible:ring-accent'
+                      : 'border-transparent hover:bg-hl/10 cursor-pointer focus-visible:ring-2 focus-visible:ring-accent'
                 }`}
               >
                 <Icon className="h-4 w-4 flex-shrink-0 text-white/80" />

@@ -216,7 +216,7 @@ export default function MyChanges({ onAddNew, heroName }: MyChangesProps) {
             follows either control, not just the typed query. */}
         <ResultSummary
           id={summaryId}
-          className="basis-full text-[11px]"
+          className="basis-full text-2xs"
           scope={t('foundry.myChanges.searchScope', 'Searches change names and game paths.')}
           summary={
             query.trim() || filter !== 'all'
@@ -292,7 +292,7 @@ export default function MyChanges({ onAddNew, heroName }: MyChangesProps) {
           opting one change in makes that whole group exclusive at launch. A
           user who does not know that would read a disabled sibling as a bug. */}
       {pooledCount > 0 && (
-        <p className="flex items-start gap-2 rounded-sm border border-border bg-bg-tertiary/40 p-2 text-[11px] text-text-secondary">
+        <p className="flex items-start gap-2 rounded-sm border border-border bg-bg-tertiary/40 p-2 text-2xs text-text-secondary">
           <Shuffle size={12} className="mt-px shrink-0 text-accent" />
           <span>
             {t('foundry.myChanges.shuffleSummary', { count: pooledCount })}
@@ -315,7 +315,7 @@ export default function MyChanges({ onAddNew, heroName }: MyChangesProps) {
               ChangePools.tsx: the pool list also embeds inside HeroCardPicker,
               where its shuffle control scopes to one hero. Here, in My changes,
               it scopes to every forged portrait pool across heroes. */}
-          <p className="text-[11px] text-text-secondary">{t('foundry.myChanges.shuffleScopeAllForged')}</p>
+          <p className="text-2xs text-text-secondary">{t('foundry.myChanges.shuffleScopeAllForged')}</p>
         <FoundryPoolList
           mods={mods}
           changes={visible}
@@ -348,7 +348,7 @@ export default function MyChanges({ onAddNew, heroName }: MyChangesProps) {
                         scope ? `/locker/sounds?hero=${encodeURIComponent(scope)}` : '/locker/sounds/global'
                       )
                     }
-                    className="flex items-center gap-1 text-[11px] font-normal text-text-secondary hover:text-text-primary"
+                    className="flex items-center gap-1 text-2xs font-normal text-text-secondary hover:text-text-primary"
                   >
                     <ExternalLink size={11} />{' '}
                     {t('foundry.myChanges.openInSoundLocker', 'Open in Sound Locker')}
@@ -358,7 +358,7 @@ export default function MyChanges({ onAddNew, heroName }: MyChangesProps) {
                   <button
                     type="button"
                     onClick={() => navigate(`/locker?hero=${encodeURIComponent(scope)}`)}
-                    className="flex items-center gap-1 text-[11px] font-normal text-text-secondary hover:text-text-primary"
+                    className="flex items-center gap-1 text-2xs font-normal text-text-secondary hover:text-text-primary"
                   >
                     <ExternalLink size={11} /> {t('foundry.myChanges.openInLocker', 'Open in Locker')}
                   </button>
@@ -383,7 +383,7 @@ export default function MyChanges({ onAddNew, heroName }: MyChangesProps) {
                           </Tag>
                         )}
                       </div>
-                      <p className="truncate text-[11px] text-text-secondary" title={entry.subtitle}>
+                      <p className="truncate text-2xs text-text-secondary" title={entry.subtitle}>
                         {[entry.subtitle, entry.sourceFileName].filter(Boolean).join(' · ')}
                       </p>
                     </div>
@@ -419,7 +419,7 @@ export default function MyChanges({ onAddNew, heroName }: MyChangesProps) {
                         </button>
                       );
                     })()}
-                    <span className={`shrink-0 text-[11px] ${entry.mod.enabled ? 'text-green-400' : 'text-text-secondary'}`}>
+                    <span className={`shrink-0 text-2xs ${entry.mod.enabled ? 'text-state-success' : 'text-text-secondary'}`}>
                       {entry.mod.enabled ? t('foundry.myChanges.enabled') : t('foundry.myChanges.disabled')}
                     </span>
                     <button
@@ -455,7 +455,7 @@ export default function MyChanges({ onAddNew, heroName }: MyChangesProps) {
                         })();
                       }}
                       title={t('foundry.myChanges.delete')}
-                      className="rounded-sm border border-border p-1.5 text-red-300 hover:text-red-200"
+                      className="rounded-sm border border-border p-1.5 text-state-danger hover:text-state-danger"
                     >
                       <Trash2 size={13} />
                     </button>
@@ -618,7 +618,7 @@ function ChangeDetails({
   }, [recorded, rebuilding, entries, entry.mod.id, entry.mod.name, t, confirm]);
 
   return (
-    <div className="mt-1.5 text-[11px] text-text-secondary">
+    <div className="mt-1.5 text-2xs text-text-secondary">
       <button
         type="button"
         onClick={() => setExpanded((value) => !value)}

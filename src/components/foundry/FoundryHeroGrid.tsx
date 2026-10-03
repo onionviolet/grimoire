@@ -104,7 +104,7 @@ export default function FoundryHeroGrid({ heroes, onPick }: FoundryHeroGridProps
       </div>
       <ResultSummary
         id={summaryId}
-        className="-mt-3 text-[11px]"
+        className="-mt-3 text-2xs"
         scope={t('foundry.heroes.searchScope', 'Searches hero names and codenames.')}
         summary={
           query.trim()
@@ -202,7 +202,7 @@ function HeroCard({
             </span>
           )}
           {hero.disabled && (
-            <span className="block text-[10px] uppercase tracking-wide text-amber-300">
+            <span className="block text-[10px] uppercase tracking-wide text-state-warning">
               {t('foundry.heroes.disabled', 'Not in the live roster')}
             </span>
           )}
@@ -218,7 +218,7 @@ function HeroCard({
       {!modsLoaded ? (
         <span
           aria-label={t('foundry.heroes.changeCountLoading', 'Change count is loading')}
-          className="pointer-events-none absolute left-1.5 top-1.5 z-10 h-2 w-2 rounded-full bg-white/40 animate-pulse"
+          className="pointer-events-none absolute left-1.5 top-1.5 z-10 h-2 w-2 rounded-full bg-hl/40 animate-pulse"
         />
       ) : changeCount > 0 ? (
         <span
@@ -237,7 +237,7 @@ function HeroCard({
         aria-label={favorite ? t('foundry.heroes.unfavorite') : t('foundry.heroes.favorite')}
         className={`absolute right-1.5 top-1.5 z-10 cursor-pointer rounded-full p-1 transition-colors ${
           favorite
-            ? 'bg-yellow-400/25 text-yellow-300'
+            ? 'bg-state-warning/25 text-state-warning'
             : 'bg-black/45 text-white/60 opacity-0 hover:text-white group-hover:opacity-100 focus-visible:opacity-100'
         }`}
       >

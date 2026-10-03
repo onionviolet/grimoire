@@ -166,15 +166,15 @@ export default function HeroPortraitFamilies({
           <AlertCircle className="h-3.5 w-3.5" />
           {t('portrait.family.failedTitle')}
         </p>
-        <p className="mt-1 text-[11px] leading-snug text-text-secondary">
+        <p className="mt-1 text-2xs leading-snug text-text-secondary">
           {t('portrait.family.failedBody', { hero: heroName })}
         </p>
-        <p className="mt-1 text-[11px] leading-snug text-text-secondary/70">{error}</p>
+        <p className="mt-1 text-2xs leading-snug text-text-secondary/70">{error}</p>
         {onRetry && (
           <button
             type="button"
             onClick={onRetry}
-            className="mt-2 inline-flex cursor-pointer items-center rounded-md border border-border/60 px-3 py-1.5 text-xs font-medium text-text-secondary transition-colors hover:border-white/20 hover:text-text-primary"
+            className="mt-2 inline-flex cursor-pointer items-center rounded-md border border-border/60 px-3 py-1.5 text-xs font-medium text-text-secondary transition-colors hover:border-hl/20 hover:text-text-primary"
           >
             {t('common.actions.retry')}
           </button>
@@ -193,7 +193,7 @@ export default function HeroPortraitFamilies({
           <Images className="h-3.5 w-3.5 text-accent" />
           {t('portrait.family.noneTitle')}
         </p>
-        <p className="mt-1 text-[11px] leading-snug text-text-secondary">
+        <p className="mt-1 text-2xs leading-snug text-text-secondary">
           {t('portrait.family.noneBody', { hero: heroName })}
         </p>
       </div>
@@ -204,7 +204,7 @@ export default function HeroPortraitFamilies({
     <div className="space-y-2.5">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <p className="text-xs font-semibold text-text-primary">{t('portrait.family.browserTitle')}</p>
-        <p className="text-[11px] text-text-secondary">
+        <p className="text-2xs text-text-secondary">
           {t('portrait.family.browserCount', { count: families.length })}
         </p>
       </div>
@@ -256,7 +256,7 @@ export default function HeroPortraitFamilies({
         footer={
           openFamily && (
             <details className="rounded-sm border border-border/60 px-2 py-1.5">
-              <summary className="cursor-pointer text-[11px] text-text-secondary hover:text-text-primary">
+              <summary className="cursor-pointer text-2xs text-text-secondary hover:text-text-primary">
                 {t('portrait.family.sourcesTitle')}
               </summary>
               {/* The Stage 2 summary, reused rather than reimplemented per
