@@ -61,7 +61,6 @@ jobs:
       # because the engine's main branch advanced.
       - name: Checkout forked vpkmerge
         uses: actions/checkout@v6
-        if: matrix.platform == 'win'
         with:
           repository: onionviolet/vpkmerge
           ref: 798f3a7d28f3ef314d8f6ebf51ced0d9fe049445
@@ -69,9 +68,8 @@ jobs:
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
-        if: matrix.platform == 'win'
         with:
-          toolchain: stable-x86_64-pc-windows-msvc
+          toolchain: ${{ matrix.platform == 'win' && 'stable-x86_64-pc-windows-msvc' || 'stable' }}
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -97,18 +95,22 @@ jobs:
         working-directory: grimoire
         run: pnpm install --frozen-lockfile
 
-      # The pinned fork sidecar is built from source for Windows only today;
-      # mac and linux releases fall back to fetch-vpkmerge's asset path, the
-      # same as upstream. Extending the pinned build to darwin-arm64 is a
-      # deliberate follow-up, not something to improvise inside a release.
+      # Every platform needs the same fork catalog and YCoCg capabilities.
+      # Carry the pinned upstream reader repair without changing either repo.
+      - name: Apply pinned VPK reader fix
+        working-directory: grimoire
+        run: node scripts/patch-release-engine.mjs ../vpkmerge
+
+      - name: Verify checksumless VPK support
+        working-directory: vpkmerge
+        run: cargo +stable test --locked -p vpkmerge-core --test optional_checksums
+
       - name: Build the forked vpkmerge sidecar
         working-directory: vpkmerge
-        if: matrix.platform == 'win'
-        run: cargo +stable-x86_64-pc-windows-msvc build --locked --release -p vpkmerge-cli
+        run: cargo +stable build --locked --release -p vpkmerge-cli
 
       - name: Bundle the forked vpkmerge sidecar
         working-directory: grimoire
-        if: matrix.platform == 'win'
         run: pnpm use-local-vpkmerge
 
       # electron-updater throws in the main process when the packaged app

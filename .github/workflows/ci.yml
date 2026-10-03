@@ -102,6 +102,10 @@ jobs:
         working-directory: grimoire
         run: pnpm encoding:check
 
+      - name: Fork engine release contract
+        working-directory: grimoire
+        run: pnpm engine-pin:check
+
       # This repo is the fork. A commit message that writes a bare upstream
       # number or a github.com upstream URL makes GitHub post a reference into
       # Slush97/grimoire's timeline under the pusher's name, and the entry

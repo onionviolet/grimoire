@@ -43,6 +43,26 @@ function fail(message) {
 
 function findForkVpkmergePin(workflowText) {
   const lines = workflowText.split(/\r?\n/);
+  const steps = workflowText.split(/\n(?= {6}- name:)/);
+  for (const marker of [`repository: ${FORK_REPO}`, 'name: Build the forked vpkmerge sidecar', 'pnpm use-local-vpkmerge']) {
+    const step = steps.find((block) => block.includes(marker));
+    if (!step || /^\s+if:/m.test(step)) {
+      fail(`engine step "${marker}" must run on every release platform.`);
+      return;
+    }
+  }
+  const patchIndex = findLineIndex(lines, (l) => l.includes('node scripts/patch-release-engine.mjs'));
+  const testIndex = findLineIndex(lines, (l) => l.includes('--test optional_checksums'));
+  const buildIndex = findLineIndex(lines, (l) => l.includes('build --locked --release -p vpkmerge-cli'));
+  if (patchIndex < 0 || testIndex <= patchIndex || buildIndex <= testIndex) {
+    fail('the pinned reader patch and checksumless VPK tests must precede the engine build.');
+    return;
+  }
+  const patchScript = readFileSync(resolve(root, 'scripts/patch-release-engine.mjs'), 'utf8');
+  if (!/const READER_FIX = '[0-9a-f]{40}';/.test(patchScript)) {
+    fail('the reader repair must stay pinned to a full commit SHA.');
+    return;
+  }
   for (let i = 0; i < lines.length; i += 1) {
     if (!lines[i].includes(`repository: ${FORK_REPO}`)) continue;
     // The `ref:` for this checkout step lives on a nearby line within the
