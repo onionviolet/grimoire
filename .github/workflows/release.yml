@@ -116,6 +116,10 @@ jobs:
       # electron-updater throws in the main process when the packaged app
       # version is not SemVer. Reject bad or mismatched release tags before
       # spending time building artifacts that users cannot launch safely.
+      - name: Verify ChatLane resources
+        working-directory: grimoire
+        run: pnpm chatlane:check
+
       - name: Verify release version
         working-directory: grimoire
         run: node scripts/verify-release-version.mjs

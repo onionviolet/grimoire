@@ -9,7 +9,7 @@ import {
     disableModUnlocked,
     reorderModsUnlocked,
 } from './mods';
-import { getModMetadata, loadMetadata } from './metadata';
+import { getModMetadata, loadMetadata, setModMetadataWithHash } from './metadata';
 import {
     normalizeVpkIndex,
     inferMissingVpkIndexes as resolverInferMissingVpkIndexes,
@@ -17,7 +17,9 @@ import {
     buildProfileModResolver as resolverBuildProfileModResolver,
     type ResolvedMatch,
 } from './profileResolver';
-import { isLockerManaged, pinLockerVpksToFront } from './lockerVpk';
+import { isLockerManaged } from './lockerVpk';
+import { captureProfileRecoveryUnlocked } from './profileRecovery';
+import { loadSettings, saveSettings } from './settings';
 import { readAutoexec, writeAutoexec } from './autoexec';
 import {
     assertCanMoveLoadedGameMods,
@@ -180,39 +182,52 @@ function dedupeEnabledForProfile<T extends { metaKey: string; fileName: string; 
     return resolverDedupeEnabledForProfile(mods, getModMetadata);
 }
 
+/** Hand-dropped VPKs can have a stable UID without a saved content identity. */
+async function ensureProfileContentHashes(mods: Array<{ metaKey: string; path: string }>): Promise<void> {
+    for (const mod of mods) {
+        if (!getModMetadata(mod.metaKey)?.sha256) {
+            await setModMetadataWithHash(mod.metaKey, {}, mod.path);
+        }
+    }
+}
+
 /**
  * Create a new profile from current mod state and provided crosshair settings
  */
 export async function createProfile(deadlockPath: string, name: string, crosshairSettings?: ProfileCrosshairSettings): Promise<Profile> {
-    const mods = await scanMods(deadlockPath);
-    // Only save enabled mods, and never the Locker-managed VPKs (cards/sounds):
-    // they're owned by the Locker, hidden, and auto-pinned, so they don't belong
-    // in a profile's mod list (and have no gameBananaId to re-resolve anyway).
-    const enabledMods = dedupeEnabledForProfile(
-        mods.filter(mod => mod.enabled && !isLockerManaged(mod.metaKey))
-    );
+    return runExclusiveModMutation(async () => {
+        const mods = await scanMods(deadlockPath);
+        // Only save enabled mods, and never the Locker-managed VPKs (cards/sounds):
+        // they're owned by the Locker, hidden, and auto-pinned, so they don't belong
+        // in a profile's mod list (and have no gameBananaId to re-resolve anyway).
+        const enabledMods = dedupeEnabledForProfile(
+            mods.filter(mod => mod.enabled && !isLockerManaged(mod.metaKey))
+        );
 
-    // Read current autoexec commands
-    const autoexecData = readAutoexec(deadlockPath);
+        await ensureProfileContentHashes(enabledMods);
 
-    const now = new Date().toISOString();
+        // Read current autoexec commands
+        const autoexecData = readAutoexec(deadlockPath);
 
-    const inferredVpkIndexes = inferMissingVpkIndexes(enabledMods);
-    const profile: Profile = {
-        id: generateProfileId(),
-        name,
-        mods: enabledMods.map(mod => toProfileMod(mod, true, inferredVpkIndexes)),
-        crosshair: crosshairSettings ? normalizeCrosshairSettings(crosshairSettings) : undefined,
-        autoexecCommands: autoexecData.commands,
-        createdAt: now,
-        updatedAt: now,
-    };
+        const now = new Date().toISOString();
 
-    const profiles = loadProfiles();
-    profiles.push(profile);
-    saveProfiles(profiles);
+        const inferredVpkIndexes = inferMissingVpkIndexes(enabledMods);
+        const profile: Profile = {
+            id: generateProfileId(),
+            name,
+            mods: enabledMods.map(mod => toProfileMod(mod, true, inferredVpkIndexes)),
+            crosshair: crosshairSettings ? normalizeCrosshairSettings(crosshairSettings) : undefined,
+            autoexecCommands: autoexecData.commands,
+            createdAt: now,
+            updatedAt: now,
+        };
 
-    return profile;
+        const profiles = loadProfiles();
+        profiles.push(profile);
+        saveProfiles(profiles);
+
+        return profile;
+    });
 }
 
 /**
@@ -295,42 +310,46 @@ export async function createProfileFromGameBananaIds(
  * Only saves enabled mods - disabled mods are not included
  */
 export async function updateProfile(deadlockPath: string, profileId: string, crosshairSettings?: ProfileCrosshairSettings): Promise<Profile> {
-    const mods = await scanMods(deadlockPath);
-    // Only save enabled mods, and never the Locker-managed VPKs (cards/sounds):
-    // they're owned by the Locker, hidden, and auto-pinned, so they don't belong
-    // in a profile's mod list (and have no gameBananaId to re-resolve anyway).
-    const enabledMods = dedupeEnabledForProfile(
-        mods.filter(mod => mod.enabled && !isLockerManaged(mod.metaKey))
-    );
+    return runExclusiveModMutation(async () => {
+        const mods = await scanMods(deadlockPath);
+        // Only save enabled mods, and never the Locker-managed VPKs (cards/sounds):
+        // they're owned by the Locker, hidden, and auto-pinned, so they don't belong
+        // in a profile's mod list (and have no gameBananaId to re-resolve anyway).
+        const enabledMods = dedupeEnabledForProfile(
+            mods.filter(mod => mod.enabled && !isLockerManaged(mod.metaKey))
+        );
 
-    // Read current autoexec commands
-    const autoexecData = readAutoexec(deadlockPath);
+        await ensureProfileContentHashes(enabledMods);
 
-    // Load AFTER every await: retargetProfileModSha (triggered by merge
-    // rebuilds and re-imports) does a synchronous load-modify-save of
-    // profiles.json, so a copy loaded before the scan could clobber a retarget
-    // that landed mid-await, silently reverting other profiles' entries to a
-    // dead hash. From here to saveProfiles there must be no awaits.
-    const profiles = loadProfiles();
-    const index = profiles.findIndex(p => p.id === profileId);
+        // Read current autoexec commands
+        const autoexecData = readAutoexec(deadlockPath);
 
-    if (index === -1) {
-        throw new Error(`Profile not found: ${profileId}`);
-    }
+        // Load AFTER every await: retargetProfileModSha (triggered by merge
+        // rebuilds and re-imports) does a synchronous load-modify-save of
+        // profiles.json, so a copy loaded before the scan could clobber a retarget
+        // that landed mid-await, silently reverting other profiles' entries to a
+        // dead hash. From here to saveProfiles there must be no awaits.
+        const profiles = loadProfiles();
+        const index = profiles.findIndex(p => p.id === profileId);
 
-    const inferredVpkIndexes = inferMissingVpkIndexes(enabledMods);
-    profiles[index] = {
-        ...profiles[index],
-        mods: enabledMods.map(mod => toProfileMod(mod, true, inferredVpkIndexes)),
-        // If crosshairSettings is passed, use it. If undefined/null, remove crosshair from profile.
-        // This allows the frontend to explicitly control whether crosshair is included based on feature toggle.
-        crosshair: crosshairSettings ? normalizeCrosshairSettings(crosshairSettings) : undefined,
-        autoexecCommands: autoexecData.commands,
-        updatedAt: new Date().toISOString(),
-    };
+        if (index === -1) {
+            throw new Error(`Profile not found: ${profileId}`);
+        }
 
-    saveProfiles(profiles);
-    return profiles[index];
+        const inferredVpkIndexes = inferMissingVpkIndexes(enabledMods);
+        profiles[index] = {
+            ...profiles[index],
+            mods: enabledMods.map(mod => toProfileMod(mod, true, inferredVpkIndexes)),
+            // If crosshairSettings is passed, use it. If undefined/null, remove crosshair from profile.
+            // This allows the frontend to explicitly control whether crosshair is included based on feature toggle.
+            crosshair: crosshairSettings ? normalizeCrosshairSettings(crosshairSettings) : undefined,
+            autoexecCommands: autoexecData.commands,
+            updatedAt: new Date().toISOString(),
+        };
+
+        saveProfiles(profiles);
+        return profiles[index];
+    });
 }
 
 /** Binds the pure resolver (profileResolver.ts) to the real metadata sidecar so
@@ -473,6 +492,12 @@ export async function applyProfile(deadlockPath: string, profileId: string, revi
             }
         }
 
+        await captureProfileRecoveryUnlocked(deadlockPath, profile.name, currentMods);
+        // Once mutations start, the old marker no longer describes the disk if a later step fails.
+        const pendingSettings = loadSettings();
+        pendingSettings.activeProfileId = null;
+        saveSettings(pendingSettings);
+
         // Two passes, disables BEFORE enables. The disabled library is uncapped now,
         // so a profile that swaps a large enabled set for a large disabled one could,
         // in a single interleaved pass, enable past the 99 active-slot ceiling before
@@ -564,34 +589,45 @@ export async function applyProfile(deadlockPath: string, profileId: string, revi
         } else {
             console.log(`[profiles] reorder: nothing to reorder`);
         }
+
+        if (failures.length > 0) {
+            console.warn(
+                `[profiles] apply '${profile.name}' completed with ${failures.length} ` +
+                `mod op failure(s) (file likely locked by the running game): ${failures.join('; ')}`
+            );
+        }
+
+        // Re-assert the Locker-managed VPKs at the front: the profile reorder only
+        // sequences the profile's own mods (managed VPKs are excluded), so pin them
+        // back to pak01.. so applied cards/sounds keep winning every collision.
+        const finalMods = (await scanMods(deadlockPath)).filter(mod => mod.enabled).sort((a, b) => a.priority - b.priority);
+        const lockerRank = (mod: typeof finalMods[number]): number => {
+            const meta = getModMetadata(mod.metaKey);
+            return meta?.lockerCosmetics ? 0 : meta?.lockerSounds ? 1 : 2;
+        };
+        const managed = finalMods.filter(mod => isLockerManaged(mod.metaKey)).sort((a, b) => lockerRank(a) - lockerRank(b));
+        if (managed.length && !managed.every((mod, index) => finalMods[index]?.id === mod.id)) {
+            await reorderModsUnlocked(deadlockPath, [...managed, ...finalMods.filter(mod => !isLockerManaged(mod.metaKey))].map(mod => mod.id));
+        }
+
+        // 2. Apply Autoexec & Crosshair
+        const currentAutoexec = readAutoexec(deadlockPath);
+
+        // Update commands if present in profile
+        if (profile.autoexecCommands) {
+            currentAutoexec.commands = profile.autoexecCommands;
+        }
+
+        // Update crosshair if present in profile
+        if (profile.crosshair) {
+            currentAutoexec.crosshair = generateCrosshairCommands(profile.crosshair);
+        }
+
+        writeAutoexec(deadlockPath, currentAutoexec);
+        const settings = loadSettings();
+        settings.activeProfileId = failures.length === 0 && unresolved.length === 0 ? profileId : null;
+        saveSettings(settings);
     });
-
-    if (failures.length > 0) {
-        console.warn(
-            `[profiles] apply '${profile.name}' completed with ${failures.length} ` +
-            `mod op failure(s) (file likely locked by the running game): ${failures.join('; ')}`
-        );
-    }
-
-    // Re-assert the Locker-managed VPKs at the front: the profile reorder only
-    // sequences the profile's own mods (managed VPKs are excluded), so pin them
-    // back to pak01.. so applied cards/sounds keep winning every collision.
-    await pinLockerVpksToFront(deadlockPath);
-
-    // 2. Apply Autoexec & Crosshair
-    const currentAutoexec = readAutoexec(deadlockPath);
-
-    // Update commands if present in profile
-    if (profile.autoexecCommands) {
-        currentAutoexec.commands = profile.autoexecCommands;
-    }
-
-    // Update crosshair if present in profile
-    if (profile.crosshair) {
-        currentAutoexec.crosshair = generateCrosshairCommands(profile.crosshair);
-    }
-
-    writeAutoexec(deadlockPath, currentAutoexec);
 
     console.log(`[profiles] apply '${profile.name}' complete`);
     return { profile, failures, unresolved };

@@ -4,20 +4,38 @@ import { promises as fs } from 'fs';
 import { spawn } from 'child_process';
 import { join } from 'path';
 import { tmpdir } from 'os';
+import type { ChatWheelConverterStatus, ChatWheelPlatform } from '../../../src/types/chatWheelPlatform';
+
+function chatWheelResourceRoot(): string {
+    return app.isPackaged ? process.resourcesPath : join(app.getAppPath(), 'resources');
+}
+
+/** Describe native converter availability without exposing filesystem errors to the UI. */
+export function getChatWheelConverterStatus(
+    platform: ChatWheelPlatform = process.platform as ChatWheelPlatform,
+    resourceRoot = chatWheelResourceRoot(),
+    fileExists: (path: string) => boolean = existsSync,
+): ChatWheelConverterStatus {
+    if (platform !== 'win32') return { available: false, platform, reason: 'unsupported-platform' };
+    const binaryPath = join(resourceRoot, 'chatlane', 'ChatLane.exe');
+    return fileExists(binaryPath)
+        ? { available: true, platform, path: binaryPath }
+        : { available: false, platform, reason: 'missing-resource' };
+}
 
 /** Run the bundled ChatLane converter and surface its own diagnostics verbatim. */
 export function chatLaneBinaryPath(): string {
-    const executable = process.platform === 'win32' ? 'ChatLane.exe' : 'ChatLane';
-    const root = app.isPackaged ? process.resourcesPath : join(app.getAppPath(), 'resources');
-    const binary = join(root, 'chatlane', executable);
-    if (!existsSync(binary)) throw new Error(`Chat Wheel converter is unavailable: ${binary}`);
-    return binary;
+    const status = getChatWheelConverterStatus();
+    if (status.available && status.path) return status.path;
+    if (status.reason === 'unsupported-platform') {
+        throw new Error(`Chat Wheel conversion is unavailable on ${status.platform}; a native ChatLane converter is not bundled.`);
+    }
+    throw new Error(`Chat Wheel converter resource is missing for ${status.platform}.`);
 }
 
 /** The bundled, valid starting point for creating a wheel without a YAML file. */
 export async function readChatWheelStarter(): Promise<string> {
-    const root = app.isPackaged ? process.resourcesPath : join(app.getAppPath(), 'resources');
-    const templatePath = join(root, 'chatlane', 'starter.yml');
+    const templatePath = join(chatWheelResourceRoot(), 'chatlane', 'starter.yml');
     if (!existsSync(templatePath)) throw new Error(`Chat Wheel starter template is unavailable: ${templatePath}`);
     return fs.readFile(templatePath, 'utf8');
 }

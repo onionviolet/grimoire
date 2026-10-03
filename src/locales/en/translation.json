@@ -104,7 +104,8 @@
     "stats": "Stats",
     "settings": "Settings",
     "browser": "Browser",
-    "chatWheel": "Chat Wheel"
+    "chatWheel": "Chat Wheel",
+    "recovery": "Recovery"
   },
   "config": {
     "title": "Configuration",
@@ -263,7 +264,8 @@
       "items": "Items",
       "recolor": "Recolor",
       "soon": "soon",
-      "myChanges": "My changes"
+      "myChanges": "My changes",
+      "models": "Models"
     },
     "portraits": {
       "searchPlaceholder": "Search portraits...",
@@ -662,6 +664,25 @@
       "searchScope": "Searches change names and game paths.",
       "resultCount": "Showing {{visible}} of {{total}} changes",
       "shuffleScopeAllForged": "All forged portraits"
+    },
+    "models": {
+      "description": "Browse base-game models by exact path. Preview or export a static GLB without installing anything.",
+      "search": "Search models...",
+      "scope": "Searches model names and exact game paths.",
+      "count": "{{count}} of {{total}} models",
+      "loading": "Reading the model catalog...",
+      "failed": "Could not read the model catalog",
+      "empty": "No models match",
+      "emptyHint": "Try a different name or game-path fragment.",
+      "preview": "Preview model",
+      "previous": "Previous",
+      "next": "Next",
+      "page": "Page {{page}} of {{pages}}",
+      "export": "Export GLB",
+      "preparing": "Preparing a static model preview...",
+      "previewFailed": "Could not preview this model",
+      "previewFallback": "The exported model could not be drawn here. You can still export its GLB for inspection.",
+      "previewHint": "Drag to orbit and scroll to zoom. This is a static asset preview with basic lighting; it does not show installed skins or game-engine effects."
     }
   },
   "autoexec": {
@@ -2940,6 +2961,26 @@
       "apply": "Apply reviewed matches",
       "noMatches": "No enabled entries can be matched. Cancel and repair the profile or install its missing mods first.",
       "partial": "Applied the reviewed matches. Skipped saved entries: {{count}}. This setup is not marked as a complete profile."
+    },
+    "recovery": {
+      "title": "Local restore points",
+      "description": "Before each profile apply, Grimoire saves local mod state and configuration. Restore requires the same installed VPK bytes, including local and Foundry mods. Files are not backed up.",
+      "empty": "No local restore points yet. Apply a profile to create one.",
+      "refresh": "Refresh",
+      "preview": "Preview restore",
+      "counts": "{{enabled}} enabled of {{total}} mods",
+      "confirmTitle": "Restore local state?",
+      "confirmMessage": "Restore mods, order, autoexec, game configuration and the active profile marker from {{date}}. {{count}} newer enabled mods will be disabled.",
+      "restore": "Restore",
+      "cancel": "Cancel",
+      "blocked": "Restore blocked. Keep or reinstall the exact original files, then preview again.",
+      "missing": "Missing file",
+      "changed": "File contents changed",
+      "ambiguous": "Multiple matching files",
+      "restored": "Local state restored.",
+      "loadFailed": "Could not load local restore points.",
+      "previewFailed": "Could not preview this restore point.",
+      "restoreFailed": "Restore failed. {{error}}"
     }
   },
   "social": {
@@ -3320,7 +3361,8 @@
       "conflicts": "Mods that overwrite the same game files.",
       "profiles": "Save and swap sets of enabled mods.",
       "browser": "Browse mod sites without leaving Grimoire",
-      "chatWheel": "Edit ChatLane chat wheels"
+      "chatWheel": "Edit ChatLane chat wheels",
+      "recovery": "Check installation health and review diagnostics"
     },
     "launch": {
       "noPath": "Configure your Deadlock path in Settings first",
@@ -4106,7 +4148,11 @@
     "disabled": {
       "title": "Chat Wheel is off",
       "description": "Enable the Chat Wheel in Settings to use this page."
-    }
+    },
+    "converterUnsupported": "VPK conversion is unavailable on this platform. You can still edit and export ChatLane YAML.",
+    "converterMissing": "The ChatLane converter is unavailable. You can still edit and export ChatLane YAML.",
+    "exportYaml": "Export YAML",
+    "validationUnavailable": "Validation requires the ChatLane converter."
   },
   "sourceBlocking": {
     "incompleteTitle": "This list may be incomplete",
@@ -4477,5 +4523,58 @@
     "hiddenToast": "{{name}} is now hidden from Browse.",
     "shownToast": "{{name}} is visible in Browse again.",
     "none": "No mods are hidden right now."
+  },
+  "recovery": {
+    "title": "Recovery",
+    "description": "Check your local installation and review diagnostics.",
+    "scan": "Scan installation",
+    "refresh": "Refresh scan",
+    "readOnly": "Scanning only reads local files. Repairs stay in the existing configuration and mod controls.",
+    "scanning": "Checking installation...",
+    "scanFailed": "Installation scan failed",
+    "scanFailedHelp": "Try again. If the problem continues, review a diagnostic report below.",
+    "startTitle": "Check your installation",
+    "startDescription": "Run a scan to check configuration, installed VPKs, metadata and disk space.",
+    "noPath": "Choose your Deadlock installation",
+    "noPathDescription": "Set the game path in Game setup, then return here to scan it.",
+    "openSettings": "Open Game setup",
+    "openConfig": "Open configuration",
+    "openInstalled": "Open installed mods",
+    "results": "Scan results",
+    "scannedAt": "Scanned {{time}}",
+    "modsChecked": "Checked {{checked}} VPKs: {{enabled}} enabled, {{disabled}} disabled.",
+    "diskFree": "{{free}} GiB free of {{total}} GiB on the game drive.",
+    "noIssues": "No issues found in these checks",
+    "noIssuesDescription": "The scanned files passed the local checks. This does not rule out every game or mod problem.",
+    "scope": "Checks cover VPK headers and directory trees, not every asset or external archive chunk. File age alone is not evidence of a crash cause. Existing invalid-VPK notices provide supported repair controls.",
+    "blocking": "Blocking issue",
+    "warning": "Warning",
+    "diagnosticsTitle": "Review a diagnostic report",
+    "diagnosticsDescription": "Generate a redacted report with the latest scan and recent local logs. Review it before copying or sharing. Nothing is sent automatically.",
+    "whatHappened": "What happened?",
+    "buildReport": "Generate report",
+    "reportFailed": "Could not generate the report. Try again.",
+    "reviewReport": "Review the redacted report",
+    "copyReport": "Copy report",
+    "copied": "Report copied",
+    "copyFailed": "Copy failed. Select and copy the report text.",
+    "issues": {
+      "pathInvalid": "The configured path does not contain an accessible game/citadel folder.",
+      "gameinfoMissing": "gameinfo.gi is missing. Open configuration to review supported recovery options.",
+      "gameinfoUnreadable": "gameinfo.gi could not be read. Check access permissions before making changes.",
+      "gameinfoUnwritable": "gameinfo.gi is readable but is not writable with the current permissions.",
+      "searchPathsMissing": "SearchPaths is missing required mod mounts, including any detected overflow folders.",
+      "bootPathsMissing": "Required Mod or Write paths are missing from SearchPaths.",
+      "languagePathsMissing": "Language or low-violence paths are missing from SearchPaths.",
+      "folderUnreadable": "This mod folder could not be listed. The scan may be incomplete.",
+      "vpkInvalid": "This file failed the shared VPK header check. Review the existing invalid-VPK notice or reinstall the affected mod.",
+      "vpkTreeInvalid": "This VPK has an unreadable or truncated directory tree. Reinstall the affected mod from its source.",
+      "metadataUnreadable": "The metadata sidecar could not be read or parsed. The scan left its bytes untouched.",
+      "metadataMissingFile": "This metadata entry has no matching installed VPK. Review the affected mod before changing metadata.",
+      "metadataMissingEntry": "This installed VPK has no metadata entry. Local imports can legitimately have limited metadata.",
+      "metadataAmbiguous": "Multiple installed files share this metadata key. Review the enabled and disabled copies.",
+      "diskLow": "Less than 1 GiB is available on the game drive. Make space before installing or rebuilding mods.",
+      "diskUnavailable": "Available space could not be read for the game drive."
+    }
   }
 }

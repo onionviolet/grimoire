@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { dirname, join } from 'path';
@@ -39,16 +39,21 @@ vi.mock('child_process', () => ({
     }),
 }));
 
-import { readChatWheelStarter, readChatWheelVpk, validateChatWheelYaml } from './chatWheel';
+import { getChatWheelConverterStatus, readChatWheelStarter, readChatWheelVpk, validateChatWheelYaml } from './chatWheel';
 
-const CONVERTER = process.platform === 'win32' ? 'ChatLane.exe' : 'ChatLane';
+const originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform');
+
+beforeEach(() => Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' }));
+afterEach(() => {
+    if (originalPlatform) Object.defineProperty(process, 'platform', originalPlatform);
+});
 
 /** A fresh app root whose resources/chatlane holds the converter stub the guards require. */
 function appRootWithConverter(): string {
     const appPath = mkdtempSync(join(tmpdir(), 'chat-wheel-app-'));
     const chatlane = join(appPath, 'resources', 'chatlane');
     mkdirSync(chatlane, { recursive: true });
-    writeFileSync(join(chatlane, CONVERTER), 'stub');
+    writeFileSync(join(chatlane, 'ChatLane.exe'), 'stub');
     return appPath;
 }
 
@@ -74,6 +79,28 @@ describe('validateChatWheelYaml', () => {
         await expect(validateChatWheelYaml('  ')).rejects.toThrow('cannot be empty');
 
         expect(harness.calls).toHaveLength(0);
+    });
+});
+
+describe('getChatWheelConverterStatus', () => {
+    it.each(['darwin', 'linux', 'freebsd'] as const)('reports %s as unsupported without probing a binary', (platform) => {
+        const fileExists = vi.fn(() => true);
+        expect(getChatWheelConverterStatus(platform, '/resources', fileExists)).toEqual({
+            available: false, platform, reason: 'unsupported-platform',
+        });
+        expect(fileExists).not.toHaveBeenCalled();
+    });
+
+    it('reports a missing Windows resource without leaking a path into diagnostics', () => {
+        expect(getChatWheelConverterStatus('win32', '/resources', () => false)).toEqual({
+            available: false, platform: 'win32', reason: 'missing-resource',
+        });
+    });
+
+    it('returns the Windows converter path when its resource exists', () => {
+        expect(getChatWheelConverterStatus('win32', '/resources', () => true)).toEqual({
+            available: true, platform: 'win32', path: join('/resources', 'chatlane', 'ChatLane.exe'),
+        });
     });
 });
 

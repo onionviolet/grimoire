@@ -47,7 +47,8 @@
     "package": "node scripts/fetch-filter-lists.mjs --refresh && electron-vite build && electron-builder",
     "package:linux": "node scripts/fetch-filter-lists.mjs --refresh && electron-vite build && electron-builder --linux",
     "package:win": "node scripts/fetch-filter-lists.mjs --refresh && electron-vite build && electron-builder --win",
-    "package:mac": "node scripts/fetch-filter-lists.mjs --refresh && electron-vite build && electron-builder --mac --arm64"
+    "package:mac": "node scripts/fetch-filter-lists.mjs --refresh && electron-vite build && electron-builder --mac --arm64",
+    "chatlane:check": "node scripts/check-chatlane-resources.mjs"
   },
   "dependencies": {
     "7zip-bin": "^5.2.0",

@@ -20,7 +20,7 @@ import {
     resolvePortableProfile,
     createProfileFromPortable,
 } from '../services/portableProfile';
-import { writeSnapshot } from '../services/snapshots';
+import { listProfileRecoveryPoints, previewProfileRecovery, restoreProfileRecovery } from '../services/profileRecovery';
 import type {
     PortableProfile,
     PortableResolvedMod,
@@ -85,21 +85,7 @@ ipcMain.handle('apply-profile', async (_, profileId: string, reviewToken?: strin
         throw new Error('No Deadlock path configured');
     }
 
-    // Capture a recovery snapshot before applyProfile rewrites enable/disable
-    // state across every installed mod. Failure is non-fatal — we never want
-    // a snapshot bug to block the apply the user just clicked.
-    try {
-        await writeSnapshot(deadlockPath, 'pre-apply-profile');
-    } catch (err) {
-        console.warn('[ApplyProfile] failed to capture pre-apply snapshot:', err);
-    }
-
     const result = await applyProfile(deadlockPath, profileId, reviewToken);
-
-    // Save as active profile
-    const settings = loadSettings();
-    settings.activeProfileId = result.failures.length === 0 && result.unresolved.length === 0 ? profileId : null;
-    saveSettings(settings);
 
     return result;
 });
@@ -163,3 +149,15 @@ ipcMain.handle(
         return createProfileFromPortable(deadlockPath, args.profile, args.resolved);
     }
 );
+
+ipcMain.handle('list-profile-recovery-points', () => listProfileRecoveryPoints());
+ipcMain.handle('preview-profile-recovery', async (_, id: string) => {
+    const path = getActiveDeadlockPath();
+    if (!path) throw new Error('No Deadlock path configured');
+    return previewProfileRecovery(path, id);
+});
+ipcMain.handle('restore-profile-recovery', async (_, id: string, reviewToken: string) => {
+    const path = getActiveDeadlockPath();
+    if (!path) throw new Error('No Deadlock path configured');
+    return restoreProfileRecovery(path, id, reviewToken);
+});

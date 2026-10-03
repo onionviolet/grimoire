@@ -994,7 +994,7 @@ export interface ElectronAPI {
     /** Non-mutating ChatLane conversion used for inline YAML diagnostics. */
     chatWheelValidate: (yaml: string) => Promise<void>;
     chatWheelSave: (args: ChatWheelSaveArgs) => Promise<Mod | null>;
-    chatWheelStatus: () => Promise<{ available: boolean; path?: string; error?: string }>;
+    chatWheelStatus: () => Promise<import('./chatWheelPlatform').ChatWheelConverterStatus>;
     /** Game-asset dressing for the preview, or null (no game path, no
      *  qualifying pak entry, or decode failure). Never rejects. */
     chatWheelDressing: () => Promise<import('./chatWheelDressing').ChatWheelDressing | null>;
@@ -1432,6 +1432,12 @@ export interface ElectronAPI {
     updateProfile: (profileId: string, crosshairSettings?: ProfileCrosshairSettings) => Promise<Profile>;
     previewProfile: (profileId: string) => Promise<ProfileApplyPreview>;
     applyProfile: (profileId: string, reviewToken?: string) => Promise<ApplyProfileResult>;
+    listProfileRecoveryPoints: () => Promise<import('./profileRecovery').ProfileRecoverySummary[]>;
+    previewProfileRecovery: (id: string) => Promise<import('./profileRecovery').ProfileRecoveryPreview>;
+    restoreProfileRecovery: (id: string, reviewToken: string) => Promise<void>;
+    recovery: {
+        scan: () => Promise<import('./recovery').InstallationHealthReport>;
+    };
     deleteProfile: (profileId: string) => Promise<void>;
     renameProfile: (profileId: string, newName: string) => Promise<Profile>;
     removeProfileCrosshair: (profileId: string) => Promise<Profile>;
@@ -1587,6 +1593,9 @@ export interface ElectronAPI {
     // `vpkmerge catalog *` sidecar (codename -> name, texture/icon index +
     // thumbnails). Experimental, gated behind settings.experimentalFoundry.
     foundry: {
+        models: () => Promise<import('./foundryModels').FoundryModelEntry[]>;
+        modelPreview: (entryPath: string) => Promise<import('./foundryModels').FoundryModelPreview>;
+        exportModel: (entryPath: string) => Promise<import('./foundry').FoundryAssetExportResult>;
         heroes: () => Promise<import('./foundry').HeroInfo[]>;
         /** Scan the installed base pak; never stages or changes game files. */
         scanNonStandard: () => Promise<import('./foundry').NonStandardReport>;

@@ -1,3 +1,4 @@
+import { listFoundryModels, prepareFoundryModel } from '../services/foundryModels';
 /**
  * Foundry tab IPC: thin handlers over the foundryCatalog service. Each resolves
  * the active Deadlock path (dev-aware) and throws a friendly error when it is
@@ -123,6 +124,15 @@ async function saveFoundryAsset(
     saveSettings({ ...settings, foundryExportPath: dirname(destination) });
     return { exported: true, path: destination };
 }
+
+ipcMain.handle('foundry:models', () => listFoundryModels(requireDeadlockPath()));
+ipcMain.handle('foundry:modelPreview', async (_event, entryPath: string) =>
+    (await prepareFoundryModel(requireDeadlockPath(), entryPath)).preview
+);
+ipcMain.handle('foundry:exportModel', async (_event, entryPath: string): Promise<FoundryAssetExportResult> => {
+    const model = await prepareFoundryModel(requireDeadlockPath(), entryPath);
+    return saveFoundryAsset(model.path, basename(entryPath).replace(/\.vmdl_c$/, ''), '.glb', 'Binary glTF');
+});
 
 ipcMain.handle('foundry:heroes', async (): Promise<HeroInfo[]> => {
     return getHeroRoster(requireDeadlockPath());

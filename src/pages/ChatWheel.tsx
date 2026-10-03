@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AlertTriangle, ChevronDown, ChevronUp, FileUp, Save, Sparkles } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronUp, Download, FileUp, Save, Sparkles } from 'lucide-react';
 import { getMods, readChatWheel, saveChatWheel, getChatWheelStarter, getChatWheelStatus, validateChatWheel } from '../lib/api';
 import { useAppStore } from '../stores/appStore';
 import { Button } from '../components/common/ui';
@@ -8,6 +8,7 @@ import { EmptyState } from '../components/common/PageComponents';
 import { useConfirm } from '../components/common/confirmContext';
 import Tx from '../components/translation/Tx';
 import type { Mod } from '../types/mod';
+import type { ChatWheelConverterStatus } from '../types/chatWheelPlatform';
 import { applyOverride, parseChatWheelYaml, updateChatWheelYaml, type ChatWheelModel, type OverrideState } from '../lib/chatWheelModel';
 import { CHAT_WHEEL_ICONS, chatWheelIconUrl } from '../lib/chatWheelIcons';
 import RadialWheelPreview from '../components/chatwheel/RadialWheelPreview';
@@ -34,7 +35,7 @@ export default function ChatWheel() {
   const [selectedId, setSelectedId] = useState<string>('');
   const [busy, setBusy] = useState<'load' | 'save' | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [converterAvailable, setConverterAvailable] = useState<boolean | null>(null);
+  const [converterStatus, setConverterStatus] = useState<ChatWheelConverterStatus | null>(null);
   const [starterLoading, setStarterLoading] = useState(true);
   const [savedYaml, setSavedYaml] = useState('');
   const [savedName, setSavedName] = useState('My Chat Wheel');
@@ -69,8 +70,8 @@ export default function ChatWheel() {
       .catch((err) => setError(err instanceof Error ? err.message : String(err)))
       .finally(() => setStarterLoading(false));
     void getChatWheelStatus()
-      .then((res) => setConverterAvailable(res.available))
-      .catch(() => setConverterAvailable(false));
+      .then((res) => setConverterStatus(res as ChatWheelConverterStatus))
+      .catch(() => setConverterStatus({ available: false, platform: 'unknown', reason: 'status-error' }));
   }, []);
 
   const dirty = yaml !== savedYaml || name !== savedName;
@@ -129,7 +130,7 @@ export default function ChatWheel() {
 
   useEffect(() => {
     const request = ++validationRequest.current;
-    if (starterLoading || converterAvailable !== true) {
+    if (starterLoading || converterStatus?.available !== true) {
       setValidation(null);
       return;
     }
@@ -146,7 +147,7 @@ export default function ChatWheel() {
         });
     }, 450);
     return () => window.clearTimeout(timer);
-  }, [yaml, starterLoading, converterAvailable]);
+  }, [yaml, starterLoading, converterStatus]);
 
   const createNewWheel = async () => {
     if (
@@ -234,6 +235,16 @@ export default function ChatWheel() {
     }
   };
 
+  const exportYaml = () => {
+    const blob = new Blob([yaml], { type: 'text/yaml;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${(model.name || name || 'chat-wheel').replace(/[^a-z0-9_-]+/gi, '-').replace(/^-|-$/g, '') || 'chat-wheel'}.yml`;
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  };
+
   if (!settings?.experimentalChatWheel) {
     return (
       <EmptyState
@@ -264,7 +275,7 @@ export default function ChatWheel() {
         </p>
       </header>
 
-      {converterAvailable === false && (
+      {converterStatus && !converterStatus.available && (
         <div className="flex items-start gap-3 rounded-md border border-state-warning/40 bg-state-warning/30 p-3 text-sm text-state-warning">
           <AlertTriangle className="mt-0.5 h-5 w-5 flex-shrink-0 text-state-warning" />
           <div>
@@ -273,8 +284,12 @@ export default function ChatWheel() {
             </p>
             <p className="mt-0.5 text-xs text-state-warning/80">
               <Tx
-                k="chatWheel.binaryMissing"
-                fallback="The ChatLane converter binary is unavailable on this system. You can view installed wheels, but building or reading VPKs requires the ChatLane executable in resources/chatlane."
+                k={converterStatus.reason === 'unsupported-platform'
+                  ? 'chatWheel.converterUnsupported'
+                  : 'chatWheel.converterMissing'}
+                fallback={converterStatus.reason === 'unsupported-platform'
+                  ? 'VPK conversion is unavailable on this platform. You can still edit and export ChatLane YAML.'
+                  : 'The ChatLane converter is unavailable. You can still edit and export ChatLane YAML.'}
               />
             </p>
           </div>
@@ -312,7 +327,7 @@ export default function ChatWheel() {
             size="sm"
             className="w-full"
             onClick={loadInstalled}
-            disabled={!selected || busy !== null || converterAvailable === false}
+            disabled={!selected || busy !== null || converterStatus?.available !== true}
             isLoading={busy === 'load'}
           >
             <Tx k="chatWheel.loadSelected" fallback="Load selected" />
@@ -322,7 +337,7 @@ export default function ChatWheel() {
             size="sm"
             className="w-full"
             onClick={createNewWheel}
-            disabled={busy !== null || converterAvailable === false}
+            disabled={busy !== null}
             isLoading={busy === 'load'}
           >
             <Tx k="chatWheel.createNew" fallback="Create new wheel" />
@@ -332,7 +347,7 @@ export default function ChatWheel() {
             size="sm"
             className="w-full"
             onClick={loadFromDisk}
-            disabled={busy !== null || converterAvailable === false}
+            disabled={busy !== null || converterStatus?.available !== true}
           >
             <FileUp className="mr-1 h-4 w-4" />
             <Tx k="chatWheel.openVpk" fallback="Open VPK…" />
@@ -561,19 +576,26 @@ export default function ChatWheel() {
           <LimitationNote limitation="unbindCrash" />
           <div className="flex items-center justify-between gap-3">
             <span className={validation?.state === 'invalid' ? 'text-xs text-state-danger' : 'text-xs text-text-secondary'}>
-              {validation?.state === 'checking' && t('chatWheel.validationChecking', 'Checking YAML with ChatLane…')}
-              {validation?.state === 'valid' && t('chatWheel.validationValid', 'ChatLane YAML is valid. Nothing has been installed.')}
-              {validation?.state === 'invalid' && validation.message}
-              {!validation && <Tx k="chatWheel.validationNote" fallback="Validation happens in ChatLane before any add-on is installed." />}
+              {converterStatus?.available !== true && t('chatWheel.validationUnavailable', 'Validation requires the ChatLane converter.')}
+              {converterStatus?.available === true && validation?.state === 'checking' && t('chatWheel.validationChecking', 'Checking YAML with ChatLane…')}
+              {converterStatus?.available === true && validation?.state === 'valid' && t('chatWheel.validationValid', 'ChatLane YAML is valid. Nothing has been installed.')}
+              {converterStatus?.available === true && validation?.state === 'invalid' && validation.message}
+              {converterStatus?.available === true && !validation && <Tx k="chatWheel.validationNote" fallback="Validation happens in ChatLane before any add-on is installed." />}
             </span>
-            <Button
-              onClick={save}
-              disabled={busy !== null || starterLoading || converterAvailable === false || validation?.state === 'checking' || validation?.state === 'invalid'}
-              isLoading={busy === 'save'}
-            >
-              <Save className="mr-1 h-4 w-4" />
-              <Tx k="chatWheel.saveAndInstall" fallback="Save & install" />
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="secondary" onClick={exportYaml} disabled={starterLoading}>
+                <Download className="mr-1 h-4 w-4" />
+                <Tx k="chatWheel.exportYaml" fallback="Export YAML" />
+              </Button>
+              {converterStatus?.available === true && <Button
+                onClick={save}
+                disabled={busy !== null || starterLoading || validation?.state === 'checking' || validation?.state === 'invalid'}
+                isLoading={busy === 'save'}
+              >
+                <Save className="mr-1 h-4 w-4" />
+                <Tx k="chatWheel.saveAndInstall" fallback="Save & install" />
+              </Button>}
+            </div>
           </div>
         </section>
       </div>

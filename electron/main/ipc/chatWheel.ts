@@ -5,9 +5,10 @@ import { scanMods, allocateEnabledVpkPath, runExclusiveModMutation } from '../se
 import { metaKeyFor } from '../services/deadlock';
 import { setModMetadataWithHash } from '../services/metadata';
 import { assertCanMoveLoadedGameMod } from '../services/gameSessionMods';
-import { buildChatWheelVpk, readChatWheelStarter, readChatWheelVpk, chatLaneBinaryPath, validateChatWheelYaml } from '../services/chatWheel';
+import { buildChatWheelVpk, readChatWheelStarter, readChatWheelVpk, getChatWheelConverterStatus, validateChatWheelYaml } from '../services/chatWheel';
 import { resolveChatWheelDressing } from '../services/chatWheelDressing';
 import type { ChatWheelDressing } from '../../../src/types/chatWheelDressing';
+import type { ChatWheelConverterStatus } from '../../../src/types/chatWheelPlatform';
 
 interface ChatWheelSaveArgs { yaml: string; name: string; replaceModId?: string; }
 
@@ -25,14 +26,7 @@ ipcMain.handle('chat-wheel:dressing', async (): Promise<ChatWheelDressing | null
     }
 });
 
-ipcMain.handle('chat-wheel:status', async (): Promise<{ available: boolean; path?: string; error?: string }> => {
-    try {
-        const binaryPath = chatLaneBinaryPath();
-        return { available: true, path: binaryPath };
-    } catch (err) {
-        return { available: false, error: err instanceof Error ? err.message : String(err) };
-    }
-});
+ipcMain.handle('chat-wheel:status', async (): Promise<ChatWheelConverterStatus> => getChatWheelConverterStatus());
 
 ipcMain.handle('chat-wheel:read', async (_, vpkPath: string): Promise<string> => readChatWheelVpk(vpkPath));
 

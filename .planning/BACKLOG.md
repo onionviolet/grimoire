@@ -6,6 +6,9 @@ open as of the date in the header.
 
 **Reconciled:** 2026-09-01, by reading the code rather than the docs.
 
+**Updated 2026-10-03:** B-02 now has an exact-path base-model browser, static
+preview and GLB export. Other entries retain their reconciliation dates.
+
 ## Where things live
 
 Every open item in this repository belongs to exactly one register. If you find
@@ -56,10 +59,12 @@ practice on B-02, since there is no model surface to stage from.
 **Size:** medium. **Blocked on:** B-02.
 
 ### B-02. Foundry models, VFX, and broad thumbnail browsing (slice G)
-No usable model export/viewer entry point. Thumbnail browsing is deliberately
-limited to ability icons, item icons, and hero images. Blocked on a trustworthy
-path catalog; the old Phase 2 dependency is satisfied.
-**Size:** large. **Blocked on:** a path catalog worth trusting.
+The base-game model slice is implemented in source (2026-10-03): an exact VPK
+directory index supplies the searchable Models tool, with on-demand static GLB
+preview/export and a bounded cache. It never stages or installs model edits.
+Broad material/VFX texture browsing and particle-asset inspection remain open;
+thumbnail browsing is still limited to ability icons, item icons and hero images.
+**Remaining size:** large. Model forging remains B-01.
 
 ### B-03. Advanced merge composition
 Review and reviewed source order shipped. Merge recipes, editable

@@ -19,6 +19,7 @@ import Autoexec from './pages/Autoexec';
 import Stats from './pages/Stats';
 import ChatWheel from './pages/ChatWheel';
 import Config from './pages/Config';
+import Recovery from './pages/Recovery';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { ConfirmProvider } from './components/common/confirm';
 import { useSocialStore } from './stores/socialStore';
@@ -97,6 +98,7 @@ export default function App() {
             <Route path="stats" element={<Stats />} />
             <Route path="chat-wheel" element={<ChatWheel />} />
             <Route path="config" element={<Config />} />
+            <Route path="recovery" element={<Recovery />} />
             <Route path="settings/:section?" element={<Settings />} />
           </Route>
         </Routes>

@@ -13,6 +13,7 @@ import {
   ArrowLeft,
   ListChecks,
   Flag,
+  Box,
 } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { EmptyState, PageHeader, PageLayout } from '../components/common/PageComponents';
@@ -23,6 +24,7 @@ import { foundryForge, foundryForgeInstall, foundryHeroes, foundryScanNonStandar
 import { showToast } from '../stores/toastStore';
 import type { HeroInfo } from '../types/foundry';
 import LibraryBrowse from '../components/foundry/LibraryBrowse';
+import ModelBrowse from '../components/foundry/ModelBrowse';
 import PortraitBrowse from '../components/foundry/PortraitBrowse';
 import SoundBrowse from '../components/foundry/SoundBrowse';
 import GlobalSoundBrowse from '../components/foundry/GlobalSoundBrowse';
@@ -42,6 +44,7 @@ import type { FoundryStagedEdit } from '../components/foundry/buildTray';
 // everything else the game plays (UI, music, ambience, NPCs, shop items).
 const SUBTOOLS = [
   { id: 'library', icon: Library, labelKey: 'foundry.subtools.library', enabled: true },
+  { id: 'models', icon: Box, labelKey: 'foundry.subtools.models', enabled: true },
   { id: 'sound', icon: Volume2, labelKey: 'foundry.subtools.sound', enabled: true },
   { id: 'myChanges', icon: ListChecks, labelKey: 'foundry.subtools.myChanges', enabled: true },
   { id: 'globalSound', icon: Globe, labelKey: 'foundry.subtools.globalSound', enabled: true },
@@ -381,7 +384,9 @@ export default function Foundry() {
             }
           />
 
-          {activeTool === 'sound' ? (
+          {activeTool === 'models' ? (
+            <ModelBrowse />
+          ) : activeTool === 'sound' ? (
             <SoundBrowse heroes={heroes} heroNames={heroNames} hero={null} onStage={stageEdit} />
           ) : activeTool === 'myChanges' ? (
             <MyChanges
@@ -405,7 +410,7 @@ export default function Foundry() {
           )}
         </PageLayout>
       </div>
-      <FoundryBuildTray edits={stagedEdits} outputName={outputName} onOutputNameChange={setOutputName} onForge={forge} onInstall={install} onRemove={removeEdit} />
+      {activeTool !== 'models' && <FoundryBuildTray edits={stagedEdits} outputName={outputName} onOutputNameChange={setOutputName} onForge={forge} onInstall={install} onRemove={removeEdit} />}
     </div>
   );
 }
