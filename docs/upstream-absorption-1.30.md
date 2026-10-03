@@ -47,7 +47,8 @@ See [fork-maintenance.md](./fork-maintenance.md) for the owning build policy.
 
 ## Verification
 
-- Local full Vitest suite, strict typecheck, ESLint, UI ratchet, i18n keys and
+- Local full Vitest suite: 2,977 passed, 18 skipped. Strict typecheck, ESLint,
+  UI ratchet, i18n keys and
   manifest, source encoding, backlink and engine-pin gates.
 - Production Electron build with the fork marker and real social service URL.
 - Engine overlay applied to a fresh pinned checkout, matched the tested source
@@ -62,5 +63,8 @@ See [fork-maintenance.md](./fork-maintenance.md) for the owning build policy.
   renamed local hashes, stale reviews, cancellation, navigation away and repeated
   clicks. Dev startup tests cover blank, default and invalid slots.
 
-Remote CI and Nix dependency-store verification are the final integration gates.
+Remote CI and Nix dependency-store verification run on
+[fork PR 30](https://github.com/onionviolet/grimoire/pull/30). The lockfile merge
+required a new Nix store hash, taken from the runner output and checked by the
+next build. These are the final integration gates.
 Windows/Linux artifacts, upgrade behavior and Source 2 loading remain unrun.
