@@ -1,118 +1,128 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, ExternalLink, RefreshCw, Search, SlidersHorizontal } from 'lucide-react';
+import { RefreshCw, Save, Search, SlidersHorizontal, FileJson } from 'lucide-react';
 import { Badge, Button, Card } from '../components/common/ui';
-import { PageHeader, PageLayout } from '../components/common/PageComponents';
-import { Input, Select } from '../components/common/forms';
-import { getConfigKeyIndex, getPerformanceConfigStatus } from '../lib/api';
-import type { ConfigKeyDefinition, PerformanceConfigStatus } from '../types/electron';
+import { PageHeader, PageLayout, LoadingState } from '../components/common/PageComponents';
+import { Input, Select, Textarea } from '../components/common/forms';
+import { useConfirm } from '../components/common/confirmContext';
+import ConfigValueEditor from '../components/config/ConfigValueEditor';
+import ConfigBundleDialog from '../components/config/ConfigBundleDialog';
+import { applyConfigWorkspace, getConfigWorkspace } from '../lib/api';
+import { useAppStore } from '../stores/appStore';
+import type { ConfigBundle, ConfigWorkspaceSnapshot } from '../types/configWorkspace';
 
-type Filter = 'all' | 'changed' | 'conflicted' | 'gameinfo';
-
-function originLabel(origin: string, t: (key: string) => string) {
-  return t(`config.origins.${origin}`);
-}
+type Filter = 'all' | 'changed' | 'conflicted' | 'gameinfo' | 'unknown';
 
 export default function Config() {
   const { t } = useTranslation();
-  const navigate = useNavigate();
-  const [keys, setKeys] = useState<ConfigKeyDefinition[]>([]);
-  const [status, setStatus] = useState<PerformanceConfigStatus | null>(null);
+  const confirm = useConfirm();
+  const [snapshot, setSnapshot] = useState<ConfigWorkspaceSnapshot | null>(null);
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [commands, setCommands] = useState('');
+  const [launchOptions, setLaunchOptions] = useState('');
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
+  const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [index, nextStatus] = await Promise.all([getConfigKeyIndex(), getPerformanceConfigStatus()]);
-      setKeys(index);
-      setStatus(nextStatus);
-    } catch (err) {
-      setError(String(err));
-    } finally {
-      setLoading(false);
-    }
+  const [saved, setSaved] = useState(false);
+  const [bundleOpen, setBundleOpen] = useState(false);
+  const accept = useCallback((next: ConfigWorkspaceSnapshot) => {
+    setSnapshot(next); setValues({}); setCommands(next.autoexecCommands.join('\n')); setLaunchOptions(next.launchOptions);
   }, []);
-
+  const refresh = useCallback(async () => {
+    setLoading(true); setError(null); setSaved(false);
+    try { accept(await getConfigWorkspace()); } catch (failure) { setError(String(failure)); } finally { setLoading(false); }
+  }, [accept]);
   useEffect(() => { void refresh(); }, [refresh]);
-
-  const visible = useMemo(() => keys.filter((definition) => {
-    const state = status?.convarStates?.[definition.key];
-    const conflict = status?.autoexecConflicts?.[definition.key];
-    const changed = !!state && state.value !== null && state.value !== state.gameDefault;
-    const matchingText = `${definition.key} ${definition.label} ${definition.description}`.toLowerCase()
-      .includes(query.trim().toLowerCase());
-    return matchingText
-      && (filter !== 'changed' || changed)
-      && (filter !== 'conflicted' || !!conflict)
-      && (filter !== 'gameinfo' || definition.file === 'gameinfo.gi');
-  }), [filter, keys, query, status]);
-
-  return (
-    <PageLayout maxWidth="7xl">
-      <PageHeader
-        title={t('config.title')}
-        description={t('config.description')}
-        stats={t('config.count', { count: visible.length })}
-        action={<Button variant="secondary" size="sm" icon={RefreshCw} onClick={() => void refresh()} disabled={loading}>{t('common.actions.refresh')}</Button>}
-      />
-
-      <Card className="p-4 border-accent/25 bg-accent/5">
-        <div className="flex gap-3 items-start">
-          <SlidersHorizontal className="w-5 h-5 mt-0.5 text-accent shrink-0" />
-          <p className="text-sm text-text-secondary">{t('config.precedence')}</p>
-        </div>
-      </Card>
-
-      <div className="flex flex-wrap gap-3">
-        <div className="relative flex-1 min-w-60">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-tertiary" />
-          <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('config.search')} className="pl-9" />
-        </div>
-        <Select value={filter} onChange={(event) => setFilter(event.target.value as Filter)} aria-label={t('config.filter')}>
-          <option value="all">{t('config.filters.all')}</option>
-          <option value="changed">{t('config.filters.changed')}</option>
-          <option value="conflicted">{t('config.filters.conflicted')}</option>
-          <option value="gameinfo">{t('config.filters.gameinfo')}</option>
-        </Select>
-      </div>
-
-      {error && <Card className="p-4 text-state-danger">{t('config.error')}: {error}</Card>}
-      {!loading && !error && visible.length === 0 && <Card className="p-8 text-center text-text-secondary">{t('config.empty')}</Card>}
-      <div className="space-y-3">
-        {visible.map((definition) => {
-          const state = status?.convarStates?.[definition.key];
-          const conflict = status?.autoexecConflicts?.[definition.key];
-          const resolved = state?.resolvedValue ?? definition.gameDefault ?? t('config.unknown');
-          return <Card key={definition.key} className="p-4">
-            <div className="flex flex-wrap gap-4 justify-between items-start">
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="font-medium text-text-primary">{definition.label}</h2>
-                  <Badge>{definition.file}</Badge>
-                  {state && <Badge>{originLabel(state.origin, t)}</Badge>}
-                  {conflict && <Badge variant="warning">{t('config.overridden')}</Badge>}
-                </div>
-                <code className="block mt-1 text-xs text-text-tertiary break-all">{definition.key}</code>
-                <p className="mt-2 text-sm text-text-secondary">{definition.description}</p>
-              </div>
-              <Button variant="secondary" size="sm" icon={ExternalLink} onClick={() => navigate('/settings')}>
-                {t('config.openEditor')}
-              </Button>
-            </div>
-            <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
-              <div><span className="text-text-tertiary">{t('config.resolved')}</span><strong className="block text-text-primary break-all">{resolved}</strong></div>
-              <div><span className="text-text-tertiary">{t('config.stock')}</span><strong className="block text-text-primary break-all">{state?.gameDefault ?? t('config.unknown')}</strong></div>
-              <div><span className="text-text-tertiary">{t('config.written')}</span><strong className="block text-text-primary break-all">{state?.value ?? t('config.notSet')}</strong></div>
-            </div>
-            {conflict && <div className="mt-3 flex gap-2 text-sm text-state-warning"><AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />{t('config.conflictDetail', { value: conflict.value, line: conflict.line })}</div>}
-          </Card>;
-        })}
-      </div>
-    </PageLayout>
-  );
+  const commandsChanged = commands !== (snapshot?.autoexecCommands.join('\n') ?? '');
+  const launchChanged = launchOptions !== (snapshot?.launchOptions ?? '');
+  const dirty = Object.keys(values).length > 0 || commandsChanged || launchChanged;
+  const stageValue = (key: string, value: string) => {
+    setSaved(false);
+    setValues(current => {
+      const next = { ...current };
+      if (value === snapshot?.performance.convarStates?.[key]?.value) delete next[key];
+      else next[key] = value;
+      return next;
+    });
+  };
+  const visible = useMemo(() => (snapshot?.definitions ?? []).filter(definition => {
+    return definition.key.replace(/[_.]+/g, ' ').includes(query.trim().toLowerCase()) || definition.key.includes(query.trim().toLowerCase());
+  }).filter(definition => {
+    const state = snapshot?.performance.convarStates?.[definition.key];
+    const baseline = state?.gameDefault ?? state?.engineDefault;
+    const changed = !!state && baseline != null && state.resolvedValue !== baseline;
+    return filter !== 'unknown' && (filter !== 'changed' || changed) && (filter !== 'conflicted' || !!state?.autoexec);
+  }), [snapshot, filter, query]);
+  const unknown = (snapshot?.unknown ?? []).filter(entry => `${entry.key} ${entry.value}`.toLowerCase().includes(query.trim().toLowerCase())
+    && (filter === 'all' || filter === 'unknown' || (filter === 'gameinfo' && entry.file === 'gameinfo.gi')));
+  const pages = Math.max(1, Math.ceil(visible.length / 40));
+  const currentPage = Math.min(page, pages - 1);
+  const stageBundle = (bundle: ConfigBundle) => {
+    setValues(Object.fromEntries(Object.entries(bundle.gameinfo).filter(([key, value]) => value !== snapshot?.performance.convarStates?.[key]?.value)));
+    setCommands(bundle.autoexecCommands.join('\n')); setLaunchOptions(bundle.launchOptions); setSaved(false);
+  };
+  const save = async () => {
+    if (!snapshot || busy || !dirty) return;
+    setBusy(true); setError(null); setSaved(false);
+    try {
+      const items = Object.entries(values).map(([key, value]) => `${key}: ${snapshot.performance.convarStates?.[key]?.value ?? t('config.notSet')} → ${value}`);
+      if (commandsChanged) items.push(t('config.review.commands'));
+      if (launchChanged) items.push(t('config.review.launchOptions'));
+      if (!await confirm({ title: t('config.review.title'), message: t('config.review.message'), items, confirmLabel: t('config.apply') })) return;
+      const next = await applyConfigWorkspace({ reviewToken: snapshot.reviewToken, gameinfo: values,
+        ...(commandsChanged ? { autoexecCommands: commands.split('\n').map(line => line.trim()).filter(Boolean) } : {}),
+        ...(launchChanged ? { launchOptions } : {}) });
+      accept(next); setSaved(true);
+      await useAppStore.getState().loadSettings();
+    } catch (failure) { setError(String(failure)); } finally { setBusy(false); }
+  };
+  const requestRefresh = async () => {
+    if (dirty && !await confirm({ title: t('config.discard.title'), message: t('config.discard.message'), confirmLabel: t('config.discard.action') })) return;
+    await refresh();
+  };
+  return <PageLayout maxWidth="7xl">
+    <PageHeader title={t('config.title')} description={t('config.description')} stats={t('config.count', { count: visible.length })}
+      action={<div className="flex flex-wrap gap-2">
+        <Button variant="ghost" size="sm" icon={FileJson} disabled={busy || loading || !snapshot?.available} onClick={() => setBundleOpen(true)}>{t('config.bundle.title')}</Button>
+        <Button variant="secondary" size="sm" icon={RefreshCw} disabled={busy || loading} onClick={() => void requestRefresh()}>{t('common.actions.refresh')}</Button>
+        <Button size="sm" icon={Save} isLoading={busy} disabled={!dirty || busy || loading || !snapshot?.available} onClick={() => void save()}>{t('config.apply')}</Button>
+      </div>} />
+    <Card className="p-4 border-accent/25 bg-accent/5"><div className="flex gap-3 items-start">
+      <SlidersHorizontal className="w-5 h-5 mt-0.5 text-accent shrink-0" /><p className="text-sm text-text-secondary">{t('config.precedence')}</p>
+    </div></Card>
+    {!loading && !snapshot?.available && <p role="status" className="text-sm text-state-warning">{t('config.unavailable')}</p>}
+    {error && <p role="alert" className="text-sm text-state-danger">{t('config.saveError', { error })}</p>}
+    {saved && <p role="status" className="text-sm text-text-secondary">{t('config.saved')}</p>}
+    <div className="flex flex-wrap gap-3">
+      <div className="flex-1 min-w-60"><Input icon={Search} value={query} onChange={event => { setQuery(event.target.value); setPage(0); }} placeholder={t('config.search')} aria-label={t('config.search')} /></div>
+      <Select value={filter} onChange={event => { setFilter(event.target.value as Filter); setPage(0); }} aria-label={t('config.filter')}>
+        {(['all', 'changed', 'conflicted', 'gameinfo', 'unknown'] as const).map(value => <option key={value} value={value}>{t(`config.filters.${value}`)}</option>)}
+      </Select>
+    </div>
+    {loading ? <LoadingState /> : <>
+      {!error && visible.length === 0 && unknown.length === 0 && <Card className="p-8 text-center text-text-secondary">{t('config.empty')}</Card>}
+      <div className="space-y-3">{visible.slice(currentPage * 40, (currentPage + 1) * 40).map(definition => <ConfigValueEditor key={definition.key} definition={definition} state={snapshot?.performance.convarStates?.[definition.key]}
+        draft={values[definition.key]} disabled={busy || !snapshot?.available} onChange={value => stageValue(definition.key, value)}
+        onUndo={() => setValues(current => { const next = { ...current }; delete next[definition.key]; return next; })} />)}</div>
+      {pages > 1 && <div className="flex items-center justify-center gap-3">
+        <Button variant="secondary" size="sm" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>{t('config.previous')}</Button>
+        <span className="text-xs text-text-secondary">{t('config.page', { page: currentPage + 1, pages })}</span>
+        <Button variant="secondary" size="sm" disabled={currentPage + 1 === pages} onClick={() => setPage(currentPage + 1)}>{t('config.next')}</Button>
+      </div>}
+      {unknown.length > 0 && <Card className="p-4 space-y-3"><h2 className="text-base font-medium">{t('config.unknownKeys')}</h2><p className="text-sm text-text-secondary">{t('config.unknownHelp')}</p>
+        {unknown.map((entry, index) => <div key={`${entry.file}:${entry.line}:${index}`} className="flex flex-wrap gap-2 items-center text-sm"><code className="break-all">{entry.key} {entry.value}</code><Badge>{entry.file}:{entry.line}</Badge></div>)}
+      </Card>}
+      {filter !== 'unknown' && <Card className="p-4 space-y-4">
+        <label htmlFor="config-autoexec" className="block font-medium">{t('config.commands')}</label><p className="text-sm text-text-secondary">{t('config.commandsHelp')}</p>
+        <Textarea id="config-autoexec" rows={6} className="font-mono text-xs" value={commands} disabled={busy || !snapshot?.available} onChange={event => { setCommands(event.target.value); setSaved(false); }} />
+        {!!snapshot?.manualCommands.length && <details><summary className="cursor-pointer text-sm text-text-secondary">{t('config.manualCommands')}</summary><pre className="mt-2 whitespace-pre-wrap break-all text-xs text-text-tertiary">{snapshot.manualCommands.join('\n')}</pre></details>}
+        <label htmlFor="config-launch" className="block font-medium">{t('config.launchOptions')}</label><p className="text-sm text-text-secondary">{t('config.launchHelp')}</p>
+        <Input id="config-launch" value={launchOptions} maxLength={8192} disabled={busy || !snapshot?.available} onChange={event => { setLaunchOptions(event.target.value); setSaved(false); }} />
+      </Card>}
+    </>}
+    {bundleOpen && <ConfigBundleDialog onClose={() => setBundleOpen(false)} onStage={stageBundle} />}
+  </PageLayout>;
 }

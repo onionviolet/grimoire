@@ -26,3 +26,29 @@ export interface InstallationHealthReport {
   disk: { freeBytes: number; totalBytes: number } | null;
   issues: HealthIssue[];
 }
+
+export interface CompatibilityModEvidence {
+  id: string;
+  name: string;
+  enabled: boolean;
+  status: 'review' | 'no-missing-paths' | 'unreadable';
+  sensitiveCount: number;
+  missingCount: number;
+  missingPaths: string[];
+}
+export interface CompatibilityReview {
+  reviewedAt: string;
+  baseFingerprint: string;
+  mods: CompatibilityModEvidence[];
+}
+export interface ModIsolationSession {
+  id: string;
+  recoveryPointId: string;
+  createdAt: string;
+  phase: 'baseline-ready' | 'baseline-testing' | 'ready' | 'testing' | 'complete' | 'inconclusive';
+  candidates: Array<{ id: string; name: string }>;
+  testIds: string[];
+  steps: number;
+  reviewToken: string;
+  restoreReviewToken?: string;
+}

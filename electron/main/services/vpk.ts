@@ -721,12 +721,15 @@ export function parseVpkEntryIndex(vpkPath: string): VpkEntryIndex[] | null {
     try {
         fd = openSync(vpkPath, 'r');
         const header = Buffer.alloc(12);
-        readSync(fd, header, 0, header.length, 0);
+        if (readSync(fd, header, 0, header.length, 0) !== header.length) return null;
         if (header.readUInt32LE(0) !== VPK_SIGNATURE) return null;
         const version = header.readUInt32LE(4);
+        if (version !== 1 && version !== 2) return null;
         const treeSize = header.readUInt32LE(8);
+        const headerSize = version === 2 ? 28 : 12;
+        if (!isPlausibleVpkLength(treeSize, fstatSync(fd).size, headerSize)) return null;
         const tree = Buffer.alloc(treeSize);
-        readSync(fd, tree, 0, treeSize, version === 2 ? 28 : 12);
+        if (readSync(fd, tree, 0, treeSize, headerSize) !== treeSize) return null;
 
         const entries: VpkEntryIndex[] = [];
         let offset = 0;
@@ -745,6 +748,7 @@ export function parseVpkEntryIndex(vpkPath: string): VpkEntryIndex[] | null {
                     const preloadBytes = tree.readUInt16LE(offset + 4);
                     const archiveIndex = tree.readUInt16LE(offset + 6);
                     const entryLength = tree.readUInt32LE(offset + 12);
+                    if (offset + 18 + preloadBytes > tree.length) return null;
                     entries.push({
                         path: dirPath ? `${dirPath}/${name.str}.${ext.str}` : `${name.str}.${ext.str}`,
                         crc,

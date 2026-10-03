@@ -33,6 +33,8 @@ import { SOURCE2_EXTRAS_VERSION } from '../../../src/lib/source2ExtrasVersion';
 import { modelCodenamesForHero, modelEntryForHero } from '../../../src/lib/heroIdentity';
 import { getCitadelPath, getAddonsPath, getDisabledPath } from './deadlock';
 import { resolvePreviewVpk } from './previewVpkRegistry';
+import { exportNativeParticleBundle } from './particleBundle';
+import { heroParticleAttachments } from './particleAttachments';
 
 export const HERO_POSE_SCHEME = 'grimoire-hero';
 
@@ -306,7 +308,7 @@ const EFFECT_VERSION_FILENAME = '.effect-cache-version';
 /** Bump when the FX descriptor schema or the bundled vpkmerge particle exporter
  *  changes in a way that invalidates a cached `effect.json` + textures. v1:
  *  initial sprite-layer descriptor (export_fx_descriptor + --textures-dir). */
-const EFFECT_CACHE_VERSION = '1';
+const EFFECT_CACHE_VERSION = '3-native-kv3-attachments';
 
 function effectFile(key: string): string {
     return join(modelDir(key), EFFECT_DESCRIPTOR_FILENAME);
@@ -917,6 +919,36 @@ export async function exportRiggedHeroPose(
     }
 }
 
+/** Export one validated ability clip through the same source resolver as the
+ * idle viewer. Caller supplies a cache-only destination, never a game path. */
+export async function exportHeroAbilityPose(
+    deadlockPath: string, heroName: string, clipName: string, out: string,
+    skinSources?: HeroPoseSkinSource[], fallbackSkinMetaKey?: string,
+): Promise<{ skinApplied: boolean; skinFallback: boolean }> {
+    const normalized = normalizeSkinSources(skinSources);
+    const pak01 = join(getCitadelPath(deadlockPath), 'pak01_dir.vpk');
+    const run = async (sources: HeroPoseSkinSource[], skinFallback: boolean) => {
+        const source = await resolvePoseSource(deadlockPath, pak01, sources);
+        try {
+            let lastError: unknown;
+            for (const selector of modelSelectorsForHero(heroName)) {
+                try {
+                    const clips = parseModelClipsJson(await runVpkmergeStdout(['model', 'clips', '--vpk', source.vpk, ...selector, '--base', pak01, '--json']));
+                    if (!clips.some(clip => clip.name === clipName && isAnimatedClip(clip))) continue;
+                    await runVpkmerge(['model', 'export', '--vpk', source.vpk, ...selector, '--base', pak01, '--clip', clipName, '--out', out]);
+                    return { skinApplied: source.sources.length > 0, skinFallback };
+                } catch (error) { lastError = error; }
+            }
+            throw lastError instanceof Error ? lastError : new Error('Selected source has no supported ability clip.');
+        } finally { if (source.tempDir) await fs.rm(source.tempDir, { recursive: true, force: true }); }
+    };
+    try { return await run(normalized, false); } catch (error) {
+        const fallback = normalized.find(source => source.metaKey === fallbackSkinMetaKey);
+        if (normalized.length > 1 && fallback) return run([fallback], true);
+        throw error;
+    }
+}
+
 async function runRiggedHeroExport(
     deadlockPath: string,
     heroName: string,
@@ -1060,16 +1092,11 @@ export async function exportHeroEffect(
         const pak01 = join(getCitadelPath(deadlockPath), 'pak01_dir.vpk');
         const dir = modelDir(key);
         await fs.mkdir(dir, { recursive: true });
-        await runVpkmerge([
-            'particle',
-            entry,
-            '--vpk',
-            pak01,
-            '--out',
-            effectFile(key),
-            '--textures-dir',
-            effectTexDir(key),
-        ]);
+        const descriptor = await exportNativeParticleBundle(pak01, entry, effectFile(key), effectTexDir(key));
+        // Exact authored MDAT offsets, driven by the exported bone transforms.
+        // A missing attachment remains unavailable instead of guessing a hand.
+        descriptor.attachments = await heroParticleAttachments(pak01, heroName, dir).catch(() => []);
+        await fs.writeFile(effectFile(key), JSON.stringify(descriptor));
         await fs.writeFile(effectVersionFile(key), EFFECT_CACHE_VERSION);
         return { hasEffect: true, key, entry };
     })();

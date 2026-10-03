@@ -240,6 +240,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
         ipcRenderer.invoke('get-hero-cloth-model', heroName, skinSources),
     getHeroEffectInfo: (heroName: string) =>
         ipcRenderer.invoke('get-hero-effect-info', heroName),
+    getHeroAbilityPreviews: (heroName: string) => ipcRenderer.invoke('ability-preview:list', heroName),
+    prepareHeroAbilityPreview: (heroName: string, slot, options) => ipcRenderer.invoke('ability-preview:prepare', heroName, slot, options),
     exportHeroEffect: (heroName: string) =>
         ipcRenderer.invoke('export-hero-effect', heroName),
     getPreviewCacheSize: () =>
@@ -463,6 +465,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     fixGameinfo: () => ipcRenderer.invoke('fix-gameinfo'),
     getPerformanceConfigStatus: () => ipcRenderer.invoke('get-performance-config-status'),
     getConfigKeyIndex: () => ipcRenderer.invoke('get-config-key-index'),
+    getConfigWorkspace: () => ipcRenderer.invoke('config-workspace:read'),
+    applyConfigWorkspace: (update) => ipcRenderer.invoke('config-workspace:apply', update),
+    parseConfigBundle: (text: string) => ipcRenderer.invoke('config-workspace:parse-bundle', text),
+    exportConfigBundle: () => ipcRenderer.invoke('config-workspace:export-bundle'),
     listPerformancePresets: () => ipcRenderer.invoke('list-performance-presets'),
     applyPerformanceConfig: (presetId?: string, optIns?: string[], version?: string | null) =>
         ipcRenderer.invoke('apply-performance-config', presetId, optIns, version),
@@ -637,6 +643,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     previewProfile: (profileId: string) => ipcRenderer.invoke('preview-profile', profileId),
     applyProfile: (profileId: string, reviewToken?: string) => ipcRenderer.invoke('apply-profile', profileId, reviewToken),
     listProfileRecoveryPoints: () => ipcRenderer.invoke('list-profile-recovery-points'),
+    getInterruptedProfileRecovery: () => ipcRenderer.invoke('recovery:interrupted'),
+    recoverInterruptedProfileRecovery: (reviewToken: string) => ipcRenderer.invoke('recovery:recover-interrupted', reviewToken),
+    reviewModCompatibility: () => ipcRenderer.invoke('recovery:compatibility'),
+    getModIsolationSession: () => ipcRenderer.invoke('recovery:isolation-session'),
+    startModIsolation: () => ipcRenderer.invoke('recovery:isolation-start'),
+    applyModIsolationTrial: (reviewToken: string) => ipcRenderer.invoke('recovery:isolation-apply', reviewToken),
+    recordModIsolationResult: (reviewToken: string, result: 'works' | 'crashes') => ipcRenderer.invoke('recovery:isolation-result', reviewToken, result),
+    finishModIsolation: (reviewToken: string) => ipcRenderer.invoke('recovery:isolation-finish', reviewToken),
     previewProfileRecovery: (id: string) => ipcRenderer.invoke('preview-profile-recovery', id),
     restoreProfileRecovery: (id: string, reviewToken: string) => ipcRenderer.invoke('restore-profile-recovery', id, reviewToken),
     recovery: {
@@ -788,6 +802,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     // Foundry: catalog browse backed by the bundled vpkmerge sidecar.
     foundry: {
+        assets: () => ipcRenderer.invoke('asset-inspection:list'),
+        inspectAsset: (path: string) => ipcRenderer.invoke('asset-inspection:inspect', path),
         models: () => ipcRenderer.invoke('foundry:models'),
         modelPreview: (entryPath: string) => ipcRenderer.invoke('foundry:modelPreview', entryPath),
         exportModel: (entryPath: string) => ipcRenderer.invoke('foundry:exportModel', entryPath),

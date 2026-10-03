@@ -1237,6 +1237,8 @@ export interface AppSettings {
   confirmProfileUpdate: boolean;
   experimentalStats: boolean;
   experimentalCrosshair: boolean;
+  /** Opt-in preview of known ability clips, sound and effect recolors. */
+  experimentalAbilityPreview: boolean;
   /** Grimoire Social: Discover page + publish/account UI. */
   experimentalSocial: boolean;
   /** Auto-match unknown local VPKs against GameBanana (CRC-32 + filter

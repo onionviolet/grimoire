@@ -3,8 +3,8 @@
  * until someone answers it. These drive the real lock, gate and review IPC to
  * pin that the review page answers such a prompt instead of queueing behind it.
  */
-import { beforeAll, describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, mkdirSync, writeFileSync } from 'fs';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { mkdtempSync, mkdirSync, realpathSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import type { ModSafetyReport } from '../../../src/types/modSafety';
@@ -54,8 +54,11 @@ async function waitingPrompt() {
 }
 
 describe('safety prompts raised under the mod lock', () => {
+    let fixtureRoot = '';
     beforeAll(() => {
-        const root = mkdtempSync(join(tmpdir(), 'safety-lock-'));
+        // macOS temp paths may pass through /var, a symlink to /private/var.
+        const root = realpathSync(mkdtempSync(join(tmpdir(), 'safety-lock-')));
+        fixtureRoot = root;
         h.dl = join(root, 'dl');
         h.userData = join(root, 'userdata');
         const addons = join(h.dl, 'game', 'citadel', 'addons');
@@ -70,6 +73,7 @@ describe('safety prompts raised under the mod lock', () => {
         addProfile({ id: 'scrims', name: 'Scrims', mods: [{ fileName: 'hud_timer_dir.vpk', enabled: true, priority: 1 }],
             createdAt: now, updatedAt: now });
     });
+    afterAll(() => { if (fixtureRoot) rmSync(fixtureRoot, { recursive: true, force: true }); });
 
     it('lets Keep disabled release a profile apply waiting on the mod', async () => {
         h.fingerprint = 'b'.repeat(64);

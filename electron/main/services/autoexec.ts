@@ -64,7 +64,7 @@ export function parseAutoexec(content: string): AutoexecData {
             // rewrite upgrades them instead of silently deleting them.
             if (trimmed.startsWith('citadel_crosshair_') || trimmed.startsWith('// Preset:')) {
                 crosshair.push(line);
-            } else if (!line.includes('Mod Manager')) {
+            } else if (trimmed !== '// Managed by Deadlock Mod Manager') {
                 header.push(line);
             }
         } else if (section === 'crosshair') {
@@ -75,8 +75,8 @@ export function parseAutoexec(content: string): AutoexecData {
         } else if (section === 'other') {
             if (trimmed.startsWith('citadel_crosshair_')) {
                 crosshair.push(line);
-            } else if (!line.includes('Crosshair settings from Deadlock Mod Manager') &&
-                !line.includes('// Preset:')) {
+            } else if (!trimmed.startsWith('// Crosshair settings from Deadlock Mod Manager') &&
+                !trimmed.startsWith('// Preset:')) {
                 other.push(line);
             }
         }
@@ -221,5 +221,22 @@ export function writeAutoexec(gamePath: string, data: AutoexecData): void {
             if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
         } catch { /* ignore */ }
         throw error;
+    }
+}
+
+/** Restore exact prior bytes after a failed multi-file Config operation. */
+export function restoreAutoexecContent(gamePath: string, content: string | null): void {
+    const target = getAutoexecPath(gamePath);
+    if (content === null) {
+        if (fs.existsSync(target)) fs.unlinkSync(target);
+        return;
+    }
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    const temp = `${target}.config-restore.tmp`;
+    try {
+        fs.writeFileSync(temp, content, 'utf8');
+        fs.renameSync(temp, target);
+    } finally {
+        if (fs.existsSync(temp)) fs.unlinkSync(temp);
     }
 }

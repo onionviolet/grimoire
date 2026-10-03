@@ -84,10 +84,11 @@ for (const [key, values] of presetValues) {
     }
     const allowedValues = [...values];
     const booleanValues = allowedValues.every((value) => /^(?:true|false|0|1)$/i.test(value));
+    const numericValues = allowedValues.every((value) => value.trim() !== '' && Number.isFinite(Number(value)));
     byKey.set(key, {
         key,
         file: 'gameinfo.gi',
-        type: booleanValues ? 'boolean' : 'string',
+        type: booleanValues ? 'boolean' : numericValues ? 'numeric' : 'string',
         label: humanize(key),
         description: 'A value managed by a performance preset.',
         surfaces: ['performance-preset'],

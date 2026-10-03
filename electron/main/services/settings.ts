@@ -24,6 +24,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     confirmProfileUpdate: true,
     experimentalStats: false,
     experimentalCrosshair: false,
+    experimentalAbilityPreview: false,
     experimentalSocial: false,
     experimentalChatWheel: false,
     experimentalUnknownModMatching: false,

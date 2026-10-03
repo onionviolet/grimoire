@@ -5,6 +5,8 @@ export interface ProfileRecoverySummary {
   profileName: string;
   modCount: number;
   enabledCount: number;
+  retainedBytes?: boolean;
+  purpose?: 'isolation';
 }
 export interface ProfileRecoveryIssue {
   name: string;
@@ -16,4 +18,12 @@ export interface ProfileRecoveryPreview {
   canRestore: boolean;
   reviewToken: string;
   disableCount: number;
+  recoverCount?: number;
+}
+
+export interface InterruptedRecovery {
+  createdAt: string;
+  fileCount: number;
+  canRecover: boolean;
+  reviewToken: string;
 }

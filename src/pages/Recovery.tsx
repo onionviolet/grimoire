@@ -8,6 +8,7 @@ import { PageLayout, PageHeader, EmptyState, LoadingState, SectionHeader } from 
 import { Button } from '../components/common/ui';
 import { Textarea } from '../components/common/forms';
 import HealthIssues from '../components/recovery/HealthIssues';
+import RecoveryTools from '../components/recovery/RecoveryTools';
 
 export default function Recovery() {
   const { t } = useTranslation();
@@ -85,6 +86,7 @@ export default function Recovery() {
             : <EmptyState icon={ShieldCheck} title={t('recovery.noIssues')} description={t('recovery.noIssuesDescription')} />}
           <p className="text-xs text-text-tertiary">{t('recovery.scope')}</p>
         </section>}
+      {health?.pathState === 'ready' && <RecoveryTools />}
       <section className="space-y-3 rounded-sm border border-border bg-bg-secondary p-4">
         <SectionHeader>{t('recovery.diagnosticsTitle')}</SectionHeader>
         <p className="text-sm text-text-secondary">{t('recovery.diagnosticsDescription')}</p>

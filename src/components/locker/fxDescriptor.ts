@@ -56,8 +56,14 @@ export interface FxControlPoint {
   entity: string | null;
 }
 
+export interface FxAttachment {
+  name: string;
+  influences: Array<{ bone: string; offset: [number, number, number]; weight: number; rootTransform: boolean }>;
+}
+
 export interface FxDescriptor {
   name: string;
+  attachments?: FxAttachment[];
   class?: string;
   maxParticles?: number;
   constantRadius?: FxParam;
@@ -115,6 +121,13 @@ export interface SpriteSimParams {
   color: [number, number, number];
   /** Per-particle drift velocity magnitude (BasicMovement), world units/sec. */
   drift: number;
+  colorMin: [number, number, number];
+  colorMax: [number, number, number];
+  colorEnd: [number, number, number] | null;
+  colorWindow: [number, number];
+  controlPoint: number;
+  attachment: string | null;
+  positionLocked: boolean;
   /** Spin rate range, rad/sec (SpinUpdate). */
   spin: [number, number];
   /** Spawn jitter radius (CreateWithinSphere / PositionOffset), world units. */
@@ -167,6 +180,14 @@ export function spriteParamsFor(d: FxDescriptor): SpriteSimParams | null {
   const sphere = findNode(d.initializers, 'C_INIT_CreateWithinSphereTransform');
   const spawnRadius = sphere ? paramScalar(sphere.params.m_fRadiusMax, radius) : radius;
 
+  const randomColor = findNode(d.initializers, 'C_INIT_RandomColor');
+  const interpolate = findNode(d.operators, 'C_OP_ColorInterpolate');
+  const lock = findNode(d.operators, 'C_OP_PositionLock');
+  const position = d.initializers.find(node => node.class.includes('CreateWithinSphere') || node.class.includes('PositionOffset'));
+  const controlPoint = paramScalar(lock?.params.m_nControlPointNumber ?? position?.params.m_nControlPointNumber ?? sphere?.params.m_nControlPointNumber, 0);
+  const driver = d.controlPoints.find(point => point.cp === controlPoint);
+  const colorMin = colorVector(randomColor?.params.m_ColorMin, color);
+  const colorMax = colorVector(randomColor?.params.m_ColorMax, colorMin);
   return {
     texture,
     additive: (renderer.blendMode ?? '').includes('ADD'),
@@ -175,6 +196,13 @@ export function spriteParamsFor(d: FxDescriptor): SpriteSimParams | null {
     lifetime,
     radius,
     color,
+    colorMin,
+    colorMax,
+    colorEnd: interpolate ? colorVector(interpolate.params.m_ColorFade, color) : null,
+    colorWindow: [paramScalar(interpolate?.params.m_flFadeStartTime, 0), paramScalar(interpolate?.params.m_flFadeEndTime, 1)],
+    controlPoint,
+    attachment: driver?.attachment ?? null,
+    positionLocked: !!lock,
     drift,
     spin,
     spawnRadius,
@@ -183,10 +211,28 @@ export function spriteParamsFor(d: FxDescriptor): SpriteSimParams | null {
 
 /** Every sprite layer reachable from a descriptor, walking children. The first
  *  visible slice renders these as additive billboard clusters. */
-export function allSpriteLayers(d: FxDescriptor): SpriteSimParams[] {
+export function colorVector(value: unknown, fallback: [number, number, number]): [number, number, number] {
+  if (!Array.isArray(value) || value.length < 3 || !value.slice(0, 3).every(Number.isFinite)) return fallback;
+  return [value[0] / 255, value[1] / 255, value[2] / 255];
+}
+
+export function allSpriteLayers(d: FxDescriptor, inherited: FxControlPoint[] = []): SpriteSimParams[] {
   const layers: SpriteSimParams[] = [];
-  const self = spriteParamsFor(d);
+  const controlPoints = [...d.controlPoints, ...inherited.filter(point => !d.controlPoints.some(own => own.cp === point.cp))];
+  const self = spriteParamsFor({ ...d, controlPoints });
   if (self) layers.push(self);
-  for (const child of d.children) layers.push(...allSpriteLayers(child));
+  for (const child of d.children) layers.push(...allSpriteLayers(child, controlPoints));
   return layers;
+}
+
+/** The authored classes this sprite approximation currently interprets. */
+export function unsupportedParticleClasses(descriptor: FxDescriptor): string[] {
+  const supported = new Set(['C_OP_ContinuousEmitter', 'C_INIT_InitFloat', 'C_INIT_RandomColor',
+    'C_INIT_CreateWithinSphereTransform', 'C_OP_BasicMovement', 'C_OP_SpinUpdate',
+    'C_OP_ColorInterpolate', 'C_OP_PositionLock', 'C_OP_Decay', 'C_OP_RenderSprites']);
+  return [...new Set([
+    ...[...descriptor.emitters, ...descriptor.initializers, ...descriptor.operators, ...descriptor.renderers]
+      .filter(node => !supported.has(node.class)).map(node => node.class),
+    ...descriptor.children.flatMap(unsupportedParticleClasses),
+  ])];
 }

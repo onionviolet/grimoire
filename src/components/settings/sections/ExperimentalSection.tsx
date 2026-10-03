@@ -138,6 +138,13 @@ export default function ExperimentalSection() {
             label={<Tx k="settings.experimental.chatWheel" fallback="Chat Wheel" />}
             description={<Tx k="settings.toggles.chatWheel" fallback="Edit ChatLane YAML and install custom chat wheel VPKs as managed Deadlock add-ons." />}
           />
+          <div className="h-px bg-hl/5" />
+          <Toggle
+            checked={settings?.experimentalAbilityPreview ?? false}
+            onChange={(checked) => update({ experimentalAbilityPreview: checked })}
+            label={<Tx k="settings.experimental.abilityPreview" fallback="Ability previews" />}
+            description={<Tx k="settings.toggles.abilityPreview" fallback="Preview known ability clips and sounds in the hero stage. Unverified effect mappings stay unavailable." />}
+          />
         </div>
       </Card>
 

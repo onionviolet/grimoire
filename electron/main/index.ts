@@ -136,6 +136,9 @@ import './ipc/servers';
 import './ipc/browser';
 import './ipc/foundry';
 import './ipc/performanceConfig';
+import './ipc/configWorkspace';
+import { registerAssetInspectionHandlers } from './ipc/assetInspection';
+registerAssetInspectionHandlers();
 import './ipc/dmmMigrate';
 import './ipc/forge';
 

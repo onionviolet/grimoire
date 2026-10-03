@@ -26,6 +26,26 @@ function fixtureVpk(): Buffer {
 }
 
 describe('parseVpkEntryIndex', () => {
+    it('rejects oversized, truncated and unknown-version trees before allocation', () => {
+        const root = mkdtempSync(join(tmpdir(), 'grimoire-vpk-index-'));
+        roots.push(root);
+        const path = join(root, 'pak01_dir.vpk');
+        const header = Buffer.alloc(12);
+        header.writeUInt32LE(0x55aa1234, 0);
+        header.writeUInt32LE(1, 4);
+        header.writeUInt32LE(0xffffffff, 8);
+        writeFileSync(path, header);
+        expect(parseVpkEntryIndex(path)).toBeNull();
+        header.writeUInt32LE(20, 8);
+        writeFileSync(path, header);
+        expect(parseVpkEntryIndex(path)).toBeNull();
+        header.writeUInt32LE(99, 4);
+        header.writeUInt32LE(0, 8);
+        writeFileSync(path, header);
+        expect(parseVpkEntryIndex(path)).toBeNull();
+        writeFileSync(path, header.subarray(0, 7));
+        expect(parseVpkEntryIndex(path)).toBeNull();
+    });
     it('surfaces CRC, logical size, and archive index without reading a chunk', () => {
         const root = mkdtempSync(join(tmpdir(), 'grimoire-vpk-index-'));
         roots.push(root);

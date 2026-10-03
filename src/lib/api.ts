@@ -991,6 +991,22 @@ export async function getPerformanceConfigStatus(): Promise<PerformanceConfigSta
   return window.electronAPI.getPerformanceConfigStatus();
 }
 
+export async function getConfigWorkspace(): Promise<import('../types/configWorkspace').ConfigWorkspaceSnapshot> {
+  return window.electronAPI.getConfigWorkspace();
+}
+
+export async function applyConfigWorkspace(update: import('../types/configWorkspace').ConfigWorkspaceUpdate): Promise<import('../types/configWorkspace').ConfigWorkspaceSnapshot> {
+  return window.electronAPI.applyConfigWorkspace(update);
+}
+
+export async function parseConfigBundle(text: string): Promise<import('../types/configWorkspace').ConfigBundle> {
+  return window.electronAPI.parseConfigBundle(text);
+}
+
+export async function exportConfigBundle(): Promise<import('../types/configWorkspace').ConfigBundle> {
+  return window.electronAPI.exportConfigBundle();
+}
+
 export async function getConfigKeyIndex(): Promise<import('../types/electron').ConfigKeyDefinition[]> {
   return [...await window.electronAPI.getConfigKeyIndex()];
 }
@@ -1780,4 +1796,41 @@ export async function foundryModelPreview(entryPath: string): Promise<import('..
 }
 export async function foundryExportModel(entryPath: string): Promise<import('../types/foundry').FoundryAssetExportResult> {
   return window.electronAPI.foundry.exportModel(entryPath);
+}
+
+export async function foundryAssets(): Promise<import('../types/assetInspection').AssetInspectionEntry[]> {
+  return window.electronAPI.foundry.assets();
+}
+export async function foundryInspectAsset(path: string): Promise<import('../types/assetInspection').AssetInspectionResult> {
+  return window.electronAPI.foundry.inspectAsset(path);
+}
+export async function getHeroAbilityPreviews(heroName: string): Promise<import('../types/abilityPreview').HeroAbilityPreview[]> {
+  return window.electronAPI.getHeroAbilityPreviews(heroName);
+}
+export async function prepareHeroAbilityPreview(heroName: string, slot: import('../types/mod').AbilitySlot, options?: import('../types/abilityPreview').HeroAbilityPreviewOptions): Promise<import('../types/abilityPreview').HeroAbilityPlayback> {
+  return window.electronAPI.prepareHeroAbilityPreview(heroName, slot, options);
+}
+export async function getInterruptedProfileRecovery(): Promise<import('../types/profileRecovery').InterruptedRecovery | null> {
+  return window.electronAPI.getInterruptedProfileRecovery();
+}
+export async function recoverInterruptedProfileRecovery(reviewToken: string): Promise<void> {
+  return window.electronAPI.recoverInterruptedProfileRecovery(reviewToken);
+}
+export async function reviewModCompatibility(): Promise<import('../types/recovery').CompatibilityReview> {
+  return window.electronAPI.reviewModCompatibility();
+}
+export async function getModIsolationSession(): Promise<import('../types/recovery').ModIsolationSession | null> {
+  return window.electronAPI.getModIsolationSession();
+}
+export async function startModIsolation(): Promise<import('../types/recovery').ModIsolationSession> {
+  return window.electronAPI.startModIsolation();
+}
+export async function applyModIsolationTrial(reviewToken: string): Promise<import('../types/recovery').ModIsolationSession> {
+  return window.electronAPI.applyModIsolationTrial(reviewToken);
+}
+export async function recordModIsolationResult(reviewToken: string, result: 'works' | 'crashes'): Promise<import('../types/recovery').ModIsolationSession> {
+  return window.electronAPI.recordModIsolationResult(reviewToken, result);
+}
+export async function finishModIsolation(reviewToken: string): Promise<void> {
+  return window.electronAPI.finishModIsolation(reviewToken);
 }

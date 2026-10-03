@@ -1,14 +1,23 @@
 # Chat Wheel
 
-Grimoire's Chat Wheel page edits the YAML format used by
-[ChatLane for Grimoire](https://github.com/onionviolet/chatlane-grimoire) and
-uses its bundled CLI to convert that YAML to a Deadlock add-on VPK. The
-converter is a derivative of the original
-[RedMser/ChatLane](https://github.com/RedMser/ChatLane); its MIT `LICENSE` is
-distributed alongside the executable. The fork's repository link above is not
-publicly readable today (it returns 404), so the vendored command catalogue in
-`src/lib/chatWheelCommands.ts` is pinned to an upstream RedMser commit instead;
-whether the bundled executable was built from that exact commit is unverified.
+Grimoire's Chat Wheel page edits ChatLane YAML and compiles it to a Deadlock
+add-on VPK using a native TypeScript converter on Windows, macOS and Linux.
+The converter ports [RedMser/ChatLane](https://github.com/RedMser/ChatLane)'s
+MIT implementation, pinned to commit
+`9a71e229f30e7a899699aa5f24d1fbe88da8ce00`. It needs no external runtime,
+Wine or executable. The MIT notice, typed game-data snapshot and RED2 template
+ship in `resources/chatlane` on every platform. See
+[converter provenance](../resources/chatlane/PROVENANCE.md) for source pins,
+independent C# fixtures and the precise validation limits.
+
+Saving compiles the complete pinned voice-command table, overrides and custom
+menus into `scripts/ping_wheel_messages.vdata_c`. It also embeds the original
+YAML byte for byte, so comments, unknown fields and CRLF survive save/reopen.
+The native game resource matches independent original CLI fixtures byte for
+byte for the starter and populated override/menu configurations. Unicode
+string-table sizes use UTF-8 byte counts and were independently decoded by
+ValveResourceFormat. This proves the converter contract; current in-match
+behavior still depends on the game and its existing limitations.
 
 Open a compatible ChatLane VPK to recover its embedded `chatlane.yml`, edit
 the YAML, then save. Grimoire validates it with the converter before changing

@@ -20,7 +20,7 @@
 // lines otherwise (JS `.` does not match \r), which would inject duplicate
 // convars with ambiguous engine precedence on Windows CRLF files.
 import { createHash } from 'crypto';
-import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'fs';
+import { existsSync, readFileSync, unlinkSync, writeFileSync, renameSync } from 'fs';
 import { dirname, join } from 'path';
 import { getGameinfoPath } from './deadlock';
 import { findAutoexecConvars } from './autoexec';
@@ -153,6 +153,8 @@ export interface ApplyOptions {
     resetOverrides?: boolean;
     /** Values staged by the HUD/advanced controls for this apply. */
     convarOverrides?: Record<string, string>;
+    /** Transactional Config edits must fail if their state sidecar cannot persist. */
+    requireStateWrite?: boolean;
 }
 
 /** The convars a preset writes for a given opt-in selection: its performance
@@ -298,6 +300,29 @@ function entryKey(line: string): string | null {
 
 const quote = (v: string) => `"${v.replace(/^"|"$/g, '')}"`;
 const unquote = (v: string) => v.replace(/^"|"$/g, '');
+
+function writeConfigText(path: string, text: string): void {
+    const temp = `${path}.config.tmp`;
+    try {
+        writeFileSync(temp, text, 'utf8');
+        renameSync(temp, path);
+    } finally {
+        if (existsSync(temp)) unlinkSync(temp);
+    }
+}
+
+/** Rollback stays in the service that owns gameinfo and its state sidecar. */
+export function restorePerformanceConfigFiles(deadlockPath: string, gameinfo: string | null, sidecar: string | null): void {
+    const path = getGameinfoPath(deadlockPath);
+    const failures: string[] = [];
+    for (const [file, content] of [[path, gameinfo], [statePath(path), sidecar]] as const) {
+        try {
+            if (content === null) { if (existsSync(file)) unlinkSync(file); }
+            else writeConfigText(file, content);
+        } catch (error) { failures.push(String(error)); }
+    }
+    if (failures.length) throw new Error(failures.join('; '));
+}
 
 // Current values of the active ConVars lines Grimoire manages (tagged with the
 // marker), so Reapply can actually change every line reported here. Lines the
@@ -788,7 +813,7 @@ export function applyPerformanceConfig(
         }
 
         const finalText = crlf ? content.split('\n').join('\r\n') : content;
-        writeFileSync(gameinfoPath, finalText, 'utf-8');
+        writeConfigText(gameinfoPath, finalText);
         saved[preset.id] = presetOverrides;
         writeAppliedState(gameinfoPath, {
             presetId: preset.id,
@@ -797,7 +822,7 @@ export function applyPerformanceConfig(
             optIns,
             overridesByPreset: saved,
             userConvars,
-        });
+        }, opts?.requireStateWrite);
 
         const kept = Object.keys(presetOverrides).length;
         const keptNote = kept ? ` Kept ${kept} of your override${kept === 1 ? '' : 's'}.` : '';
@@ -842,20 +867,58 @@ export function setPerformanceAdvancedConvars(deadlockPath: string | null, value
     return setPerformanceConvars(deadlockPath, requested);
 }
 
-function setPerformanceConvars(deadlockPath: string | null, values: Record<string, string>): PerformanceConfigStatus {
+/** The Config workspace uses the same writer as HUD and preset controls. */
+export function setConfigConvars(deadlockPath: string | null, values: Record<string, string>): PerformanceConfigStatus {
+    const requested = validateConfigConvars(values);
+    return setPerformanceConvars(deadlockPath, requested, true);
+}
+
+export function validateConfigConvars(values: Record<string, string>): Record<string, string> {
+    if (!values || typeof values !== 'object' || Array.isArray(values) || Object.keys(values).length > 500) {
+        throw new Error('Invalid configuration values.');
+    }
+    const requested: Record<string, string> = {};
+    for (const [key, value] of Object.entries(values)) {
+        const definition = CONFIG_KEY_BY_NAME.get(key);
+        if (!definition || typeof value !== 'string' || !value.trim() || value.length > 512 || /[\r\n\0"{};]/.test(value)) {
+            throw new Error(`Invalid value for configuration key ${key}.`);
+        }
+        if (definition.type === 'boolean' && !/^(?:0|1|true|false)$/.test(value)) {
+            throw new Error(`${key} requires a boolean value.`);
+        }
+        if (definition.allowedValues && !definition.allowedValues.includes(value)) {
+            throw new Error(`${key} requires one of its supported values.`);
+        }
+        if (definition.type === 'numeric') {
+            const number = Number(value);
+            if (!Number.isFinite(number) || number < definition.min! || number > definition.max!) {
+                throw new Error(`${key} is outside its supported range.`);
+            }
+        }
+        requested[key] = value;
+    }
+    return requested;
+}
+
+function setPerformanceConvars(deadlockPath: string | null, values: Record<string, string>, requireStateWrite = false): PerformanceConfigStatus {
     if (!deadlockPath) return status('error', 'Deadlock path not configured.');
     const current = getPerformanceConfigStatus(deadlockPath);
     if (current.state === 'applied') {
+        const requestedOptIns = requireStateWrite
+            ? resolvePreset(current.appliedPresetId, current.appliedVersion).optIn.filter(control => Object.hasOwn(values, control.key)).map(control => control.key)
+            : [];
         return applyPerformanceConfig(deadlockPath, {
             presetId: current.appliedPresetId ?? DEFAULT_PRESET_ID,
-            optIns: current.appliedOptIns,
+            optIns: requireStateWrite ? [...new Set([...(current.appliedOptIns ?? []), ...requestedOptIns])] : current.appliedOptIns,
+            version: current.appliedVersion,
             convarOverrides: values,
+            requireStateWrite,
         });
     }
     // These are game settings, not preset settings, so they no longer require a
     // performance preset to exist. Without one there is no preset body to layer
     // onto and they are written on their own (see writeUserConvars).
-    return writeUserConvars(deadlockPath, values);
+    return writeUserConvars(deadlockPath, values, requireStateWrite);
 }
 
 // Write only the fork-owned control values, for a gameinfo.gi that carries no
@@ -869,7 +932,8 @@ function setPerformanceConvars(deadlockPath: string | null, values: Record<strin
 // makes a reset able to put the original value back.
 function writeUserConvars(
     deadlockPath: string,
-    values: Record<string, string>
+    values: Record<string, string>,
+    requireStateWrite = false
 ): PerformanceConfigStatus {
     const gameinfoPath = getGameinfoPath(deadlockPath);
     if (!existsSync(gameinfoPath)) {
@@ -924,8 +988,8 @@ function writeUserConvars(
         if (braceCount(content) !== braceCount(original)) {
             return status('error', 'Patch produced an unbalanced gameinfo.gi; no changes were written.');
         }
-        writeFileSync(gameinfoPath, crlf ? content.split('\n').join('\r\n') : content, 'utf-8');
-        writeUserConvarState(gameinfoPath, sidecar, userConvars);
+        writeConfigText(gameinfoPath, crlf ? content.split('\n').join('\r\n') : content);
+        writeUserConvarState(gameinfoPath, sidecar, userConvars, requireStateWrite);
         return getPerformanceConfigStatus(deadlockPath);
     } catch (err) {
         return status('error', `Failed to write gameinfo.gi settings: ${err}`);
@@ -962,7 +1026,8 @@ function retagUserConvar(content: string, key: string, value: string): string | 
 function writeUserConvarState(
     gameinfoPath: string,
     sidecar: AppliedState | null,
-    userConvars: UserConvars
+    userConvars: UserConvars,
+    requireStateWrite = false
 ): void {
     writeAppliedState(gameinfoPath, {
         presetId: sidecar?.presetId ?? '',
@@ -971,7 +1036,7 @@ function writeUserConvarState(
         optIns: sidecar?.optIns ?? [],
         overridesByPreset: allOverrides(sidecar),
         userConvars,
-    });
+    }, requireStateWrite);
 }
 
 /** Reset only Grimoire-owned user-facing convars. This never deletes an
@@ -1002,7 +1067,7 @@ export function clearPerformanceConvars(deadlockPath: string | null, keys: strin
             }
         }
         content = content.slice(0, range.bodyStart) + lines.join('\n') + content.slice(range.bodyEnd);
-        writeFileSync(gameinfoPath, crlf ? content.replace(/\n/g, '\r\n') : content, 'utf-8');
+        writeConfigText(gameinfoPath, crlf ? content.replace(/\n/g, '\r\n') : content);
         // Record the refusal in the standing store, for every key that was
         // asked for rather than only the ones with a line to delete. Deleting
         // the line alone is not enough when the preset itself writes the key:
@@ -1097,7 +1162,7 @@ export function removePerformanceConfig(deadlockPath: string | null): Performanc
         }
         const crlf = content.includes('\r\n');
         const restored = removeMarkers(crlf ? content.split('\r\n').join('\n') : content);
-        writeFileSync(gameinfoPath, crlf ? restored.split('\n').join('\r\n') : restored, 'utf-8');
+        writeConfigText(gameinfoPath, crlf ? restored.split('\n').join('\r\n') : restored);
         clearAppliedState(gameinfoPath);
         return status('not-applied', 'Performance config removed; stock values restored.');
     } catch (err) {
@@ -1142,7 +1207,7 @@ export function restorePerformanceConfigBackup(
     }
     try {
         const backup = readFileSync(backupPath, 'utf-8');
-        writeFileSync(gameinfoPath, backup, 'utf-8');
+        writeConfigText(gameinfoPath, backup);
         // Markers are gone (the backup predates any apply) but the sidecar
         // stays, so this reads back as a clean "wiped" state: Reapply re-adds
         // the preset and folds the saved overrides back in.
@@ -1225,7 +1290,7 @@ export function getPerformanceConfigStatus(deadlockPath: string | null): Perform
     try {
         const content = readFileSync(gameinfoPath, 'utf-8');
         const begin = BEGIN_RE.exec(content);
-        const activePreset = begin ? getPreset(begin[1]) : null;
+        const activePreset = begin ? resolvePreset(begin[1], begin[2]) : null;
         // autoexec.cfg runs after gameinfo.gi, so a line there beats every
         // control on this surface. Reported on the status so the controls can
         // show it as a state instead of burying it in a description.
@@ -1497,7 +1562,8 @@ function writeAppliedState(
         optIns: string[];
         overridesByPreset: Record<string, Overrides>;
         userConvars: UserConvars;
-    }
+    },
+    requireStateWrite = false
 ): void {
     try {
         const trimmed: AppliedState = {
@@ -1516,10 +1582,11 @@ function writeAppliedState(
             ([, map]) => Object.keys(map).length > 0
         );
         if (kept.length) trimmed.overridesByPreset = Object.fromEntries(kept);
-        writeFileSync(statePath(gameinfoPath), JSON.stringify(trimmed), 'utf-8');
-    } catch {
+        writeConfigText(statePath(gameinfoPath), JSON.stringify(trimmed));
+    } catch (error) {
         // Best-effort: losing the sidecar only degrades wiped-detection to
         // "not applied"; it must never fail the apply/remove itself.
+        if (requireStateWrite) throw error;
     }
 }
 

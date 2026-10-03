@@ -71,6 +71,7 @@ export default defineConfig(({ mode }) => {
                     'electron-log',
                     '@grimoire/social-types',
                     'zod',
+                    'yaml',
                     '@xhayper/discord-rpc',
                     '@ghostery/adblocker-electron',
                 ],

@@ -43,11 +43,14 @@ asarUnpack:
 # the asar so the OS can execute it directly. Resolved at runtime via
 # process.resourcesPath.
 extraResources:
-  # ChatLane is the YAML <-> VPK conversion engine for the Chat Wheel page.
+  # Native ChatLane conversion runs in the main bundle on every platform.
+  # Its pinned game data ships outside asar; legacy Windows binaries are unused.
   - from: resources/chatlane
     to: chatlane
     filter:
       - "**/*"
+      - "!*.exe"
+      - "!*.dll"
   - from: resources/vpkmerge
     to: vpkmerge
     filter:

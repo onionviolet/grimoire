@@ -35,6 +35,7 @@ import {
 import { getModMetadata, setModMetadata, removeModMetadata } from './metadata';
 import { resolveVpkIdentity } from './vpkIdentity';
 import { soundCodenameForHero } from './heroSoundCodenames';
+import { ensureModClip } from './foundryCatalog';
 import { abilitySoundClipsForSlot, eventsForClips } from './abilitySounds';
 import type {
     AbilitySlot,
@@ -438,4 +439,19 @@ export async function getActiveHeroSounds(
     return sounds
         .filter((s) => s.heroCodename === codename)
         .map((s) => ({ slot: s.slot, sourceFileName: s.source.fileName, params: s.params }));
+}
+
+/** Audition one exact clip from the currently applied slot artifact. Persisted
+ * source media is never substituted for a missing installed clip. */
+export async function previewAppliedHeroSound(
+    deadlockPath: string, heroName: string, slot: AbilitySlot, clipPath: string,
+): Promise<{ url: string | null; selected: boolean; params?: AbilitySoundParams }> {
+    const codename = soundCodenameForHero(heroName);
+    const selection = (await currentSoundSelections(deadlockPath)).find(sound => sound.heroCodename === codename && sound.slot === slot);
+    if (!selection) return { url: null, selected: false };
+    const managed = await ensureModClip(lockerSoundsVpkPath(deadlockPath), clipPath).catch(() => null);
+    if (managed) return { url: managed, selected: true, params: selection.params };
+    // Selected source media is authoring input, not proof that the applied
+    // artifact still exists. A reused source slot must never replace it here.
+    return { url: null, selected: true, params: selection.params };
 }

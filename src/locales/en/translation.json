@@ -119,7 +119,8 @@
       "all": "All settings",
       "changed": "Changed from stock",
       "conflicted": "Overridden by autoexec",
-      "gameinfo": "gameinfo.gi"
+      "gameinfo": "gameinfo.gi",
+      "unknown": "Unrecognized keys"
     },
     "origins": {
       "game-default": "Game default",
@@ -127,16 +128,49 @@
       "user-override": "Your override",
       "unsupported": "Unrecognized value"
     },
-    "overridden": "Autoexec wins",
-    "openEditor": "Open editor",
     "resolved": "Resolved value",
     "stock": "Game default",
-    "written": "gameinfo.gi value",
     "unknown": "Unknown",
     "notSet": "Not set",
     "conflictDetail": "autoexec.cfg line {{line}} sets this to {{value}}, so it overrides gameinfo.gi.",
     "empty": "No settings match these filters.",
-    "error": "Could not read configuration"
+    "staged": "Unsaved",
+    "presetValue": "Preset value",
+    "useBaseline": "Use preset or stock value",
+    "apply": "Review and apply",
+    "unavailable": "Configure a readable Deadlock installation in Settings before editing.",
+    "saveError": "Could not apply configuration: {{error}}",
+    "saved": "Configuration saved.",
+    "unknownKeys": "Unrecognized keys in your files",
+    "unknownHelp": "These entries stay in their files. Grimoire does not know their supported values and keeps them read-only here.",
+    "commands": "Managed autoexec commands",
+    "commandsHelp": "One console command per line. These replace the managed command section. Your manual lines and crosshair section are preserved.",
+    "manualCommands": "Manual commands preserved in autoexec.cfg",
+    "launchOptions": "Steam launch options",
+    "launchHelp": "Saved here and written to Steam just before the next launch through Grimoire.",
+    "review": {
+      "title": "Apply these configuration changes?",
+      "message": "Apply the displayed values and any staged command or launch-option edits. If the files changed since you loaded them, refresh and review again.",
+      "commands": "Replace the managed autoexec command list with the staged list",
+      "launchOptions": "Save the staged launch options for the next managed launch"
+    },
+    "discard": {
+      "title": "Discard unsaved configuration edits?",
+      "message": "Refresh loads the current files and discards your staged changes.",
+      "action": "Discard and refresh"
+    },
+    "bundle": {
+      "title": "Config bundle",
+      "scope": "Grimoire-only JSON for supported written gameinfo values, managed autoexec commands and saved launch options. It excludes paths, files, manual content and unsupported values. Loading a bundle stages its values for review; unnamed settings stay unchanged.",
+      "text": "Bundle JSON",
+      "failed": "Could not read or copy this bundle: {{error}}",
+      "copied": "Bundle copied.",
+      "export": "Load saved configuration",
+      "stage": "Stage imported values"
+    },
+    "previous": "Previous",
+    "next": "Next",
+    "page": "Page {{page}} of {{pages}}"
   },
   "saved": {
     "title": "Saved Mods",
@@ -265,7 +299,8 @@
       "recolor": "Recolor",
       "soon": "soon",
       "myChanges": "My changes",
-      "models": "Models"
+      "models": "Models",
+      "assets": "Assets"
     },
     "portraits": {
       "searchPlaceholder": "Search portraits...",
@@ -683,6 +718,28 @@
       "previewFailed": "Could not preview this model",
       "previewFallback": "The exported model could not be drawn here. You can still export its GLB for inspection.",
       "previewHint": "Drag to orbit and scroll to zoom. This is a static asset preview with basic lighting; it does not show installed skins or game-engine effects."
+    },
+    "assets": {
+      "description": "Inspect base-game textures, materials, and particles by their exact VPK paths. Inspection never changes game files.",
+      "search": "Search exact asset paths...",
+      "scope": "All base-game texture, material, and particle paths",
+      "kind": "Asset type",
+      "all": "All asset types",
+      "texture": "Textures",
+      "material": "Materials",
+      "particle": "Particles",
+      "loading": "Reading asset paths...",
+      "failed": "Could not read the asset catalog",
+      "empty": "No matching assets",
+      "inspect": "Inspect",
+      "preparing": "Preparing inspection...",
+      "noImage": "This texture could not be decoded by the configured engine.",
+      "unavailable": "Inspection unavailable: {{reason}}",
+      "spriteHint": "Experimental sprite approximation. Unsupported operators, non-sprite renderers and unresolved control points are omitted. This is not ability playback.",
+      "playSprites": "Preview sprites",
+      "previewFailed": "Could not draw the sprite preview",
+      "unsupportedClasses": "Preview omits these authored classes: {{classes}}",
+      "count": "{{count}} of {{total}} assets"
     }
   },
   "autoexec": {
@@ -1341,7 +1398,8 @@
       "foundry": "Door Stuck",
       "browser": "In-app browser",
       "chatWheel": "Chat Wheel",
-      "performanceConfigWhere": "Open its controls in Game setup"
+      "performanceConfigWhere": "Open its controls in Game setup",
+      "abilityPreview": "Ability previews"
     },
     "support": {
       "reportBuildFailed": "Failed to build report: {{error}}",
@@ -1466,7 +1524,8 @@
       "performanceConfig": "One-click fps boost using Sqooky's community preset. Mods keep working. Remove any time.",
       "browser": "Adds a Browser page for mod sites. Pages run isolated from the app, with downloads and popups handed to your real browser.",
       "chatWheel": "Edit ChatLane YAML and install custom chat wheel VPKs as managed Deadlock add-ons.",
-      "modSafety": "Check each mod for scripts and ask before enabling one that has them. Imported mods wait disabled until you review them."
+      "modSafety": "Check each mod for scripts and ask before enabling one that has them. Imported mods wait disabled until you review them.",
+      "abilityPreview": "Preview known ability clips and sounds in the hero stage. Unverified effect mappings stay unavailable."
     },
     "forkBuild": {
       "description": "This build carries patches that are not in the official release. Switch them off to compare against stock behaviour without rebuilding."
@@ -2821,6 +2880,43 @@
       "deleteNamed": "Delete {{name}}",
       "deleteTitle": "Delete {{name}}?",
       "deleteMessage": "This removes the cursor pack from Grimoire. If it is the active one, the default cursors come back."
+    },
+    "abilityPreview": {
+      "open": "Preview abilities",
+      "title": "{{hero}} ability inspection",
+      "hint": "Experimental animation and sound audition. Uses the viewer’s selected outfit and applied slot sound when available. Playback begins together after decoding with approximate timing; Source 2 cast events are not reproduced.",
+      "missingClip": "The exported model does not contain the selected animation clip.",
+      "loading": "Resolving known ability slots...",
+      "select": "Ability",
+      "play": "Play once",
+      "stop": "Stop",
+      "clip": "Animation: {{clip}}",
+      "sound": "Catalog clip: {{path}}",
+      "noClip": "Animation unavailable: no unique authored ability clip matches this slot.",
+      "noSound": "Combined sound unavailable: this slot has no unique clip. Audition individual sounds in Foundry.",
+      "noEffectJoin": "Cast VFX unavailable: no verified animation-to-particle event join. Use Assets to inspect particles separately.",
+      "noAbilities": "No known ability slots for this hero.",
+      "failed": "Could not play this animation",
+      "audio": "Base ability sound",
+      "noAmbient": "No curated ambient effect is available for this hero.",
+      "showAmbient": "Show ambient recolor preview",
+      "hideAmbient": "Hide ambient recolor preview",
+      "ambientHint": "Ambient sprite approximation with applied colors. Named attachments must resolve in the model; unresolved layers are omitted. This is not a cast.",
+      "showTexture": "Preview recolored texture",
+      "hideTexture": "Hide recolored texture",
+      "textureHint": "Read-only preview of this hero recipe’s representative ability texture. Starts with applied single-hue settings when present. These sliders do not apply changes or reproduce particle motion, prism, gradient, or trippy paint.",
+      "hue": "Hue: {{value}}°",
+      "saturation": "Saturation: {{value}}",
+      "brightness": "Brightness: {{value}}",
+      "textureLoading": "Decoding recolored texture...",
+      "noTexture": "This hero recipe has no representative texture to decode. Inspect its authored particle resources in Assets instead.",
+      "textureAlt": "Representative ability texture with the preview colors applied",
+      "appliedSkin": "Model source: selected outfit stack",
+      "baseSkin": "Model source: base-game outfit",
+      "skinFallback": "The full outfit stack could not export. This uses the same selected single-outfit fallback as the viewer.",
+      "appliedSound": "Sound source: applied Locker slot",
+      "baseSound": "Sound source: base game (no Locker slot selection)",
+      "tuningHint": "Initial audition approximates the slot’s pitch and attenuation. Positive gain is capped at normal browser volume; native replay controls play the original clip."
     }
   },
   "profiles": {
@@ -2964,13 +3060,13 @@
     },
     "recovery": {
       "title": "Local restore points",
-      "description": "Before each profile apply, Grimoire saves local mod state and configuration. Restore requires the same installed VPK bytes, including local and Foundry mods. Files are not backed up.",
+      "description": "Restore previous local files, configuration, order and enabled state. New points retain VPK copies. Locker managed artifacts are separate.",
       "empty": "No local restore points yet. Apply a profile to create one.",
       "refresh": "Refresh",
       "preview": "Preview restore",
       "counts": "{{enabled}} enabled of {{total}} mods",
       "confirmTitle": "Restore local state?",
-      "confirmMessage": "Restore mods, order, autoexec, game configuration and the active profile marker from {{date}}. {{count}} newer enabled mods will be disabled.",
+      "confirmMessage": "Restore the setup from {{date}}? This will disable {{count}} additional mods and recover {{recovered}} deleted mods from retained copies. Close Deadlock first.",
       "restore": "Restore",
       "cancel": "Cancel",
       "blocked": "Restore blocked. Keep or reinstall the exact original files, then preview again.",
@@ -2980,7 +3076,10 @@
       "restored": "Local state restored.",
       "loadFailed": "Could not load local restore points.",
       "previewFailed": "Could not preview this restore point.",
-      "restoreFailed": "Restore failed. {{error}}"
+      "restoreFailed": "Restore failed. {{error}}",
+      "retainedBytes": "VPK and chunk copies retained",
+      "identityOnly": "Legacy restore point: original files must still exist",
+      "isolationPoint": "Before assisted isolation"
     }
   },
   "social": {
@@ -4149,8 +4248,8 @@
       "title": "Chat Wheel is off",
       "description": "Enable the Chat Wheel in Settings to use this page."
     },
-    "converterUnsupported": "VPK conversion is unavailable on this platform. You can still edit and export ChatLane YAML.",
-    "converterMissing": "The ChatLane converter is unavailable. You can still edit and export ChatLane YAML.",
+    "converterUnsupported": "Native Chat Wheel conversion supports Windows, macOS and Linux. You can still edit and export ChatLane YAML on this platform.",
+    "converterMissing": "The native Chat Wheel converter data is missing. Reinstall Grimoire to restore its bundled resources. You can still edit and export ChatLane YAML.",
     "exportYaml": "Export YAML",
     "validationUnavailable": "Validation requires the ChatLane converter."
   },
@@ -4575,6 +4674,41 @@
       "metadataAmbiguous": "Multiple installed files share this metadata key. Review the enabled and disabled copies.",
       "diskLow": "Less than 1 GiB is available on the game drive. Make space before installing or rebuilding mods.",
       "diskUnavailable": "Available space could not be read for the game drive."
+    },
+    "tools": {
+      "failed": "The action could not complete. Close Deadlock and review again. If files changed during isolation, restore the original setup before starting over.",
+      "interruptedTitle": "Interrupted restore",
+      "interruptedDescription": "A restore did not finish. Review the {{count}} recorded file paths before returning to the previous setup.",
+      "interruptedChanged": "Files changed outside recovery. Automatic rollback is blocked to protect those edits. Keep the recovery backup and resolve the changed files before retrying.",
+      "recoverInterrupted": "Return to the previous setup",
+      "compatibilityTitle": "Patch compatibility review",
+      "compatibilityDescription": "Compare installed mod replacement paths with the current base game index.",
+      "reviewCompatibility": "Review replacement paths",
+      "compatibilityScope": "Missing model, material, particle, script or resource paths deserve review after a game update. Mods can add new paths, so these findings do not prove incompatibility or explain a crash. Existing paths do not prove compatibility. This review excludes Locker managed artifacts.",
+      "unreadable": "The mod directory could not be read.",
+      "missingPaths": "{{count}} of {{total}} sensitive paths are absent from the current base index.",
+      "noMissingPaths": "All {{count}} checked sensitive paths are present in the current base index.",
+      "showPaths": "Show up to 30 missing paths",
+      "isolationTitle": "Assisted mod isolation",
+      "isolationDescription": "Test smaller groups of enabled user mods and report what happened yourself.",
+      "isolationScope": "The original setup is backed up first. Close Deadlock before each change, launch it yourself, then select Works or Crashes. Locker managed artifacts stay active. Group results can miss interactions between mods, so a candidate is a lead to test, not a proven cause. Launcher exit codes are never used as crash evidence.",
+      "startIsolation": "Back up and prepare isolation",
+      "baselineReady": "First test: disable all user mods to establish a baseline.",
+      "baselineTesting": "All user mods are disabled. Test Deadlock yourself, close it, then report the result.",
+      "trialReady": "Next test: enable {{count}} of {{remaining}} remaining candidates.",
+      "trialTesting": "The test group is active. Test Deadlock yourself, close it, then report the result.",
+      "candidate": "Candidate to verify individually: {{name}}. Restore your original setup when finished.",
+      "inconclusive": "The results do not identify a user mod. Restore the original setup and review game configuration or interactions separately.",
+      "applyTrial": "Apply this test group",
+      "works": "Works",
+      "crashes": "Crashes",
+      "restoreOriginal": "Restore original setup",
+      "confirmTitle": "Change the active setup?",
+      "confirmTrial": "Close Deadlock first. Apply the reviewed test group? A retained restore point will preserve the original user mod setup.",
+      "confirmInterrupted": "Close Deadlock first. Restore the file contents and configuration recorded before the interrupted action? Changes made outside recovery block this action.",
+      "confirmRestore": "Close Deadlock first. Restore the original user mods, file order and configuration, then end isolation?",
+      "confirm": "Continue",
+      "refreshReview": "Refresh recovery review"
     }
   }
 }

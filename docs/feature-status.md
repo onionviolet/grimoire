@@ -1,6 +1,6 @@
 # Feature status
 
-Status snapshot: **2026-09-01**, reconciled against the working tree by reading
+Status snapshot: **2026-10-03**, reconciled against the working tree by reading
 the code rather than the docs. The two "Shipped" sections date from the
 2026-07-28 audit ([spec-audit-prompt.md](./spec-audit-prompt.md)) and its three
 waves and are kept as shipped history; the gap and verification sections were
@@ -29,25 +29,50 @@ record is [upstream-absorption-1.30.md](./upstream-absorption-1.30.md).
 - Release builds use the fork engine on Windows, macOS and Linux with the pinned
   optional-checksum repair. All-platform artifact builds are not yet verified.
 - Profiles retain ten local restore points before application, covering scanned
-  user VPK sets, enabled/order state, raw configuration and the active marker.
-  Restore requires exact original directory/chunk bytes, rejects stale reviews
-  and rolls back failures. It does not back up deleted files or promise recovery
-  across a process crash. Reserved Locker cosmetics are outside this snapshot.
+  user VPK sets, enabled/order state, raw configuration, performance sidecar and
+  the active marker. New v2 points retain deduplicated VPK/chunk copies and can
+  restore deleted assets. Explicit interrupted-restore recovery uses a persistent
+  journal and preserves external edits. Legacy points remain readable. Reserved
+  Locker cosmetics are outside this snapshot; profile application itself is not
+  process-crash atomic.
 - Local/Foundry profile identities are captured by the existing canonical hash
   helper, so ordinary enable/disable renames no longer detach saved entries.
 - Recovery scans local configuration, VPK headers/trees, metadata and free space
-  on request, without repairing files. Its diagnostic report is redacted and
-  reviewed before copying. Guided crash isolation is not implemented.
+  on request. Its diagnostic report is redacted and reviewed before copying.
+  Compatibility review compares patch-sensitive replacement paths, including
+  Panorama assets, against the local base index. Missing paths are review evidence,
+  never a crash diagnosis. Assisted isolation captures the original setup, tests
+  a zero-user-mod baseline, narrows groups from manual works/crashes feedback and
+  restores the original state. Trials require explicit review and a stopped game.
 - Foundry's Models tool lists exact base-game model paths, previews static GLBs
   on demand and exports through the native save dialog. The cache is bounded to
   256 MiB. This is basic asset inspection, not a model authoring/forge surface or
   an in-engine fidelity claim.
-- Chat Wheel keeps YAML editing and export available on macOS/Linux while
-  disabling converter-dependent VPK actions. Native converters are not bundled;
-  release packaging verifies the Windows converter resources explicitly.
+- Foundry Assets searches exact texture/material/particle paths. Read-only
+  inspection decodes textures, reports material data and projects authored
+  particle KV3 through the pinned engine's existing generic decoder. Inspection
+  and ability caches share Foundry fingerprints and a 256 MiB budget, with active
+  exports protected from pruning.
+- Experimental ability previews default off. Known clips can audition selected
+  outfit stacks and the applied Locker sound bytes, with explicit fallback or
+  unavailable states. Ambient sprite previews use authored control points and
+  attachment offsets and honor color operators and applied recolors. Unsupported
+  classes and missing attachments are disclosed. Exact cast-particle event joins
+  and engine-faithful timing remain unavailable.
+- Config stages typed edits, exposes unknown keys read-only, preserves manual
+  autoexec/crosshair content and saves launch options for the next managed launch.
+  Review tokens reject stale files, multi-file failures roll back and state
+  sidecar failures cannot report success. Grimoire-only config bundles stage
+  supported values for review without importing paths or arbitrary files.
+- Chat Wheel reads, builds and validates VPKs natively on Windows, macOS and Linux.
+  The compiled KV3/RED2 resource matches independent original-converter fixtures;
+  original YAML survives byte-for-byte. Packaged builds include pinned native
+  data and licensing rather than invoking a Windows executable.
 
 Validation and limits for these follow-ups are recorded in
 [recovery-and-models-2026-10-03.md](./recovery-and-models-2026-10-03.md).
+The parallel follow-up and its remaining limits are recorded in
+[parallel-feature-followup-2026-10-03.md](./parallel-feature-followup-2026-10-03.md).
 
 ## Shipped 2026-07-30
 
@@ -184,7 +209,7 @@ Validation and limits for these follow-ups are recorded in
 
 ## Confirmed gaps
 
-**Reconciled 2026-09-01** against the working tree. The previous list dated
+**Reconciled 2026-09-01; updated 2026-10-03** against the working tree. The previous list dated
 from 2026-07-28 and had gone badly stale: eleven of its entries shipped during
 v1.27 and v1.27.1. Those are recorded, with evidence, in the "Closed by the
 truth pass" table of [.planning/BACKLOG.md](../.planning/BACKLOG.md); do not
@@ -194,18 +219,15 @@ What is genuinely still missing, in the order it would be worth building:
 
 1. **Foundry model edits have no forge serializer.** `FoundryForgeEdit`
    (`src/types/foundry.ts:423`) admits `sound`, `texture`, and `recolor`. The
-   tray refuses a model edit explicitly rather than dropping it silently, and
-   there is no model surface to stage one from anyway. Backlog B-01.
-2. **Foundry VFX and broad thumbnail browsing.** The base-model browser and
-   static preview/export are implemented in source. Broader material/texture
-   and particle browsing remain open. Backlog B-02.
-3. **Advanced merge composition.** Merge recipes, editable include/exclude
+   tray refuses a model edit explicitly rather than dropping it silently.
+   Inspection exists, but an authoring/staging contract does not. Backlog B-01.
+2. **Advanced merge composition.** Merge recipes, editable include/exclude
    path policy, merge-content presets, and rebuild diffs are absent, and a
    reviewed order cannot be applied to a selection containing a merged mod.
    Backlog B-03.
-4. **Animation retarget and in-preview ability VFX.** The rigged export path
-   ships and its frame cost was measured; retarget and in-preview VFX were
-   never built. Backlog B-04.
+3. **Animation retarget and exact cast-particle event joins.** Rigged animation,
+   native sprite inspection and experimental applied-source auditions exist.
+   Retarget and event-timed ability effects remain open. Backlog B-04.
 
 Two further items are decisions rather than gaps: where the social TOS gate
 fires (B-05) and whether to fork `grimoire-social` or upstream the dormant
@@ -231,9 +253,10 @@ plays, or draws them.
 
 ## History and branch safety
 
-- `main` is the only branch. The v1.27.5 phase branches and the v1.28
-  absorption branch were merged and deleted on 2026-09-01; `upstream/main` is
-  fully absorbed as of that date.
+- The parallel follow-up lives on `codex/finish-requested-features`, based on
+  fork `main` at `9cdee122`. The v1.27.5 phase branches and the v1.28 absorption
+  branch were merged and deleted on 2026-09-01; that historical intake is
+  recorded in `upstream-absorption-1.28.md`.
 - `codex/chat-wheel-tab` is not a feature branch to merge: compared with
   `main`, it removes Chat Wheel and many other fork features. Treat it as an
   old/reductive experiment, not recovery material.

@@ -6,8 +6,9 @@ open as of the date in the header.
 
 **Reconciled:** 2026-09-01, by reading the code rather than the docs.
 
-**Updated 2026-10-03:** B-02 now has an exact-path base-model browser, static
-preview and GLB export. Other entries retain their reconciliation dates.
+**Updated 2026-10-03:** B-02 inspection is implemented in source. B-01 now
+depends on a model authoring contract; B-04 is narrowed to retarget and exact
+cast-particle event joins. Other entries retain their reconciliation dates.
 
 ## Where things live
 
@@ -49,22 +50,25 @@ are not re-planned a third time.
 | Upstream Discord invite in the updater modal | Support destination decided and applied | no Discord link in `UpdateModal.tsx`; `docs/fork-maintenance.md` |
 | Social 1.5 unrunnable | Resolved as a disposition, not a gap | ADR-018: wave 3 is permanently dormant against the upstream Worker |
 
+## Delivered in source 2026-10-03 (not released)
+
+### B-02. Foundry models, VFX, and broad thumbnail browsing (slice G)
+Models provides exact base paths, static GLB preview and export. Assets now
+searches all indexed textures/materials/particles and offers on-demand texture,
+material and authored particle inspection. Sprite playback is experimental,
+approximate and explicit about unsupported classes. Neither surface authors or
+installs model edits. Evidence and limits:
+`docs/parallel-feature-followup-2026-10-03.md`.
+
 ## Open
 
 ### B-01. Foundry model edits have no forge serializer
 `FoundryForgeEdit` admits `sound`, `texture`, and `recolor`
 (`src/types/foundry.ts:423`). A model edit cannot enter a combined build, and
-the tray refuses it explicitly rather than dropping it silently. Blocked in
-practice on B-02, since there is no model surface to stage from.
-**Size:** medium. **Blocked on:** B-02.
-
-### B-02. Foundry models, VFX, and broad thumbnail browsing (slice G)
-The base-game model slice is implemented in source (2026-10-03): an exact VPK
-directory index supplies the searchable Models tool, with on-demand static GLB
-preview/export and a bounded cache. It never stages or installs model edits.
-Broad material/VFX texture browsing and particle-asset inspection remain open;
-thumbnail browsing is still limited to ability icons, item icons and hero images.
-**Remaining size:** large. Model forging remains B-01.
+the tray refuses it explicitly rather than dropping it silently. Model inspection
+exists; model authoring, dependency policy and a supported staging/serializer
+contract are still needed.
+**Size:** medium. **Needs:** model authoring contract.
 
 ### B-03. Advanced merge composition
 Review and reviewed source order shipped. Merge recipes, editable
@@ -76,9 +80,12 @@ contributes leaves the review never showed.
 board: pure groundwork, no standalone user benefit, nothing breaks without it.
 Do not start unless the merge-recipe UI is actually wanted.
 
-### B-04. Animation retarget and in-preview ability VFX
+### B-04. Animation retarget and exact cast-particle event joins
 Material/lighting parity, NPR, cloth, and the rigged export path have landed.
-Retarget and in-preview VFX have not.
+Experimental applied-source clip/audio auditions and native ambient sprite
+previews now exist. Retarget and verified cast-particle event joins remain open.
+Approximate sprite playback does not establish engine timing or full operator
+fidelity. Unknown hero/ability joins remain unavailable.
 **Size:** large.
 
 ### B-05. TOS gate placement is an unresolved decision

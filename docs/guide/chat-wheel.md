@@ -46,4 +46,6 @@ Creating a new wheel with unsaved edits asks before discarding them.
 
 ## If the converter is missing
 
-Some systems have no ChatLane converter binary available. The tab then says **ChatLane converter unavailable**: you can still see your installed wheels, but building a VPK or reading one is not possible on that machine.
+Windows, macOS and Linux use Grimoire's built-in native converter. If its bundled
+data is missing, the tab says **ChatLane converter unavailable**. YAML editing
+and export stay available; reinstall Grimoire to restore VPK reading and building.

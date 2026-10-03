@@ -1,3 +1,4 @@
+import { foundryFingerprintIsRetained } from './foundryCacheRetention';
 /**
  * Foundry catalog service: the bridge between the bundled `vpkmerge catalog *`
  * sidecar and the renderer's Foundry tab.
@@ -430,7 +431,12 @@ async function buildFingerprint(deadlockPath: string): Promise<BuildFingerprint>
 /** Public cache key for read-only catalog companions.  Sharing this exact key
  * means their results expire with the same game update as thumbnails do. */
 export async function foundryBuildFingerprintKey(deadlockPath: string): Promise<string> {
-    return fingerprintKey(await buildFingerprint(deadlockPath));
+    // Match the engine's size + Unix seconds + subsecond nanoseconds tuple.
+    // Inspecting one particle must not build an unrelated voice-line catalog.
+    const stat = await fs.stat(pak01Path(deadlockPath), { bigint: true });
+    const nanos = stat.mtimeNs;
+    const fraction = (nanos < 0n ? -nanos : nanos) % 1_000_000_000n;
+    return `${stat.size}-${nanos / 1_000_000_000n}-${fraction}`;
 }
 
 /** Compare the current pak's directory index to the immediately previous build
@@ -757,7 +763,7 @@ export async function pruneStaleFingerprints(currentKey: string): Promise<void> 
             dirs
                 // The source-thumb subtree is not a build fingerprint, so a game
                 // update must not take it with the stale pak thumbnails.
-                .filter((d) => d !== currentKey && d !== FOUNDRY_SOURCE_THUMB_DIR)
+                .filter((d) => d !== currentKey && d !== FOUNDRY_SOURCE_THUMB_DIR && !foundryFingerprintIsRetained(d))
                 .map((d) => fs.rm(join(root, d), { recursive: true, force: true }))
         );
     } catch {

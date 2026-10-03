@@ -1,181 +1,67 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
-import { dirname, join } from 'path';
-import { EventEmitter } from 'events';
+import { join } from 'path';
 
-/**
- * `mode` steers the stubbed converter: 'ok' writes CONVERTED_YAML to the output
- * path and exits 0, 'fail' emits `outputText` on stderr (when non-empty) and
- * exits 1 without writing anything.
- */
-const harness = vi.hoisted(() => ({ appPath: '', calls: [] as string[][], mode: 'ok' as 'ok' | 'fail', outputText: '' }));
+const harness = vi.hoisted(() => ({ appPath: '' }));
+vi.mock('electron', () => ({ app: { isPackaged: false, getAppPath: () => harness.appPath } }));
+import { buildChatWheelVpk, getChatWheelConverterStatus, readChatWheelStarter, readChatWheelVpk, validateChatWheelYaml } from './chatWheel';
 
-const CONVERTED_YAML = 'name: Read Back\n\noverride_bindable: {}\n';
-
-vi.mock('electron', () => ({
-    app: { isPackaged: false, getAppPath: () => harness.appPath },
-}));
-
-vi.mock('child_process', () => ({
-    spawn: vi.fn((_binary: string, args: string[]) => {
-        harness.calls.push(args);
-        const child = new EventEmitter();
-        // Hold the emitters locally: Object.assign's return value is discarded,
-        // so `child.stderr` would not typecheck off the EventEmitter binding.
-        const stdout = new EventEmitter();
-        const stderr = new EventEmitter();
-        Object.assign(child, { stdout, stderr });
-        queueMicrotask(() => {
-            if (harness.mode === 'fail') {
-                if (harness.outputText) stderr.emit('data', Buffer.from(harness.outputText));
-                child.emit('close', 1);
-                return;
-            }
-            writeFileSync(args[1]!, CONVERTED_YAML);
-            child.emit('close', 0);
-        });
-        return child;
-    }),
-}));
-
-import { getChatWheelConverterStatus, readChatWheelStarter, readChatWheelVpk, validateChatWheelYaml } from './chatWheel';
-
-const originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform');
-
-beforeEach(() => Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' }));
-afterEach(() => {
-    if (originalPlatform) Object.defineProperty(process, 'platform', originalPlatform);
-});
-
-/** A fresh app root whose resources/chatlane holds the converter stub the guards require. */
-function appRootWithConverter(): string {
-    const appPath = mkdtempSync(join(tmpdir(), 'chat-wheel-app-'));
-    const chatlane = join(appPath, 'resources', 'chatlane');
-    mkdirSync(chatlane, { recursive: true });
-    writeFileSync(join(chatlane, 'ChatLane.exe'), 'stub');
-    return appPath;
+const roots: string[] = [];
+beforeEach(() => { harness.appPath = join(__dirname, '../../..'); });
+afterEach(() => roots.splice(0).forEach((root) => rmSync(root, { recursive: true, force: true })));
+function temporaryRoot(): string {
+    const root = mkdtempSync(join(tmpdir(), 'chat-wheel-test-'));
+    roots.push(root);
+    return root;
 }
 
-describe('validateChatWheelYaml', () => {
-    it('runs ChatLane and removes its temporary validation VPK', async () => {
-        harness.appPath = mkdtempSync(join(tmpdir(), 'chat-wheel-app-'));
-        const chatlane = join(harness.appPath, 'resources', 'chatlane');
-        mkdirSync(chatlane, { recursive: true });
-        writeFileSync(join(chatlane, process.platform === 'win32' ? 'ChatLane.exe' : 'ChatLane'), 'stub');
-
-        await validateChatWheelYaml('name: Checked');
-
-        expect(harness.calls).toHaveLength(1);
-        expect(harness.calls[0]?.[0]).toMatch(/chatlane\.yml$/);
-        const output = harness.calls[0]?.[1];
-        expect(output).toMatch(/chatlane_dir\.vpk$/);
-        expect(existsSync(output!)).toBe(false);
+describe('native converter status', () => {
+    it.each(['darwin', 'linux', 'win32'] as const)('supports %s using the same packaged native resources', (platform) => {
+        const fileExists = vi.fn<(path: string) => boolean>(() => true);
+        expect(getChatWheelConverterStatus(platform, '/resources', fileExists)).toEqual({ available: true, platform });
+        expect(fileExists.mock.calls.map(([path]) => path)).toEqual(['base-commands.json', 'red2.bin', 'starter.yml', 'LICENSE'].map((name) => join('/resources/chatlane', name)));
     });
-
-    it('rejects empty YAML before invoking the converter', async () => {
-        harness.calls.length = 0;
-
-        await expect(validateChatWheelYaml('  ')).rejects.toThrow('cannot be empty');
-
-        expect(harness.calls).toHaveLength(0);
-    });
-});
-
-describe('getChatWheelConverterStatus', () => {
-    it.each(['darwin', 'linux', 'freebsd'] as const)('reports %s as unsupported without probing a binary', (platform) => {
-        const fileExists = vi.fn(() => true);
-        expect(getChatWheelConverterStatus(platform, '/resources', fileExists)).toEqual({
-            available: false, platform, reason: 'unsupported-platform',
-        });
+    it('reports unsupported operating systems', () => {
+        const fileExists = vi.fn<(path: string) => boolean>(() => true);
+        expect(getChatWheelConverterStatus('freebsd', '/resources', fileExists)).toEqual({ available: false, platform: 'freebsd', reason: 'unsupported-platform' });
         expect(fileExists).not.toHaveBeenCalled();
     });
-
-    it('reports a missing Windows resource without leaking a path into diagnostics', () => {
-        expect(getChatWheelConverterStatus('win32', '/resources', () => false)).toEqual({
-            available: false, platform: 'win32', reason: 'missing-resource',
-        });
-    });
-
-    it('returns the Windows converter path when its resource exists', () => {
-        expect(getChatWheelConverterStatus('win32', '/resources', () => true)).toEqual({
-            available: true, platform: 'win32', path: join('/resources', 'chatlane', 'ChatLane.exe'),
-        });
+    it('reports missing data resources without depending on a Windows executable', () => {
+        expect(getChatWheelConverterStatus('darwin', '/resources', () => false)).toEqual({ available: false, platform: 'darwin', reason: 'missing-resource' });
     });
 });
 
-describe('readChatWheelStarter', () => {
-    const template = '# A working ChatLane configuration.\nname: My Chat Wheel\n\noverride_bindable: {}\n';
-
-    it('returns the bundled template verbatim', async () => {
-        harness.appPath = appRootWithConverter();
-        writeFileSync(join(harness.appPath, 'resources', 'chatlane', 'starter.yml'), template, 'utf8');
-
-        await expect(readChatWheelStarter()).resolves.toBe(template);
+describe('Chat Wheel services', () => {
+    it('validates with the real native converter and rejects malformed YAML', async () => {
+        await expect(validateChatWheelYaml('name: Valid\ncustom_menus: []')).resolves.toBeUndefined();
+        await expect(validateChatWheelYaml('name: Valid\ncustom_menus: invalid')).rejects.toThrow('must be a list');
+        await expect(validateChatWheelYaml('  ')).rejects.toThrow('cannot be empty');
     });
-
-    it('rejects with the resolved path when the template is missing', async () => {
-        harness.appPath = mkdtempSync(join(tmpdir(), 'chat-wheel-app-'));
-
-        await expect(readChatWheelStarter()).rejects.toThrow(/starter\.yml/);
+    it('creates a removable staging VPK with the original YAML', async () => {
+        const yaml = 'name: Test\nfuture_field: {keep: true}\n';
+        const built = await buildChatWheelVpk(yaml);
+        expect(await readChatWheelVpk(built.vpkPath)).toBe(yaml);
+        await built.cleanup();
+        expect(existsSync(built.vpkPath)).toBe(false);
     });
-});
-
-describe('readChatWheelVpk', () => {
-    let fixtures = '';
-
-    beforeEach(() => {
-        harness.mode = 'ok';
-        harness.outputText = '';
-        harness.calls.length = 0;
-        harness.appPath = appRootWithConverter();
-        fixtures = mkdtempSync(join(tmpdir(), 'chat-wheel-vpk-'));
-        writeFileSync(join(fixtures, 'wheel.vpk'), 'stub vpk');
+    it('returns a bundled starter verbatim', async () => {
+        harness.appPath = temporaryRoot();
+        const resource = join(harness.appPath, 'resources/chatlane');
+        mkdirSync(resource, { recursive: true });
+        const yaml = '# Keep this\nname: Starter\n';
+        writeFileSync(join(resource, 'starter.yml'), yaml);
+        expect(await readChatWheelStarter()).toBe(yaml);
     });
-
-    it('rejects a path that is not a .vpk without spawning the converter', async () => {
-        writeFileSync(join(fixtures, 'wheel.zip'), 'stub zip');
-
-        await expect(readChatWheelVpk(join(fixtures, 'wheel.zip'))).rejects.toThrow('Select an existing .vpk file.');
-
-        expect(harness.calls).toHaveLength(0);
+    it('reports missing starter and converter data resources', async () => {
+        harness.appPath = temporaryRoot();
+        await expect(readChatWheelStarter()).rejects.toThrow(/starter.yml/);
+        await expect(buildChatWheelVpk('name: X')).rejects.toThrow(/resources are unavailable/);
     });
-
-    it('rejects a .vpk that does not exist without spawning the converter', async () => {
-        await expect(readChatWheelVpk(join(fixtures, 'absent.vpk'))).rejects.toThrow('Select an existing .vpk file.');
-
-        expect(harness.calls).toHaveLength(0);
-    });
-
-    it('returns the extracted YAML and removes the temp directory', async () => {
-        const vpk = join(fixtures, 'wheel.vpk');
-
-        await expect(readChatWheelVpk(vpk)).resolves.toBe(CONVERTED_YAML);
-
-        expect(harness.calls).toHaveLength(1);
-        expect(harness.calls[0]?.[0]).toBe(vpk);
-        const output = harness.calls[0]?.[1] ?? '';
-        expect(output).toMatch(/chatlane\.yml$/);
-        expect(dirname(output)).toMatch(/grimoire-chatwheel-/);
-        expect(existsSync(dirname(output))).toBe(false);
-    });
-
-    it('propagates the converter output as the error and still cleans up', async () => {
-        harness.mode = 'fail';
-        harness.outputText = '  Unhandled exception: bad wheel\n';
-
-        await expect(readChatWheelVpk(join(fixtures, 'wheel.vpk'))).rejects.toThrow('Unhandled exception: bad wheel');
-
-        const output = harness.calls[0]?.[1] ?? '';
-        expect(existsSync(dirname(output))).toBe(false);
-    });
-
-    it('falls back to the exit status when the converter says nothing', async () => {
-        harness.mode = 'fail';
-
-        await expect(readChatWheelVpk(join(fixtures, 'wheel.vpk'))).rejects.toThrow('ChatLane exited with status 1.');
-
-        const output = harness.calls[0]?.[1] ?? '';
-        expect(existsSync(dirname(output))).toBe(false);
+    it('rejects missing and non-VPK files before reading', async () => {
+        const root = temporaryRoot();
+        writeFileSync(join(root, 'wheel.zip'), 'x');
+        await expect(readChatWheelVpk(join(root, 'wheel.zip'))).rejects.toThrow('Select an existing .vpk file.');
+        await expect(readChatWheelVpk(join(root, 'absent.vpk'))).rejects.toThrow('Select an existing .vpk file.');
     });
 });

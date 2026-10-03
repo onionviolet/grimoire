@@ -56,7 +56,8 @@ export default function ProfileRecoveryPanel({ revision, onRestored }: { revisio
           {points.map(point => (
             <li key={point.id} className="flex flex-wrap items-center justify-between gap-3">
               <div className="min-w-0 text-sm">
-                <p className="text-text-primary break-words">{point.profileName}</p>
+                <p className="text-text-primary break-words">{point.purpose === 'isolation' ? t('profiles.recovery.isolationPoint') : point.profileName}</p>
+                <p className="text-xs text-text-secondary">{t(point.retainedBytes ? 'profiles.recovery.retainedBytes' : 'profiles.recovery.identityOnly')}</p>
                 <p className="text-xs text-text-secondary">{formatAbsoluteDate(point.createdAt)} · {t('profiles.recovery.counts', { enabled: point.enabledCount, total: point.modCount })}</p>
               </div>
               <Button variant="secondary" disabled={busy} onClick={() => void review(point.id)}>{t('profiles.recovery.preview')}</Button>
@@ -71,7 +72,7 @@ export default function ProfileRecoveryPanel({ revision, onRestored }: { revisio
         )}
       </div>
       <ConfirmModal isOpen={!!preview?.canRestore} title={t('profiles.recovery.confirmTitle')}
-        message={t('profiles.recovery.confirmMessage', { date: preview ? formatAbsoluteDate(preview.point.createdAt) : '', count: preview?.disableCount ?? 0 })}
+        message={t('profiles.recovery.confirmMessage', { date: preview ? formatAbsoluteDate(preview.point.createdAt) : '', count: preview?.disableCount ?? 0, recovered: preview?.recoverCount ?? 0 })}
         confirmLabel={t('profiles.recovery.restore')} cancelLabel={t('profiles.recovery.cancel')}
         busy={busy} onConfirm={() => void restore()} onCancel={() => { if (!busy) setPreview(null); }} />
     </Card>

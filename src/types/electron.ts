@@ -1100,6 +1100,8 @@ export interface ElectronAPI {
         skinSources?: HeroPoseSkinSource[]
     ) => Promise<unknown>;
     getHeroEffectInfo: (heroName: string) => Promise<HeroEffectInfo>;
+    getHeroAbilityPreviews: (heroName: string) => Promise<import('./abilityPreview').HeroAbilityPreview[]>;
+    prepareHeroAbilityPreview: (heroName: string, slot: import('./mod').AbilitySlot, options?: import('./abilityPreview').HeroAbilityPreviewOptions) => Promise<import('./abilityPreview').HeroAbilityPlayback>;
     exportHeroEffect: (heroName: string) => Promise<HeroEffectInfo>;
     getPreviewCacheSize: () => Promise<{ bytes: number }>;
     clearPreviewCache: () => Promise<{ bytesFreed: number }>;
@@ -1321,6 +1323,10 @@ export interface ElectronAPI {
     fixGameinfo: () => Promise<GameinfoStatus>;
     getPerformanceConfigStatus: () => Promise<PerformanceConfigStatus>;
     getConfigKeyIndex: () => Promise<readonly ConfigKeyDefinition[]>;
+    getConfigWorkspace: () => Promise<import('./configWorkspace').ConfigWorkspaceSnapshot>;
+    applyConfigWorkspace: (update: import('./configWorkspace').ConfigWorkspaceUpdate) => Promise<import('./configWorkspace').ConfigWorkspaceSnapshot>;
+    parseConfigBundle: (text: string) => Promise<import('./configWorkspace').ConfigBundle>;
+    exportConfigBundle: () => Promise<import('./configWorkspace').ConfigBundle>;
     listPerformancePresets: () => Promise<PerformancePresetSummary[]>;
     applyPerformanceConfig: (
         presetId?: string,
@@ -1433,6 +1439,14 @@ export interface ElectronAPI {
     previewProfile: (profileId: string) => Promise<ProfileApplyPreview>;
     applyProfile: (profileId: string, reviewToken?: string) => Promise<ApplyProfileResult>;
     listProfileRecoveryPoints: () => Promise<import('./profileRecovery').ProfileRecoverySummary[]>;
+    getInterruptedProfileRecovery: () => Promise<import('./profileRecovery').InterruptedRecovery | null>;
+    recoverInterruptedProfileRecovery: (reviewToken: string) => Promise<void>;
+    reviewModCompatibility: () => Promise<import('./recovery').CompatibilityReview>;
+    getModIsolationSession: () => Promise<import('./recovery').ModIsolationSession | null>;
+    startModIsolation: () => Promise<import('./recovery').ModIsolationSession>;
+    applyModIsolationTrial: (reviewToken: string) => Promise<import('./recovery').ModIsolationSession>;
+    recordModIsolationResult: (reviewToken: string, result: 'works' | 'crashes') => Promise<import('./recovery').ModIsolationSession>;
+    finishModIsolation: (reviewToken: string) => Promise<void>;
     previewProfileRecovery: (id: string) => Promise<import('./profileRecovery').ProfileRecoveryPreview>;
     restoreProfileRecovery: (id: string, reviewToken: string) => Promise<void>;
     recovery: {
@@ -1593,6 +1607,8 @@ export interface ElectronAPI {
     // `vpkmerge catalog *` sidecar (codename -> name, texture/icon index +
     // thumbnails). Experimental, gated behind settings.experimentalFoundry.
     foundry: {
+        assets: () => Promise<import('./assetInspection').AssetInspectionEntry[]>;
+        inspectAsset: (path: string) => Promise<import('./assetInspection').AssetInspectionResult>;
         models: () => Promise<import('./foundryModels').FoundryModelEntry[]>;
         modelPreview: (entryPath: string) => Promise<import('./foundryModels').FoundryModelPreview>;
         exportModel: (entryPath: string) => Promise<import('./foundry').FoundryAssetExportResult>;

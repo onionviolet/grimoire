@@ -26,10 +26,14 @@ import {
   getHeroEffectInfo,
   exportHeroEffect,
   previewTrippySprite,
+  getActiveHeroColor,
 } from '../../lib/api';
 import { loadGltfPreview } from '../../lib/loadGltfPreview';
 import { ParticleEffect } from './ParticleEffect';
-import type { FxDescriptor } from './fxDescriptor';
+import AbilityPreview from './AbilityPreview';
+import { useAppStore } from '../../stores/appStore';
+import type { ActiveHeroColor } from '../../types/mod';
+import { unsupportedParticleClasses, type FxDescriptor } from './fxDescriptor';
 import { useClothSim } from '../../lib/useClothSim';
 import type { ClothModel } from '../../lib/feModel';
 import { BloomEffect } from './BloomEffect';
@@ -400,7 +404,7 @@ export function PosedModel({
       <group position={[-norm.center.x, -norm.center.y, -norm.center.z]}>
         <primitive object={scene} />
         {effect && (
-          <ParticleEffect descriptor={effect.descriptor} textureBaseUrl={effect.baseUrl} />
+          <ParticleEffect descriptor={effect.descriptor} textureBaseUrl={effect.baseUrl} model={scene} recolor={effect.recolor} />
         )}
       </group>
     </group>
@@ -412,6 +416,7 @@ export function PosedModel({
 interface EffectMount {
   descriptor: FxDescriptor;
   baseUrl: string;
+  recolor?: ActiveHeroColor | null;
 }
 
 /** The skinned figure, idle clip driven by an AnimationMixer. gltf.scene is
@@ -495,7 +500,7 @@ function RiggedModel({
       <group position={[-norm.center.x, -norm.center.y, -norm.center.z]}>
         <primitive object={scene} />
         {effect && (
-          <ParticleEffect descriptor={effect.descriptor} textureBaseUrl={effect.baseUrl} />
+          <ParticleEffect descriptor={effect.descriptor} textureBaseUrl={effect.baseUrl} model={scene} recolor={effect.recolor} />
         )}
       </group>
     </group>
@@ -972,7 +977,10 @@ export default function HeroPoseViewer({
     setDevFlags((current) => ({ ...current, [key]: value }));
   }, []);
   const activeRenderFlags = import.meta.env.DEV ? devFlags : RELEASE_RENDER_FLAGS;
-  const effectPreviewEnabled = import.meta.env.DEV ? devFlags.effects : USE_EFFECT_PREVIEW;
+  const experimentalAbilityPreview = useAppStore(state => state.settings?.experimentalAbilityPreview ?? false);
+  const [ambientEnabled, setAmbientEnabled] = useState(false);
+  const [effectError, setEffectError] = useState<string | null>(null);
+  const effectPreviewEnabled = experimentalAbilityPreview && ambientEnabled || (import.meta.env.DEV ? devFlags.effects : USE_EFFECT_PREVIEW);
 
   // The pose GLB has no weapon mesh, so a weapons-only paint has nothing to show
   // here, and intensity 0 is "no paint". Otherwise fetch the pattern as an
@@ -1190,13 +1198,15 @@ export default function HeroPoseViewer({
   // bundle is built on demand, then the descriptor JSON is fetched over the
   // grimoire-hero: scheme and handed to the renderer.
   useEffect(() => {
-    if (!effectPreviewEnabled) return;
+    if (!effectPreviewEnabled) { setEffect(null); return; }
     let cancelled = false;
     setEffect(null);
+    setEffectError(null);
     (async () => {
       try {
         let info = await getHeroEffectInfo(heroName);
-        if (cancelled || !info.entry) return; // no curated effect for this hero.
+        if (cancelled) return;
+        if (!info.entry) { setEffectError(t('locker.abilityPreview.noAmbient')); return; }
         if (!info.hasEffect) {
           info = await exportHeroEffect(heroName);
           if (cancelled || !info.hasEffect) return;
@@ -1205,15 +1215,21 @@ export default function HeroPoseViewer({
         if (!res.ok) return;
         const descriptor = (await res.json()) as FxDescriptor;
         if (cancelled) return;
-        setEffect({ descriptor, baseUrl: effectTextureBaseUrl(info.key) });
-      } catch {
+        const recolor = await getActiveHeroColor(heroName);
+        if (!cancelled) {
+          setEffect({ descriptor, baseUrl: effectTextureBaseUrl(info.key), recolor });
+          const unsupported = unsupportedParticleClasses(descriptor);
+          if (unsupported.length) setEffectError(t('foundry.assets.unsupportedClasses', { classes: unsupported.join(', ') }));
+        }
+      } catch (error) {
+        if (!cancelled) setEffectError(String(error));
         // Effects are a non-essential overlay; a failure leaves the plain pose.
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [heroName, effectPreviewEnabled]);
+  }, [heroName, effectPreviewEnabled, t]);
 
   // The preference can be turned on while the app is open. Honor it live, but
   // never override an explicit choice the user made here.
@@ -1315,6 +1331,13 @@ export default function HeroPoseViewer({
       >
         {spinPaused ? t('locker.pose.resumeSpin') : t('locker.pose.pauseSpin')}
       </button>
+      {experimentalAbilityPreview && <div className="absolute bottom-3 right-3 z-10 max-w-72 space-y-2 rounded-sm bg-bg-secondary/90 p-2">
+        <AbilityPreview heroName={heroName} skinSources={skinSources} fallbackSkinMetaKey={fallbackSkinMetaKey} />
+        <button type="button" className="block cursor-pointer text-xs text-text-secondary hover:text-text-primary" onClick={() => setAmbientEnabled(value => !value)}>
+          {ambientEnabled ? t('locker.abilityPreview.hideAmbient') : t('locker.abilityPreview.showAmbient')}
+        </button>
+        {ambientEnabled && <p className="break-words text-xs text-text-secondary">{effectError ?? t('locker.abilityPreview.ambientHint')}</p>}
+      </div>}
       {import.meta.env.DEV && (
         <DevViewerControls
           devFlags={devFlags}
