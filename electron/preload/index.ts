@@ -634,7 +634,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     createProfileFromGameBananaIds: (args: { name: string; gameBananaIds: number[] }) =>
         ipcRenderer.invoke('create-profile-from-gamebanana-ids', args),
     updateProfile: (profileId: string, crosshairSettings?: ProfileCrosshairSettings) => ipcRenderer.invoke('update-profile', profileId, crosshairSettings),
-    applyProfile: (profileId: string) => ipcRenderer.invoke('apply-profile', profileId),
+    previewProfile: (profileId: string) => ipcRenderer.invoke('preview-profile', profileId),
+    applyProfile: (profileId: string, reviewToken?: string) => ipcRenderer.invoke('apply-profile', profileId, reviewToken),
     deleteProfile: (profileId: string) => ipcRenderer.invoke('delete-profile', profileId),
     renameProfile: (profileId: string, newName: string) => ipcRenderer.invoke('rename-profile', profileId, newName),
     removeProfileCrosshair: (profileId: string) => ipcRenderer.invoke('remove-profile-crosshair', profileId),

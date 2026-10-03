@@ -30,7 +30,6 @@ import { ConfirmModal } from '../common/PageComponents';
 import { showToast } from '../../stores/toastStore';
 import { useCrosshairStore } from '../../stores/crosshairStore';
 import {
-  applyProfile,
   createProfile,
   deleteProfile,
   getProfiles,
@@ -38,6 +37,7 @@ import {
   isGameRunningModLockError,
   updateProfile,
 } from '../../lib/api';
+import { useReviewedProfileApply } from '../profiles/useReviewedProfileApply';
 import type { Profile } from '../../lib/api';
 
 interface InstalledProfilesMenuProps {
@@ -64,6 +64,7 @@ export function InstalledProfilesMenu({ onApplied, className = '' }: InstalledPr
 
   const [open, setOpen] = useState(false);
   const [applyingId, setApplyingId] = useState<string | null>(null);
+  const { apply: applyReviewedProfile, reviewDialog } = useReviewedProfileApply();
   const [saveOpen, setSaveOpen] = useState(false);
   const [saveName, setSaveName] = useState('');
   const [saving, setSaving] = useState(false);
@@ -122,7 +123,9 @@ export function InstalledProfilesMenu({ onApplied, className = '' }: InstalledPr
     setApplyingId(profileId);
     setOpen(false);
     try {
-      const { profile, failures } = await applyProfile(profileId);
+      const result = await applyReviewedProfile(profileId);
+      if (!result) return;
+      const { profile, failures, unresolved } = result;
 
       if (profile.crosshair) {
         // We cast to any to satisfy the Preset type since loadSettingsFromPreset only uses the .settings property
@@ -130,7 +133,7 @@ export function InstalledProfilesMenu({ onApplied, className = '' }: InstalledPr
         loadSettingsFromPreset({ settings: profile.crosshair } as any);
       }
 
-      setActiveProfileId(profileId);
+      setActiveProfileId(failures.length === 0 && unresolved.length === 0 ? profileId : null);
       onApplied();
       await refresh();
 
@@ -139,6 +142,8 @@ export function InstalledProfilesMenu({ onApplied, className = '' }: InstalledPr
       // thrown, so the partial case gets its own warning instead of a success.
       if (failures.length > 0) {
         showToast(t('profiles.errors.applyPartial', { count: failures.length }), { tone: 'warning' });
+      } else if (unresolved.length > 0) {
+        showToast(t('profiles.review.partial', { count: unresolved.length }), { tone: 'warning' });
       } else {
         showToast(t('installed.profiles.appliedToast', { name: profile.name }), { tone: 'success' });
       }
@@ -224,6 +229,7 @@ export function InstalledProfilesMenu({ onApplied, className = '' }: InstalledPr
 
   return (
     <>
+      {reviewDialog}
       <MenuRoot kind="dropdown" open={open} onOpenChange={handleOpenChange}>
         <MenuTrigger asChild>
           <Button

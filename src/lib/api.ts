@@ -1228,7 +1228,7 @@ export function conflictPairKey(a: string, b: string): string {
 // Profile wire types are single-sourced in types/electron.ts; re-exported
 // here to preserve this module's existing import surface.
 export type { Profile, ProfileMod, ProfileCrosshairSettings, ApplyProfileResult } from '../types/electron';
-import type { GameinfoStatus, Profile, ProfileCrosshairSettings, ApplyProfileResult, PerformanceConfigStatus, PerformancePresetSummary, PerformanceLatestInfo, PerformanceRemoteVersionList, EditorCandidate, LockerImageVariant, LockerImageEdit, CropRect } from '../types/electron';
+import type { GameinfoStatus, Profile, ProfileCrosshairSettings, ApplyProfileResult, ProfileApplyPreview, PerformanceConfigStatus, PerformancePresetSummary, PerformanceLatestInfo, PerformanceRemoteVersionList, EditorCandidate, LockerImageVariant, LockerImageEdit, CropRect } from '../types/electron';
 
 export async function getProfiles(): Promise<Profile[]> {
   return window.electronAPI.getProfiles();
@@ -1249,8 +1249,12 @@ export async function updateProfile(profileId: string, crosshairSettings?: Profi
   return window.electronAPI.updateProfile(profileId, crosshairSettings);
 }
 
-export async function applyProfile(profileId: string): Promise<ApplyProfileResult> {
-  return withGameRunningWarning(() => window.electronAPI.applyProfile(profileId));
+export async function previewProfile(profileId: string): Promise<ProfileApplyPreview> {
+  return window.electronAPI.previewProfile(profileId);
+}
+
+export async function applyProfile(profileId: string, reviewToken?: string): Promise<ApplyProfileResult> {
+  return withGameRunningWarning(() => window.electronAPI.applyProfile(profileId, reviewToken));
 }
 
 export async function deleteProfile(profileId: string): Promise<void> {

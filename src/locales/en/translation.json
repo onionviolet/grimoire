@@ -2925,6 +2925,21 @@
     },
     "header": {
       "description": "Saved mod setups you can apply, share and restore."
+    },
+    "review": {
+      "title": "Review {{name}}",
+      "summary": "Available saved mods: {{available}}. Changes: {{enable}} to enable, {{disable}} to disable.",
+      "explanation": "Changed files will use their installed version. Missing, replaced or ambiguous entries will be skipped. Other enabled mods outside this profile will be disabled. Your Locker cosmetics stay applied.",
+      "status": {
+        "matched": "Installed match",
+        "changed": "File changed since saving",
+        "missing": "Not installed",
+        "replaced": "Saved slot now belongs to another mod",
+        "ambiguous": "More than one possible match"
+      },
+      "apply": "Apply reviewed matches",
+      "noMatches": "No enabled entries can be matched. Cancel and repair the profile or install its missing mods first.",
+      "partial": "Applied the reviewed matches. Skipped saved entries: {{count}}. This setup is not marked as a complete profile."
     }
   },
   "social": {

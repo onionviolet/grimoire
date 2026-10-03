@@ -4,7 +4,6 @@ import { Layers, Plus, Trash2, Play, Save, AlertTriangle, User, ChevronDown, Che
 import {
   getProfiles,
   createProfile,
-  applyProfile,
   updateProfile,
   deleteProfile,
   renameProfile,
@@ -28,6 +27,7 @@ import { ConfirmModal, EmptyState, PageLayout, LoadingState } from '../component
 import CrosshairPreview from '../components/crosshair/CrosshairPreview';
 import ExportProfileModal from '../components/profiles/ExportProfileModal';
 import ImportProfileDialog from '../components/profiles/ImportProfileDialog';
+import { useReviewedProfileApply } from '../components/profiles/useReviewedProfileApply';
 import PublishDialog from '../components/social/PublishDialog';
 import { getActiveDeadlockPath, shouldBlurNsfw } from '../lib/appSettings';
 import Tx from '../components/translation/Tx';
@@ -138,6 +138,7 @@ export default function Profiles() {
   const [includeCrosshairOnCreate, setIncludeCrosshairOnCreate] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [applyingId, setApplyingId] = useState<string | null>(null);
+  const { apply: applyReviewedProfile, reviewDialog } = useReviewedProfileApply();
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [removingCrosshairId, setRemovingCrosshairId] = useState<string | null>(null);
   // Profile id pending an "overwrite this profile?" confirmation. Gated on the
@@ -354,7 +355,10 @@ export default function Profiles() {
   const handleApplyProfile = async (profileId: string) => {
     setApplyingId(profileId);
     try {
-      const { profile, failures } = await applyProfile(profileId);
+      setError(null);
+      const result = await applyReviewedProfile(profileId);
+      if (!result) return;
+      const { profile, failures, unresolved } = result;
 
       // Update local crosshair store if profile has settings
       if (profile.crosshair) {
@@ -363,8 +367,9 @@ export default function Profiles() {
         loadSettingsFromPreset({ settings: profile.crosshair } as any);
       }
 
-      setActiveProfileId(profileId);
+      setActiveProfileId(failures.length === 0 && unresolved.length === 0 ? profileId : null);
       await loadMods();
+      await loadSnapshotList();
 
       // The apply is best-effort: per-mod enable/disable ops that couldn't
       // complete (typically a VPK locked by the running game) are counted, not
@@ -372,7 +377,8 @@ export default function Profiles() {
       // missing mods.
       if (failures.length > 0) {
         setError(t('profiles.errors.applyPartial', { count: failures.length }));
-
+      } else if (unresolved.length > 0) {
+        setError(t('profiles.review.partial', { count: unresolved.length }));
       }
     } catch (err) {
       setError(String(err));
@@ -462,6 +468,7 @@ export default function Profiles() {
 
   return (
     <PageLayout variant="fill" maxWidth="5xl">
+      {reviewDialog}
       <div className="flex flex-col gap-6 flex-1 overflow-auto px-1">
         <div className="space-y-6 pr-1">
           {error && (

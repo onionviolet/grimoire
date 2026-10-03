@@ -1430,7 +1430,8 @@ export interface ElectronAPI {
     createProfile: (name: string, crosshairSettings?: ProfileCrosshairSettings) => Promise<Profile>;
     createProfileFromGameBananaIds: (args: { name: string; gameBananaIds: number[] }) => Promise<Profile>;
     updateProfile: (profileId: string, crosshairSettings?: ProfileCrosshairSettings) => Promise<Profile>;
-    applyProfile: (profileId: string) => Promise<ApplyProfileResult>;
+    previewProfile: (profileId: string) => Promise<ProfileApplyPreview>;
+    applyProfile: (profileId: string, reviewToken?: string) => Promise<ApplyProfileResult>;
     deleteProfile: (profileId: string) => Promise<void>;
     renameProfile: (profileId: string, newName: string) => Promise<Profile>;
     removeProfileCrosshair: (profileId: string) => Promise<Profile>;
@@ -1855,6 +1856,25 @@ export interface Profile {
 export interface ApplyProfileResult {
     profile: Profile;
     failures: string[];
+    unresolved: ProfileApplyEntry[];
+}
+
+export interface ProfileApplyEntry {
+    fileName: string;
+    enabled: boolean;
+    status: 'matched' | 'changed' | 'missing' | 'replaced' | 'ambiguous';
+    modName?: string;
+    modId?: string;
+}
+
+export interface ProfileApplyPreview {
+    profileId: string;
+    profileName: string;
+    entries: ProfileApplyEntry[];
+    issues: ProfileApplyEntry[];
+    enableCount: number;
+    disableCount: number;
+    reviewToken: string;
 }
 
 declare global {
