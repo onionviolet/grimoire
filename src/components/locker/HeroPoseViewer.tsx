@@ -301,7 +301,7 @@ export function HeroPoseFailureState({
   const isExportFailure = kind === 'export';
   return (
     <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-4">
-      <AlertTriangle className={isExportFailure ? 'h-5 w-5 text-red-300' : 'h-5 w-5 text-text-secondary'} aria-hidden />
+      <AlertTriangle className={isExportFailure ? 'h-5 w-5 text-state-danger' : 'h-5 w-5 text-text-secondary'} aria-hidden />
       <p className="max-w-xs text-center text-sm text-text-secondary">
         {t(isExportFailure ? 'locker.pose.exportFailed' : 'locker.pose.cannotPose')}
       </p>
@@ -309,7 +309,7 @@ export function HeroPoseFailureState({
         <button
           type="button"
           onClick={onRetry}
-          className="inline-flex items-center gap-1.5 rounded-md border border-red-300/40 px-2.5 py-1.5 text-xs font-medium text-red-100 transition-colors hover:bg-red-300/10"
+          className="inline-flex items-center gap-1.5 rounded-md border border-state-danger/40 px-2.5 py-1.5 text-xs font-medium text-state-danger transition-colors hover:bg-state-danger/10"
         >
           <RotateCw className="h-3.5 w-3.5" aria-hidden />
           {t('locker.pose.retry')}
@@ -1241,7 +1241,7 @@ export default function HeroPoseViewer({
   return (
     <div className="absolute inset-0">
       {failure === 'skin' && (
-        <div className="absolute inset-x-3 top-3 z-10 flex items-start gap-2 rounded-md border border-amber-300/35 bg-black/70 px-2.5 py-2 text-xs text-amber-100 shadow-lg">
+        <div className="absolute inset-x-3 top-3 z-10 flex items-start gap-2 rounded-md border border-state-warning/35 bg-black/70 px-2.5 py-2 text-xs text-state-warning shadow-lg">
           <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" aria-hidden />
           <p>{t('locker.pose.skinFailed')}</p>
         </div>
@@ -1468,8 +1468,8 @@ function MaterialDebugPanel({ scene }: { scene: THREE.Object3D | null }) {
         const slots = Object.keys(morphic.texture_slots ?? {});
         const resolved = Object.keys(morphic.resolvedTextures ?? {});
         return (
-          <div key={name} className="mb-1.5 border-t border-white/20 pt-1">
-            <div className="text-amber-300">{name}</div>
+          <div key={name} className="mb-1.5 border-t border-hl/20 pt-1">
+            <div className="text-state-warning">{name}</div>
             <div>
               schema v{morphic.schema_version ?? 1} - {morphic.shader} -{' '}
               {morphic.blend_mode ?? 'opaque'}
@@ -1480,7 +1480,7 @@ function MaterialDebugPanel({ scene }: { scene: THREE.Object3D | null }) {
               {slots.length ? `: ${slots.join(', ')}` : ''}
             </div>
             {dyn.length > 0 && (
-              <div className="text-cyan-300">
+              <div className="text-state-info">
                 dynamic_params ({dyn.length}):
                 {dyn.map(([k, e]) => (
                   <div key={k} className="pl-2">
@@ -1490,7 +1490,7 @@ function MaterialDebugPanel({ scene }: { scene: THREE.Object3D | null }) {
               </div>
             )}
             {dynTex.length > 0 && (
-              <div className="text-cyan-300">
+              <div className="text-state-info">
                 dynamic_texture_params ({dynTex.length}):
                 {dynTex.map(([k, e]) => (
                   <div key={k} className="pl-2">

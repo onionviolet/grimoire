@@ -187,7 +187,7 @@ export default function PortraitFamilyPreview({
           ) : (
             <ImageOff size={40} className="text-text-secondary/40" />
           )}
-          <span className="pointer-events-none absolute left-3 top-3 rounded-sm bg-black/60 px-2 py-1 text-[11px] text-white/85">
+          <span className="pointer-events-none absolute left-3 top-3 rounded-sm bg-black/60 px-2 py-1 text-2xs text-white/85">
             {showStock || overriddenWithoutArt
               ? t('portrait.family.showingStock')
               : t('portrait.family.showingCurrent')}
@@ -226,13 +226,13 @@ export default function PortraitFamilyPreview({
           </div>
 
           {overriddenWithoutArt && (
-            <p className="rounded-sm border border-amber-400/40 bg-amber-400/10 px-2.5 py-1.5 text-[11px] leading-snug text-amber-200">
+            <p className="rounded-sm border border-state-warning/40 bg-state-warning/10 px-2.5 py-1.5 text-2xs leading-snug text-state-warning">
               {t('portrait.family.overriddenWithoutArt', { name: shown.winner?.name ?? '' })}
             </p>
           )}
 
           <div>
-            <p className="mb-1.5 text-[11px] uppercase tracking-wide text-text-secondary">
+            <p className="mb-1.5 text-2xs uppercase tracking-wide text-text-secondary">
               {t('portrait.family.variants')}
             </p>
             {/* Every sibling is an ordinary tab stop: focus previews it exactly
@@ -276,7 +276,7 @@ export default function PortraitFamilyPreview({
                 );
               })}
             </div>
-            <p className="mt-1.5 text-[11px] text-text-secondary">{t('portrait.family.keyboardHint')}</p>
+            <p className="mt-1.5 text-2xs text-text-secondary">{t('portrait.family.keyboardHint')}</p>
           </div>
 
           {actions && <div className="flex flex-wrap items-center gap-2">{actions(selected)}</div>}
@@ -300,7 +300,7 @@ function ZoomButtons({ zoom, onZoom }: { zoom: number; onZoom: (level: number) =
       >
         <Minus size={14} />
       </button>
-      <span className="min-w-[3ch] text-center text-[11px] tabular-nums text-text-secondary">
+      <span className="min-w-[3ch] text-center text-2xs tabular-nums text-text-secondary">
         {ZOOM_STEPS[zoom]}x
       </span>
       <button

@@ -166,7 +166,7 @@ export default function HeroWorkshop({
 
   // The Abilities picker's status line derives from the tray's recolor edit
   // for this hero (id `recolor:<canonical>`), so it can never claim a state
-  // the tray does not hold — a forge/install clears, Remove drops, and a hero
+  // the tray does not hold : a forge/install clears, Remove drops, and a hero
   // switch all reflect immediately instead of leaving stale local state.
   const stagedRecolorEdit = useMemo(
     () => findStagedRecolorForHero(stagedEdits, hero.name),
@@ -237,7 +237,7 @@ export default function HeroWorkshop({
       )}
       {trayPreview.error && (
         <div className="pointer-events-none absolute inset-x-0 bottom-0 p-2 text-center">
-          <span className="rounded-full bg-red-500/20 px-3 py-1 text-xs text-red-200 backdrop-blur">
+          <span className="rounded-full bg-state-danger/20 px-3 py-1 text-xs text-state-danger backdrop-blur">
             {t('foundry.workshop.previewFailed', 'Preview build failed: {{error}}', {
               error: trayPreview.error,
             })}
@@ -318,7 +318,7 @@ export default function HeroWorkshop({
           onClick={() => setTrayOpen((open) => !open)}
           aria-expanded={trayOpen}
           className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors cursor-pointer ${
-            trayOpen ? 'border-accent/60 bg-accent/15' : 'border-transparent hover:bg-white/10'
+            trayOpen ? 'border-accent/60 bg-accent/15' : 'border-transparent hover:bg-hl/10'
           }`}
         >
           <Layers3 className="h-4 w-4 flex-shrink-0 text-white/80" />

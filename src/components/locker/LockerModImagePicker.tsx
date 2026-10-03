@@ -390,8 +390,7 @@ export function LockerModImagePicker({
       onClose={onClose}
       labelledBy={titleId}
       size="none"
-      backdropClassName="backdrop-blur-sm"
-      panelClassName="flex max-h-[90vh] w-full max-w-3xl flex-col"
+      panelClassName="max-w-3xl"
     >
       <ModalHeader
         title={t('locker.modImage.title')}
@@ -409,7 +408,7 @@ export function LockerModImagePicker({
         }
       />
 
-      <div className="border-b border-border px-4 py-2.5">
+      <div className="border-b border-border px-5 pb-3 pt-4">
         <SegmentedControl
           options={tabOptions}
           value={tab}

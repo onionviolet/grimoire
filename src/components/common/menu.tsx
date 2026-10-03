@@ -82,7 +82,7 @@ export function MenuTrigger({ children, ...props }: MenuTriggerProps) {
 }
 
 export const MENU_SURFACE_CLASS =
-  'z-[80] min-w-52 rounded-lg border border-white/10 bg-bg-secondary/95 p-1.5 text-sm text-text-primary shadow-2xl shadow-black/50 backdrop-blur-md animate-fade-in';
+  'z-[80] min-w-52 rounded-sm border border-hl/10 bg-bg-secondary/95 p-1 text-sm text-text-primary shadow-2xl shadow-black/50 backdrop-blur-md animate-popover-in';
 
 type MenuContentProps = RadixDropdownMenu.DropdownMenuContentProps;
 
@@ -127,8 +127,8 @@ interface MenuItemProps {
 // Row geometry, shared by every item kind so a checkbox or submenu row lines up
 // with a plain MenuItem. Tone is appended separately (MenuItem varies it).
 const ITEM_GEOMETRY_CLASS =
-  'flex h-8 select-none items-center gap-2 rounded-md px-2 outline-none transition-colors cursor-pointer data-[disabled]:cursor-default data-[disabled]:opacity-50';
-const DEFAULT_TONE_CLASS = 'text-text-primary focus:bg-white/10 data-[highlighted]:bg-white/10';
+  'flex h-8 select-none items-center gap-2 rounded-sm px-2 outline-none transition-colors cursor-pointer data-[disabled]:cursor-default data-[disabled]:opacity-50';
+const DEFAULT_TONE_CLASS = 'text-text-primary focus:bg-hl/10 data-[highlighted]:bg-hl/10';
 
 export function MenuItem({ children, icon: Icon, spinning, tone = 'default', disabled, onSelect }: MenuItemProps) {
   const { ns } = useMenuImpl();
@@ -159,7 +159,7 @@ export function MenuLabel({ children, className = '' }: { children: ReactNode; c
   const Label = ns.Label;
   return (
     <Label
-      className={`max-w-64 truncate px-2 py-1 text-[11px] uppercase tracking-wide text-text-tertiary ${className}`}
+      className={`max-w-64 truncate px-2 py-1 text-2xs text-text-tertiary ${className}`}
     >
       {children}
     </Label>
@@ -169,7 +169,7 @@ export function MenuLabel({ children, className = '' }: { children: ReactNode; c
 export function MenuSeparator() {
   const { ns } = useMenuImpl();
   const Separator = ns.Separator;
-  return <Separator className="my-1 h-px bg-white/10" />;
+  return <Separator className="my-1 h-px bg-hl/10" />;
 }
 
 export function MenuSub({ children }: { children: ReactNode }) {
@@ -183,7 +183,7 @@ export function MenuSubTrigger({ children, icon: Icon }: { children: ReactNode; 
   const SubTrigger = ns.SubTrigger;
   return (
     <SubTrigger
-      className={`${ITEM_GEOMETRY_CLASS} ${DEFAULT_TONE_CLASS} data-[state=open]:bg-white/10`}
+      className={`${ITEM_GEOMETRY_CLASS} ${DEFAULT_TONE_CLASS} data-[state=open]:bg-hl/10`}
     >
       {Icon && <Icon className="h-4 w-4 flex-shrink-0 text-current" />}
       <span className="min-w-0 flex-1 truncate">{children}</span>
@@ -241,7 +241,7 @@ export function MenuCheckboxItem({
       className={`${ITEM_GEOMETRY_CLASS} ${DEFAULT_TONE_CLASS}`}
     >
       <span
-        className={`flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border ${
+        className={`flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-sm border ${
           checked ? 'border-accent bg-accent text-accent-foreground' : 'border-border'
         }`}
       >

@@ -1,4 +1,4 @@
-import type { Mod, AppSettings, GlobalModType, UnknownModFilterGuess, UnknownModDetectionProgress, ApplyUnknownModMatchArgs, ApplyUnknownCustomModArgs, AssociateUnknownModArgs, UnknownModFileList, EditLocalModArgs, MergeModsArgs, UnmergeModResult, ExtractMergeSourceResult, AddMergeSourcesResult, MergeSourceReplacement, ReplaceMergeSourcesResult, ImprintAllInstalledResult, ImprintInstalledProgress, ImprintPreflightResult, ImprintDetails, PeekImprintResult, ModelCompatibilityReport, ApplyHeroCardResult, HeroAbilitySlot, AbilitySlot, AbilitySoundParams, ActiveHeroSound, ApplyHeroSoundResult, ActiveHeroColor, ApplyHeroColorResult, ApplyHeroPrismResult, ActiveTrippySkin, ApplyTrippySkinResult, ApplyTrippyVfxResult, TrippySpriteOptions, TrippySpriteResult, TrippyVfxChoice, LockerOverview, LockerCardThumbnail, LockerClearScope, AppearanceSurface } from '../types/mod';
+import type { Mod, AppSettings, DeleteModsProgress, GlobalModType, UnknownModFilterGuess, UnknownModDetectionProgress, ApplyUnknownModMatchArgs, ApplyUnknownCustomModArgs, AssociateUnknownModArgs, UnknownModFileList, EditLocalModArgs, MergeModsArgs, UnmergeModResult, ExtractMergeSourceResult, AddMergeSourcesResult, MergeSourceReplacement, ReplaceMergeSourcesResult, ImprintAllInstalledResult, ImprintInstalledProgress, ImprintPreflightResult, ImprintDetails, PeekImprintResult, ModelCompatibilityReport, ApplyHeroCardResult, HeroAbilitySlot, AbilitySlot, AbilitySoundParams, ActiveHeroSound, ApplyHeroSoundResult, ActiveHeroColor, ApplyHeroColorResult, ApplyHeroPrismResult, ActiveTrippySkin, ApplyTrippySkinResult, ApplyTrippyVfxResult, TrippySpriteOptions, TrippySpriteResult, TrippyVfxChoice, LockerOverview, LockerCardThumbnail, LockerClearScope, AppearanceSurface } from '../types/mod';
 import type { DmmMigrationRequest, DmmMigrationReport } from './dmmMigration';
 import type {
   HeroPortrait,
@@ -137,6 +137,22 @@ export async function disableMod(modId: string): Promise<Mod> {
 
 export async function deleteMod(modId: string): Promise<void> {
   return withGameRunningWarning(() => window.electronAPI.deleteMod(modId));
+}
+
+export async function deleteMods(
+  modIds: string[],
+  onProgress?: (progress: DeleteModsProgress) => void
+): Promise<void> {
+  const unsubscribe = onProgress ? window.electronAPI.onDeleteModsProgress(onProgress) : undefined;
+  try {
+    await withGameRunningWarning(() => window.electronAPI.deleteMods(modIds));
+  } finally {
+    unsubscribe?.();
+  }
+}
+
+export async function assertReplacementSafety(modIds: string[]): Promise<void> {
+  return window.electronAPI.assertReplacementSafety(modIds);
 }
 
 export async function revealModInFolder(modId: string): Promise<void> {
@@ -927,9 +943,12 @@ export async function downloadMod(
   fileName: string,
   section?: string,
   categoryId?: number,
-  modName?: string
+  modName?: string,
+  isReplacement?: boolean
 ): Promise<void> {
-  return withGameRunningWarning(() => window.electronAPI.downloadMod({ modId, fileId, fileName, section, categoryId, modName }));
+  return withGameRunningWarning(() =>
+    window.electronAPI.downloadMod({ modId, fileId, fileName, section, categoryId, modName, isReplacement })
+  );
 }
 
 export async function getGamebananaSections(): Promise<GameBananaSection[]> {
@@ -937,9 +956,10 @@ export async function getGamebananaSections(): Promise<GameBananaSection[]> {
 }
 
 export async function getGamebananaCategories(
-  categoryModelName: string
+  categoryModelName: string,
+  options: { revalidate?: boolean } = {}
 ): Promise<GameBananaCategoryNode[]> {
-  return window.electronAPI.getGameBananaCategories({ categoryModelName });
+  return window.electronAPI.getGameBananaCategories({ categoryModelName, ...options });
 }
 
 export async function getCollection(collectionId: number): Promise<GameBananaCollection> {
@@ -959,11 +979,11 @@ export async function cleanupAddons(): Promise<{
   return window.electronAPI.cleanupAddons();
 }
 
-export async function getGameinfoStatus(): Promise<{ configured: boolean; message: string; missing: boolean; candidates: string[] }> {
+export async function getGameinfoStatus(): Promise<GameinfoStatus> {
   return window.electronAPI.getGameinfoStatus();
 }
 
-export async function fixGameinfo(): Promise<{ configured: boolean; message: string; missing: boolean; candidates: string[] }> {
+export async function fixGameinfo(): Promise<GameinfoStatus> {
   return window.electronAPI.fixGameinfo();
 }
 
@@ -1012,6 +1032,10 @@ export async function resetPerformanceConfigOverrides(
   version?: string | null
 ): Promise<PerformanceConfigStatus> {
   return window.electronAPI.resetPerformanceConfigOverrides(presetId, optIns, version);
+}
+
+export async function reapplyWipedPerformanceConfig(): Promise<PerformanceConfigStatus> {
+  return window.electronAPI.reapplyWipedPerformanceConfig();
 }
 
 export async function restorePerformanceConfigBackup(): Promise<PerformanceConfigStatus> {
@@ -1204,7 +1228,7 @@ export function conflictPairKey(a: string, b: string): string {
 // Profile wire types are single-sourced in types/electron.ts; re-exported
 // here to preserve this module's existing import surface.
 export type { Profile, ProfileMod, ProfileCrosshairSettings, ApplyProfileResult } from '../types/electron';
-import type { Profile, ProfileCrosshairSettings, ApplyProfileResult, PerformanceConfigStatus, PerformancePresetSummary, PerformanceLatestInfo, PerformanceRemoteVersionList, EditorCandidate, LockerImageVariant, LockerImageEdit, CropRect } from '../types/electron';
+import type { GameinfoStatus, Profile, ProfileCrosshairSettings, ApplyProfileResult, PerformanceConfigStatus, PerformancePresetSummary, PerformanceLatestInfo, PerformanceRemoteVersionList, EditorCandidate, LockerImageVariant, LockerImageEdit, CropRect } from '../types/electron';
 
 export async function getProfiles(): Promise<Profile[]> {
   return window.electronAPI.getProfiles();
@@ -1458,8 +1482,8 @@ export async function deadworksPingServer(addr: string): Promise<number> {
   return window.electronAPI.deadworksPingServer(addr);
 }
 
-export async function deadworksConnect(serverId: string, addr: string): Promise<DeadworksConnectResult> {
-  return window.electronAPI.deadworksConnect(serverId, addr);
+export async function deadworksConnect(serverId: string, addr: string, serverName: string): Promise<DeadworksConnectResult> {
+  return window.electronAPI.deadworksConnect(serverId, addr, serverName);
 }
 
 export function deadworksOnDownloadProgress(

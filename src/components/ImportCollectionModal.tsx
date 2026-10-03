@@ -1,9 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  X,
   Loader2,
-  Library,
   Download,
   CheckCircle2,
   AlertTriangle,
@@ -19,8 +17,9 @@ import {
   downloadMod,
   createProfileFromGameBananaIds,
 } from '../lib/api';
-import { Button } from './common/ui';
-import { Input } from './common/forms';
+import { classifyGameBananaImportInput } from '../lib/bulkGameBananaImport';
+import { Button, ModalHeader } from './common/ui';
+import { Textarea } from './common/forms';
 import { Modal } from './common/Modal';
 import ModThumbnail from './ModThumbnail';
 import type {
@@ -33,7 +32,6 @@ import type {
 import {
   getModThumbnail,
   getPrimaryFile,
-  parseCollectionId,
 } from '../types/gamebanana';
 
 // GameBanana game id for Deadlock — items in other games can't be installed.
@@ -157,12 +155,15 @@ export default function ImportCollectionModal({
   onClose,
 }: ImportCollectionModalProps) {
   const { t } = useTranslation();
+  const titleId = useId();
   const [input, setInput] = useState('');
   const [collection, setCollection] = useState<GameBananaCollection | null>(null);
   const [rows, setRows] = useState<ItemRow[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loadingItems, setLoadingItems] = useState(false);
   const [resolveError, setResolveError] = useState<string | null>(null);
+  const [resolveNotice, setResolveNotice] = useState<string | null>(null);
+  const [sourceKind, setSourceKind] = useState<'collection' | 'links' | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   // Per-import filter: when on, NSFW items are treated as skipped (shown with
   // an "NSFW" reason, deselected, and never queued). Off by default; a one-off
@@ -173,11 +174,6 @@ export default function ImportCollectionModal({
   // stays interactive (cancel buttons, variant pickers for not-yet-queued
   // rows, etc.).
   const [submitting, setSubmitting] = useState(false);
-  // Selected mods that have multiple downloadable files and no manual pick.
-  // Populated when the user clicks Queue; submission is blocked while this
-  // set is non-empty so the user is forced to choose instead of silently
-  // getting the most-downloaded variant.
-  const [needsVariantPicks, setNeedsVariantPicks] = useState<Set<number>>(new Set());
   // Whether the user has opted into seeing every variant up-front. Off by
   // default to avoid the API-spam cost on large collections. When on, we
   // fetch details for every selectable row and auto-expand pickers for any
@@ -207,16 +203,6 @@ export default function ImportCollectionModal({
     rowsRef.current = rows;
   }, [rows]);
 
-  // Per-row DOM refs so we can scroll the first ambiguous-variant row into
-  // view when the banner appears.
-  const rowRefs = useRef<Map<number, HTMLLIElement>>(new Map());
-  const setRowRef = useCallback(
-    (id: number) => (el: HTMLLIElement | null) => {
-      if (el) rowRefs.current.set(id, el);
-      else rowRefs.current.delete(id);
-    },
-    []
-  );
 
   // Track which mod ids this modal owns so global queue events don't bleed
   // into rows that came from elsewhere (e.g. the user kicked off a download
@@ -352,17 +338,19 @@ export default function ImportCollectionModal({
     }
   }, [collection, installedBatchIds]);
 
-  // ───────── Fetching collection + items ─────────
+  // ───────── Resolving a collection or pasted item links ─────────
 
-  const resolveCollection = useCallback(async () => {
-    const collectionId = parseCollectionId(input);
-    if (collectionId === null) {
-      setResolveError(t('importCollection.invalidId'));
+  const resolveImport = useCallback(async () => {
+    const source = classifyGameBananaImportInput(input);
+    if (source.kind === 'invalid') {
+      setResolveError(t('importCollection.invalidInput'));
       return;
     }
 
     setResolveError(null);
+    setResolveNotice(null);
     setCollection(null);
+    setSourceKind(null);
     setRows([]);
     setSelected(new Set());
     setTotalCount(0);
@@ -371,25 +359,104 @@ export default function ImportCollectionModal({
     const token = ++loadTokenRef.current;
 
     try {
-      const meta = await getCollection(collectionId);
-      if (loadTokenRef.current !== token) return;
-      setCollection(meta);
+      let finalRows: ItemRow[];
 
-      const collected: GameBananaCollectionItem[] = [];
-      let page = 1;
-      while (page <= 100) {
-        const resp = await getCollectionItems(collectionId, page);
+      if (source.kind === 'collection') {
+        setSourceKind('collection');
+        const meta = await getCollection(source.collectionId);
         if (loadTokenRef.current !== token) return;
-        if (resp.records.length === 0) break;
-        collected.push(...resp.records);
-        setTotalCount(resp.totalCount);
-        setRows(buildRows(collected, installedIds, queuedIds));
-        if (resp.isComplete) break;
-        if (page === 1 && resp.totalCount && collected.length >= resp.totalCount) break;
-        page += 1;
+        setCollection(meta);
+
+        const collected: GameBananaCollectionItem[] = [];
+        let page = 1;
+        while (page <= 100) {
+          const resp = await getCollectionItems(source.collectionId, page);
+          if (loadTokenRef.current !== token) return;
+          if (resp.records.length === 0) break;
+          collected.push(...resp.records);
+          setTotalCount(resp.totalCount);
+          setRows(buildRows(collected, installedIds, queuedIds));
+          if (resp.isComplete) break;
+          if (page === 1 && resp.totalCount && collected.length >= resp.totalCount) break;
+          page += 1;
+        }
+
+        finalRows = buildRows(collected, installedIds, queuedIds);
+      } else {
+        const links = source.result;
+        setSourceKind('links');
+        setCollection({
+          id: 0,
+          name: t('importCollection.pastedLinksName'),
+          dateAdded: 0,
+          dateModified: 0,
+        });
+        setTotalCount(links.items.length);
+
+        const skippedParts: string[] = [];
+        if (links.duplicateCount > 0) {
+          skippedParts.push(t('importCollection.duplicatesSkipped', { count: links.duplicateCount }));
+        }
+        if (links.invalidInputs.length > 0) {
+          skippedParts.push(t('importCollection.invalidSkipped', { count: links.invalidInputs.length }));
+        }
+        if (links.overflowCount > 0) {
+          skippedParts.push(t('importCollection.overflowSkipped', { count: links.overflowCount }));
+        }
+        setResolveNotice(skippedParts.length > 0 ? skippedParts.join(' · ') : null);
+
+        const directRows: Array<ItemRow | undefined> = new Array(links.items.length);
+        await Promise.all(
+          links.items.map(async (ref, index) => {
+            let row: ItemRow;
+            const placeholder: GameBananaCollectionItem = {
+              id: ref.id,
+              modelName: ref.section,
+              name: `${ref.section} #${ref.id}`,
+              profileUrl: ref.url,
+              dateAdded: 0,
+              dateModified: 0,
+              likeCount: 0,
+              viewCount: 0,
+              hasFiles: true,
+              nsfw: false,
+            };
+
+            try {
+              const details = await getModDetails(ref.id, ref.section, { includeSubmitter: true });
+              const item: GameBananaCollectionItem = {
+                ...placeholder,
+                name: details.name,
+                hasFiles: (details.files?.length ?? 0) > 0,
+                nsfw: details.nsfw,
+                gameId: details.gameId,
+                gameName: details.gameName,
+                submitter: details.submitter,
+                previewMedia: details.previewMedia,
+                rootCategory: details.category,
+              };
+              row = { ...buildRows([item], installedIds, queuedIds)[0], details };
+            } catch (error) {
+              const message = error instanceof Error ? error.message : String(error);
+              row = {
+                item: placeholder,
+                selectable: false,
+                status: 'failed',
+                statusMessage: message,
+                detailsError: message,
+                pickedFileIds: [],
+              };
+            }
+
+            if (loadTokenRef.current !== token) return;
+            directRows[index] = row;
+            setRows(directRows.filter((candidate): candidate is ItemRow => candidate !== undefined));
+          })
+        );
+
+        finalRows = directRows.filter((candidate): candidate is ItemRow => candidate !== undefined);
       }
 
-      const finalRows = buildRows(collected, installedIds, queuedIds);
       if (loadTokenRef.current !== token) return;
       setRows(finalRows);
       // Pre-select every installable, not-already-handled item — the obvious
@@ -467,11 +534,9 @@ export default function ImportCollectionModal({
 
   // Toggle a file on or off in the row's pickedFileIds set. Empty set means
   // "no explicit pick" and the queue falls back to the primary file; one or
-  // more picks means "download exactly these files". As soon as a row has at
-  // least one pick, we drop it from the variant-required banner.
+  // more picks means "download exactly these files".
   const toggleVariantPick = useCallback(
     (row: ItemRow, file: GameBananaFile) => {
-      let resultedInAtLeastOnePick = false;
       setRows((prev) =>
         prev.map((r) => {
           if (r.item.id !== row.item.id) return r;
@@ -479,18 +544,9 @@ export default function ImportCollectionModal({
           const nextPicks = has
             ? r.pickedFileIds.filter((id) => id !== file.id)
             : [...r.pickedFileIds, file.id];
-          if (nextPicks.length > 0) resultedInAtLeastOnePick = true;
           return { ...r, pickedFileIds: nextPicks };
         })
       );
-      if (resultedInAtLeastOnePick) {
-        setNeedsVariantPicks((prev) => {
-          if (!prev.has(row.item.id)) return prev;
-          const next = new Set(prev);
-          next.delete(row.item.id);
-          return next;
-        });
-      }
     },
     []
   );
@@ -539,20 +595,6 @@ export default function ImportCollectionModal({
     );
     setVariantScanProgress(null);
   }, [showAllVariants, ensureDetails]);
-
-  // "Use most popular" escape hatch on the variant-required banner. Stamps
-  // each unresolved row with the primary file as its sole pick so submission
-  // proceeds on the next Queue click without forcing manual picks.
-  const acceptDefaults = useCallback(() => {
-    setRows((prev) =>
-      prev.map((r) => {
-        if (!needsVariantPicks.has(r.item.id)) return r;
-        if (!r.details?.files || r.details.files.length === 0) return r;
-        return { ...r, pickedFileIds: [getPrimaryFile(r.details.files).id] };
-      })
-    );
-    setNeedsVariantPicks(new Set());
-  }, [needsVariantPicks]);
 
   // ───────── Selection ─────────
 
@@ -647,8 +689,8 @@ export default function ImportCollectionModal({
       (r) => selected.has(r.item.id) && r.status === 'idle' && !(skipNsfw && r.item.nsfw)
     );
 
-    // Pre-fetch details for every selected row we don't have yet so we can
-    // detect variant ambiguity up-front. ensureDetails is cache-aware and
+    // Pre-fetch details for every selected row we don't have yet so each row
+    // knows its files before queueing. ensureDetails is cache-aware and
     // its underlying API calls are rate-limited in the main process, so a
     // big collection just trickles instead of hammering GameBanana.
     const needsFetch = initialQueue.filter((r) => !r.details);
@@ -660,40 +702,7 @@ export default function ImportCollectionModal({
       }
     }
 
-    // Re-read after pre-fetch: ensureDetails may have flipped some rows to
-    // files-unavailable (auto-deselected) and others now carry their files.
-    // A multi-file row with no explicit pick is ambiguous; one or more picks
-    // resolves it (multi-select lets users grab several variants at once).
-    const ambiguous = rowsRef.current.filter((r) => {
-      if (!selected.has(r.item.id)) return false;
-      if (r.status !== 'idle') return false;
-      if (!r.selectable) return false;
-      if (!r.details?.files || r.details.files.length <= 1) return false;
-      return r.pickedFileIds.length === 0;
-    });
-
-    if (ambiguous.length > 0) {
-      const ambiguousIds = new Set(ambiguous.map((r) => r.item.id));
-      setRows((prev) =>
-        prev.map((r) =>
-          ambiguousIds.has(r.item.id) && !r.variantsOpen
-            ? { ...r, variantsOpen: true }
-            : r
-        )
-      );
-      setNeedsVariantPicks(ambiguousIds);
-      requestAnimationFrame(() => {
-        const firstEl = rowRefs.current.get(ambiguous[0].item.id);
-        if (firstEl) firstEl.scrollIntoView({ block: 'center', behavior: 'smooth' });
-      });
-      setSubmitting(false);
-      return;
-    }
-
-    setNeedsVariantPicks(new Set());
-
-    // Refresh the snapshot so each row carries its now-cached details and
-    // any picks the user made while the banner was up.
+    // Refresh the snapshot so each row carries its now-cached details.
     const toQueue = rowsRef.current.filter(
       (r) => selected.has(r.item.id) && r.status === 'idle' && r.selectable && !(skipNsfw && r.item.nsfw)
     );
@@ -783,51 +792,37 @@ export default function ImportCollectionModal({
   return (
     <Modal
       onClose={onClose}
-      labelledBy="import-collection-title"
+      labelledBy={titleId}
       size="xl"
       // Escape/backdrop close: but only when we're not mid-submission (don't
       // yank the modal out from under a running batch).
       dismissable={!submitting}
-      panelClassName="max-h-[85vh] flex flex-col overflow-hidden"
     >
-        {/* Header */}
-        <div className="flex items-start justify-between p-6 border-b border-white/10">
-          <div className="min-w-0 flex items-start gap-3">
-            <Library className="w-6 h-6 text-accent flex-shrink-0 mt-0.5" />
-            <div className="min-w-0">
-              <h2 id="import-collection-title" className="text-xl font-bold text-text-primary">
-                {t('importCollection.title')}
-              </h2>
-              <p className="text-sm text-text-secondary mt-1">
-                {t('importCollection.pasteHint')}
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-2 rounded-lg hover:bg-white/5 transition-colors cursor-pointer text-text-secondary hover:text-text-primary flex-shrink-0"
-            aria-label={t('common.actions.close')}
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+        <ModalHeader
+          title={t('importCollection.title')}
+          titleId={titleId}
+          subtitle={t('importCollection.pasteHint')}
+          onClose={onClose}
+          closeLabel={t('common.actions.close')}
+        />
 
         {/* Input */}
-        <div className="p-6 border-b border-white/10">
+        <div className="border-b border-border px-5 pb-5 pt-4">
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              if (!loadingItems) resolveCollection();
+              if (!loadingItems) resolveImport();
             }}
-            className="flex items-stretch gap-2"
+            className="flex items-end gap-2"
           >
-            <Input
-              type="text"
+            <Textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="https://gamebanana.com/collections/164637"
+              placeholder={t('importCollection.placeholder')}
               disabled={loadingItems}
-              className="flex-1"
+              rows={3}
+              className="flex-1 min-h-20 font-mono text-xs"
+              aria-label={t('importCollection.inputLabel')}
             />
             <Button type="submit" disabled={loadingItems || !input.trim()}>
               {loadingItems ? <Loader2 className="w-4 h-4 animate-spin" /> : t('importCollection.actions.fetch')}
@@ -837,6 +832,12 @@ export default function ImportCollectionModal({
             <p className="mt-2 text-xs text-state-danger flex items-center gap-1.5">
               <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
               {resolveError}
+            </p>
+          )}
+          {resolveNotice && (
+            <p className="mt-2 text-xs text-state-warning flex items-center gap-1.5">
+              <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+              {resolveNotice}
             </p>
           )}
         </div>
@@ -860,15 +861,17 @@ export default function ImportCollectionModal({
                     </p>
                   )}
                 </div>
-                <a
-                  href={`https://gamebanana.com/collections/${collection.id}`}
-                  target="_blank"
-                  rel="noreferrer noopener"
-                  className="text-xs text-text-secondary hover:text-accent flex items-center gap-1 flex-shrink-0"
-                >
-                  {t('importCollection.viewOnGameBanana')}
-                  <ExternalLink className="w-3 h-3" />
-                </a>
+                {sourceKind === 'collection' && (
+                  <a
+                    href={`https://gamebanana.com/collections/${collection.id}`}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="text-xs text-text-secondary hover:text-accent flex items-center gap-1 flex-shrink-0"
+                  >
+                    {t('importCollection.viewOnGameBanana')}
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                )}
               </div>
               <div className="mt-3 text-xs text-text-secondary flex flex-wrap items-center gap-x-4 gap-y-1">
                 <span>{t('importCollection.itemsTotal', { count: totalCount })}</span>
@@ -879,7 +882,7 @@ export default function ImportCollectionModal({
           )}
 
           {rows.length > 0 && (
-            <div className="sticky top-0 bg-bg-secondary/95 backdrop-blur border-b border-white/5 z-10">
+            <div className="sticky top-0 bg-bg-secondary/95 backdrop-blur border-b border-hl/5 z-10">
               <div className="px-6 py-3 flex items-center justify-between gap-3">
                 <div className="flex items-center gap-4">
                   <label className="flex items-center gap-2 text-xs text-text-secondary cursor-pointer w-fit">
@@ -908,7 +911,7 @@ export default function ImportCollectionModal({
                   type="button"
                   onClick={() => void handleToggleShowAllVariants()}
                   disabled={variantScanProgress !== null}
-                  className="text-xs inline-flex items-center gap-1.5 px-2 py-1 rounded-sm border border-white/10 text-text-secondary hover:text-text-primary hover:border-white/20 disabled:opacity-60 disabled:cursor-default cursor-pointer"
+                  className="text-xs inline-flex items-center gap-1.5 px-2 py-1 rounded-sm border border-hl/10 text-text-secondary hover:text-text-primary hover:border-hl/20 disabled:opacity-60 disabled:cursor-default cursor-pointer"
                   title={t('importCollection.scanTitle')}
                 >
                   {variantScanProgress ? (
@@ -931,23 +934,10 @@ export default function ImportCollectionModal({
                   )}
                 </button>
               </div>
-              {needsVariantPicks.size > 0 && (
-                <div className="px-6 py-2.5 bg-amber-500/10 border-t border-amber-500/30 flex items-center justify-between gap-3">
-                  <div className="text-sm text-amber-200 flex items-center gap-2 min-w-0">
-                    <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-                    <span>
-                      {t('importCollection.pickVariantPrompt', { count: needsVariantPicks.size })}
-                    </span>
-                  </div>
-                  <Button size="sm" variant="secondary" onClick={acceptDefaults}>
-                    {t('importCollection.actions.useMostPopular')}
-                  </Button>
-                </div>
-              )}
             </div>
           )}
 
-          <ul className="divide-y divide-white/5">
+          <ul className="divide-y divide-hl/5">
             {rows.map((row) => {
               const thumb = previewThumb(row.item.previewMedia);
               const nsfwSkipped = skipNsfw && row.item.nsfw && !row.skip;
@@ -970,10 +960,7 @@ export default function ImportCollectionModal({
               return (
                 <li
                   key={row.item.id}
-                  ref={setRowRef(row.item.id)}
-                  className={`px-6 py-4 transition-colors ${
-                    needsVariantPicks.has(row.item.id) ? 'bg-amber-500/5' : ''
-                  }`}
+                  className="px-6 py-4 transition-colors"
                 >
                   <div className="flex items-center gap-4">
                     <input
@@ -1002,7 +989,7 @@ export default function ImportCollectionModal({
                         {row.item.name}
                       </a>
                       <div className="text-xs text-text-secondary flex items-center flex-wrap gap-x-2 gap-y-1 mt-1">
-                        <span className="px-2 py-0.5 rounded-sm bg-white/5 border border-white/5 font-medium">
+                        <span className="px-2 py-0.5 rounded-sm bg-hl/5 border border-hl/5 font-medium">
                           {row.item.modelName}
                         </span>
                         {row.item.submitter && <span>by {row.item.submitter.name}</span>}
@@ -1015,7 +1002,7 @@ export default function ImportCollectionModal({
                           <button
                             type="button"
                             onClick={() => toggleVariants(row)}
-                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-text-secondary hover:text-text-primary hover:bg-white/5 cursor-pointer"
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-text-secondary hover:text-text-primary hover:bg-hl/5 cursor-pointer"
                             title={t('importCollection.chooseAVariant')}
                           >
                             {row.variantsOpen ? (
@@ -1114,7 +1101,7 @@ export default function ImportCollectionModal({
                       {!row.detailsLoading && !row.detailsError && row.details?.files && row.details.files.length > 0 && (
                         <>
                           {row.details.files.length > 1 && (
-                            <p className="text-[11px] text-text-tertiary mb-1.5">
+                            <p className="text-2xs text-text-tertiary mb-1.5">
                               {t('importCollection.variantHint')}
                             </p>
                           )}
@@ -1131,7 +1118,7 @@ export default function ImportCollectionModal({
                                   className={`flex items-center gap-2.5 px-3 py-2 rounded-sm cursor-pointer text-sm border ${
                                     isPicked
                                       ? 'bg-accent/10 border-accent/40 text-text-primary'
-                                      : 'border-transparent hover:bg-white/5 text-text-secondary'
+                                      : 'border-transparent hover:bg-hl/5 text-text-secondary'
                                   }`}
                                 >
                                   <input
@@ -1144,7 +1131,7 @@ export default function ImportCollectionModal({
                                     {file.fileName}
                                   </span>
                                   {file.isArchived && (
-                                    <span className="text-text-tertiary text-[11px] uppercase tracking-wide">archived</span>
+                                    <span className="text-text-tertiary text-2xs uppercase tracking-wide">archived</span>
                                   )}
                                   <span
                                     className="text-text-tertiary text-xs tabular-nums inline-flex items-center gap-1"
@@ -1178,13 +1165,13 @@ export default function ImportCollectionModal({
         </div>
 
         {/* Footer */}
-        <div className="border-t border-white/10">
+        <div className="flex-shrink-0 border-t border-border">
           {/* Post-install prompt: only appears once every submitted item has
               reached a terminal state and at least one mod actually installed.
               Lets the user save the batch as a profile without making the
               decision up front. */}
           {batchSettled && installedBatchIds.length > 0 && (
-            <div className="px-4 pt-3 pb-1 flex items-center justify-between gap-3 text-sm">
+            <div className="px-5 pt-3 pb-1 flex items-center justify-between gap-3 text-sm">
               <div className="text-text-secondary min-w-0 flex items-center gap-2">
                 <span className="text-text-primary font-medium">
                   {t('importCollection.saveAsProfilePrompt', { count: installedBatchIds.length })}
@@ -1226,7 +1213,7 @@ export default function ImportCollectionModal({
             </div>
           )}
 
-          <div className="p-4 flex items-center justify-between gap-3">
+          <div className="px-5 py-3 flex items-center justify-between gap-3">
             <div className="text-xs text-text-secondary">
               {submitting && counts.queued + counts.downloading === 0
                 ? t('importCollection.status.submitting')

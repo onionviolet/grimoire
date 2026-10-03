@@ -626,6 +626,7 @@ export interface SoundSwapInfo {
 }
 
 export interface Mod {
+  safety?: import('./modSafety').ModSafetySnapshot;
   id: string;
   name: string;
   fileName: string;
@@ -728,6 +729,12 @@ export interface Mod {
    *  the toolbar button's pending count; kept honest by the startup reconcile
    *  and cleared on every successful (re)imprint. */
   imprintStale?: boolean;
+}
+
+// Progress tick emitted after each mod a batch delete removes.
+export interface DeleteModsProgress {
+  done: number;
+  total: number;
 }
 
 export interface MergeModsArgs {
@@ -1125,6 +1132,8 @@ export interface PeekImprintResult {
   gamebananaId?: number;
   gamebananaFileId?: number;
   author?: string;
+  /** The recognized submission's art, from the local catalog mirror. */
+  thumbnailUrl?: string;
   kind: 'mod' | 'merge';
 }
 
@@ -1156,7 +1165,7 @@ export type AppearanceSurface = 'launchModded' | 'launchVanilla' | 'activeTab' |
  *    service and keyed by the surface id.
  *  - `none`: no art (hidden). */
 export type AppearanceBgKind = 'default' | 'hero' | 'custom' | 'none';
-export type BrowseNsfwContentMode = 'show' | 'blur' | 'hide';
+export type NsfwContentMode = 'show' | 'blur' | 'hide';
 
 export interface AppearanceBg {
   kind: AppearanceBgKind;
@@ -1170,6 +1179,16 @@ export interface AppearanceBg {
 export interface HiddenCreator {
   id: number;
   name: string;
+}
+
+/** A single GameBanana submission the user has hidden from Browse. GameBanana
+ *  numbers Mods, Sounds and WiPs separately, so section + id is the identity;
+ *  the name only labels Settings. */
+export interface HiddenMod {
+  id: number;
+  name: string;
+  /** GameBanana model name: "Mod", "Sound" or "Wip". */
+  section: string;
 }
 
 export interface AppSettings {
@@ -1189,17 +1208,17 @@ export interface AppSettings {
    *  Off by default, so no listener exists at all unless the user asks for it.
    *  Every install still goes through a confirmation dialog. */
   forgeLocalInstallEnabled: boolean;
-  /** Shared/legacy NSFW thumbnail blur preference for non-Installed surfaces. */
-  hideNsfwPreviews: boolean;
-  /** Browser-specific handling for GameBanana mods marked as NSFW. */
-  browseNsfwContentMode: BrowseNsfwContentMode;
-  /** Blur thumbnail images for installed mods marked as NSFW. */
-  installedHideNsfwPreviews: boolean;
+  /** How mods marked NSFW are shown app-wide. `hide` also drops them from
+   *  Browse; surfaces that can't drop a mod (Installed, Locker) blur instead. */
+  nsfwContentMode: NsfwContentMode;
   /** Hide GameBanana mods flagged as outdated in Browse. */
   hideOutdatedMods: boolean;
   /** GameBanana submitters whose Mods, Sounds, and WiPs are excluded from
    *  Browse. This does not hide or disable content already installed. */
   hiddenCreators: HiddenCreator[];
+  /** Individual GameBanana submissions excluded from Browse. Like
+   *  hiddenCreators, this never hides or disables installed content. */
+  hiddenMods: HiddenMod[];
   /** Open Locker list-view hero cards expanded on first load. */
   lockerCardsExpandedByDefault: boolean;
   /** Installing a different file of an already-enabled mod disables the
@@ -1234,6 +1253,12 @@ export interface AppSettings {
    *  by default. Also surfaces the retroactive "Imprint installed mods" bulk action
    *  on the Installed page. */
   experimentalVpkImprinting: boolean;
+  /** Opt-in mod safety review (docs/mod-inspection.md): inspect each VPK for
+   *  scripts and other executable content, ask before activating a flagged
+   *  version, and import local mods disabled until reviewed. Off by default
+   *  since Valve closed the CEF file:// read it was built against. When off,
+   *  every safety gate passes without reading the archive. */
+  experimentalModSafety: boolean;
   /** First-run setup completed. */
   hasCompletedSetup: boolean;
   /** Mod pairs the user has dismissed in the Conflicts page. New entries use

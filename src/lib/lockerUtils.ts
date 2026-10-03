@@ -1,6 +1,7 @@
 import type { CSSProperties } from 'react';
 import type { GameBananaCategoryNode } from '../types/gamebanana';
 import type { AppearanceBg, AppearanceSurface, AppSettings, GlobalModType, Mod } from '../types/mod';
+import { allHeroIdentities } from './heroIdentity';
 import { getAssetPath } from './assetPath';
 import {
   HERO_NAMES as SHARED_HERO_NAMES,
@@ -123,7 +124,11 @@ export function getSidebarHeroImageStyle(name: string | null | undefined): CSSPr
  * Re-exported here so existing callers (`import { HERO_NAMES } from
  * './lockerUtils'`) keep working.
  */
-export const HERO_NAMES = SHARED_HERO_NAMES;
+// The local asset registry also carries heroes newer than a sibling checkout.
+export const HERO_NAMES: readonly string[] = [...new Set([
+  ...SHARED_HERO_NAMES,
+  ...allHeroIdentities().filter((hero) => hero.status !== 'unreleased').map((hero) => hero.displayName),
+])];
 export const HERO_ALIASES = SHARED_HERO_ALIASES;
 
 /**
@@ -134,9 +139,14 @@ export const HERO_ALIASES = SHARED_HERO_ALIASES;
  * "Old Gods, New Blood" batch). They are the same hero, so the tag menu shows a
  * single "Doorman". Kept client-side only: the shared roster and server-side
  * inference are untouched.
+ *
+ * "RatKing" is GameBanana's Skins category name for Rat King. buildHeroList
+ * canonicalizes through here so the Locker card, assets and codename lookups
+ * all see the roster name.
  */
 const HERO_DISPLAY_ALIASES: Readonly<Record<string, string>> = {
   'The Doorman': 'Doorman',
+  RatKing: 'Rat King',
 };
 
 /** Canonical display name for a hero, collapsing roster duplicates (see above). */
@@ -151,7 +161,7 @@ export function canonicalHeroName(name: string | undefined | null): string {
  * (built from GameBanana categories), so the Installed menu uses this to match.
  */
 export const HERO_NAMES_SORTED: readonly string[] = Array.from(
-  new Set(SHARED_HERO_NAMES.map(canonicalHeroName))
+  new Set(HERO_NAMES.map(canonicalHeroName))
 ).sort((a, b) => a.localeCompare(b));
 
 export const DEFAULT_SIDEBAR_HERO = HERO_NAMES_SORTED[0] ?? 'Abrams';
@@ -188,7 +198,12 @@ export function resolveAppearanceBg(
  * Infer the Deadlock hero associated with a mod title. Re-exported from the
  * shared package; see @grimoire/social-types/heroes for the matcher details.
  */
-export const inferHeroFromTitle = sharedInferHeroFromTitle;
+export function inferHeroFromTitle(title: string): string | null {
+  const alias = Object.keys(HERO_DISPLAY_ALIASES).find((name) => title.toLowerCase().includes(name.toLowerCase()));
+  return sharedInferHeroFromTitle(title) ?? (alias ? canonicalHeroName(alias) : null) ?? HERO_NAMES_SORTED.find((name) =>
+    new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(title)
+  ) ?? null;
+}
 
 export type LockerSkin = {
   key: string;
@@ -247,9 +262,20 @@ export function buildHeroList(categories: GameBananaCategoryNode[]): HeroCategor
   if (!skins?.children) return [];
   return skins.children.map((child) => ({
     id: child.id,
-    name: child.name,
+    name: canonicalHeroName(child.name),
     iconUrl: child.iconUrl,
   }));
+}
+
+/**
+ * True when a buildHeroList result lacks a roster hero: the category tree was
+ * cached before GameBanana added that hero's Skins category. An empty list
+ * (tree unavailable) is not a miss.
+ */
+export function heroListMissesRoster(heroes: readonly HeroCategory[]): boolean {
+  if (heroes.length === 0) return false;
+  const listed = new Set(heroes.map((hero) => hero.name));
+  return HERO_NAMES_SORTED.some((name) => !listed.has(name));
 }
 
 export function isLockerManagedMod(mod: Mod): boolean {

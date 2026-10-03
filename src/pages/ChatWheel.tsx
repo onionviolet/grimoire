@@ -265,13 +265,13 @@ export default function ChatWheel() {
       </header>
 
       {converterAvailable === false && (
-        <div className="flex items-start gap-3 rounded-md border border-amber-500/40 bg-amber-950/30 p-3 text-sm text-amber-200">
-          <AlertTriangle className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-400" />
+        <div className="flex items-start gap-3 rounded-md border border-state-warning/40 bg-state-warning/30 p-3 text-sm text-state-warning">
+          <AlertTriangle className="mt-0.5 h-5 w-5 flex-shrink-0 text-state-warning" />
           <div>
-            <p className="font-medium text-amber-100">
+            <p className="font-medium text-state-warning">
               <Tx k="chatWheel.binaryMissingTitle" fallback="ChatLane converter unavailable" />
             </p>
-            <p className="mt-0.5 text-xs text-amber-200/80">
+            <p className="mt-0.5 text-xs text-state-warning/80">
               <Tx
                 k="chatWheel.binaryMissing"
                 fallback="The ChatLane converter binary is unavailable on this system. You can view installed wheels, but building or reading VPKs requires the ChatLane executable in resources/chatlane."
@@ -282,7 +282,7 @@ export default function ChatWheel() {
       )}
 
       {error && (
-        <div className="rounded border border-red-500/40 bg-red-950/30 p-3 text-sm text-red-200 whitespace-pre-wrap">
+        <div className="rounded border border-state-danger/40 bg-state-danger/30 p-3 text-sm text-state-danger whitespace-pre-wrap">
           {error}
         </div>
       )}
@@ -488,7 +488,7 @@ export default function ChatWheel() {
                       ))}
                       <div className="flex flex-wrap items-center gap-2">
                         <Button size="sm" variant="secondary" onClick={() => changeMenu(menuIndex, { items: [...menu.items, 'New command'] })}><Tx k="chatWheel.addCommand" fallback="Add command" /></Button>
-                        <span className="text-[11px] text-text-secondary">
+                        <span className="text-2xs text-text-secondary">
                           <Tx k="chatWheel.dnd.listHint" fallback="Drag commands here from the catalogue or another menu. Alt+Up and Alt+Down also move a command." />
                         </span>
                       </div>
@@ -560,7 +560,7 @@ export default function ChatWheel() {
           </details>
           <LimitationNote limitation="unbindCrash" />
           <div className="flex items-center justify-between gap-3">
-            <span className={validation?.state === 'invalid' ? 'text-xs text-red-300' : 'text-xs text-text-secondary'}>
+            <span className={validation?.state === 'invalid' ? 'text-xs text-state-danger' : 'text-xs text-text-secondary'}>
               {validation?.state === 'checking' && t('chatWheel.validationChecking', 'Checking YAML with ChatLane…')}
               {validation?.state === 'valid' && t('chatWheel.validationValid', 'ChatLane YAML is valid. Nothing has been installed.')}
               {validation?.state === 'invalid' && validation.message}

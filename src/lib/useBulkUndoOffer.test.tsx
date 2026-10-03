@@ -19,7 +19,7 @@ import type { Mod } from '../types/mod';
  * render closure that created the callback. The page's five bulk handlers call
  * `offerBulkUndo` from the same render that captured the pre-batch snapshot, so
  * the harness below captures the callback from the mount render, mutates the
- * store, and only then invokes the captured (stale-render) callback — exactly
+ * store, and only then invokes the captured (stale-render) callback : exactly
  * the wiring that used to diff the snapshot against itself.
  */
 

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, CheckCircle, ExternalLink, RefreshCw, X, EyeOff, Eye, List, LayoutGrid, Trash2, Globe, Ban, Search } from 'lucide-react';
+import { AlertTriangle, CheckCircle, ExternalLink, RefreshCw, X, EyeOff, Eye, List, LayoutGrid, Trash2, Globe, Ban, Search, CircleHelp } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -26,6 +26,7 @@ import type { Mod } from '../types/mod';
 import { useAppStore } from '../stores/appStore';
 import { modLoadOrder } from '../lib/lockerUtils';
 import { Button } from '../components/common/ui';
+import ConflictExplainer from '../components/conflicts/ConflictExplainer';
 import { PageHeader, EmptyState, ConfirmModal, ViewModeToggle, PageLayout, type ViewMode } from '../components/common/PageComponents';
 import ConflictReorderActions from '../components/conflicts/ConflictReorderActions';
 import ConflictFileList from '../components/conflicts/ConflictFileList';
@@ -195,6 +196,7 @@ export default function Conflicts() {
   // the sequential ignoreConflict calls run so the user can't cancel
   // mid-iteration and leave the page in a partial state.
   const [ignoreAllConfirmOpen, setIgnoreAllConfirmOpen] = useState(false);
+  const [explainerOpen, setExplainerOpen] = useState(false);
   const [ignoringAll, setIgnoringAll] = useState(false);
   const [clearIgnoredConfirmOpen, setClearIgnoredConfirmOpen] = useState(false);
   const [clearingIgnored, setClearingIgnored] = useState(false);
@@ -633,11 +635,17 @@ export default function Conflicts() {
             />
           }
           action={
-            <Button variant="secondary" onClick={loadConflicts} icon={RefreshCw}>
-              <Tx k="common.actions.refresh" fallback="Refresh" />
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button variant="secondary" onClick={() => setExplainerOpen(true)} icon={CircleHelp}>
+                {t('conflicts.explainer.title')}
+              </Button>
+              <Button variant="secondary" onClick={loadConflicts} icon={RefreshCw}>
+                <Tx k="common.actions.refresh" fallback="Refresh" />
+              </Button>
+            </div>
           }
         />
+        <ConflictExplainer open={explainerOpen} onClose={() => setExplainerOpen(false)} />
       </div>
     );
   }
@@ -661,7 +669,7 @@ export default function Conflicts() {
           conflicts.length === 0 ? (
             <Tx
               k="conflicts.header.noActiveDescription"
-              fallback="No active conflicts - review or restore your ignored pairs below."
+              fallback="No active conflicts. Review or restore your ignored pairs below."
             />
           ) : (
             <Tx
@@ -672,6 +680,9 @@ export default function Conflicts() {
         }
         action={
           <div className="flex items-center gap-2">
+            <Button variant="secondary" onClick={() => setExplainerOpen(true)} icon={CircleHelp}>
+              {t('conflicts.explainer.title')}
+            </Button>
             {conflicts.length > 0 && (
               <ViewModeToggle
                 value={viewMode}
@@ -727,6 +738,7 @@ export default function Conflicts() {
           />
         </div>
       )}
+      <ConflictExplainer open={explainerOpen} onClose={() => setExplainerOpen(false)} />
 
       {/* Empty active-conflict slot when every conflict has been dismissed.
           We don't redirect to the global empty state because the user still
@@ -778,7 +790,7 @@ export default function Conflicts() {
                     {mod.thumbnailUrl ? (
                       <img src={mod.thumbnailUrl} alt={mod.name} className="h-full w-full object-cover" />
                     ) : (
-                      <div className="flex h-full w-full items-center justify-center text-[11px] text-text-tertiary">
+                      <div className="flex h-full w-full items-center justify-center text-2xs text-text-tertiary">
                         <Tx k="conflicts.noPreview" fallback="No Preview" />
                       </div>
                     )}
@@ -1163,7 +1175,7 @@ export default function Conflicts() {
                   <ul className="divide-y divide-border/60">
                     {paths.map((p) => (
                       <li key={p} className="flex items-center gap-2 px-4 py-2">
-                        <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-text-tertiary" title={p}>
+                        <span className="min-w-0 flex-1 truncate font-mono text-2xs text-text-tertiary" title={p}>
                           {p}
                         </span>
                         <button
@@ -1172,7 +1184,7 @@ export default function Conflicts() {
                           disabled={pendingPair === key}
                           aria-describedby={pendingPair === key ? `conflicts-ignored-files-${key}` : undefined}
                           title={t('conflicts.ignoredFiles.unignoreFileTitle')}
-                          className="flex-shrink-0 inline-flex items-center gap-1 rounded px-2 py-0.5 text-[11px] text-text-secondary transition-colors hover:bg-bg-tertiary hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+                          className="flex-shrink-0 inline-flex items-center gap-1 rounded px-2 py-0.5 text-2xs text-text-secondary transition-colors hover:bg-bg-tertiary hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
                         >
                           <Eye className="h-3 w-3" />
                           <Tx k="conflicts.actions.unignore" fallback="Unignore" />
@@ -1268,7 +1280,7 @@ export default function Conflicts() {
                       <p className="truncate text-xs text-accent" title={variant}>{variant}</p>
                     )}
                     {m?.fileName && (
-                      <p className="truncate text-[11px] font-mono text-text-tertiary" title={m.fileName}>{m.fileName}</p>
+                      <p className="truncate text-2xs font-mono text-text-tertiary" title={m.fileName}>{m.fileName}</p>
                     )}
                   </div>
                   <button

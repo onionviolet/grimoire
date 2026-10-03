@@ -42,14 +42,14 @@ export default function ModsAvailableBadge({
     : null;
 
   const base =
-    'inline-flex items-center gap-1 text-[11px] leading-tight px-1.5 py-0.5 rounded-sm border';
+    'inline-flex items-center gap-1 text-2xs leading-tight px-1.5 py-0.5 rounded-sm border';
 
   if (availability.kind === 'unsupported') return null;
 
   if (availability.kind === 'unknown') {
     return (
       <span
-        className={`${base} border-white/10 bg-white/[0.03] text-text-tertiary ${className}`}
+        className={`${base} border-hl/10 bg-hl/[0.03] text-text-tertiary ${className}`}
         title={t('discover.card.modsUncheckedHint')}
       >
         <CircleHelp className="w-3 h-3 flex-shrink-0" />
@@ -70,7 +70,7 @@ export default function ModsAvailableBadge({
   if (availability.kind === 'all') {
     return (
       <span
-        className={`${base} border-green-500/25 bg-green-500/10 text-green-300 ${className}`}
+        className={`${base} border-state-success/25 bg-state-success/10 text-state-success ${className}`}
         title={hint}
       >
         <CircleCheck className="w-3 h-3 flex-shrink-0" />
@@ -81,7 +81,7 @@ export default function ModsAvailableBadge({
 
   return (
     <span
-      className={`${base} border-amber-500/30 bg-amber-500/10 text-amber-300 ${className}`}
+      className={`${base} border-state-warning/30 bg-state-warning/10 text-state-warning ${className}`}
       title={hint}
     >
       <TriangleAlert className="w-3 h-3 flex-shrink-0" />

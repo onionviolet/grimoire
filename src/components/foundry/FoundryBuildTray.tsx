@@ -143,7 +143,7 @@ export default function FoundryBuildTray({ edits, outputName, onOutputNameChange
         {t('foundry.buildTray.outputName')}
         <input value={outputName} onChange={(event) => onOutputNameChange(event.target.value)} placeholder={t('foundry.buildTray.defaultName')} className="mt-1 w-full rounded-sm border border-border bg-bg-primary px-2 py-1.5 text-sm text-text-primary" />
       </label>
-      <p className="mt-1 text-[11px] text-text-secondary">{t('foundry.buildTray.willCreate', { name: finalName })}</p>
+      <p className="mt-1 text-2xs text-text-secondary">{t('foundry.buildTray.willCreate', { name: finalName })}</p>
       <div className="mt-4 space-y-2 text-xs text-text-secondary">
         <div className="flex items-center justify-between">
           <p>{t('foundry.buildTray.summary', { edits: review.selected.length, files: review.writeSet.length })}</p>
@@ -165,19 +165,19 @@ export default function FoundryBuildTray({ edits, outputName, onOutputNameChange
                 <span className="ml-1 rounded-sm bg-bg-tertiary px-1 text-[10px] uppercase tracking-wide text-text-secondary">{t(KIND_LABEL_KEYS[edit.kind], edit.kind)}</span>
                 <br />{t('foundry.buildTray.editSummary', { files: edit.affectedFiles.length, precedence: edit.precedence })}
                 {isStagedVisualEdit(edit) && (
-                  <span className="block truncate text-[11px] text-text-secondary" title={edit.source.imageLabel ?? portraitImageLabel(edit.source.imagePath, null)}>
+                  <span className="block truncate text-2xs text-text-secondary" title={edit.source.imageLabel ?? portraitImageLabel(edit.source.imagePath, null)}>
                     {edit.source.imageLabel ?? portraitImageLabel(edit.source.imagePath, null)}
                   </span>
                 )}
               </span>
             </label>
-            <button type="button" onClick={() => onRemove(edit.id)} title={t('foundry.buildTray.remove', 'Remove from tray')} aria-label={t('foundry.buildTray.remove', 'Remove from tray')} className="shrink-0 text-text-secondary transition-colors hover:text-red-400">
+            <button type="button" onClick={() => onRemove(edit.id)} title={t('foundry.buildTray.remove', 'Remove from tray')} aria-label={t('foundry.buildTray.remove', 'Remove from tray')} className="shrink-0 text-text-secondary transition-colors hover:text-state-danger">
               <Trash2 size={13} />
             </button>
           </div>
         ))}
       </div>
-      {review.collisions.length > 0 && <div className="mt-4 rounded-sm border border-yellow-500/40 bg-yellow-500/10 p-2 text-xs text-text-secondary"><strong className="text-text-primary">{t('foundry.buildTray.collisions', { count: review.collisions.length })}</strong>{review.collisions.map((collision) => <p key={collision.file} className="mt-1 break-all">{t('foundry.buildTray.collisionWinner', { file: collision.file, winner: collision.winner.title })}</p>)}</div>}
+      {review.collisions.length > 0 && <div className="mt-4 rounded-sm border border-state-warning/40 bg-state-warning/10 p-2 text-xs text-text-secondary"><strong className="text-text-primary">{t('foundry.buildTray.collisions', { count: review.collisions.length })}</strong>{review.collisions.map((collision) => <p key={collision.file} className="mt-1 break-all">{t('foundry.buildTray.collisionWinner', { file: collision.file, winner: collision.winner.title })}</p>)}</div>}
       {review.writeSet.length > 0 && (
         <details className="mt-3 text-xs text-text-secondary">
           <summary className="cursor-pointer text-text-primary">{t('foundry.buildTray.writeSet', { count: review.writeSet.length })}</summary>
@@ -186,8 +186,8 @@ export default function FoundryBuildTray({ edits, outputName, onOutputNameChange
         </details>
       )}
       {blocked && (
-        <p role="alert" className="mt-3 flex gap-2 rounded-sm border border-red-500/40 bg-red-500/10 p-2 text-xs text-text-secondary">
-          <AlertTriangle size={14} className="mt-0.5 shrink-0 text-red-400" />
+        <p role="alert" className="mt-3 flex gap-2 rounded-sm border border-state-danger/40 bg-state-danger/10 p-2 text-xs text-text-secondary">
+          <AlertTriangle size={14} className="mt-0.5 shrink-0 text-state-danger" />
           <span className="min-w-0 break-words">{blocked}</span>
         </p>
       )}
@@ -202,7 +202,7 @@ export default function FoundryBuildTray({ edits, outputName, onOutputNameChange
         {busy ? <Loader2 size={15} className="animate-spin" /> : <Hammer size={15} />}
         {forging ? t('foundry.buildTray.forging', 'Forging...') : t('foundry.buildTray.forge', 'Confirm and forge VPK')}
       </button>
-      <div className="mt-4 border-t border-border pt-3 text-[11px] text-text-secondary"><p><RefreshCw size={12} className="mr-1 inline" />{t('foundry.buildTray.rebuild')}</p><p className="mt-1"><Undo2 size={12} className="mr-1 inline" />{t('foundry.buildTray.unmerge')}</p></div>
+      <div className="mt-4 border-t border-border pt-3 text-2xs text-text-secondary"><p><RefreshCw size={12} className="mr-1 inline" />{t('foundry.buildTray.rebuild')}</p><p className="mt-1"><Undo2 size={12} className="mr-1 inline" />{t('foundry.buildTray.unmerge')}</p></div>
       {confirming && (
         // The confirmation repeats the exact normalized paths and collision
         // winners, not the labels: those paths are the ownership key main

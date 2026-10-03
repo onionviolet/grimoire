@@ -12,6 +12,7 @@ import {
 } from '../../../lib/api';
 import { getActiveDeadlockPath } from '../../../lib/appSettings';
 import { showToast } from '../../../stores/toastStore';
+import { useGameinfoStore } from '../../../stores/gameinfoStore';
 import { Badge, Button, Card } from '../../common/ui';
 import { Input } from '../../common/forms';
 import { ConfirmModal } from '../../common/PageComponents';
@@ -148,6 +149,7 @@ export default function GameSection() {
       setGameinfoConfigured(false);
     } finally {
       setIsFixingGameinfo(false);
+      void useGameinfoStore.getState().recheck();
     }
   };
 
@@ -180,7 +182,7 @@ export default function GameSection() {
               <div className="flex items-center gap-2">
                 <span className="text-xs text-text-secondary">
                   {isValidPath === true && (
-                    <span className="text-green-400 flex items-center gap-1">
+                    <span className="text-state-success flex items-center gap-1">
                       <Check className="w-3 h-3" />
                       <Tx k="common.status.valid" fallback="Valid" />
                     </span>
@@ -243,7 +245,7 @@ export default function GameSection() {
             </p>
           </div>
 
-          <div className="h-px bg-white/5" />
+          <div className="h-px bg-hl/5" />
 
           <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
             <div>
@@ -275,7 +277,7 @@ export default function GameSection() {
                     />
                   </p>
                   {gameinfoCandidates.length > 0 && (
-                    <p className="text-xs text-amber-300">
+                    <p className="text-xs text-state-warning">
                       <Tx
                         k="settings.gameinfo.foundNearby"
                         values={{ candidates: gameinfoCandidates.join(', ') }}
@@ -320,9 +322,9 @@ export default function GameSection() {
 
           {activeDeadlockPath && (
             <>
-              <div className="h-px bg-white/5" />
+              <div className="h-px bg-hl/5" />
               <AutoexecSection gamePath={activeDeadlockPath} />
-              <div className="h-px bg-white/5" />
+              <div className="h-px bg-hl/5" />
               {/* HUD and gameplay ConVars written into gameinfo.gi. They used
                   to sit inside the Performance Config card, which filed a
                   readability preference under frame rate and gated it behind

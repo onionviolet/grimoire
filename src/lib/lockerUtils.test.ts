@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { Mod } from '../types/mod';
-import { modLoadOrder, activeLockerSkin } from './lockerUtils';
+import { modLoadOrder, activeLockerSkin, buildHeroList, heroListMissesRoster, HERO_NAMES_SORTED, inferHeroFromTitle } from './lockerUtils';
 
 function mod(over: Partial<Mod> & { id: string; metaKey: string; priority: number }): Mod {
   return {
@@ -58,5 +58,43 @@ describe('activeLockerSkin', () => {
 
   it('is undefined when nothing is enabled', () => {
     expect(activeLockerSkin([mod({ id: 'x', metaKey: 'pak01_dir.vpk', priority: 1, enabled: false })])).toBeUndefined();
+  });
+});
+
+describe('buildHeroList', () => {
+  it('canonicalizes GameBanana category names to roster names', () => {
+    const skins = {
+      id: 33295,
+      name: 'Skins',
+      itemCount: 0,
+      children: [
+        { id: 49629, name: 'RatKing', itemCount: 0 },
+        { id: 40060, name: 'Doorman', itemCount: 0 },
+      ],
+    };
+    expect(buildHeroList([skins]).map((hero) => hero.name)).toEqual(['Rat King', 'Doorman']);
+  });
+
+  it('flags a cached tree that predates a roster hero', () => {
+    const full = HERO_NAMES_SORTED.map((name, i) => ({ id: i, name }));
+    expect(heroListMissesRoster(full)).toBe(false);
+    expect(heroListMissesRoster(full.filter((hero) => hero.name !== 'Violet'))).toBe(true);
+    expect(heroListMissesRoster([])).toBe(false);
+  });
+});
+
+describe('inferHeroFromTitle', () => {
+  it('does not let colour words or partial names steal a title from the hero it names', () => {
+    expect(inferHeroFromTitle('Patches of Violet on Billy Blasted (Ability 3)')).toBe('Billy');
+    expect(inferHeroFromTitle('Violet Haze')).toBe('Haze');
+    expect(inferHeroFromTitle('Warden as Makina from Deadman Wonderland')).toBe('Warden');
+    expect(inferHeroFromTitle('Harrow Grey Talon')).toBe('Grey Talon');
+  });
+
+  it('still matches the new heroes by name', () => {
+    expect(inferHeroFromTitle('Violet Painter Outfit')).toBe('Violet');
+    expect(inferHeroFromTitle('Deadman Danny Crash Test')).toBe('Deadman Danny');
+    expect(inferHeroFromTitle('Nurse Harrow VO')).toBe('Nurse Harrow');
+    expect(inferHeroFromTitle('RatKing recolor')).toBe('Rat King');
   });
 });

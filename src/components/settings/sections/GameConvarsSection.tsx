@@ -143,7 +143,7 @@ function ResetControlButton({ onClick, disabled }: { onClick: () => void; disabl
       disabled={disabled}
       title={t('settings.gameConvars.resetHint')}
       aria-label={t('common.actions.reset')}
-      className="shrink-0 rounded p-1 text-text-secondary transition-colors hover:bg-white/5 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
+      className="shrink-0 rounded p-1 text-text-secondary transition-colors hover:bg-hl/5 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
     >
       <RotateCcw className="w-3.5 h-3.5" aria-hidden="true" />
     </button>
@@ -172,7 +172,7 @@ function ControlCell({
   children?: React.ReactNode;
 }) {
   return (
-    <div className="rounded-sm border border-white/[0.07] bg-white/[0.02] p-3">
+    <div className="rounded-sm border border-hl/[0.07] bg-hl/[0.02] p-3">
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 items-start gap-3">
           {control}
@@ -191,10 +191,10 @@ function ControlCell({
 /** A caveat that is a state of the control, not a sentence about it. */
 function ControlNotice({ tone, children }: { tone: 'warning' | 'muted'; children: React.ReactNode }) {
   if (tone === 'muted') {
-    return <p className="mt-1.5 text-[11px] text-text-secondary/70">{children}</p>;
+    return <p className="mt-1.5 text-2xs text-text-secondary/70">{children}</p>;
   }
   return (
-    <p className="mt-1.5 flex items-start gap-1.5 text-[11px] text-state-warning/90">
+    <p className="mt-1.5 flex items-start gap-1.5 text-2xs text-state-warning/90">
       <TriangleAlert className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
       <span>{children}</span>
     </p>

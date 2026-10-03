@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate, useParams } from 'react-router-dom';
 import {
   Beaker,
   Download,
@@ -9,6 +10,7 @@ import {
   LifeBuoy,
   Palette,
   Shield,
+  ShieldCheck,
   SlidersHorizontal,
   Wrench,
 } from 'lucide-react';
@@ -28,18 +30,22 @@ import ExperimentalSection from '../components/settings/sections/ExperimentalSec
 import MaintenanceSection from '../components/settings/sections/MaintenanceSection';
 import SupportSection from '../components/settings/sections/SupportSection';
 import PerformanceConfigCard from '../components/performance/PerformanceConfigCard';
+import { ModSafetySection } from '../components/ModSafety';
 
-type SectionId =
-  | 'game'
-  | 'performance'
-  | 'appearance'
-  | 'preferences'
-  | 'privacy'
-  | 'social'
-  | 'updates'
-  | 'experimental'
-  | 'maintenance'
-  | 'support';
+const SECTION_IDS = [
+  'game',
+  'performance',
+  'appearance',
+  'preferences',
+  'privacy',
+  'mod-safety',
+  'social',
+  'updates',
+  'experimental',
+  'maintenance',
+  'support',
+] as const;
+type SectionId = (typeof SECTION_IDS)[number];
 
 // Settings is a lot of surface for one scroll, so the page is a nav + one
 // pane: pick a category on the left, see only that category's cards on the
@@ -48,13 +54,17 @@ type SectionId =
 export default function Settings() {
   const { t } = useTranslation();
   const { settings, settingsLoading, loadSettings } = useAppStore();
-  const [activeSection, setActiveSection] = useState<SectionId>('game');
+  const navigate = useNavigate();
+  // The section lives in the URL so other pages can link straight to one (/settings/mod-safety).
+  const { section: sectionParam } = useParams();
+  const activeSection: SectionId = SECTION_IDS.find((id) => id === sectionParam) ?? 'game';
 
   useEffect(() => {
     loadSettings();
   }, [loadSettings]);
 
   const socialEnabled = settings?.experimentalSocial ?? false;
+  const modSafetyEnabled = settings?.experimentalModSafety ?? false;
 
   const navGroups = useMemo<SettingsNavGroup[]>(() => [
     {
@@ -72,6 +82,9 @@ export default function Settings() {
         { id: 'appearance', label: <Tx k="settings.sections.appearance" fallback="Appearance" />, icon: Palette },
         { id: 'preferences', label: <Tx k="settings.sections.preferences" fallback="Preferences" />, icon: SlidersHorizontal },
         { id: 'privacy', label: <Tx k="settings.nav.privacy" fallback="Privacy & Content" />, icon: Shield },
+        ...(modSafetyEnabled
+          ? [{ id: 'mod-safety', label: <Tx k="modSafety.manage" fallback="Mod safety" />, icon: ShieldCheck }]
+          : []),
         ...(socialEnabled
           ? [{ id: 'social', label: <Tx k="settings.sections.grimoireSocial" fallback="Grimoire Social" />, icon: Globe }]
           : []),
@@ -87,11 +100,14 @@ export default function Settings() {
         { id: 'support', label: <Tx k="settings.sections.support" fallback="Support" />, icon: LifeBuoy },
       ],
     },
-  ], [socialEnabled]);
+  ], [socialEnabled, modSafetyEnabled]);
 
-  // Turning the social flag back off while its pane is open would otherwise
-  // leave the page on a section that has no nav entry.
-  const section: SectionId = activeSection === 'social' && !socialEnabled ? 'preferences' : activeSection;
+  // Turning a flag back off while its pane is open would otherwise leave the
+  // page on a section that has no nav entry.
+  const section: SectionId =
+    (activeSection === 'social' && !socialEnabled) || (activeSection === 'mod-safety' && !modSafetyEnabled)
+      ? 'preferences'
+      : activeSection;
 
   if (settingsLoading && !settings) {
     return <LoadingState />;
@@ -109,7 +125,7 @@ export default function Settings() {
         <SettingsNav
           groups={navGroups}
           active={section}
-          onSelect={(id) => setActiveSection(id as SectionId)}
+          onSelect={(id) => navigate(`/settings/${id}`, { replace: true })}
           label={t('settings.nav.label')}
         />
 
@@ -119,6 +135,7 @@ export default function Settings() {
           {section === 'appearance' && <AppearanceSection />}
           {section === 'preferences' && <PreferencesSection />}
           {section === 'privacy' && <PrivacySection />}
+          {section === 'mod-safety' && <ModSafetySection />}
           {section === 'social' && socialEnabled && (
             <Card title={<Tx k="settings.sections.grimoireSocial" fallback="Grimoire Social" />} icon={Globe}>
               <SocialAccountSection />

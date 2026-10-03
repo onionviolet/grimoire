@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -6,7 +6,6 @@ import {
     Image as ImageIcon,
     Volume2,
     Palette,
-    Wand2,
     RotateCcw,
     RefreshCw,
     SlidersHorizontal,
@@ -14,8 +13,8 @@ import {
     ExternalLink,
     Loader2,
 } from 'lucide-react';
-import { Button } from './common/ui';
-import { Modal } from './common/Modal';
+import { Button, ModalHeader } from './common/ui';
+import { Modal, ModalBody, ModalFooter } from './common/Modal';
 import AudioPreviewPlayer from './AudioPreviewPlayer';
 import {
     getLockerOverview,
@@ -188,6 +187,7 @@ export function LockerOverridesModal({
     onChanged?: () => void;
 }) {
     const { t } = useTranslation();
+    const titleId = useId();
     const navigate = useNavigate();
     const mods = useAppStore((s) => s.mods);
     const loadMods = useAppStore((s) => s.loadMods);
@@ -417,32 +417,18 @@ export function LockerOverridesModal({
     return (
         <Modal
             onClose={onClose}
-            labelledBy="locker-overrides-title"
+            labelledBy={titleId}
             size="lg"
             dismissable={!busy}
-            panelClassName="flex max-h-[85vh] flex-col overflow-hidden"
         >
-                {/* Header */}
-                <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
-                    <div className="flex items-center gap-2.5">
-                        <Wand2 className="h-5 w-5 text-accent" />
-                        <div>
-                            <h2 id="locker-overrides-title" className="text-base font-semibold text-text-primary">{t('lockerOverrides.title')}</h2>
-                            <p className="text-xs text-text-secondary">
-                                {t('lockerOverrides.subtitle')}
-                            </p>
-                        </div>
-                    </div>
-                    <button
-                        type="button"
-                        onClick={() => !busy && onClose()}
-                        disabled={busy}
-                        aria-label={t('common.actions.close')}
-                        className="rounded-md p-1 text-text-secondary hover:bg-bg-tertiary hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-                    >
-                        <X className="h-5 w-5" />
-                    </button>
-                </div>
+                <ModalHeader
+                    title={t('lockerOverrides.title')}
+                    titleId={titleId}
+                    subtitle={t('lockerOverrides.subtitle')}
+                    onClose={onClose}
+                    closeLabel={t('common.actions.close')}
+                    closeDisabled={busy}
+                />
 
                 {/* Tabs */}
                 <div className="flex items-center gap-1 border-b border-border px-3 pt-2">
@@ -464,15 +450,14 @@ export function LockerOverridesModal({
                         >
                             <Icon className="h-4 w-4" />
                             {label}
-                            <span className="rounded-full bg-bg-tertiary px-1.5 text-[11px] tabular-nums text-text-secondary">
+                            <span className="rounded-full bg-bg-tertiary px-1.5 text-2xs tabular-nums text-text-secondary">
                                 {count}
                             </span>
                         </button>
                     ))}
                 </div>
 
-                {/* Body */}
-                <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+                <ModalBody>
                     {actionError && (
                         <div className="mb-3 rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-300">
                             {actionError}
@@ -527,7 +512,7 @@ export function LockerOverridesModal({
                                                     disabled={busy}
                                                     title={`Remove ${card.heroName} card`}
                                                     aria-label={`Remove ${card.heroName} card`}
-                                                    className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white/85 ring-1 ring-white/15 backdrop-blur-sm transition-all hover:bg-red-500 hover:text-white hover:ring-red-400 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+                                                    className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white/85 ring-1 ring-hl/15 backdrop-blur-sm transition-all hover:bg-red-500 hover:text-white hover:ring-red-400 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
                                                 >
                                                     {isRemoving ? (
                                                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -544,7 +529,7 @@ export function LockerOverridesModal({
                                                     <div className="truncate text-sm font-semibold text-text-primary">
                                                         {card.heroName}
                                                     </div>
-                                                    <div className="truncate text-[11px] text-text-secondary">
+                                                    <div className="truncate text-2xs text-text-secondary">
                                                         {sourceLabel(card.modName ?? mod?.name, card.sourceFileName)}
                                                     </div>
                                                 </div>
@@ -705,7 +690,7 @@ export function LockerOverridesModal({
                                         >
                                             <HeroIcon heroName={color.heroName} />
                                             <span
-                                                className="h-9 w-9 flex-shrink-0 rounded-full ring-1 ring-white/15"
+                                                className="h-9 w-9 flex-shrink-0 rounded-full ring-1 ring-hl/15"
                                                 style={swatchStyle}
                                                 aria-hidden
                                             />
@@ -759,7 +744,7 @@ export function LockerOverridesModal({
                                         >
                                             <HeroIcon heroName={skin.heroName} />
                                             <span
-                                                className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full ring-1 ring-white/15"
+                                                className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full ring-1 ring-hl/15"
                                                 style={{ background: rainbowCss(0, 1, 1) }}
                                                 aria-hidden
                                             >
@@ -795,17 +780,16 @@ export function LockerOverridesModal({
                             </div>
                         )
                     )}
-                </div>
+                </ModalBody>
 
-                {/* Footer: per-tab clear-all + a link to add more in the Locker. */}
-                <div className="flex items-center justify-between gap-3 border-t border-border px-5 py-3">
+                <ModalFooter>
                     <button
                         type="button"
                         onClick={() => {
                             onClose();
                             navigate('/locker');
                         }}
-                        className="flex items-center gap-1.5 text-xs text-text-secondary hover:text-text-primary cursor-pointer"
+                        className="mr-auto flex items-center gap-1.5 text-xs text-text-secondary hover:text-text-primary cursor-pointer"
                     >
                         <ExternalLink className="h-3.5 w-3.5" />
                         {t('lockerOverrides.addOrChange')}
@@ -834,7 +818,7 @@ export function LockerOverridesModal({
                             })}
                         </Button>
                     )}
-                </div>
+                </ModalFooter>
         </Modal>
     );
 }

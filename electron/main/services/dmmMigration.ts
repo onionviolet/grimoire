@@ -25,6 +25,7 @@
  */
 
 import { homedir, tmpdir } from 'os';
+import { assertVpkSafety } from './modSafety';
 import { join, basename, dirname, resolve, isAbsolute } from 'path';
 import { promises as fs, constants as fsConstants, existsSync } from 'fs';
 
@@ -529,6 +530,7 @@ export async function migrateDmmInstall(opts: DmmMigrationOptions): Promise<DmmM
 
         try {
           let destPath: string;
+          await assertVpkSafety(src, { context: 'installation', name: entry.modName });
           if (entry.enabled) {
             if (mode === 'in-place' && isLiveEnabledSlot(adoptSrc, addonRoots)) {
               // Already a live pakNN_dir.vpk slot Grimoire scans: adopt by

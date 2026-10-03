@@ -321,7 +321,7 @@ export function LockerHeroView({
           onClick={onToggleFavorite}
           className={`flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide transition-colors ${
             isFavorite
-              ? 'border-yellow-400/60 bg-yellow-400/20 text-yellow-300'
+              ? 'border-state-warning/60 bg-state-warning/20 text-state-warning'
               : 'border-border/70 text-text-secondary hover:text-text-primary'
           }`}
         >
@@ -333,7 +333,7 @@ export function LockerHeroView({
         /* The other half of the Foundry link: the Locker is where you manage
            what you have, Foundry is where you make more of it. */
         <div className="space-y-2">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-text-secondary">
+          <p className="text-2xs font-semibold uppercase tracking-wide text-text-secondary">
             {t('locker.hero.manageInstalled', 'Manage installed')}
           </p>
           {onEditInFoundry ? (
@@ -480,7 +480,7 @@ export function LockerHeroView({
           overlap panel; Retry clears the recorded failure and remounts the
           viewer so the model is re-attempted. */}
       {poseFailure && (
-        <div className="flex items-start gap-2 rounded-sm border border-yellow-500/30 bg-yellow-500/10 p-4 text-xs text-text-secondary">
+        <div className="flex items-start gap-2 rounded-sm border border-state-warning/30 bg-state-warning/10 p-4 text-xs text-text-secondary">
           <AlertTriangle
             size={13}
             className="mt-0.5 shrink-0 text-state-warning"

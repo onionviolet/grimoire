@@ -132,7 +132,7 @@ export default function MergeReviewPanel({
       )}
 
       {!loading && error && (
-        <div className="flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 p-2.5 text-sm text-red-200">
+        <div className="flex items-start gap-2 rounded-lg border border-state-danger/30 bg-state-danger/10 p-2.5 text-sm text-state-danger">
           <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5 text-state-danger" />
           <div className="min-w-0">
             <div className="font-medium">{t('mergeMods.review.errorTitle')}</div>
@@ -151,8 +151,8 @@ export default function MergeReviewPanel({
       {!loading && !error && analysis && (
         <>
           {analysis.unreadableModIds.length > 0 && (
-            <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-2.5 text-xs text-text-secondary">
-              <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5 text-amber-400" />
+            <div className="flex items-start gap-2 rounded-lg border border-state-warning/30 bg-state-warning/5 p-2.5 text-xs text-text-secondary">
+              <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5 text-state-warning" />
               <div>
                 {t('mergeMods.review.unreadable', { count: analysis.unreadableModIds.length })}
                 <div className="text-text-primary">
@@ -180,7 +180,7 @@ export default function MergeReviewPanel({
             </div>
             <p className="mb-1.5 text-xs text-text-secondary">{t('mergeMods.review.orderHint')}</p>
             {blockedReason && onReorder && (
-              <p className="mb-1.5 text-xs text-amber-300">{blockedReason}</p>
+              <p className="mb-1.5 text-xs text-state-warning">{blockedReason}</p>
             )}
             <ul className="space-y-1">
               {winnerFirst.map((source, index) => (
@@ -188,7 +188,7 @@ export default function MergeReviewPanel({
                   key={source.modId}
                   className="flex items-center gap-2 rounded bg-bg-tertiary/60 px-2 py-1.5 text-sm"
                 >
-                  <span className="w-5 text-right font-mono text-[11px] tabular-nums text-text-secondary">
+                  <span className="w-5 text-right font-mono text-2xs tabular-nums text-text-secondary">
                     {index + 1}
                   </span>
                   <span className="min-w-0 flex-1 truncate text-text-primary" title={source.name}>
@@ -250,7 +250,7 @@ export default function MergeReviewPanel({
                         </span>
                         <span className="text-text-secondary">{rows.length}</span>
                       </div>
-                      <ul className="space-y-0.5 text-[11px]">
+                      <ul className="space-y-0.5 text-2xs">
                         {shown.map((collision) => (
                           <li key={collision.path} className="min-w-0">
                             <div className="truncate font-mono text-text-secondary" title={collision.path}>
@@ -270,7 +270,7 @@ export default function MergeReviewPanel({
                         <button
                           type="button"
                           onClick={() => setExpanded((current) => ({ ...current, [category]: !showAll }))}
-                          className="mt-1 text-[11px] text-text-secondary hover:text-text-primary cursor-pointer"
+                          className="mt-1 text-2xs text-text-secondary hover:text-text-primary cursor-pointer"
                         >
                           {showAll
                             ? t('mergeMods.review.showFewer')
@@ -285,7 +285,7 @@ export default function MergeReviewPanel({
           </div>
 
           {analysis.warnings.map((warning) => (
-            <p key={warning} className="text-xs text-amber-300">{warning}</p>
+            <p key={warning} className="text-xs text-state-warning">{warning}</p>
           ))}
         </>
       )}

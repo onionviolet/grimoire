@@ -191,7 +191,7 @@ export default function AssetSourcesPanel({
           type="button"
           onClick={() => void inspect()}
           disabled={displayedLoading}
-          className="flex flex-1 items-center justify-center gap-1 rounded-sm px-1.5 py-1 text-[11px] text-text-secondary hover:bg-bg-tertiary hover:text-text-primary disabled:opacity-60"
+          className="flex flex-1 items-center justify-center gap-1 rounded-sm px-1.5 py-1 text-2xs text-text-secondary hover:bg-bg-tertiary hover:text-text-primary disabled:opacity-60"
           title={t('foundry.sources.inspectHint')}
         >
           {displayedLoading ? <Loader2 size={12} className="animate-spin" /> : displayedResult ? <RefreshCw size={12} /> : <Search size={12} />}
@@ -212,7 +212,7 @@ export default function AssetSourcesPanel({
             ) : null
           )}
           {gating.incomplete && (
-            <div className="rounded-sm border border-amber-400/40 bg-amber-400/10 px-1.5 py-1 text-amber-300">
+            <div className="rounded-sm border border-state-warning/40 bg-state-warning/10 px-1.5 py-1 text-state-warning">
               <p className="flex items-start gap-1">
                 <AlertTriangle size={11} className="mt-px shrink-0" />
                 <span>
@@ -263,7 +263,7 @@ export default function AssetSourcesPanel({
                         type="button"
                         onClick={() => navigate(focusModPath(mod.modId))}
                         title={t('sourceBlocking.openMod', { mod: mod.modName })}
-                        className="flex items-center gap-1 rounded-sm border border-amber-400/40 px-1.5 py-0.5 hover:text-amber-200"
+                        className="flex items-center gap-1 rounded-sm border border-state-warning/40 px-1.5 py-0.5 hover:text-state-warning"
                       >
                         <ExternalLink size={10} />
                         {t('sourceBlocking.openModShort')}

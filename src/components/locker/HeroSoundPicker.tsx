@@ -315,7 +315,7 @@ function SoundSourceRow({
           the whole (hero, slot) selection is rebuilt on pick, so the applied
           source stops supplying every entry it owned. */}
       {consequence && (consequence.takenOver > 0 || consequence.reverted > 0) && (
-        <p className="flex items-start gap-1 px-2.5 pb-1.5 text-[10px] text-amber-300/90">
+        <p className="flex items-start gap-1 px-2.5 pb-1.5 text-[10px] text-state-warning/90">
           <FileWarning className="mt-px h-3 w-3 flex-shrink-0" />
           <span>
             {t('locker.sounds.pickOverwrites', { count: consequence.takenOver })}
@@ -666,7 +666,7 @@ export default function HeroSoundPicker({
         <div
           className={`flex items-start gap-2 rounded-md border px-3 py-2 text-xs ${
             gameRunning
-              ? 'border-amber-500/40 bg-amber-500/10 text-amber-300'
+              ? 'border-state-warning/40 bg-state-warning/10 text-state-warning'
               : 'border-border bg-bg-secondary/70 text-text-secondary'
           }`}
         >
@@ -775,7 +775,7 @@ export default function HeroSoundPicker({
                     />
                   </>
                 ) : (
-                  <p className="text-[11px] text-text-secondary/70">{t('locker.sounds.noSoundModForAbility')}</p>
+                  <p className="text-2xs text-text-secondary/70">{t('locker.sounds.noSoundModForAbility')}</p>
                 )}
               </div>
             );
@@ -784,7 +784,7 @@ export default function HeroSoundPicker({
           {other.length > 0 && (
             <div className="rounded-md border border-border bg-bg-secondary/70 p-3 backdrop-blur-sm">
               <div className="mb-2 text-xs font-semibold text-text-primary">{t('locker.sounds.otherSounds')}</div>
-              <p className="mb-2 text-[11px] text-text-secondary/70">
+              <p className="mb-2 text-2xs text-text-secondary/70">
                 {t('locker.sounds.otherSoundsDescription')}
               </p>
               <div className="space-y-1.5">

@@ -360,7 +360,7 @@ export default function PortraitEditor({ item, catalog, heroName, initialFile, o
                   <Layers size={14} className="text-text-secondary" />
                   {t('portraitEditor.familyTitle', 'This portrait family')}
                 </h3>
-                <p className="mt-1 text-[11px] leading-snug text-text-secondary">
+                <p className="mt-1 text-2xs leading-snug text-text-secondary">
                   {t('portraitEditor.familyHint', { count: variants.length })}
                 </p>
               </div>
@@ -375,7 +375,7 @@ export default function PortraitEditor({ item, catalog, heroName, initialFile, o
                 <Images size={14} className="shrink-0" />
                 <span className="min-w-0 flex-1">
                   <span className="block font-medium">{t('portraitEditor.familySlot', 'Image for every variant')}</span>
-                  <span className="block truncate text-[11px] opacity-80">
+                  <span className="block truncate text-2xs opacity-80">
                     {familyImage
                       ? t('portraitEditor.familySet', 'Framed and ready')
                       : t('portraitEditor.familyUnset', 'Not set yet')}
@@ -447,21 +447,21 @@ export default function PortraitEditor({ item, catalog, heroName, initialFile, o
               </ul>
 
               {gap.length > 0 && (familyImage || Object.keys(overrides).length > 0) && (
-                <p className="flex items-start gap-2 rounded-sm border border-yellow-500/30 bg-yellow-500/10 p-2 text-[11px] text-yellow-300">
+                <p className="flex items-start gap-2 rounded-sm border border-state-warning/30 bg-state-warning/10 p-2 text-2xs text-state-warning">
                   <AlertTriangle size={13} className="mt-0.5 shrink-0" />
                   {t('portraitEditor.coverageBlocked')}
                 </p>
               )}
 
               {error && (
-                <p className="flex items-start gap-2 rounded-sm border border-red-500/40 bg-red-500/10 p-2 text-[11px] text-state-danger">
+                <p className="flex items-start gap-2 rounded-sm border border-state-danger/40 bg-state-danger/10 p-2 text-2xs text-state-danger">
                   <AlertTriangle size={13} className="mt-0.5 shrink-0" />
                   <span className="break-words">{error}</span>
                 </p>
               )}
 
               <div className="mt-auto flex items-center justify-between gap-3 pt-2">
-                <p className="text-[11px] text-text-secondary">
+                <p className="text-2xs text-text-secondary">
                   {t('portraitEditor.nothingInstalled', 'Staging adds this to the build tray. Nothing is installed.')}
                 </p>
                 <Button
@@ -478,7 +478,7 @@ export default function PortraitEditor({ item, catalog, heroName, initialFile, o
 
             {/* Frame: locked to the template's own aspect. */}
             <div className="flex flex-col gap-3">
-              <div className="flex items-center justify-between gap-2 text-[11px] text-text-secondary">
+              <div className="flex items-center justify-between gap-2 text-2xs text-text-secondary">
                 <span>
                   {activeTarget
                     ? t('portraitEditor.target', { width: activeTarget.width, height: activeTarget.height })
@@ -535,7 +535,7 @@ export default function PortraitEditor({ item, catalog, heroName, initialFile, o
                   real work rather than a second store to keep in sync. */}
               {recent.length > 0 && (
                 <div>
-                  <p className="mb-1 flex items-center gap-1 text-[11px] text-text-secondary">
+                  <p className="mb-1 flex items-center gap-1 text-2xs text-text-secondary">
                     <History size={12} />
                     {t('portraitEditor.recentTitle')}
                   </p>
@@ -566,7 +566,7 @@ export default function PortraitEditor({ item, catalog, heroName, initialFile, o
               )}
 
               {upscales && activeTarget && sourceSize && (
-                <p className="flex items-start gap-2 rounded-sm border border-yellow-500/30 bg-yellow-500/10 p-2 text-[11px] text-yellow-300">
+                <p className="flex items-start gap-2 rounded-sm border border-state-warning/30 bg-state-warning/10 p-2 text-2xs text-state-warning">
                   <AlertTriangle size={13} className="mt-0.5 shrink-0" />
                   {t('portraitEditor.upscaleWarning', {
                     sourceWidth: sourceSize.width,

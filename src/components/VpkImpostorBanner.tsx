@@ -84,10 +84,10 @@ export default function VpkImpostorBanner() {
       <div
         role="status"
         aria-live="polite"
-        className="overflow-hidden rounded-xl border border-yellow-500/30 bg-yellow-500/10 px-4 py-3"
+        className="overflow-hidden rounded-xl border border-state-warning/30 bg-state-warning/10 px-4 py-3"
       >
         <div className="flex flex-wrap items-center gap-3">
-          <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-yellow-500/20 text-yellow-300">
+          <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-state-warning/20 text-state-warning">
             <FileWarning className="h-5 w-5" />
           </span>
           <div className="min-w-0 flex-1">
@@ -113,14 +113,14 @@ export default function VpkImpostorBanner() {
             }}
             aria-label={t('vpkImpostors.dismissTitle')}
             title={t('vpkImpostors.dismissTitle')}
-            className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-text-secondary transition-colors hover:bg-white/5 hover:text-text-primary cursor-pointer"
+            className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-text-secondary transition-colors hover:bg-hl/5 hover:text-text-primary cursor-pointer"
           >
             <X className="h-4 w-4" />
           </button>
         </div>
 
         {expanded && (
-          <div className="mt-3 space-y-2 border-t border-yellow-500/20 pt-3">
+          <div className="mt-3 space-y-2 border-t border-state-warning/20 pt-3">
             <div className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
               {t('vpkImpostors.title')}
             </div>
@@ -133,9 +133,9 @@ export default function VpkImpostorBanner() {
                 >
                   <span className="mt-0.5 flex-shrink-0">
                     {row.status === 'repaired' ? (
-                      <CheckCircle2 className="h-4 w-4 text-green-400" />
+                      <CheckCircle2 className="h-4 w-4 text-state-success" />
                     ) : (
-                      <AlertTriangle className="h-4 w-4 text-yellow-400" />
+                      <AlertTriangle className="h-4 w-4 text-state-warning" />
                     )}
                   </span>
                   <div className="min-w-0 flex-1">

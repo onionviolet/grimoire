@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { X, Loader2, AlertTriangle, Boxes, Globe, FolderOpen } from 'lucide-react';
-import { Button } from '../common/ui';
-import { Modal } from '../common/Modal';
+import { Loader2, AlertTriangle, Boxes, FolderOpen } from 'lucide-react';
+import { Button, ModalHeader } from '../common/ui';
+import { Modal, ModalBody, ModalFooter } from '../common/Modal';
 import { EmptyState } from '../common/PageComponents';
 import { getProfiles, type Profile } from '../../lib/api';
 import { formatRelativeDate } from '../../lib/dates';
@@ -14,6 +14,7 @@ interface PublishPickerDialogProps {
 
 export default function PublishPickerDialog({ onClose, onPick }: PublishPickerDialogProps) {
   const { t } = useTranslation();
+  const titleId = useId();
   const [profiles, setProfiles] = useState<Profile[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -41,32 +42,16 @@ export default function PublishPickerDialog({ onClose, onPick }: PublishPickerDi
   }, [profiles]);
 
   return (
-    <Modal
-      onClose={onClose}
-      labelledBy="publish-pick-title"
-      size="md"
-      panelClassName="max-h-[80vh] flex flex-col overflow-hidden"
-    >
-        <div className="flex items-start justify-between p-6 border-b border-white/10">
-          <div className="min-w-0">
-            <h2 id="publish-pick-title" className="text-xl font-bold text-text-primary flex items-center gap-2">
-              <Globe className="w-5 h-5 text-accent" />
-              {t('social.picker.publishAProfile')}
-            </h2>
-            <p className="text-sm text-text-secondary mt-1">
-              {t('social.picker.pickLocalProfile')}
-            </p>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-2 rounded-lg hover:bg-white/5 transition-colors cursor-pointer text-text-secondary hover:text-text-primary flex-shrink-0"
-            aria-label={t('common.actions.close')}
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+    <Modal onClose={onClose} labelledBy={titleId} size="md">
+        <ModalHeader
+          title={t('social.picker.publishAProfile')}
+          titleId={titleId}
+          subtitle={t('social.picker.pickLocalProfile')}
+          onClose={onClose}
+          closeLabel={t('common.actions.close')}
+        />
 
-        <div className="p-4 overflow-y-auto">
+        <ModalBody>
           {loading && (
             <div className="text-sm text-text-secondary inline-flex items-center gap-2 p-3">
               <Loader2 className="w-4 h-4 animate-spin" />
@@ -90,7 +75,7 @@ export default function PublishPickerDialog({ onClose, onPick }: PublishPickerDi
           )}
 
           {sorted && sorted.length > 0 && (
-            <ul className="divide-y divide-white/5 border border-white/10 rounded-lg bg-bg-tertiary/30 overflow-hidden">
+            <ul className="divide-y divide-hl/5 border border-hl/10 rounded-lg bg-bg-tertiary/30 overflow-hidden">
               {sorted.map((p) => {
                 const modCount = p.mods.length;
                 const noMods = modCount === 0;
@@ -103,7 +88,7 @@ export default function PublishPickerDialog({ onClose, onPick }: PublishPickerDi
                       className={`w-full text-left px-4 py-3 flex items-center gap-3 transition-colors ${
                         noMods
                           ? 'opacity-50 cursor-not-allowed'
-                          : 'hover:bg-white/[0.04] cursor-pointer'
+                          : 'hover:bg-hl/[0.04] cursor-pointer'
                       }`}
                     >
                       <div className="min-w-0 flex-1">
@@ -132,13 +117,13 @@ export default function PublishPickerDialog({ onClose, onPick }: PublishPickerDi
               })}
             </ul>
           )}
-        </div>
+        </ModalBody>
 
-        <div className="px-6 py-3 border-t border-white/10 flex justify-end">
+        <ModalFooter>
           <Button variant="ghost" onClick={onClose}>
             {t('common.actions.cancel')}
           </Button>
-        </div>
+        </ModalFooter>
     </Modal>
   );
 }

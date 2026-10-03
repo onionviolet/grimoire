@@ -25,7 +25,7 @@ import { Button, ModalHeader, SegmentedControl, Toggle } from '../common/ui';
 import { useSegmentedTabs } from '../common/useSegmentedTabs';
 import Tx from '../translation/Tx';
 import LockerImageCropper from '../locker/LockerImageCropper';
-import { Modal } from '../common/Modal';
+import { Modal, ModalBody, ModalFooter } from '../common/Modal';
 
 // The launch buttons / volume bar are wide-and-short banners; frame custom
 // uploads to roughly that shape so the crop preview matches what's rendered.
@@ -223,7 +223,7 @@ function SurfacePreview({
   // `none` renders the plain button (SurfaceBackdrop returns nothing), exactly as
   // the real button looks with art turned off.
   return (
-    <span className={`${base} bg-bg-tertiary ring-1 ring-white/10`} aria-hidden>
+    <span className={`${base} bg-bg-tertiary ring-1 ring-hl/10`} aria-hidden>
       <SurfaceBackdrop
         bg={bg}
         defaultSrc={config.defaultSrc!}
@@ -235,7 +235,7 @@ function SurfacePreview({
         <Icon className="relative z-10 ml-2 h-3.5 w-3.5 flex-shrink-0 text-text-primary drop-shadow-[0_1px_4px_rgba(0,0,0,0.75)]" />
       )}
       {config.innerLabelKey && (
-        <span className="relative z-10 ml-1.5 truncate text-[11px] font-semibold tracking-wide text-text-primary drop-shadow-[0_1px_4px_rgba(0,0,0,0.75)]">
+        <span className="relative z-10 ml-1.5 truncate text-2xs font-semibold tracking-wide text-text-primary drop-shadow-[0_1px_4px_rgba(0,0,0,0.75)]">
           {t(config.innerLabelKey)}
         </span>
       )}
@@ -506,7 +506,7 @@ export default function AppearanceArtSection() {
         }
       />
 
-      <div className="my-5 h-px bg-white/5" />
+      <div className="my-5 h-px bg-hl/5" />
 
       <div className="mb-3">
         <h3 className="text-sm font-semibold text-text-primary">
@@ -569,12 +569,8 @@ export default function AppearanceArtSection() {
           size="sm"
           dismissable={!busy}
           labelledBy="appearance-art-modal-title"
-          backdropClassName="backdrop-blur-sm"
-          panelClassName="relative flex max-h-[90vh] flex-col overflow-hidden"
         >
-            <span aria-hidden className="absolute left-0 top-0 bottom-0 w-[2px] bg-accent/60" />
-
-            {/* Header (pinned). Close is disabled while busy to match the blocked
+            {/* Close is disabled while busy to match the blocked
                 Escape/backdrop (dismissable={!busy}). */}
             <ModalHeader
               title={t(editingConfig.labelKey, editingConfig.fallbackLabel)}
@@ -584,8 +580,7 @@ export default function AppearanceArtSection() {
               closeDisabled={busy}
             />
 
-            {/* Body (scrolls) */}
-            <div className="min-h-0 flex-1 overflow-y-auto px-5 pt-4">
+            <ModalBody>
               {/* Source-kind tabs (selection only; nothing is saved until Apply) */}
               <SegmentedControl
                 className="mb-4"
@@ -606,7 +601,7 @@ export default function AppearanceArtSection() {
               {/* Preview header only when there's no cropper acting as the preview. */}
               {showFooter && (
                 <div className="mb-4">
-                  <span className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-text-secondary">
+                  <span className="mb-1 block text-2xs font-medium uppercase tracking-wide text-text-secondary">
                     {t('settings.appearance.art.preview')}
                   </span>
                   {/* A hero draft previews the live calibrated render, never a
@@ -674,7 +669,7 @@ export default function AppearanceArtSection() {
               )}
 
               {showCropper && (
-                <div className="space-y-3 pb-1">
+                <div className="space-y-3">
                   <LockerImageCropper
                     imageDataUrl={cropSource}
                     aspect={SURFACE_ASPECT}
@@ -705,20 +700,20 @@ export default function AppearanceArtSection() {
 
               {error && <p className="mt-3 text-xs text-state-danger">{error}</p>}
               </div>
-            </div>
+            </ModalBody>
 
             {/* Footer (pinned). Framed images commit through the cropper's own
                 button; everything else (none, accent-glow default, hero with
                 calibrated framing) commits here. */}
             {showFooter && (
-              <div className="flex flex-shrink-0 justify-end gap-2 border-t border-border px-5 py-4">
-                <Button variant="secondary" size="sm" onClick={close} disabled={busy}>
+              <ModalFooter>
+                <Button variant="secondary" onClick={close} disabled={busy}>
                   {t('common.actions.cancel')}
                 </Button>
-                <Button size="sm" onClick={() => void applyDraft()} disabled={busy}>
+                <Button onClick={() => void applyDraft()} disabled={busy}>
                   {t('common.actions.apply')}
                 </Button>
-              </div>
+              </ModalFooter>
             )}
         </Modal>
       )}

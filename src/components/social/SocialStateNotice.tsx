@@ -31,7 +31,7 @@ export default function SocialStateNotice({ kind, onRetry, inline = false }: Soc
   if (inline) {
     const Icon = icon;
     return (
-      <div className="bg-white/[0.03] border border-white/10 rounded-md p-3 flex items-start gap-2.5">
+      <div className="bg-hl/[0.03] border border-hl/10 rounded-md p-3 flex items-start gap-2.5">
         <Icon className="w-4 h-4 flex-shrink-0 mt-0.5 text-text-secondary" />
         <div className="min-w-0 flex-1">
           <div className="text-sm text-text-primary">{title}</div>

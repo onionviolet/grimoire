@@ -105,7 +105,7 @@ describe('embedMergeIdentity repack parity', () => {
         expect(findImprintRepackMismatch).toHaveBeenCalledTimes(1);
         expect(fsMocks.rename).toHaveBeenCalledTimes(1);
         const [from, to] = fsMocks.rename.mock.calls[0] as unknown as [string, string];
-        expect(from).toMatch(/\.imprint-embed-.*\.vpk$/);
+        expect(from).toMatch(/\.imprint-embed-.*\.tmp$/);
         expect(to).toBe(MERGED_PATH);
     });
 
@@ -118,7 +118,22 @@ describe('embedMergeIdentity repack parity', () => {
 
         expect(fsMocks.rename).not.toHaveBeenCalled();
         const unlinked = fsMocks.unlink.mock.calls.map((c) => c[0] as unknown as string);
-        expect(unlinked.some((p) => /\.imprint-embed-.*\.vpk$/.test(p))).toBe(true);
+        expect(unlinked.some((p) => /\.imprint-embed-.*\.tmp$/.test(p))).toBe(true);
+    });
+
+    it('keeps the input trust state without a review, and reviews only an output that differs', async () => {
+        findImprintRepackMismatch.mockReturnValue(null);
+        const { assertVpkSafety, carryVpkSafety } = await import('./modSafety');
+        vi.mocked(carryVpkSafety).mockResolvedValueOnce('untrusted').mockResolvedValueOnce('differs');
+
+        await embedMergeIdentity(MERGED_PATH, 'My Merge', '2026-01-01T00:00:00.000Z', ORIGINAL, []);
+        const [inputs, output] = vi.mocked(carryVpkSafety).mock.calls[0];
+        expect(inputs).toEqual([MERGED_PATH]);
+        expect(output).toMatch(/\.imprint-embed-.*\.tmp$/);
+        expect(assertVpkSafety).not.toHaveBeenCalled();
+
+        await embedMergeIdentity(MERGED_PATH, 'My Merge', '2026-01-01T00:00:00.000Z', ORIGINAL, []);
+        expect(assertVpkSafety).toHaveBeenCalledExactlyOnceWith(expect.stringMatching(/\.imprint-embed-.*\.tmp$/), { name: 'My Merge' });
     });
 
     it('rejects without renaming when the repacked output is unreadable', async () => {
@@ -133,3 +148,9 @@ describe('embedMergeIdentity repack parity', () => {
         expect(fsMocks.rename).not.toHaveBeenCalled();
     });
 });
+// These tests use inert file placeholders; scanner behavior has its own fixtures.
+vi.mock('./modSafety', () => ({
+    assertVpkSafety: vi.fn(async () => {}),
+    carryVpkSafety: vi.fn(async () => 'trusted'),
+    moveSafetySnapshot: vi.fn(),
+}));

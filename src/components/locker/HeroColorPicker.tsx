@@ -214,7 +214,7 @@ export default function HeroColorPicker({ heroName, onAppliedChange, onStage, st
   const [checking, setChecking] = useState(false);
   // Foundry staging mode: the "Staged, not yet forged" / "Not staged" status
   // line below is driven by the tray's recolor edit for this hero (the
-  // `stagedEdit` prop), never a local copy — the tray stays the single
+  // `stagedEdit` prop), never a local copy : the tray stays the single
   // authority on what is actually staged.
   const [changed, setChanged] = useState(false);
   // Path of the most recently exported VPK file (null until an export succeeds).
@@ -772,7 +772,7 @@ export default function HeroColorPicker({ heroName, onAppliedChange, onStage, st
                         bright: pct(brightness),
                       })}
               </div>
-              <div className="text-[11px] text-text-secondary">
+              <div className="text-2xs text-text-secondary">
                 {onStage
                   ? stagedEdit
                     ? t('locker.colors.stagedStatus')
@@ -789,7 +789,7 @@ export default function HeroColorPicker({ heroName, onAppliedChange, onStage, st
           {/* Hue slider over a rainbow track. In prism mode it rotates where the
               spectrum starts rather than picking one color. */}
           <label className="block space-y-1">
-            <span className="text-[11px] font-medium text-text-secondary">
+            <span className="text-2xs font-medium text-text-secondary">
               {mode === 'hue' ? t('locker.colors.hue') : t('locker.colors.rotation')}
             </span>
             <input
@@ -810,7 +810,7 @@ export default function HeroColorPicker({ heroName, onAppliedChange, onStage, st
 
           {/* Saturation slider: gray -> full chroma at the current hue */}
           <label className="block space-y-1">
-            <span className="text-[11px] font-medium text-text-secondary">
+            <span className="text-2xs font-medium text-text-secondary">
               {t('locker.colors.saturation')}{' '}
               <span className="tabular-nums text-text-secondary/70">{pct(saturation)}%</span>
             </span>
@@ -831,7 +831,7 @@ export default function HeroColorPicker({ heroName, onAppliedChange, onStage, st
 
           {/* Brightness slider: dark -> light at the current hue */}
           <label className="block space-y-1">
-            <span className="text-[11px] font-medium text-text-secondary">
+            <span className="text-2xs font-medium text-text-secondary">
               {t('locker.colors.brightness')}{' '}
               <span className="tabular-nums text-text-secondary/70">{pct(brightness)}%</span>
             </span>
@@ -895,7 +895,7 @@ export default function HeroColorPicker({ heroName, onAppliedChange, onStage, st
                 </span>
                 <span>{t('locker.colors.sweepSpectrum')}</span>
               </label>
-              <p className="text-[11px] text-text-secondary/80">
+              <p className="text-2xs text-text-secondary/80">
                 {t('locker.colors.prismDescription', { hero: heroName })}
               </p>
             </div>
@@ -925,7 +925,7 @@ export default function HeroColorPicker({ heroName, onAppliedChange, onStage, st
                   disabled={busy}
                   onClick={() => setGradientPreset('custom')}
                   title={t('locker.colors.customGradient')}
-                  className={`flex h-7 items-center rounded border px-2 text-[11px] font-medium transition-colors disabled:cursor-not-allowed ${
+                  className={`flex h-7 items-center rounded border px-2 text-2xs font-medium transition-colors disabled:cursor-not-allowed ${
                     gradientPreset === 'custom'
                       ? 'border-text-primary text-text-primary ring-2 ring-accent/60'
                       : 'border-border text-text-secondary hover:text-text-primary'
@@ -982,7 +982,7 @@ export default function HeroColorPicker({ heroName, onAppliedChange, onStage, st
                 </span>
                 <span>{t('locker.colors.sweepGradient')}</span>
               </label>
-              <p className="text-[11px] text-text-secondary/80">
+              <p className="text-2xs text-text-secondary/80">
                 {t('locker.colors.gradientDescription', { hero: heroName })}
               </p>
             </div>
@@ -1025,7 +1025,7 @@ export default function HeroColorPicker({ heroName, onAppliedChange, onStage, st
 
           {/* How the particles move at runtime. 'off' bakes a still paint. */}
           <div className="flex items-center gap-2">
-            <span className="text-[11px] font-medium text-text-secondary">
+            <span className="text-2xs font-medium text-text-secondary">
               {t('locker.colors.animation')}
             </span>
             <div className="inline-flex rounded-md border border-border p-0.5 text-xs">
@@ -1043,7 +1043,7 @@ export default function HeroColorPicker({ heroName, onAppliedChange, onStage, st
             </div>
           </div>
           {trippyAnimStyle !== 'off' && (
-            <p className="text-[11px] text-text-secondary/70">
+            <p className="text-2xs text-text-secondary/70">
               {t('locker.colors.swatchAnimationHint')}
             </p>
           )}
@@ -1051,7 +1051,7 @@ export default function HeroColorPicker({ heroName, onAppliedChange, onStage, st
           {/* Animation strength (how strongly the motion reads); off when static. */}
           {trippyAnimStyle !== 'off' && (
             <label className="block space-y-1">
-              <span className="text-[11px] font-medium text-text-secondary">
+              <span className="text-2xs font-medium text-text-secondary">
                 {t('locker.colors.animationStrength')}{' '}
                 <span className="tabular-nums text-text-secondary/70">{pct(trippyAnimIntensity)}%</span>
               </span>
@@ -1070,7 +1070,7 @@ export default function HeroColorPicker({ heroName, onAppliedChange, onStage, st
 
           {/* Which effect sets the paint touches. */}
           <div className="flex items-center gap-2">
-            <span className="text-[11px] font-medium text-text-secondary">
+            <span className="text-2xs font-medium text-text-secondary">
               {t('locker.colors.paint')}
             </span>
             <div className="inline-flex rounded-md border border-border p-0.5 text-xs">
@@ -1092,7 +1092,7 @@ export default function HeroColorPicker({ heroName, onAppliedChange, onStage, st
             </div>
           </div>
 
-          <p className="text-[11px] text-text-secondary/80">
+          <p className="text-2xs text-text-secondary/80">
             {t('locker.colors.trippyDescription', { hero: heroName })}
           </p>
         </div>
@@ -1161,18 +1161,18 @@ export default function HeroColorPicker({ heroName, onAppliedChange, onStage, st
           <h4 className="text-xs font-semibold text-text-primary">
             {t('locker.colors.disclosureTitle')}
           </h4>
-          <p className="mt-0.5 text-[11px] text-text-secondary">
+          <p className="mt-0.5 text-2xs text-text-secondary">
             {t('locker.colors.disclosureIntro', { count: disclosure.consequence.paths.length })}
           </p>
           {disclosure.consequence.contested ? (
-            <p className="mt-1 text-[11px] text-amber-300">
+            <p className="mt-1 text-2xs text-state-warning">
               {t('locker.colors.disclosureContested', {
                 mods: disclosure.consequence.owners.map((owner) => owner.modName).join(', '),
                 count: disclosure.consequence.contestedPaths.length,
               })}
             </p>
           ) : (
-            <p className="mt-1 text-[11px] text-text-secondary">
+            <p className="mt-1 text-2xs text-text-secondary">
               {t('locker.colors.disclosureUncontested')}
             </p>
           )}
@@ -1196,7 +1196,7 @@ export default function HeroColorPicker({ heroName, onAppliedChange, onStage, st
       )}
 
       {busy && (
-        <p className="text-[11px] text-text-secondary/80">
+        <p className="text-2xs text-text-secondary/80">
           {checking ? t('locker.colors.checkingOverwrite') : t('locker.colors.bakingHint')}
         </p>
       )}
@@ -1212,7 +1212,7 @@ export default function HeroColorPicker({ heroName, onAppliedChange, onStage, st
         <div
           className={`flex items-start gap-2 rounded-md border px-3 py-2 text-xs ${
             gameRunning
-              ? 'border-amber-500/40 bg-amber-500/10 text-amber-300'
+              ? 'border-state-warning/40 bg-state-warning/10 text-state-warning'
               : 'border-border bg-bg-secondary/70 text-text-secondary'
           }`}
         >

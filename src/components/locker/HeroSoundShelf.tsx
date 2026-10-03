@@ -133,7 +133,7 @@ export default function HeroSoundShelf({ heroName, soundList, onSelect }: HeroSo
       </div>
 
       {overlaps.length > 0 && (
-        <p className="flex items-start gap-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-300">
+        <p className="flex items-start gap-1.5 rounded-md border border-state-warning/40 bg-state-warning/10 px-3 py-2 text-2xs text-state-warning">
           <FileWarning className="mt-px h-3.5 w-3.5 shrink-0" />
           <span>
             {t(
@@ -170,7 +170,7 @@ export default function HeroSoundShelf({ heroName, soundList, onSelect }: HeroSo
       {/* Installed rows are deliberately first: this is the inventory and
           enablement surface. The per-ability picker is a secondary panel for
           the Locker-managed selections it can build from those rows. */}
-      <div className="mt-6 rounded-xl border border-white/10 bg-bg-secondary/65 p-4 shadow-[0_10px_28px_rgba(0,0,0,0.18)] backdrop-blur-sm">
+      <div className="mt-6 rounded-xl border border-hl/10 bg-bg-secondary/65 p-4 shadow-[0_10px_28px_rgba(0,0,0,0.18)] backdrop-blur-sm">
         <HeroSoundPicker
           heroName={heroName}
           soundList={soundList}

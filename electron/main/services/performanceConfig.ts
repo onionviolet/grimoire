@@ -299,6 +299,23 @@ function entryKey(line: string): string | null {
 const quote = (v: string) => `"${v.replace(/^"|"$/g, '')}"`;
 const unquote = (v: string) => v.replace(/^"|"$/g, '');
 
+// Current values of the active ConVars lines Grimoire manages (tagged with the
+// marker), so Reapply can actually change every line reported here. Lines the
+// user owns outside the block are left out on purpose.
+function managedConvarValues(content: string): Record<string, string> {
+    const range = findSectionByPath(content, ['ConVars']);
+    if (!range) return {};
+    const values: Record<string, string> = {};
+    for (const raw of content.slice(range.bodyStart, range.bodyEnd).split('\n')) {
+        const line = raw.replace(/\r$/, '');
+        if (!line.includes(`// ${MARKER}`)) continue;
+        const key = entryKey(line);
+        const entry = key ? matchEntryLine(line, key) : null;
+        if (key && entry) values[key] = unquote(entry.value);
+    }
+    return values;
+}
+
 // ---------------------------------------------------------------------------
 // Overrides: harvest hand edits so they survive reapply and wipes
 // ---------------------------------------------------------------------------
@@ -336,8 +353,13 @@ function presetKeyIndex(
     convars: ReadonlyArray<readonly [string, string]>
 ): Map<string, { okey: string; value: string } | null> {
     const idx = new Map<string, { okey: string; value: string } | null>();
+    // An enabled opt-in arrives twice (from convars and from preset.optIn)
+    // under the same override key; only a key shared by different entries is
+    // ambiguous.
     const put = (bare: string, okey: string, value: string) => {
-        idx.set(bare, idx.has(bare) ? null : { okey, value });
+        const prev = idx.get(bare);
+        if (prev === undefined) idx.set(bare, { okey, value });
+        else if (prev !== null && prev.okey !== okey) idx.set(bare, null);
     };
     for (const [key, value] of convars) put(key, `ConVars/${key}`, value);
     for (const control of preset.optIn) put(control.key, `ConVars/${control.key}`, control.value);
@@ -601,19 +623,34 @@ export function applyPerformanceConfig(
             const appliedOptIns = sidecar?.optIns ?? [];
             const appliedConvars = effectiveConvars(appliedPreset, appliedOptIns);
             const appliedMarker = readMarker(applied);
-            saved[appliedPreset.id] = harvestOverrides(
-                content,
-                appliedPreset,
-                appliedConvars,
-                appliedMarker
-            );
             userConvars = harvestUserConvars(
                 content,
                 appliedPreset,
                 appliedConvars,
                 !isCurrentDefinition(appliedPreset, appliedMarker),
                 userConvars
+);
+            // A toggled-off opt-in has no line in the file, so the harvest
+            // cannot see its banked value. Hold it so toggling back on restores it.
+            const offKeys = new Set(
+                appliedPreset.optIn
+                    .map((control) => control.key)
+                    .filter((key) => !appliedOptIns.includes(key))
             );
+            const held = Object.fromEntries(
+                Object.entries(saved[appliedPreset.id] ?? {}).filter(
+                    ([okey]) => okey.startsWith('ConVars/') && offKeys.has(okey.slice('ConVars/'.length))
+                )
+            );
+            saved[appliedPreset.id] = {
+                ...held,
+                ...harvestOverrides(
+                    content,
+                    appliedPreset,
+                    effectiveConvars(appliedPreset, appliedOptIns),
+                    readMarker(applied)
+                ),
+            };
         }
         let presetOverrides: Overrides = {};
         if (!opts?.resetOverrides) {
@@ -702,12 +739,15 @@ export function applyPerformanceConfig(
             }
         }
         // The user's own convars (added inside the marked block by hand and
-        // harvested as overrides) ride along in the injected block.
+        // harvested as overrides) ride along in the injected block. Opt-in keys
+        // never do: an override banked for one (a hand edit, or a stale sidecar
+        // that predates optIns) must not resurrect it while it is toggled off.
         const presetConvarKeys = new Set(convars.map(([key]) => key));
+        const optInKeys = new Set(preset.optIn.map((control) => control.key));
         for (const [okey, override] of Object.entries(overrides)) {
             if (!okey.startsWith('ConVars/') || override.value === undefined) continue;
             const key = okey.slice('ConVars/'.length);
-            if (presetConvarKeys.has(key)) continue;
+            if (presetConvarKeys.has(key) || optInKeys.has(key)) continue;
             if (existingKeys.has(key)) {
                 content = applyOp(content, { path: ['ConVars'], key, value: override.value })!;
             } else {
@@ -1065,6 +1105,24 @@ export function removePerformanceConfig(deadlockPath: string | null): Performanc
     }
 }
 
+/** Put back what a game update wiped: the preset, release and optional
+ *  settings the sidecar recorded, not whatever the Settings card has selected
+ *  now. Anything other than a patchable wipe is returned untouched. */
+export function reapplyWipedPerformanceConfig(
+    deadlockPath: string | null
+): PerformanceConfigStatus {
+    const current = getPerformanceConfigStatus(deadlockPath);
+    if (current.state !== 'wiped' || current.canRestoreBackup) return current;
+    const sidecar = readAppliedState(getGameinfoPath(deadlockPath!))!;
+    return applyPerformanceConfig(deadlockPath, {
+        presetId: sidecar.presetId,
+        version: sidecar.version,
+        // The sidecar drops an empty list, so absent means "all off", not
+        // "creator defaults".
+        optIns: sidecar.optIns ?? [],
+    });
+}
+
 /** Restore gameinfo.gi from the Grimoire backup (.grimoire-bak), the pristine
  *  pre-apply copy shared with fixGameinfo. Recovery for an emptied or corrupt
  *  file the preset can no longer patch; after restoring, Apply runs normally.
@@ -1187,7 +1245,14 @@ export function getPerformanceConfigStatus(deadlockPath: string | null): Perform
             // sidecar can be stale or absent (hand-installed, restored backup).
             const appliedId = begin[1];
             const known = PRESETS.find((p) => p.id === appliedId) ?? null;
-            const overrideCount = Object.keys(allOverrides(sidecar)[appliedId] ?? {}).length;
+            const appliedOverrides = allOverrides(sidecar)[appliedId] ?? {};
+            const overrideCount = Object.keys(appliedOverrides).length;
+            const savedConvarValues: Record<string, string> = {};
+            for (const [okey, override] of Object.entries(appliedOverrides)) {
+                if (okey.startsWith('ConVars/') && override.value !== undefined) {
+                    savedConvarValues[okey.slice('ConVars/'.length)] = override.value;
+                }
+            }
             const appliedName = known?.name ?? appliedId;
             // "Newest we bundle", not "the one the user picked": the selection
             // lives in renderer settings, so the card decides whether a newer
@@ -1211,6 +1276,8 @@ export function getPerformanceConfigStatus(deadlockPath: string | null): Perform
                 // from an unrelated preset would be a lie.
                 bundledVersion: newestVersion ?? begin[2],
                 appliedOptIns: sidecar?.optIns ?? [],
+                managedConvarValues: managedConvarValues(content),
+                savedConvarValues,
                 handEdited,
                 overrideCount,
                 convarValues,

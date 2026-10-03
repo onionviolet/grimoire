@@ -64,6 +64,9 @@ vi.mock('../services/mods', () => ({
     allocateEnabledVpkPath: vi.fn().mockRejectedValue(new Error(ALLOCATE_SLOT_SENTINEL)),
     runExclusiveModMutation: (fn: () => unknown) => fn(),
 }));
+vi.mock('../services/importDisabledVpk', () => ({
+    importDisabledVpk: vi.fn().mockRejectedValue(new Error(ALLOCATE_SLOT_SENTINEL)),
+}));
 vi.mock('../services/deadlock', () => ({
     metaKeyFor: vi.fn(),
 }));

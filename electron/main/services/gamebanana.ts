@@ -1,6 +1,7 @@
 import { BrowserWindow } from 'electron';
 import { gamebananaRateLimiter } from './rateLimiter';
 import { GRIMOIRE_USER_AGENT } from './userAgent';
+import { parseGameBananaJson } from './gamebananaJson';
 import { getCachedCategoryTree, saveCachedCategoryTree } from './modDatabase';
 // The GameBanana wire types are single-sourced in src/types/gamebanana.ts
 // (the contract the renderer compiles against). Type-only import, erased at
@@ -228,6 +229,7 @@ interface ModDetailsRaw {
     _aPreviewMedia?: ModRaw['_aPreviewMedia'];
     _aCategory?: ModRaw['_aRootCategory'];
     _aSubmitter?: ModRaw['_aSubmitter'];
+    _aGame?: CollectionItemRaw['_aGame'];
 }
 
 interface DonationMethodRaw {
@@ -350,7 +352,7 @@ async function fetchJson<T>(url: string, timeoutMs = 30000, options: GameBananaR
             }
 
             try {
-                return JSON.parse(text) as T;
+                return parseGameBananaJson<T>(text);
             } catch (err) {
                 console.error('[fetchJson] Failed to parse JSON:', text.slice(0, 200));
                 throw new Error(`GameBanana API returned invalid JSON: ${err}`);
@@ -578,8 +580,14 @@ export async function fetchCategoryTree(
  *  rarely (a new hero every few months), so a day of staleness is fine. */
 const CATEGORY_REFRESH_MS = 24 * 60 * 60 * 1000;
 
-/** Category models with a background refresh already running. */
-const categoryRefreshesInFlight = new Set<string>();
+/** Floor for a caller-requested revalidation. The Locker asks for one when the
+ *  cached Skins tree lacks a roster hero: GameBanana adds a new hero's category
+ *  hours after the patch, and a tree cached in between would otherwise hide
+ *  that hero until CATEGORY_REFRESH_MS runs out. */
+const CATEGORY_REVALIDATE_MS = 60 * 60 * 1000;
+
+/** Refreshes already running, keyed by category model. */
+const categoryRefreshesInFlight = new Map<string, Promise<GameBananaCategoryNode[] | null>>();
 
 /**
  * Category tree with offline-first serving: return the locally cached tree
@@ -587,13 +595,21 @@ const categoryRefreshesInFlight = new Set<string>();
  * older than CATEGORY_REFRESH_MS) and only block on the network when there's
  * no cache at all. The Locker hero grid derives from this tree, so without
  * the cache a GameBanana outage hangs the page for the full 30s timeout.
+ *
+ * `revalidate` waits for a refetch of a tree older than CATEGORY_REVALIDATE_MS
+ * instead, falling back to the cached tree if it fails.
  */
 export async function fetchCategoryTreeCached(
-    categoryModel: string
+    categoryModel: string,
+    revalidate = false
 ): Promise<GameBananaCategoryNode[]> {
     const cached = readCategoryCache(categoryModel);
     if (cached) {
-        if (Date.now() - cached.fetchedAt > CATEGORY_REFRESH_MS) {
+        const age = Date.now() - cached.fetchedAt;
+        if (revalidate && age > CATEGORY_REVALIDATE_MS) {
+            return (await refreshCategoryCache(categoryModel)) ?? cached.nodes;
+        }
+        if (age > CATEGORY_REFRESH_MS) {
             void refreshCategoryCache(categoryModel);
         }
         return cached.nodes;
@@ -628,17 +644,25 @@ function persistCategoryCache(
     }
 }
 
-async function refreshCategoryCache(categoryModel: string): Promise<void> {
-    if (categoryRefreshesInFlight.has(categoryModel)) return;
-    categoryRefreshesInFlight.add(categoryModel);
-    try {
-        persistCategoryCache(categoryModel, await fetchCategoryTree(categoryModel));
-    } catch (err) {
-        // Offline or API down: keep serving the stale tree.
-        debugGameBanana('[fetchCategoryTreeCached] background refresh failed:', err);
-    } finally {
-        categoryRefreshesInFlight.delete(categoryModel);
-    }
+/** Refetch and persist a tree. Resolves null when offline or the API is down,
+ *  so callers keep serving the stale tree. */
+function refreshCategoryCache(categoryModel: string): Promise<GameBananaCategoryNode[] | null> {
+    const inFlight = categoryRefreshesInFlight.get(categoryModel);
+    if (inFlight) return inFlight;
+    const refresh = (async () => {
+        try {
+            const nodes = await fetchCategoryTree(categoryModel);
+            persistCategoryCache(categoryModel, nodes);
+            return nodes;
+        } catch (err) {
+            debugGameBanana('[fetchCategoryTreeCached] refresh failed:', err);
+            return null;
+        } finally {
+            categoryRefreshesInFlight.delete(categoryModel);
+        }
+    })();
+    categoryRefreshesInFlight.set(categoryModel, refresh);
+    return refresh;
 }
 
 /**
@@ -759,6 +783,7 @@ export async function fetchModDetails(
         '_sName',
         '_sText',
         '_bIsNsfw',
+        '_aGame',
         '_aCategory',
         '_aFiles',
         '_aPreviewMedia',
@@ -776,6 +801,8 @@ export async function fetchModDetails(
         name: raw._sName,
         description: raw._sText,
         nsfw: raw._bIsNsfw ?? false,
+        gameId: raw._aGame?._idRow,
+        gameName: raw._aGame?._sName,
         category: raw._aCategory
             ? {
                 id: raw._aCategory._idRow,
@@ -814,14 +841,15 @@ export async function fetchModDetails(
 
 interface ModFileListRaw {
     _idRow: number;
-    _aFiles?: Array<{ _idRow: number; _bIsArchived?: boolean }>;
+    _aFiles?: FileRaw[];
 }
 
 /**
  * Slim variant of fetchModDetails that asks GameBanana for only the file list.
  * The Installed page's update check uses this to scan every installed mod
  * cheaply on mount - the full details payload (description, preview media,
- * category) is wasteful when we only compare file ids.
+ * category) is wasteful when we only need the file rows. `_aFiles` carries
+ * archived rows too, each with its name, description and upload date.
  */
 export async function fetchModFileList(
     modId: number,
@@ -833,7 +861,10 @@ export async function fetchModFileList(
         id: raw._idRow,
         files: (raw._aFiles ?? []).map((f) => ({
             id: f._idRow,
+            fileName: f._sFile,
             isArchived: f._bIsArchived ?? false,
+            description: f._sDescription,
+            dateAdded: f._tsDateAdded,
         })),
     };
 }

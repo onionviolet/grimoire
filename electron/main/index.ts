@@ -128,6 +128,7 @@ import './ipc/profiles';
 import './ipc/snapshots';
 import './ipc/modDatabase';
 import './ipc/crosshairPresets';
+import './ipc/cursorPacks';
 import './ipc/stats';
 import './ipc/updater';
 import './ipc/launch';
@@ -153,6 +154,7 @@ import './ipc/forge';
 
 import { initUpdater, checkForUpdates, getInstallSource } from './services/updater';
 import { runStartupRecovery } from './ipc/launch';
+import './ipc/modSafety';
 import { loadSettings, saveSettings, type AppSettings } from './services/settings';
 import { attachBrowserFilter, configureFilter } from './services/browserContentFilter';
 import { attachBrowserDownloadCapture, sweepToolDownloadTempRoot, toolDownloadTempRoot } from './services/browserDownloadCapture';

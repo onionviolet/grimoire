@@ -299,7 +299,7 @@ export default function SoundBrowse({ heroes, heroNames, hero: scopedHero, only,
                         <button
                             type="button"
                             onClick={() => navigate(soundLockerHref(scopedHeroName))}
-                            className="flex items-center gap-1 text-[11px] font-normal text-text-secondary hover:text-text-primary"
+                            className="flex items-center gap-1 text-2xs font-normal text-text-secondary hover:text-text-primary"
                         >
                             <ExternalLink size={11} /> {t('foundry.myChanges.openInSoundLocker')}
                         </button>
@@ -487,7 +487,7 @@ function AbilitySlotIcon({ meta, slot }: { meta?: HeroAbilitySlot; slot: number 
         );
     }
     return (
-        <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded bg-bg-tertiary text-[11px] font-semibold text-text-secondary">
+        <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded bg-bg-tertiary text-2xs font-semibold text-text-secondary">
             {slot ?? '?'}
         </span>
     );
@@ -838,7 +838,7 @@ export function SoundRow({ label, event, clips, duration, state, onToggle, poolI
     const compiledClipName = clipName
         ? `${clipName.replace(/\.vsnd(_c)?$/i, '')}.vsnd_c`
         : null;
-    // Include every member of a pool—not only the currently auditioned clip—and
+    // Include every member of a pool:not only the currently auditioned clip:and
     // its event container where the catalog can name one. This is an inspection
     // request only; it never changes enabled state or precedence.
     const sourcePaths = useMemo(() => {
@@ -907,7 +907,7 @@ export function SoundRow({ label, event, clips, duration, state, onToggle, poolI
                             <p className="truncate text-sm text-accent" title={personalLabel}>
                                 {t('soundLocker.labels.myLabel', 'My label: {{label}}', { label: personalLabel })}
                             </p>
-                            <p className="truncate text-[11px] text-text-secondary" title={label || event}>
+                            <p className="truncate text-2xs text-text-secondary" title={label || event}>
                                 <span className="text-text-secondary">{t('foundry.sound.baseGameLabel')} </span>{label || event}
                             </p>
                         </>
@@ -917,14 +917,14 @@ export function SoundRow({ label, event, clips, duration, state, onToggle, poolI
                         </p>
                     )}
                     {(annotationsVisible && annotation?.note ? annotation.note : description) && (
-                        <p className="truncate text-[11px] text-text-secondary" title={(annotationsVisible && annotation?.note) || description || undefined}>
+                        <p className="truncate text-2xs text-text-secondary" title={(annotationsVisible && annotation?.note) || description || undefined}>
                             {(annotationsVisible && annotation?.note) || description}
                         </p>
                     )}
                     {/* Engine identifiers last and dimmer: they are what you
                         search and swap by, but not what tells you what a row is. */}
                     <p
-                        className="truncate text-[11px] text-text-secondary/70"
+                        className="truncate text-2xs text-text-secondary/70"
                         title={compiledClipName ? `Event: ${event}\nBase-game file: ${compiledClipName}` : `Event: ${event}`}
                     >
                         <span>Event: {event}</span>
@@ -945,7 +945,7 @@ export function SoundRow({ label, event, clips, duration, state, onToggle, poolI
                     </button>
                 )}
                 {seconds && (
-                    <span className="shrink-0 text-[11px] tabular-nums text-text-secondary">
+                    <span className="shrink-0 text-2xs tabular-nums text-text-secondary">
                         {seconds}
                     </span>
                 )}
@@ -999,14 +999,14 @@ export function SoundRow({ label, event, clips, duration, state, onToggle, poolI
                 )}
             </div>
             {selected && sourcePaths.length > 0 && (
-                <div className="mt-1 rounded-sm border border-border/60 bg-bg-tertiary/40 px-3 py-1.5 text-[11px] text-text-secondary" aria-live="polite">
+                <div className="mt-1 rounded-sm border border-border/60 bg-bg-tertiary/40 px-3 py-1.5 text-2xs text-text-secondary" aria-live="polite">
                     {sourceInspection.loading ? (
                         <span className="flex items-center gap-1"><Loader2 size={11} className="animate-spin" />{t('foundry.sources.checking', 'Checking installed replacements…')}</span>
                     ) : sourceInspection.error ? (
                         <span className="text-danger">{sourceInspection.error}</span>
                     ) : sourceInspection.result ? (
                         <>
-                            {sourceInspection.result.unreadableMods.length > 0 && <p className="text-amber-300">{t('foundry.sources.incompleteSummary', 'Installed-source inspection is incomplete.')}</p>}
+                            {sourceInspection.result.unreadableMods.length > 0 && <p className="text-state-warning">{t('foundry.sources.incompleteSummary', 'Installed-source inspection is incomplete.')}</p>}
                             <p>{winners.length ? t('foundry.sources.winner', { name: winners.map((source) => `${source.modName} (${source.enabled ? t('foundry.sources.enabled') : t('foundry.sources.disabled')})`).join(', ') }) : t('foundry.sources.stock', 'Stock')}</p>
                         </>
                     ) : null}
@@ -1306,7 +1306,7 @@ function SwapPanel({
     return (
         <div className="mt-1.5 rounded-sm border border-accent/30 bg-bg-tertiary/40 p-3">
             <div className="mb-2 flex items-center justify-between">
-                <p className="text-[11px] font-medium uppercase tracking-wide text-accent">
+                <p className="text-2xs font-medium uppercase tracking-wide text-accent">
                     <Tx k="foundry.sound.swap.title" fallback="Swap with your own audio" />
                 </p>
                 <button
@@ -1420,7 +1420,7 @@ function SwapPanel({
                     type="button"
                     onClick={() => void loadOriginalClip()}
                     disabled={loadingOriginal}
-                    className="mt-1.5 flex items-center gap-1.5 text-[11px] text-text-secondary transition-colors hover:text-text-primary disabled:opacity-60"
+                    className="mt-1.5 flex items-center gap-1.5 text-2xs text-text-secondary transition-colors hover:text-text-primary disabled:opacity-60"
                 >
                     {loadingOriginal ? (
                         <Loader2 size={11} className="animate-spin" />
@@ -1443,9 +1443,9 @@ function SwapPanel({
                 />
             )}
 
-            {conflicts && <div className="mt-2 rounded-sm border border-yellow-500/50 bg-yellow-500/10 p-2 text-xs text-text-secondary">
+            {conflicts && <div className="mt-2 rounded-sm border border-state-warning/50 bg-state-warning/10 p-2 text-xs text-text-secondary">
                 <p className="font-medium text-text-primary">Resolve VPK entry-path conflicts before forging</p>
-                {conflicts.unreadableMods.length > 0 && <p className="mt-1 text-red-300">Cannot safely continue: {conflicts.unreadableMods.map((mod) => mod.modName).join(', ')} could not be inspected.</p>}
+                {conflicts.unreadableMods.length > 0 && <p className="mt-1 text-state-danger">Cannot safely continue: {conflicts.unreadableMods.map((mod) => mod.modName).join(', ')} could not be inspected.</p>}
                 {conflicts.conflicts.map((conflict) => <p key={conflict.modId} className="mt-1 break-all">{conflict.modName} ({conflict.enabled ? 'enabled' : 'disabled'}) owns {conflict.entries.join(', ')}</p>)}
                 {conflicts.conflicts.length > 0 && conflicts.unreadableMods.length === 0 && <div className="mt-2 flex flex-wrap gap-2"><select aria-label="Conflict resolution" value={resolution ?? ''} onChange={(event) => setResolution(event.target.value as SoundConflictResolution['action'])} className="rounded-sm border border-border bg-bg-secondary px-2 py-1 text-xs text-text-primary"><option value="">Choose a resolution</option><option value="disable-conflicts">Disable conflicting mods, then forge</option><option value="replace-managed" disabled={conflicts.conflicts.some((conflict) => !conflict.managed)}>Replace managed changes</option></select><button type="button" disabled={!resolution} onClick={() => void forge()} className="rounded-sm bg-accent px-2 py-1 text-xs text-bg-primary disabled:opacity-40">Confirm resolution & forge</button><button type="button" onClick={() => { setConflicts(null); setResolution(null); }} className="rounded-sm border border-border px-2 py-1 text-xs">Cancel</button></div>}
             </div>}
@@ -1478,7 +1478,7 @@ function SwapPanel({
                 </button>
             </div>
 
-            <p className="mt-2 text-[11px] text-text-secondary">
+            <p className="mt-2 text-2xs text-text-secondary">
                 {clips > 1
                     ? t(
                           'foundry.sound.swap.poolNote',
