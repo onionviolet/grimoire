@@ -10,6 +10,7 @@ const api = vi.hoisted(() => ({ getConfigWorkspace: vi.fn(), applyConfigWorkspac
 vi.mock('../lib/api', () => api);
 vi.mock('../stores/appStore', () => ({ useAppStore: { getState: () => ({ loadSettings: api.loadSettings }) } }));
 import Config from './Config';
+import { useConfigDraftStore } from '../stores/configDraftStore';
 const snapshot: ConfigWorkspaceSnapshot = {
   available: true, reviewToken: 'review-before', definitions: [{ key: 'minimap_update_rate_hz', file: 'gameinfo.gi', type: 'numeric', min: 5, max: 60, step: 5,
     label: 'minimap update rate hz', description: 'control', surfaces: ['game-configuration'], gameDefault: '20', engineDefault: '20' }],
@@ -35,6 +36,7 @@ const setValue = async (selector: string, value: string) => {
   });
 };
 beforeEach(async () => {
+  useConfigDraftStore.setState({ snapshot: null, values: {}, commands: '', launchOptions: '' });
   vi.clearAllMocks();
   api.getConfigWorkspace.mockResolvedValue(snapshot);
   api.applyConfigWorkspace.mockResolvedValue(snapshot);
@@ -45,6 +47,17 @@ beforeEach(async () => {
 });
 afterEach(() => { act(() => root.unmount()); host.remove(); });
 describe('Config staged editing', () => {
+  it('retains drafts and their original review token across route unmounts', async () => {
+    await setValue('#config-launch', '-draft');
+    act(() => root.unmount());
+    api.getConfigWorkspace.mockResolvedValue({ ...snapshot, reviewToken: 'later' });
+    root = createRoot(host);
+    await act(async () => { root.render(<ConfirmContext value={confirm}><Config /></ConfirmContext>); await flush(); });
+    expect((document.querySelector('#config-launch') as HTMLInputElement).value).toBe('-draft');
+    await click('Review and apply');
+    expect(api.applyConfigWorkspace).toHaveBeenCalledWith({ reviewToken: 'review-before', gameinfo: {}, launchOptions: '-draft' });
+    expect(confirm.mock.calls[0][0].items).toContain('Steam launch options: -old → -draft');
+  });
   it('shows manual/unknown content without providing an unknown-key writer', () => {
     expect(host.textContent).toContain('handwritten_setting 7');
     expect(host.textContent).toContain('echo keep');

@@ -551,6 +551,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     // Download Queue
     getDownloadQueue: () => ipcRenderer.invoke('get-download-queue'),
+    getDownloadJobs: () => ipcRenderer.invoke('get-download-jobs'),
+    retryDownloadJob: (id: string) => ipcRenderer.invoke('retry-download-job', id),
     getCurrentDownload: () => ipcRenderer.invoke('get-current-download'),
     removeFromQueue: (modId: number, fileId?: number) =>
         ipcRenderer.invoke('remove-from-queue', modId, fileId),
@@ -806,6 +808,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
         inspectAsset: (path: string) => ipcRenderer.invoke('asset-inspection:inspect', path),
         models: () => ipcRenderer.invoke('foundry:models'),
         modelPreview: (entryPath: string) => ipcRenderer.invoke('foundry:modelPreview', entryPath),
+        selectModelReplacement: (entryPath: string) => ipcRenderer.invoke('foundry:selectModelReplacement', entryPath),
         exportModel: (entryPath: string) => ipcRenderer.invoke('foundry:exportModel', entryPath),
         heroes: () => ipcRenderer.invoke('foundry:heroes'),
         scanNonStandard: () => ipcRenderer.invoke('foundry:scanNonStandard'),

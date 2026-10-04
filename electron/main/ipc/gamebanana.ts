@@ -22,6 +22,7 @@ import {
 } from '../services/gamebanana';
 import { downloadMod, getDownloadQueue, getCurrentDownload, removeFromQueue, cancelActiveDownload, cancelDownloadTarget, resolveSuspiciousFileDecision, resolveMultiVpkPick, type DownloadModArgs } from '../services/download';
 import { getMainWindow } from '../index';
+import { getDownloadJobs, retryDownloadJob } from '../services/download';
 import type {
     BrowseModsArgs,
     GetModDetailsArgs,
@@ -105,6 +106,13 @@ ipcMain.handle('download-mod', async (_, args: DownloadModArgs): Promise<void> =
 });
 
 // get-download-queue
+ipcMain.handle('get-download-jobs', () => getDownloadJobs().filter(job => job.gamePath === getActiveDeadlockPath()));
+ipcMain.handle('retry-download-job', async (_event, id: string) => {
+    if (typeof id !== 'string' || !/^[a-f0-9]{64}$/.test(id)) throw new Error('Invalid download job');
+    const path = getActiveDeadlockPath();
+    if (!path) throw new Error('No Deadlock path configured');
+    await retryDownloadJob(id, path, getMainWindow());
+});
 ipcMain.handle('get-download-queue', () => {
     return getDownloadQueue();
 });

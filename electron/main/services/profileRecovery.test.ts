@@ -250,6 +250,25 @@ describe('retained bytes and interrupted recovery', () => {
 });
 
 describe('manual assisted isolation', () => {
+  it('rolls back the trial and old session if the phase cannot persist', async () => {
+    const game = join(state.root, 'game');
+    const session = await startModIsolation(game);
+    const rename = fs.rename.bind(fs);
+    let failed = false;
+    vi.spyOn(fs, 'rename').mockImplementation(async (from, to) => {
+      if (!failed && String(to).endsWith('/isolation.json')) {
+        failed = true;
+        expect(await fs.readFile(join(state.root, 'data', 'profile-recovery', 'interrupted.json'), 'utf8')).toContain('"isolation"');
+        throw new Error('session disk failure');
+      }
+      return rename(from, to);
+    });
+    await expect(applyModIsolationTrial(game, session.reviewToken)).rejects.toThrow('session disk failure');
+    expect((await getModIsolationSession(game))?.phase).toBe('baseline-ready');
+    expect(await fs.readFile(asset('addons', 'pak01_dir.vpk'), 'utf8')).toBe('local:a');
+    expect(state.active).toBe('original');
+    expect(await getInterruptedProfileRecovery(game)).toBe(null);
+  });
   it('tests a baseline, narrows only from explicit feedback, and restores original files', async () => {
     await fs.writeFile(asset('addons', 'pak02_dir.vpk'), 'second:c');
     const game = join(state.root, 'game');

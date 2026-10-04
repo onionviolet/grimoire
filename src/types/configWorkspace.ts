@@ -8,6 +8,7 @@ export interface ConfigUnknownEntry {
 }
 
 export interface ConfigWorkspaceSnapshot {
+  workspaceId?: string;
   available: boolean;
   reviewToken: string;
   definitions: readonly ConfigKeyDefinition[];

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import * as autoexec from './autoexec';
@@ -15,12 +15,13 @@ vi.mock('fs', async original => {
   } };
 });
 vi.mock('./settings', () => ({ loadSettings: () => ({ ...settings.value }), saveSettings: (next: typeof settings.value) => { settings.value = next; } }));
+vi.mock('../utils/paths', () => ({ getUserDataPath: () => join(root, 'userdata') }));
 vi.mock('./mods', () => ({ runExclusiveModMutation: async (operation: () => unknown) => operation() }));
 const stock = readFileSync(join(__dirname, '__fixtures__/stock-gameinfo.gi'), 'utf8');
 let root: string;
 let gameinfo: string;
 beforeEach(() => {
-  root = mkdtempSync(join(tmpdir(), 'grimoire-config-'));
+  root = mkdtempSync(join(realpathSync(tmpdir()), 'grimoire-config-'));
   gameinfo = join(root, 'game/citadel/gameinfo.gi');
   mkdirSync(join(root, 'game/citadel/cfg'), { recursive: true });
   writeFileSync(gameinfo, stock);

@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'http';
-import { mkdtempSync } from 'fs';
+import { mkdtempSync, realpathSync } from 'fs';
 import { promises as fs } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -20,7 +20,7 @@ async function listen(handler: (request: IncomingMessage, response: ServerRespon
 }
 
 function destination(name: string): string {
-    const root = mkdtempSync(join(tmpdir(), 'download-transfer-test-'));
+    const root = mkdtempSync(join(realpathSync(tmpdir()), 'download-transfer-test-'));
     roots.push(root);
     return join(root, name);
 }
@@ -31,6 +31,40 @@ afterAll(async () => {
 });
 
 describe('downloadTransfer', () => {
+    it('resumes a verified disk checkpoint across invocations and ignores an uncheckpointed tail', async () => {
+        const body = Buffer.from('abcdefghijklmnopqrstuvwxyz');
+        let first = true, requestedRange: string | undefined;
+        const url = await listen((request, response) => {
+            if (first) {
+                first = false;
+                response.writeHead(200, { 'Content-Length': body.length, ETag: '"disk-v1"' });
+                response.write(body.subarray(0, 10));
+                setTimeout(() => response.destroy(), 30);
+            } else {
+                requestedRange = request.headers.range;
+                expect(request.headers['if-range']).toBe('"disk-v1"');
+                response.writeHead(206, { 'Content-Length': body.length - 10, 'Content-Range': `bytes 10-${body.length - 1}/${body.length}`, ETag: '"disk-v1"' });
+                response.end(body.subarray(10));
+            }
+        });
+        const path = destination('durable.zip'), metadata = `${path}.json`;
+        await expect(downloadTransfer({ candidateUrls: [url], destinationPath: path, resumeMetadataPath: metadata, onProgress: () => {} })).rejects.toThrow();
+        expect(JSON.parse(await fs.readFile(metadata, 'utf8')).bytes).toBe(10);
+        await fs.appendFile(path, 'uncheckpointed');
+        await downloadTransfer({ candidateUrls: [url], destinationPath: path, resumeMetadataPath: metadata, onProgress: () => {} });
+        expect(requestedRange).toBe('bytes=10-');
+        expect(await fs.readFile(path)).toEqual(body);
+    });
+    it('retries a transient server failure with bounded backoff', async () => {
+        let calls = 0;
+        const url = await listen((_request, response) => {
+            if (++calls === 1) { response.writeHead(503); response.end(); }
+            else { response.writeHead(200, { 'Content-Length': 2 }); response.end('ok'); }
+        });
+        const attempts: number[] = [];
+        await downloadTransfer({ candidateUrls: [url], destinationPath: destination('retry.zip'), onProgress: () => {}, retryCount: 1, onRetry: attempt => attempts.push(attempt) });
+        expect(calls).toBe(2); expect(attempts).toEqual([1]);
+    });
     it('downloads from the selected server and reports aggregate progress', async () => {
         const body = Buffer.from('complete archive payload');
         const url = await listen((_request, response) => {

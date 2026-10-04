@@ -1,6 +1,6 @@
 import { promises as fs } from 'fs';
 import { join } from 'path';
-import { randomUUID } from 'crypto';
+import { randomUUID, createHash } from 'crypto';
 import { modelCodenamesForHero, modelEntryForHero, soundCodenameForHeroName } from '../../../src/lib/heroIdentity';
 import { HERO_ABILITY_SLOTS } from './heroAbilitySlots';
 import { getHeroSounds, ensureVoiceclip, foundryBuildFingerprintKey } from './foundryCatalog';
@@ -79,7 +79,7 @@ export async function prepareHeroAbilityPreview(deadlockPath: string, heroName: 
                 if (bytes.toString('ascii', 0, 4) !== 'glTF' || bytes.readUInt32LE(4) !== 2 || bytes.readUInt32LE(8) !== bytes.length) throw new Error('Invalid ability GLB export.');
                 if (cache.key !== await foundryBuildFingerprintKey(deadlockPath)) throw new Error('The game files changed during ability export.');
                 await fs.rename(temporary, path);
-                modelUrl = cache.url + `ability.glb?v=${randomUUID()}`;
+                modelUrl = cache.url + `ability.glb?v=${createHash('sha256').update(bytes).digest('hex')}`;
                 skinApplied = source.skinApplied; skinFallback = source.skinFallback;
             } finally { await fs.rm(temporary, { force: true }); }
             if (!modelUrl) throw new Error('The selected ability animation could not be exported.');

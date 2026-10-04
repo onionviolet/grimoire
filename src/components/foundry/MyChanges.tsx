@@ -73,6 +73,7 @@ const SORTS: Array<{ value: FoundryChangeSort; labelKey: string; fallback: strin
  *  part.kind from borrowing the texture row's icon: it reads as a neutral file
  *  instead of impersonating a row type it is not (T-03-09). */
 const KIND_ICONS: Record<FoundryChangeKind, LucideIcon> = {
+  model: FileQuestion,
   sound: Volume2,
   texture: ImageIcon,
   recolor: Palette,
@@ -89,6 +90,8 @@ function kindLabelOf(kind: FoundryChangeKind): { key: string; fallback: string; 
       return null;
     case 'recolor':
       return { key: 'foundry.subtools.recolor', fallback: 'Recolor', tone: 'accent' };
+    case 'model':
+      return { key: 'foundry.buildTray.kind.model', fallback: 'Model', tone: 'neutral' };
     default:
       return { key: 'foundry.myChanges.kind.other', fallback: 'Change', tone: 'neutral' };
   }
@@ -572,6 +575,7 @@ function ChangeDetails({
           return [edit.request.audioPath, ...(edit.request.assignments ?? []).map((assignment) => assignment.audioPath)];
         }
         if (edit.kind === 'texture') return [edit.request.imagePath];
+        if (edit.kind === 'model') return [edit.request.sourcePath];
         // A recolor edit's inputs are numeric picker parameters, resolved to
         // the shared per-hero bake cache main owns; no user file to check.
         return [];

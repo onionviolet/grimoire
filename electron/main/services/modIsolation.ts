@@ -9,7 +9,7 @@ import { dirname, basename } from 'path';
 import { fingerprintFile } from './fileMatch';
 import { captureIsolationRecoveryUnlocked, applyIsolationRecoveryUnlocked, restoreIsolationRecoveryUnlocked } from './profileRecovery';
 import { assertRecoveryPath, recoveryDirectory, writeRecoveryJson } from './recoveryBackup';
-import { readRecoveryJournal } from './recoveryJournal';
+import { readRecoveryJournal, writeJournaledIsolation } from './recoveryJournal';
 import type { ModIsolationSession } from '../../../src/types/recovery';
 
 interface StoredSession extends ModIsolationSession { gamePath: string; originalIds: string[] }
@@ -78,10 +78,11 @@ export function applyModIsolationTrial(gamePath: string, token: string): Promise
     await validateReview(gamePath, session, token);
     await applyIsolationRecoveryUnlocked(gamePath, session.recoveryPointId, session.testIds, async () => {
       if (token !== await liveToken(gamePath)) throw new Error('Isolation review changed before mutation');
+    }, async journal => {
+      session.phase = session.phase === 'baseline-ready' ? 'baseline-testing' : 'testing';
+      session.reviewToken = await liveToken(gamePath);
+      await writeJournaledIsolation(journal, session);
     });
-    session.phase = session.phase === 'baseline-ready' ? 'baseline-testing' : 'testing';
-    session.reviewToken = await liveToken(gamePath);
-    await writeRecoveryJson(sessionPath(), session);
     return session;
   });
 }
@@ -112,7 +113,6 @@ export function finishModIsolation(gamePath: string, token: string): Promise<voi
     if (await readRecoveryJournal(gamePath)) throw new Error('Resolve interrupted recovery first');
     await restoreIsolationRecoveryUnlocked(gamePath, session.recoveryPointId, async () => {
       if (token !== await liveToken(gamePath)) throw new Error('Restore review changed before mutation');
-    });
-    await fs.unlink(sessionPath());
+    }, journal => writeJournaledIsolation(journal, null));
   });
 }

@@ -19,6 +19,13 @@ import {
     endModMutationRunningScope,
 } from './gameSessionMods';
 import type { DeleteModsProgress } from '../../../src/types/mod';
+import { journalModRename, writeJournaledModConfig } from './recoveryJournal';
+async function fixGameinfoForModMutation(path: string) {
+    let planned: { path: string; next: string; before: string } | undefined;
+    const status = fixGameinfo(path, (path, next, before) => { planned = { path, next, before }; });
+    if (planned) await writeJournaledModConfig(planned.path, planned.next, planned.before);
+    return status;
+}
 
 /** Verbose mod-mutation trace, gated on the `verboseModTrace` setting. Lands in
  *  main.log (captured by the diagnostic report) so a desync between the UI and
@@ -73,6 +80,7 @@ type CollisionMetadataOwner = 'enabled' | 'disabled';
  * file (game actually running on it) still throws after the last attempt.
  */
 async function renameWithRetry(from: string, to: string, attempts = 5): Promise<void> {
+    await journalModRename(from, to);
     for (let i = 0; ; i++) {
         try {
             await fs.rename(from, to);
@@ -838,7 +846,7 @@ async function allocateSlot(
     if (!overflowFolder) {
         throw new Error(ENABLE_LIMIT_MESSAGE);
     }
-    const status = fixGameinfo(deadlockPath);
+    const status = await fixGameinfoForModMutation(deadlockPath);
     if (!status.configured) {
         throw new Error(
             `Couldn't add the overflow mod folder to gameinfo.gi${status.message ? `: ${status.message}` : ''}. ` +
@@ -1502,7 +1510,7 @@ async function reorderModsImpl(deadlockPath: string, orderedIds: string[]): Prom
     const maxIdx = addresses.reduce((mx, a) => Math.max(mx, a.idx), 0);
     if (maxIdx >= 1) {
         for (let k = 1; k <= maxIdx; k++) overflowAddonsPath(deadlockPath, k);
-        const status = fixGameinfo(deadlockPath);
+        const status = await fixGameinfoForModMutation(deadlockPath);
         if (!status.configured) {
             throw new Error(
                 `Couldn't add the overflow mod folders to gameinfo.gi${status.message ? `: ${status.message}` : ''}. ` +

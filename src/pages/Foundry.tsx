@@ -389,7 +389,7 @@ export default function Foundry() {
           {activeTool === 'assets' ? (
             <AssetBrowse />
           ) : activeTool === 'models' ? (
-            <ModelBrowse />
+            <ModelBrowse onStage={stageEdit} />
           ) : activeTool === 'sound' ? (
             <SoundBrowse heroes={heroes} heroNames={heroNames} hero={null} onStage={stageEdit} />
           ) : activeTool === 'myChanges' ? (
@@ -414,7 +414,7 @@ export default function Foundry() {
           )}
         </PageLayout>
       </div>
-      {activeTool !== 'models' && activeTool !== 'assets' && <FoundryBuildTray edits={stagedEdits} outputName={outputName} onOutputNameChange={setOutputName} onForge={forge} onInstall={install} onRemove={removeEdit} />}
+      {(activeTool !== 'assets' && (activeTool !== 'models' || stagedEdits.length > 0)) && <FoundryBuildTray edits={stagedEdits} outputName={outputName} onOutputNameChange={setOutputName} onForge={forge} onInstall={install} onRemove={removeEdit} />}
     </div>
   );
 }

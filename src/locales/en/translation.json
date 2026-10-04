@@ -152,7 +152,10 @@
       "title": "Apply these configuration changes?",
       "message": "Apply the displayed values and any staged command or launch-option edits. If the files changed since you loaded them, refresh and review again.",
       "commands": "Replace the managed autoexec command list with the staged list",
-      "launchOptions": "Save the staged launch options for the next managed launch"
+      "added": "Add command",
+      "removed": "Remove command",
+      "changeCount_one": "{{count}} change",
+      "changeCount_other": "{{count}} changes"
     },
     "discard": {
       "title": "Discard unsaved configuration edits?",
@@ -717,7 +720,16 @@
       "preparing": "Preparing a static model preview...",
       "previewFailed": "Could not preview this model",
       "previewFallback": "The exported model could not be drawn here. You can still export its GLB for inspection.",
-      "previewHint": "Drag to orbit and scroll to zoom. This is a static asset preview with basic lighting; it does not show installed skins or game-engine effects."
+      "previewHint": "Drag to orbit and scroll to zoom. This is a static asset preview with basic lighting; it does not show installed skins or game-engine effects.",
+      "replacement": {
+        "help": "Choose a compiled model VPK bundle that contains this exact model path. Grimoire checks bundled assets and references to your installed base game. GLB editing and new skeletons are not supported here.",
+        "choose": "Choose model bundle",
+        "dependencies": "Reviewed dependencies",
+        "bundle": "Included in bundle",
+        "base": "Installed base game",
+        "writeSet": "This replacement will stage {{count}} asset paths. Nothing is installed until you forge.",
+        "stage": "Stage model replacement"
+      }
     },
     "assets": {
       "description": "Inspect base-game textures, materials, and particles by their exact VPK paths. Inspection never changes game files.",
@@ -4709,6 +4721,23 @@
       "confirmRestore": "Close Deadlock first. Restore the original user mods, file order and configuration, then end isolation?",
       "confirm": "Continue",
       "refreshReview": "Refresh recovery review"
+    }
+  },
+  "downloadHistory": {
+    "title": "Saved downloads",
+    "help": "Interrupted downloads stay paused until you retry. Verified partial bytes resume when the server supports ranges. Retrying also completes installation.",
+    "retry": "Resume or retry",
+    "empty": "No saved downloads.",
+    "pending_one": "Resume {{count}} download",
+    "pending_other": "Resume {{count}} downloads",
+    "states": {
+      "queued": "Queued",
+      "downloading": "Downloading",
+      "retrying": "Retrying",
+      "paused": "Paused after restart",
+      "failed": "Failed",
+      "cancelled": "Cancelled",
+      "completed": "Completed"
     }
   }
 }

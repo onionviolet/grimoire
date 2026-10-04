@@ -17,8 +17,11 @@ import { imprintFreshlyInstalled } from './imprintMods';
 import { validateDownloadUrl, validateFileSize } from './security';
 import { forgeFileNameStem } from './forgeProtocol';
 import { gameBananaFileServerSelector } from './gamebananaFileServers';
-import { downloadTransfer, type DownloadServerStatus } from './downloadTransfer';
+import { downloadTransfer, type DownloadServerStatus, type DownloadTransferOptions } from './downloadTransfer';
 import { loadSettings } from './settings';
+import { downloadCachedArchive } from './downloadCache';
+import { getDownloadJobs, saveDownloadJob, updateDownloadJob } from './downloadJobs';
+export { getDownloadJobs } from './downloadJobs';
 import { getVpkLabels, inferHeroFromVpk } from './vpk';
 import type { LockerHeroSource } from '../../../src/types/mod';
 // DownloadModArgs is single-sourced in src/types/electron.ts; re-exported
@@ -169,6 +172,7 @@ async function moveFileWithoutOverwrite(sourcePath: string, destinationPath: str
 
 // Download queue to prevent race conditions with VPK priority assignment
 interface QueuedDownload {
+    jobId: string;
     deadlockPath: string;
     args: DownloadModArgs;
     directUrl?: string;
@@ -217,7 +221,8 @@ export function removeFromQueue(modId: number, fileId?: number): boolean {
     );
     if (index !== -1) {
         const removed = downloadQueue.splice(index, 1)[0];
-        removed.reject(new Error('Cancelled by user'));
+        try { updateDownloadJob(removed.jobId, 'cancelled'); } catch (error) { console.error('[download] Could not save cancellation', error); }
+        removed.reject(new Error('CANCELLED_BY_USER'));
         emitQueueUpdate();
         return true;
     }
@@ -275,8 +280,9 @@ export function downloadMod(
         return Promise.resolve({ installedVpks: [] });
     }
 
+    const jobId = saveDownloadJob(deadlockPath, args);
     return new Promise((resolve, reject) => {
-        downloadQueue.push({ deadlockPath, args, mainWindow, resolve, reject });
+        downloadQueue.push({ jobId, deadlockPath, args, mainWindow, resolve, reject });
         emitQueueUpdate();
         processQueue();
     });
@@ -304,7 +310,7 @@ export function downloadModFromUrl(
     const alreadyQueued = downloadQueue.some(
         (q) => q.directUrl === oneClick.archiveUrl
     );
-    if (alreadyQueued) {
+    if (alreadyQueued || getDownloadJobs().some(job => job.gamePath === deadlockPath && job.directUrl === oneClick.archiveUrl && ['downloading', 'retrying'].includes(job.state))) {
         console.log(`[downloadModFromUrl] Already queued: ${oneClick.archiveUrl}`);
         return Promise.resolve({ installedVpks: [] });
     }
@@ -317,9 +323,10 @@ export function downloadModFromUrl(
         section: oneClick.modType ?? 'Mod',
     };
 
+    const jobId = saveDownloadJob(deadlockPath, args, oneClick.archiveUrl);
     return new Promise((resolve, reject) => {
         downloadQueue.push({
-            deadlockPath,
+            jobId, deadlockPath,
             args,
             directUrl: oneClick.archiveUrl,
             enrichedDetails: oneClick.enrichedDetails,
@@ -367,6 +374,7 @@ async function processQueue(): Promise<void> {
         };
         emitQueueUpdate(); // Notify UI that queue changed and current download started
         try {
+            updateDownloadJob(item.jobId, 'downloading');
             const result = item.directUrl
                 ? await executeOneClickDownload(
                     item.deadlockPath,
@@ -376,6 +384,7 @@ async function processQueue(): Promise<void> {
                     item.mainWindow
                 )
                 : await executeDownload(item.deadlockPath, item.args, item.mainWindow);
+            updateDownloadJob(item.jobId, 'completed');
             item.resolve(result);
         } catch (error) {
             const err = error instanceof Error ? error : new Error(String(error));
@@ -390,6 +399,7 @@ async function processQueue(): Promise<void> {
                     message: 'Download cancelled.',
                 });
             }
+            try { updateDownloadJob(item.jobId, err.message === 'CANCELLED_BY_USER' ? 'cancelled' : 'failed', err.message); } catch (diskError) { console.error('[download] Could not save failure state', diskError); }
             item.reject(err);
         }
         currentCancelHandler = null;
@@ -414,7 +424,11 @@ export async function downloadFile(
     signal?: AbortSignal,
     onServerStatus?: (status: DownloadServerStatus) => void,
     redirectsRemaining = MAX_DOWNLOAD_REDIRECTS,
+    persistent?: Pick<DownloadTransferOptions, 'resumeMetadataPath' | 'resumeIdentity' | 'onRetry'>,
 ): Promise<void> {
+    if (persistent && !/^https:\/\/(?:www\.)?gamebanana\.com\/(?:mmdl|dl)\/\d+(?:[/?].*)?$/.test(url)) {
+        return downloadTransfer({ ...persistent, candidateUrls: [url], destinationPath: destPath, onProgress, onResponseFilename, connectionTimeoutMs, stallTimeoutMs: Math.min(responseTimeoutMs, 60_000), signal, onServerStatus, retryCount: 2 });
+    }
     return new Promise((resolve, reject) => {
         const protocol = url.startsWith('https') ? https : http;
         let connectionTimedOut = false;
@@ -512,6 +526,7 @@ export async function downloadFile(
                             }
 
                             await downloadTransfer({
+                                ...persistent, retryCount: persistent ? 2 : 0,
                                 candidateUrls: directCandidates,
                                 destinationPath: destPath,
                                 onProgress,
@@ -546,6 +561,7 @@ export async function downloadFile(
                         signal,
                         onServerStatus,
                         redirectsRemaining - 1,
+                        persistent,
                     )
                         .then(() => finalize(null))
                         .catch((error: unknown) => finalize(
@@ -933,29 +949,7 @@ async function executeDownload(
 
     // Download with progress
     const expectedSize = file.fileSize || 0;
-    await downloadFile(
-        file.downloadUrl,
-        downloadPath,
-        (downloaded, total) => {
-            mainWindow?.webContents.send('download-progress', {
-                modId,
-                fileId,
-                downloaded,
-                total,
-            });
-        },
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        (status) => {
-            mainWindow?.webContents.send('download-server-status', {
-                modId,
-                fileId,
-                ...status,
-            });
-        },
-    );
+    await transferCachedArchive(file.downloadUrl, downloadPath, expectedSize, modId, fileId, mainWindow);
 
     // Verify file size after download (P0 security fix)
     try {
@@ -1378,31 +1372,7 @@ async function executeOneClickDownload(
     // mod's file list.
     let responseFilename: string | undefined;
 
-    await downloadFile(
-        archiveUrl,
-        downloadPath,
-        (downloaded, total) => {
-            mainWindow?.webContents.send('download-progress', {
-                modId,
-                fileId,
-                downloaded,
-                total,
-            });
-        },
-        undefined,
-        undefined,
-        (name) => {
-            responseFilename = name;
-        },
-        undefined,
-        (status) => {
-            mainWindow?.webContents.send('download-server-status', {
-                modId,
-                fileId,
-                ...status,
-            });
-        },
-    );
+    await transferCachedArchive(archiveUrl, downloadPath, 0, modId, fileId, mainWindow, name => { responseFilename = name; });
 
     try {
         const actualSize = statSync(downloadPath).size;
@@ -1847,4 +1817,30 @@ export async function installForgeVpk(
     } finally {
         await cleanupDownloadWorkDir(workDir);
     }
+}
+
+/** Saved jobs never execute on startup. Resuming is an explicit user action. */
+export function retryDownloadJob(id: string, activeGamePath: string, mainWindow: BrowserWindow | null): Promise<DownloadInstallResult> {
+    const job = getDownloadJobs().find(job => job.id === id);
+    if (!job || job.gamePath !== activeGamePath || !['paused', 'failed', 'cancelled'].includes(job.state)) throw new Error('This download is unavailable for the selected installation');
+    return job.directUrl
+        ? downloadModFromUrl(activeGamePath, { archiveUrl: job.directUrl, modId: job.args.modId, modType: job.args.section }, mainWindow)
+        : downloadMod(activeGamePath, job.args, mainWindow);
+}
+async function transferCachedArchive(url: string, destinationPath: string, expectedSize: number, modId: number, fileId: number, mainWindow: BrowserWindow | null, onResponseFilename?: (name: string) => void): Promise<void> {
+    const abort = new AbortController();
+    currentCancelHandler = () => abort.abort();
+    try {
+        const options = {
+            signal: abort.signal, onResponseFilename,
+            onProgress: (downloaded: number, total: number) => mainWindow?.webContents.send('download-progress', { modId, fileId, downloaded, total }),
+            onServerStatus: (status: DownloadServerStatus) => mainWindow?.webContents.send('download-server-status', { modId, fileId, ...status }),
+            onRetry: () => {
+                const job = getDownloadJobs().find(job => job.args.modId === modId && job.args.fileId === fileId && job.state === 'downloading');
+                if (job) updateDownloadJob(job.id, 'retrying');
+                emitQueueUpdate();
+            },
+        };
+        await downloadCachedArchive(url, destinationPath, expectedSize, options, (partial, metadata, identity) => downloadFile(url, partial, options.onProgress, undefined, undefined, onResponseFilename, abort.signal, options.onServerStatus, MAX_DOWNLOAD_REDIRECTS, { resumeMetadataPath: metadata, resumeIdentity: identity, onRetry: options.onRetry }));
+    } finally { currentCancelHandler = null; }
 }

@@ -1791,6 +1791,9 @@ export async function scanInstallationHealth(): Promise<import('../types/recover
 export async function foundryModels(): Promise<import('../types/foundryModels').FoundryModelEntry[]> {
   return window.electronAPI.foundry.models();
 }
+export async function foundrySelectModelReplacement(entryPath: string): Promise<import('../types/modelReplacement').ModelReplacementSelection | null> {
+    return window.electronAPI.foundry.selectModelReplacement(entryPath);
+}
 export async function foundryModelPreview(entryPath: string): Promise<import('../types/foundryModels').FoundryModelPreview> {
   return window.electronAPI.foundry.modelPreview(entryPath);
 }

@@ -1,6 +1,8 @@
 import { promises as fs } from 'fs';
 import { join } from 'path';
 import { parseDocument } from 'yaml';
+import { vpkCrc32 as chatLaneCrc32, writeNativeVpk as writeChatLaneVpk } from './nativeVpk';
+export { vpkCrc32 as chatLaneCrc32, writeNativeVpk as writeChatLaneVpk } from './nativeVpk';
 
 // Port of RedMser/ChatLane's MIT converter, pinned in resources/chatlane/PROVENANCE.md.
 // Preserve KV types and insertion order: changing Int64 to Int32 changes game resources.
@@ -13,14 +15,6 @@ export type ChatLaneProperty = { key: string; node: ChatLaneNode };
 const MAX_YAML_BYTES = 1024 * 1024;
 const MAX_VPK_BYTES = 32 * 1024 * 1024;
 
-export function chatLaneCrc32(bytes: Buffer): number {
-    let crc = 0xffffffff;
-    for (const byte of bytes) {
-        crc ^= byte;
-        for (let bit = 0; bit < 8; bit++) crc = (crc >>> 1) ^ ((crc & 1) ? 0xedb88320 : 0);
-    }
-    return (crc ^ 0xffffffff) >>> 0;
-}
 
 function properties(node: ChatLaneNode): ChatLaneProperty[] { return node.value as ChatLaneProperty[]; }
 function scalar(type: ChatLaneNode['type'], value: string | boolean | number): ChatLaneNode { return { type, value }; }
@@ -177,50 +171,6 @@ export function writeChatLaneResource(root: ChatLaneProperty[], red2Template: Bu
 }
 
 /** Self-contained VPK v1 with standard CRCs and no external archive chunks. */
-export function writeChatLaneVpk(entries: Map<string, Buffer>): Buffer {
-    const groups = new Map<string, Map<string, { name: string; bytes: Buffer }[]>>();
-    for (const [path, bytes] of entries) {
-        const slash = path.lastIndexOf('/');
-        const dot = path.lastIndexOf('.');
-        const extension = dot > slash ? path.slice(dot + 1) : ' ';
-        const directory = slash >= 0 ? path.slice(0, slash) : ' ';
-        const name = path.slice(slash + 1, dot > slash ? dot : undefined);
-        if (!groups.has(extension)) groups.set(extension, new Map());
-        const directories = groups.get(extension)!;
-        if (!directories.has(directory)) directories.set(directory, []);
-        directories.get(directory)!.push({ name, bytes });
-    }
-    const tree: Buffer[] = [];
-    const payload: Buffer[] = [];
-    let offset = 0;
-    const nul = (value: string) => Buffer.from(`${value}\0`, 'utf8');
-    for (const [extension, directories] of groups) {
-        tree.push(nul(extension));
-        for (const [directory, files] of directories) {
-            tree.push(nul(directory));
-            for (const { name, bytes } of files) {
-                const entry = Buffer.alloc(18);
-                entry.writeUInt32LE(chatLaneCrc32(bytes));
-                entry.writeUInt16LE(0x7fff, 6);
-                entry.writeUInt32LE(offset, 8);
-                entry.writeUInt32LE(bytes.length, 12);
-                entry.writeUInt16LE(0xffff, 16);
-                tree.push(nul(name), entry);
-                payload.push(bytes);
-                offset += bytes.length;
-            }
-            tree.push(nul(''));
-        }
-        tree.push(nul(''));
-    }
-    tree.push(nul(''));
-    const directory = Buffer.concat(tree);
-    const header = Buffer.alloc(12);
-    header.writeUInt32LE(0x55aa1234);
-    header.writeUInt32LE(1, 4);
-    header.writeUInt32LE(directory.length, 8);
-    return Buffer.concat([header, directory, ...payload]);
-}
 
 /** Bounded v1/v2 reader for ChatLane's root YAML, including preload and chunk data. */
 export async function readChatLaneConfig(vpkPath: string): Promise<string> {

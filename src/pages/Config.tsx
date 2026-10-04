@@ -9,17 +9,15 @@ import ConfigValueEditor from '../components/config/ConfigValueEditor';
 import ConfigBundleDialog from '../components/config/ConfigBundleDialog';
 import { applyConfigWorkspace, getConfigWorkspace } from '../lib/api';
 import { useAppStore } from '../stores/appStore';
-import type { ConfigBundle, ConfigWorkspaceSnapshot } from '../types/configWorkspace';
+import { useConfigDraftStore } from '../stores/configDraftStore';
+import type { ConfigBundle } from '../types/configWorkspace';
 
 type Filter = 'all' | 'changed' | 'conflicted' | 'gameinfo' | 'unknown';
 
 export default function Config() {
   const { t } = useTranslation();
   const confirm = useConfirm();
-  const [snapshot, setSnapshot] = useState<ConfigWorkspaceSnapshot | null>(null);
-  const [values, setValues] = useState<Record<string, string>>({});
-  const [commands, setCommands] = useState('');
-  const [launchOptions, setLaunchOptions] = useState('');
+  const { snapshot, values, commands, launchOptions, accept, setValues, setCommands, setLaunchOptions } = useConfigDraftStore();
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
   const [page, setPage] = useState(0);
@@ -28,14 +26,11 @@ export default function Config() {
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [bundleOpen, setBundleOpen] = useState(false);
-  const accept = useCallback((next: ConfigWorkspaceSnapshot) => {
-    setSnapshot(next); setValues({}); setCommands(next.autoexecCommands.join('\n')); setLaunchOptions(next.launchOptions);
-  }, []);
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (discard = true) => {
     setLoading(true); setError(null); setSaved(false);
-    try { accept(await getConfigWorkspace()); } catch (failure) { setError(String(failure)); } finally { setLoading(false); }
+    try { accept(await getConfigWorkspace(), discard); } catch (failure) { setError(String(failure)); } finally { setLoading(false); }
   }, [accept]);
-  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => { void refresh(false); }, [refresh]);
   const commandsChanged = commands !== (snapshot?.autoexecCommands.join('\n') ?? '');
   const launchChanged = launchOptions !== (snapshot?.launchOptions ?? '');
   const dirty = Object.keys(values).length > 0 || commandsChanged || launchChanged;
@@ -69,9 +64,15 @@ export default function Config() {
     setBusy(true); setError(null); setSaved(false);
     try {
       const items = Object.entries(values).map(([key, value]) => `${key}: ${snapshot.performance.convarStates?.[key]?.value ?? t('config.notSet')} → ${value}`);
-      if (commandsChanged) items.push(t('config.review.commands'));
-      if (launchChanged) items.push(t('config.review.launchOptions'));
-      if (!await confirm({ title: t('config.review.title'), message: t('config.review.message'), items, confirmLabel: t('config.apply') })) return;
+      if (commandsChanged) {
+        const previous = snapshot.autoexecCommands;
+        const next = commands.split('\n').map(line => line.trim()).filter(Boolean);
+        previous.filter(line => !next.includes(line)).forEach(line => items.push(`${t('config.review.removed')}: ${line}`));
+        next.filter(line => !previous.includes(line)).forEach(line => items.push(`${t('config.review.added')}: ${line}`));
+        items.push(`${t('config.review.commands')}:\n${next.join('\n') || t('config.notSet')}`);
+      }
+      if (launchChanged) items.push(`${t('config.launchOptions')}: ${snapshot.launchOptions || t('config.notSet')} → ${launchOptions || t('config.notSet')}`);
+      if (!await confirm({ title: t('config.review.title'), message: t('config.review.message'), items, wrapItems: true, itemsLabel: t('config.review.changeCount', { count: items.length }), confirmLabel: t('config.apply') })) return;
       const next = await applyConfigWorkspace({ reviewToken: snapshot.reviewToken, gameinfo: values,
         ...(commandsChanged ? { autoexecCommands: commands.split('\n').map(line => line.trim()).filter(Boolean) } : {}),
         ...(launchChanged ? { launchOptions } : {}) });

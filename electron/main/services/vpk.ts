@@ -278,6 +278,7 @@ interface VpkCacheEntry {
     paths: string[] | null;
 }
 const vpkParseCache = new Map<string, VpkCacheEntry>();
+const entryIndexCache = new Map<string, { signature: string; entries: VpkEntryIndex[] }>();
 
 // Invalidation epochs guard the async (worker) parse path against a stale
 // write-back: a VPK rewritten while a worker parse is in flight, to the same
@@ -297,9 +298,11 @@ const inflightParses = new Map<string, Promise<string[] | null>>();
 export function invalidateVpkParseCache(vpkPath?: string): void {
     if (vpkPath) {
         vpkParseCache.delete(vpkPath);
+        entryIndexCache.delete(vpkPath);
         cacheEpochs.set(vpkPath, (cacheEpochs.get(vpkPath) ?? 0) + 1);
     } else {
         vpkParseCache.clear();
+        entryIndexCache.clear();
         globalEpoch++;
     }
 }
@@ -716,6 +719,26 @@ export function parseVpkEntryStats(vpkPath: string): VpkEntryStat[] | null {
  * asset: CRC, size, and archive number are all present in the directory tree.
  */
 export function parseVpkEntryIndex(vpkPath: string): VpkEntryIndex[] | null {
+    try {
+        const stat = statSync(vpkPath, { bigint: true });
+        const signature = `${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeNs}:${stat.ctimeNs}`;
+        const cached = entryIndexCache.get(vpkPath);
+        if (cached?.signature === signature) {
+            entryIndexCache.delete(vpkPath); entryIndexCache.set(vpkPath, cached);
+            return cached.entries;
+        }
+        const entries = readVpkEntryIndex(vpkPath);
+        if (entries) {
+            entryIndexCache.set(vpkPath, { signature, entries });
+            while (entryIndexCache.size > 4 || [...entryIndexCache.values()].reduce((sum, value) => sum + value.entries.length, 0) > 500_000) {
+                entryIndexCache.delete(entryIndexCache.keys().next().value!);
+            }
+        } else entryIndexCache.delete(vpkPath);
+        return entries;
+    } catch { entryIndexCache.delete(vpkPath); return null; }
+}
+
+function readVpkEntryIndex(vpkPath: string): VpkEntryIndex[] | null {
     if (!existsSync(vpkPath)) return null;
     let fd: number | null = null;
     try {

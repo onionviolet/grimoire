@@ -1,4 +1,5 @@
 import { listFoundryModels, prepareFoundryModel } from '../services/foundryModels';
+import { reviewModelReplacement, previewModelReplacement } from '../services/modelReplacement';
 /**
  * Foundry tab IPC: thin handlers over the foundryCatalog service. Each resolves
  * the active Deadlock path (dev-aware) and throws a friendly error when it is
@@ -126,6 +127,13 @@ async function saveFoundryAsset(
 }
 
 ipcMain.handle('foundry:models', () => listFoundryModels(requireDeadlockPath()));
+ipcMain.handle('foundry:selectModelReplacement', async (_event, entryPath: string) => {
+    const path = requireDeadlockPath();
+    const selection = await dialog.showOpenDialog({ properties: ['openFile'], filters: [{ name: 'VPK', extensions: ['vpk'] }] });
+    if (selection.canceled || !selection.filePaths[0]) return null;
+    const review = await reviewModelReplacement(path, entryPath, selection.filePaths[0]);
+    return { review, preview: await previewModelReplacement(path, review) };
+});
 ipcMain.handle('foundry:modelPreview', async (_event, entryPath: string) =>
     (await prepareFoundryModel(requireDeadlockPath(), entryPath)).preview
 );

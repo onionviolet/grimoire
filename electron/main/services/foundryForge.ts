@@ -3,6 +3,7 @@ import { join } from 'path';
 import { tmpdir } from 'os';
 import { randomUUID } from 'crypto';
 import type { FoundryForgeEdit, FoundryForgeRequest, VpkExportResult } from '../../../src/types/foundry';
+import { buildModelReplacement } from './modelReplacement';
 import type { FoundryBuildInfo, FoundryBuildPart } from '../../../src/types/mod';
 import { buildHeroSoundSwapVpk, cleanupHeroSoundSwapBuild } from './foundryCatalog';
 import { buildTextureReplacementVpk, cleanupTextureReplacementBuild } from './foundryTextureReplace';
@@ -27,6 +28,8 @@ export function reviewFoundryForge(edits: readonly FoundryForgeEdit[]) {
         } else if (edit.kind === 'texture') {
             entries = [normalize(edit.request.entryPath)];
         } else if (edit.kind === 'recolor') {
+            entries = edit.request.entries.map(normalize);
+        } else if (edit.kind === 'model') {
             entries = edit.request.entries.map(normalize);
         } else {
             const exhaustive: never = edit;
@@ -94,6 +97,7 @@ export function describeFoundryBuild(
                 heroName,
             };
         }
+        if (edit.kind === 'model') return { kind: 'model', title: baseName(edit.request.entryPath), entries: edit.request.entries.map(normalize), sourceFileName: baseName(edit.request.sourcePath) };
         const exhaustive: never = edit;
         throw new Error(`Unsupported Foundry edit kind: ${(exhaustive as FoundryForgeEdit).kind}`);
     });
@@ -129,6 +133,9 @@ export async function buildFoundryForgeVpk(deadlockPath: string, request: Foundr
                 built.push({ path: part.vpkPath, cleanup: () => cleanupTextureReplacementBuild(part.vpkPath) });
             } else if (edit.kind === 'recolor') {
                 const part = await buildRecolorVpk(deadlockPath, edit.request);
+                built.push({ path: part.vpkPath, cleanup: part.cleanup });
+            } else if (edit.kind === 'model') {
+                const part = await buildModelReplacement(deadlockPath, edit.request);
                 built.push({ path: part.vpkPath, cleanup: part.cleanup });
             } else {
                 const exhaustive: never = edit;

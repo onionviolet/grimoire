@@ -1,7 +1,8 @@
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
-import { Bounds, OrbitControls, useGLTF } from '@react-three/drei';
-import { clone } from 'three/examples/jsm/utils/SkeletonUtils.js';
+import { Bounds, OrbitControls } from '@react-three/drei';
+import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { useOwnedGltf } from './useOwnedGltf';
 import * as THREE from 'three';
 import { useTranslation } from 'react-i18next';
 import { getHeroAbilityPreviews, prepareHeroAbilityPreview } from '../../lib/api';
@@ -13,8 +14,11 @@ import { LoadingState } from '../common/PageComponents';
 import { ErrorBoundary } from '../common/ErrorBoundary';
 import RecolorTexturePreview from './RecolorTexturePreview';
 function Playback({ playback }: { playback: HeroAbilityPlayback }) {
-  const gltf = useGLTF(playback.modelUrl!);
-  const scene = useMemo(() => clone(gltf.scene), [gltf.scene]);
+  const gltf = useOwnedGltf(playback.modelUrl!);
+  return gltf ? <LoadedPlayback playback={playback} gltf={gltf} /> : null;
+}
+function LoadedPlayback({ playback, gltf }: { playback: HeroAbilityPlayback; gltf: GLTF }) {
+  const scene = gltf.scene;
   const mixer = useMemo(() => new THREE.AnimationMixer(scene), [scene]);
   const { t } = useTranslation();
   useEffect(() => {

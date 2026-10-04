@@ -1,4 +1,6 @@
-import { promises as fs } from 'fs';
+import { promises as fs, createReadStream } from 'fs';
+import { createHash } from 'crypto';
+import { writeRecoveryJson, assertRecoveryPath } from './recoveryBackup';
 import type { FileHandle } from 'fs/promises';
 import http, { type IncomingHttpHeaders, type IncomingMessage } from 'http';
 import https from 'https';
@@ -17,13 +19,26 @@ export interface DownloadTransferOptions {
     stallTimeoutMs?: number;
     signal?: AbortSignal;
     onServerStatus?: (status: DownloadServerStatus) => void;
+    /** Opt-in disk checkpoints; callers without this keep the existing cleanup contract. */
+    resumeMetadataPath?: string;
+    resumeIdentity?: string;
+    retryCount?: number;
+    onRetry?: (attempt: number) => void;
+    checkpoint?: (bytes: number, sha256: string) => Promise<void>;
 }
 
 type Validator = { header: 'ETag' | 'Last-Modified'; value: string };
-type TransferState = { total?: number; validator?: Validator };
+type TransferState = { total?: number; validator?: Validator; bytes?: number; sha256?: string; urls?: string[]; identity?: string };
+
+async function prefixHash(path: string, bytes: number) {
+    const hash = createHash('sha256');
+    if (bytes > 0) for await (const chunk of createReadStream(path, { start: 0, end: bytes - 1 })) hash.update(chunk);
+    return hash;
+}
 
 class RetryableTransferError extends Error { }
 class RestartTransferError extends RetryableTransferError { }
+class PermanentTransferError extends Error { }
 class FatalDiskError extends Error {
     constructor(error: unknown) {
         super(error instanceof Error ? error.message : String(error), { cause: error });
@@ -209,6 +224,7 @@ async function consumeResponse(
     stallTimeoutMs: number,
     onProgress: (downloaded: number, total: number) => void,
     signal?: AbortSignal,
+    checkpoint?: (bytes: number, sha256: string) => Promise<void>,
 ): Promise<void> {
     let file: FileHandle;
     try {
@@ -219,6 +235,10 @@ async function consumeResponse(
     }
 
     let received = 0;
+    let hash: ReturnType<typeof createHash> | undefined;
+    try { hash = checkpoint ? await prefixHash(destinationPath, startingOffset) : undefined; }
+    catch (error) { response.destroy(); await file.close(); throw new FatalDiskError(error); }
+    let checkpointBytes = startingOffset, checkpointTime = Date.now();
     let stallTimer: NodeJS.Timeout | undefined;
     let forcedError: Error | undefined;
     const armStallTimer = () => {
@@ -245,7 +265,13 @@ async function consumeResponse(
             const chunk = Buffer.isBuffer(value) ? value : Buffer.from(value);
             armStallTimer();
             await writeAll(file, chunk);
+            hash?.update(chunk);
             received += chunk.length;
+            if (checkpoint && hash && (received + startingOffset - checkpointBytes >= 4 * 1024 * 1024 || Date.now() - checkpointTime >= 1000)) {
+                await file.sync();
+                await checkpoint(startingOffset + received, hash.copy().digest('hex'));
+                checkpointBytes = startingOffset + received; checkpointTime = Date.now();
+            }
             onProgress(startingOffset + received, total ?? 0);
         }
         if (!response.complete) {
@@ -265,10 +291,12 @@ async function consumeResponse(
         if (stallTimer) clearTimeout(stallTimer);
         signal?.removeEventListener('abort', abort);
         try {
-            await file.close();
-        } catch (error) {
-            closeError = error;
-        }
+            if (checkpoint && hash && received > 0) {
+                await file.sync();
+                await checkpoint(startingOffset + received, hash.copy().digest('hex'));
+            }
+        } catch (error) { closeError = error; }
+        finally { try { await file.close(); } catch (error) { closeError ??= error; } }
     }
     if (closeError) throw new FatalDiskError(closeError);
     if (transferError) throw transferError;
@@ -279,7 +307,7 @@ async function attemptCandidate(
     destinationPath: string,
     state: TransferState,
     options: Pick<DownloadTransferOptions,
-        'onProgress' | 'onResponseFilename' | 'connectionTimeoutMs' | 'stallTimeoutMs' | 'signal'>,
+        'onProgress' | 'onResponseFilename' | 'connectionTimeoutMs' | 'stallTimeoutMs' | 'signal' | 'checkpoint'>,
     onAccepted?: () => void,
 ): Promise<void> {
     const offset = await fileSize(destinationPath);
@@ -334,6 +362,7 @@ async function attemptCandidate(
         state.validator = responseValidator(response.headers);
     } else {
         response.resume();
+        if ((response.statusCode ?? 0) >= 400 && (response.statusCode ?? 0) < 500 && ![408, 429].includes(response.statusCode ?? 0)) throw new PermanentTransferError(`Download failed with status ${response.statusCode}`);
         throw new RetryableTransferError(`Download failed with status ${response.statusCode}`);
     }
 
@@ -350,6 +379,7 @@ async function attemptCandidate(
         options.stallTimeoutMs!,
         options.onProgress,
         options.signal,
+        options.checkpoint,
     );
 
     const completedSize = await fileSize(destinationPath);
@@ -379,14 +409,44 @@ export async function downloadTransfer(options: DownloadTransferOptions): Promis
 
     // A previous invocation's file has no in-memory validator, so it cannot be
     // resumed safely. Partials are intentionally durable only within this call.
-    await removePartial(destinationPath);
-    const state: TransferState = {};
+    let state: TransferState = {};
+    if (options.resumeMetadataPath) {
+        await assertRecoveryPath(destinationPath); await assertRecoveryPath(options.resumeMetadataPath);
+        try {
+            const saved = JSON.parse(await fs.readFile(options.resumeMetadataPath, 'utf8')) as TransferState;
+            const size = await fileSize(destinationPath);
+            if (!Number.isSafeInteger(saved.bytes) || saved.bytes! < 0 || saved.bytes! > size || !/^[0-9a-f]{64}$/.test(saved.sha256 ?? '')
+                || !saved.validator || !['ETag', 'Last-Modified'].includes(saved.validator.header) || typeof saved.validator.value !== 'string' || /[\r\n]/.test(saved.validator.value)
+                || (options.resumeIdentity ? saved.identity !== options.resumeIdentity : JSON.stringify(saved.urls) !== JSON.stringify(candidateUrls)) || (saved.total !== undefined && (!Number.isSafeInteger(saved.total) || saved.total < saved.bytes!))
+                || (await prefixHash(destinationPath, saved.bytes!)).digest('hex') !== saved.sha256) throw new Error('Invalid download checkpoint');
+            await fs.truncate(destinationPath, saved.bytes!); state = saved;
+        } catch (error) {
+            if ((error as NodeJS.ErrnoException).code && !['ENOENT'].includes((error as NodeJS.ErrnoException).code!)) throw error;
+            await removePartial(destinationPath);
+        }
+    } else await removePartial(destinationPath);
+    const checkpoint = options.resumeMetadataPath ? async (bytes: number, sha256: string) => {
+        state.bytes = bytes; state.sha256 = sha256; state.urls = [...candidateUrls];
+        state.identity = options.resumeIdentity;
+        await writeRecoveryJson(options.resumeMetadataPath!, state);
+    } : undefined;
     let lastError: Error | undefined;
     let previousServer: string | undefined;
 
-    for (const [index, url] of [...new Set(candidateUrls)].entries()) {
+    const urls = [...new Set(candidateUrls)];
+    const retries = Math.min(3, Math.max(0, options.retryCount ?? 0));
+    for (const [index, url] of Array.from({ length: retries + 1 }, () => urls).flat().entries()) {
+        if (index > 0 && index % urls.length === 0) {
+            const attempt = index / urls.length;
+            options.onRetry?.(attempt);
+            await new Promise<void>((resolve, reject) => {
+                const abort = () => { clearTimeout(timer); signal?.removeEventListener('abort', abort); reject(cancellationError()); };
+                const timer = setTimeout(() => { signal?.removeEventListener('abort', abort); resolve(); }, Math.min(4000, 500 * 2 ** (attempt - 1)));
+                if (signal?.aborted) abort(); else signal?.addEventListener('abort', abort, { once: true });
+            });
+        }
         if (signal?.aborted) {
-            await removePartial(destinationPath).catch(() => undefined);
+            if (!options.resumeMetadataPath) await removePartial(destinationPath).catch(() => undefined);
             throw cancellationError();
         }
         const server = displayServerName(url);
@@ -401,7 +461,7 @@ export async function downloadTransfer(options: DownloadTransferOptions): Promis
                     await attemptCandidate(url, destinationPath, state, {
                         ...options,
                         connectionTimeoutMs,
-                        stallTimeoutMs,
+                        stallTimeoutMs, checkpoint,
                     }, index === 0 ? undefined : () => {
                         onServerStatus?.({ phase: 'selected', server });
                     });
@@ -416,8 +476,9 @@ export async function downloadTransfer(options: DownloadTransferOptions): Promis
                 }
             }
         } catch (error) {
+            if (error instanceof PermanentTransferError) throw error;
             if (isCancellation(error, signal)) {
-                await removePartial(destinationPath).catch(() => undefined);
+                if (!options.resumeMetadataPath) await removePartial(destinationPath).catch(() => undefined);
                 throw cancellationError();
             }
             if (error instanceof FatalDiskError) {
@@ -436,6 +497,6 @@ export async function downloadTransfer(options: DownloadTransferOptions): Promis
         }
     }
 
-    await removePartial(destinationPath).catch(() => undefined);
+    if (!options.resumeMetadataPath) await removePartial(destinationPath).catch(() => undefined);
     throw lastError ?? new Error('Download failed');
 }

@@ -17,6 +17,8 @@ export interface ConfirmRequest {
   message?: ReactNode;
   /** What the action affects, rendered as a list rather than a comma string. */
   items?: readonly string[];
+  wrapItems?: boolean;
+  itemsLabel?: ReactNode;
   confirmLabel?: ReactNode;
   cancelLabel?: ReactNode;
   /** 'danger' styles the confirming action as destructive. */

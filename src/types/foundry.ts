@@ -422,7 +422,8 @@ export interface TextureReplacementRequest {
 export type FoundryForgeEdit =
     | { id: string; kind: 'sound'; precedence: number; request: HeroSoundSwapRequest }
     | { id: string; kind: 'texture'; precedence: number; request: TextureReplacementRequest }
-    | { id: string; kind: 'recolor'; precedence: number; request: RecolorForgeRequest };
+    | { id: string; kind: 'recolor'; precedence: number; request: RecolorForgeRequest }
+    | { id: string; kind: 'model'; precedence: number; request: import('./modelReplacement').ModelReplacementRequest };
 
 /** The renderer repeats its reviewed result here. Main derives it again from
  * the requests and rejects stale/tampered confirmation rather than trusting a

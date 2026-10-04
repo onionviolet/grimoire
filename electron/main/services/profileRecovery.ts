@@ -12,7 +12,7 @@ import { moveSafetySnapshot, assertVpkSafety } from './modSafety';
 import { assertCanMoveLoadedGameMods, syncRunningGameModSnapshotFromMods } from './gameSessionMods';
 import { loadSettings, saveSettings } from './settings';
 import { assertRecoveryPath, hasRecoveryFile, placeRecoveryFile, pruneRecoveryFiles, retainRecoveryFile, writeRecoveryJson } from './recoveryBackup';
-import { clearRecoveryJournal, createRecoveryJournal, journalMetadataMoves, journalRecoveryMetadata, rollbackRecoveryMetadata, beginRecoveryMutation, journalRecoveryPaths, previewInterruptedRecovery, readRecoveryJournal, rollbackRecoveryJournal, type RecoveryJournal } from './recoveryJournal';
+import { clearRecoveryJournal, createRecoveryJournal, journalMetadataMoves, journalRecoveryMetadata, journalIsolationState, rollbackRecoveryMetadata, beginRecoveryMutation, journalRecoveryPaths, previewInterruptedRecovery, readRecoveryJournal, rollbackRecoveryJournal, type RecoveryJournal } from './recoveryJournal';
 import type { InterruptedRecovery, ProfileRecoveryPreview, ProfileRecoverySummary } from '../../../src/types/profileRecovery';
 
 interface RecoveryMod {
@@ -392,7 +392,7 @@ export async function restoreProfileRecovery(deadlockPath: string, id: string, r
     }
   });
 }
-async function recoverInterruptedUnlocked(deadlockPath: string, token?: string): Promise<void> {
+export async function recoverInterruptedUnlocked(deadlockPath: string, token?: string): Promise<void> {
   const preview = await previewInterruptedRecovery(deadlockPath);
   if (!preview) throw new Error('No interrupted recovery');
   const existing = await readRecoveryJournal(deadlockPath);
@@ -400,13 +400,16 @@ async function recoverInterruptedUnlocked(deadlockPath: string, token?: string):
     if (token && token !== preview.reviewToken) throw new Error('Interrupted recovery review is stale');
     await clearRecoveryJournal(); return;
   }
-  const current = await scanMods(deadlockPath);
-  const running = await syncRunningGameModSnapshotFromMods(current);
+  // A normal scan can reconcile temporary VPK names. Interrupted paths must
+  // remain untouched until the journal restores their reviewed preimages.
+  const running = await syncRunningGameModSnapshotFromMods([]);
   if (running?.running) throw new Error('Game is running');
-  assertCanMoveLoadedGameMods(current.filter(mod => mod.enabled));
+  assertCanMoveLoadedGameMods([]);
   const journal = await rollbackRecoveryJournal(deadlockPath, token ?? preview.reviewToken);
   rollbackRecoveryMetadata(journal);
-  const settings = loadSettings(); settings.activeProfileId = journal.activeProfileId; saveSettings(settings);
+  const settings = loadSettings(); settings.activeProfileId = journal.activeProfileId;
+  if (journal.launchOptions) settings.steamLaunchOptions = journal.launchOptions.before;
+  saveSettings(settings);
   await clearRecoveryJournal();
 }
 export function getInterruptedProfileRecovery(deadlockPath: string): Promise<InterruptedRecovery | null> {
@@ -419,7 +422,7 @@ export function recoverInterruptedProfileRecovery(deadlockPath: string, token: s
 export async function captureIsolationRecoveryUnlocked(deadlockPath: string): Promise<ProfileRecoverySummary> {
   return captureProfileRecoveryUnlocked(deadlockPath, 'isolation', undefined, 'isolation');
 }
-export async function applyIsolationRecoveryUnlocked(deadlockPath: string, id: string, enabledIds: string[], verifyReviewedState?: () => Promise<void>): Promise<void> {
+export async function applyIsolationRecoveryUnlocked(deadlockPath: string, id: string, enabledIds: string[], verifyReviewedState?: () => Promise<void>, commitSession?: (journal: RecoveryJournal) => Promise<void>): Promise<void> {
   const point = await readPoint(id);
   await verifyReviewedState?.();
   if (await readRecoveryJournal(deadlockPath)) throw new Error('Resolve interrupted recovery first');
@@ -428,14 +431,14 @@ export async function applyIsolationRecoveryUnlocked(deadlockPath: string, id: s
     enabled: enabled.has(mod.id), path: enabled.has(mod.id) ? mod.path : join(getDisabledPath(deadlockPath), `isolation-${mod.id.replace(/[^a-zA-Z0-9-]/g, '')}_${basename(mod.path)}`) })) };
   trial.enabledCount = trial.mods.filter(mod => mod.enabled).length;
   const journal = await createRecoveryJournal(deadlockPath, loadSettings().activeProfileId ?? null);
-  try { await applyPointUnlocked(trial, deadlockPath, journal, undefined, verifyReviewedState); await clearRecoveryJournal(); }
+  try { await journalIsolationState(journal); await applyPointUnlocked(trial, deadlockPath, journal, undefined, verifyReviewedState); await commitSession?.(journal); await clearRecoveryJournal(); }
   catch (error) { await recoverInterruptedUnlocked(deadlockPath); throw error; }
 }
 
-export async function restoreIsolationRecoveryUnlocked(deadlockPath: string, id: string, verifyReviewedState?: () => Promise<void>): Promise<void> {
+export async function restoreIsolationRecoveryUnlocked(deadlockPath: string, id: string, verifyReviewedState?: () => Promise<void>, commitSession?: (journal: RecoveryJournal) => Promise<void>): Promise<void> {
   const point = await readPoint(id);
   await verifyReviewedState?.();
   const journal = await createRecoveryJournal(deadlockPath, loadSettings().activeProfileId ?? null);
-  try { await applyPointUnlocked(point, deadlockPath, journal, undefined, verifyReviewedState); await clearRecoveryJournal(); }
+  try { await journalIsolationState(journal); await applyPointUnlocked(point, deadlockPath, journal, undefined, verifyReviewedState); await commitSession?.(journal); await clearRecoveryJournal(); }
   catch (error) { await recoverInterruptedUnlocked(deadlockPath); throw error; }
 }

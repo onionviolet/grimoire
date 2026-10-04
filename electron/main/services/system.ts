@@ -172,7 +172,7 @@ export function getGameinfoStatus(deadlockPath: string): GameinfoStatus {
 /**
  * Restore required mounts while preserving existing Valve and custom search paths.
  */
-export function fixGameinfo(deadlockPath: string): GameinfoStatus {
+export function fixGameinfo(deadlockPath: string, write: (path: string, next: string, before: string) => void = (path, next) => writeFileSync(path, next, 'utf-8')): GameinfoStatus {
     const gameinfoPath = getGameinfoPath(deadlockPath);
 
     if (!existsSync(gameinfoPath)) {
@@ -259,7 +259,7 @@ export function fixGameinfo(deadlockPath: string): GameinfoStatus {
 
         // Keep a one-time recovery copy before the first write.
         backupGameinfoOnce(gameinfoPath, content);
-        writeFileSync(gameinfoPath, next, 'utf-8');
+        write(gameinfoPath, next, content);
 
         // Ensure the grimoire override folder exists so its (now-active) search
         // path points at a real directory rather than a missing one.

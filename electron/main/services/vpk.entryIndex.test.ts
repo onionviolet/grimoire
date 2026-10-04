@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { parseVpkEntryIndex } from './vpk';
+import { parseVpkEntryIndex, invalidateVpkParseCache } from './vpk';
 
 const roots: string[] = [];
 afterEach(() => roots.splice(0).forEach((root) => rmSync(root, { recursive: true, force: true })));
@@ -26,6 +26,16 @@ function fixtureVpk(): Buffer {
 }
 
 describe('parseVpkEntryIndex', () => {
+    it('reuses an unchanged index and retires it after explicit invalidation or rewrite', () => {
+        const root = mkdtempSync(join(tmpdir(), 'grimoire-vpk-index-')); roots.push(root);
+        const path = join(root, 'pak01_dir.vpk'); writeFileSync(path, fixtureVpk());
+        const first = parseVpkEntryIndex(path);
+        expect(parseVpkEntryIndex(path)).toBe(first);
+        invalidateVpkParseCache(path);
+        expect(parseVpkEntryIndex(path)).not.toBe(first);
+        writeFileSync(path, Buffer.alloc(12));
+        expect(parseVpkEntryIndex(path)).toBeNull();
+    });
     it('rejects oversized, truncated and unknown-version trees before allocation', () => {
         const root = mkdtempSync(join(tmpdir(), 'grimoire-vpk-index-'));
         roots.push(root);

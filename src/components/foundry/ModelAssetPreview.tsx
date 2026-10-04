@@ -1,11 +1,11 @@
-import { Suspense, useMemo } from 'react';
+import { Suspense } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { Bounds, OrbitControls, useGLTF } from '@react-three/drei';
+import { Bounds, OrbitControls } from '@react-three/drei';
+import { useOwnedGltf } from '../locker/useOwnedGltf';
 
 function Model({ url }: { url: string }) {
-  const gltf = useGLTF(url);
-  const scene = useMemo(() => gltf.scene.clone(true), [gltf.scene]);
-  return <primitive object={scene} />;
+  const gltf = useOwnedGltf(url);
+  return gltf ? <primitive object={gltf.scene} /> : null;
 }
 
 /** Static inspection preview. The exported GLB carries embedded textures. */

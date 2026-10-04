@@ -7,7 +7,7 @@ open as of the date in the header.
 **Reconciled:** 2026-09-01, by reading the code rather than the docs.
 
 **Updated 2026-10-03:** B-02 inspection is implemented in source. B-01 now
-depends on a model authoring contract; B-04 is narrowed to retarget and exact
+tracks general authoring beyond the delivered compiled-bundle forge contract; B-04 is narrowed to retarget and exact
 cast-particle event joins. Other entries retain their reconciliation dates.
 
 ## Where things live
@@ -62,13 +62,13 @@ installs model edits. Evidence and limits:
 
 ## Open
 
-### B-01. Foundry model edits have no forge serializer
-`FoundryForgeEdit` admits `sound`, `texture`, and `recolor`
-(`src/types/foundry.ts:423`). A model edit cannot enter a combined build, and
-the tray refuses it explicitly rather than dropping it silently. Model inspection
-exists; model authoring, dependency policy and a supported staging/serializer
-contract are still needed.
-**Size:** medium. **Needs:** model authoring contract.
+### B-01. General model authoring
+Compiled model VPK bundles now have an exact-path dependency contract, source
+review token, preview and serializer in the shared forge tray. This closes the
+missing serializer for compiled replacements. Editing arbitrary GLBs, rebuilding
+skeletons and authoring new dependency graphs remain outside this slice.
+Evidence: `docs/implementation-hardening-2026-10-03.md`.
+**Size:** large. **Needs:** an engine-backed authoring contract beyond compiled bundles.
 
 ### B-03. Advanced merge composition
 Review and reviewed source order shipped. Merge recipes, editable

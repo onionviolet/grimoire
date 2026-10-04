@@ -9,6 +9,7 @@ import type {
 import { formatBytes } from '../lib/formatBytes';
 import { rollPreparingSuffix } from '../lib/easterEggs';
 import Tx from './translation/Tx';
+import DownloadHistory from './downloads/DownloadHistory';
 import {
     cancelDownloadRequest,
     getVisibleDownloadQueue,
@@ -131,7 +132,7 @@ export default function DownloadQueueIndicator({ className = '' }: DownloadQueue
         return remaining / currentSpeed;
     }, [queueState.progress, currentSpeed]);
 
-    if (totalItems === 0) return null;
+    if (totalItems === 0) return <DownloadHistory compact />;
 
     const currentFileName =
         queueState.currentDownload?.fileName ?? t('downloadQueue.preparing') + preparingSuffix;

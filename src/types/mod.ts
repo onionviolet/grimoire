@@ -761,7 +761,7 @@ export interface TextureReplacementInfo {
  *  list and group it. `entries` are the exact normalized VPK paths that part
  *  contributed, so ownership is never inferred from a label or a hero name. */
 export interface FoundryBuildPart {
-  kind: 'sound' | 'texture' | 'recolor';
+  kind: 'sound' | 'texture' | 'recolor' | 'model';
   title: string;
   entries: string[];
   /** Visual parts only: which catalog family the replaced asset came from. */

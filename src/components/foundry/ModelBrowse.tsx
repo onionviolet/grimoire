@@ -9,11 +9,13 @@ import SearchInput from '../common/SearchInput';
 import { Modal, ModalBody } from '../common/Modal';
 import { ErrorBoundary } from '../common/ErrorBoundary';
 import { showToast } from '../../stores/toastStore';
+import ModelReplacementControl from './ModelReplacementControl';
+import type { FoundryStagedEdit } from './buildTray';
 
 const ModelAssetPreview = lazy(() => import('./ModelAssetPreview'));
 const PAGE_SIZE = 40;
 
-export default function ModelBrowse() {
+export default function ModelBrowse({ onStage }: { onStage?: (edit: FoundryStagedEdit) => void }) {
   const { t } = useTranslation();
   const [items, setItems] = useState<FoundryModelEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -89,7 +91,8 @@ export default function ModelBrowse() {
                 <Suspense fallback={<LoadingState label={t('foundry.models.preparing')} />}><ModelAssetPreview url={preview.url} /></Suspense>
               </ErrorBoundary> : <LoadingState label={t('foundry.models.preparing')} />}
           </div>
-          <p className="text-xs text-text-secondary">{t('foundry.models.previewHint')}</p></>}
+          <p className="text-xs text-text-secondary">{t('foundry.models.previewHint')}</p>
+          {onStage && <ModelReplacementControl key={selected.path} entryPath={selected.path} onStage={edit => { onStage(edit); setSelected(null); }} />}</>}
       </ModalBody>
     </Modal>
   </div>;

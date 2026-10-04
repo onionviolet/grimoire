@@ -1,12 +1,15 @@
 import { createHash } from 'crypto';
-import { existsSync, readFileSync } from 'fs';
+import { existsSync, readFileSync, promises as fs } from 'fs';
+import { tmpdir } from 'os';
 import { dirname, join } from 'path';
 import { CONFIG_KEY_INDEX, CONFIG_KEY_BY_NAME } from './configKeyIndex';
 import { getGameinfoPath } from './deadlock';
-import { getAutoexecPath, getManualAutoexecCommands, readAutoexec, writeAutoexec, restoreAutoexecContent } from './autoexec';
-import { getPerformanceConfigStatus, setConfigConvars, validateConfigConvars, restorePerformanceConfigFiles } from './performanceConfig';
+import { getAutoexecPath, getManualAutoexecCommands, readAutoexec, writeAutoexec } from './autoexec';
+import { getPerformanceConfigStatus, setConfigConvars, validateConfigConvars } from './performanceConfig';
 import { loadSettings, saveSettings } from './settings';
 import { runExclusiveModMutation } from './mods';
+import { createRecoveryJournal, journalRecoveryPaths, journalLaunchOptions, beginRecoveryMutation, clearRecoveryJournal } from './recoveryJournal';
+import { retainRecoveryFile, placeRecoveryFile } from './recoveryBackup';
 import type { ConfigBundle, ConfigUnknownEntry, ConfigWorkspaceSnapshot, ConfigWorkspaceUpdate } from '../../../src/types/configWorkspace';
 
 const MAX_FILE_BYTES = 4 * 1024 * 1024;
@@ -66,6 +69,7 @@ export function getConfigWorkspace(deadlockPath: string | null): ConfigWorkspace
   const data = deadlockPath ? readAutoexec(deadlockPath) : null;
   const reviewToken = createHash('sha256').update(JSON.stringify({ deadlockPath, gameinfo, autoexec, sidecar, launchOptions })).digest('hex');
   return {
+    workspaceId: createHash('sha256').update(deadlockPath ?? '').digest('hex'),
     available: !!deadlockPath && gameinfo !== null && performance.state !== 'error', reviewToken,
     definitions: CONFIG_KEY_INDEX, performance, launchOptions,
     unknown: [...readGameinfoConvars(gameinfo ?? '').filter(entry => !CONFIG_KEY_BY_NAME.has(entry.key)), ...unknownAutoexec(autoexec ?? '')],
@@ -116,25 +120,55 @@ export async function applyConfigWorkspace(deadlockPath: string | null, update: 
     if (!before.available || !update.reviewToken || update.reviewToken !== before.reviewToken) throw new Error('Configuration changed since review. Refresh and review again.');
     const gameinfoPath = getGameinfoPath(deadlockPath);
     const original = { gameinfo: readOptional(gameinfoPath), sidecar: readOptional(join(dirname(gameinfoPath), 'grimoire-performance.json')), autoexec: readOptional(getAutoexecPath(deadlockPath)) };
+    const staging = await fs.mkdtemp(join(await fs.realpath(tmpdir()), 'grimoire-config-stage-'));
+    let journalCreated = false;
     try {
+      // Compute the whole write set away from the game before recording allowed bytes.
+      const targets = [gameinfoPath, join(dirname(gameinfoPath), 'grimoire-performance.json'), getAutoexecPath(deadlockPath)];
+      const staged = [getGameinfoPath(staging), join(dirname(getGameinfoPath(staging)), 'grimoire-performance.json'), getAutoexecPath(staging)];
+      const originals = [original.gameinfo, original.sidecar, original.autoexec];
+      for (let i = 0; i < staged.length; i++) if (originals[i] !== null) {
+        await fs.mkdir(dirname(staged[i]), { recursive: true });
+        await fs.writeFile(staged[i], originals[i]!);
+      }
       if (gameinfo && Object.keys(gameinfo).length) {
-        const result = setConfigConvars(deadlockPath, gameinfo);
+        const result = setConfigConvars(staging, gameinfo);
         if (result.state === 'error') throw new Error(result.message);
       }
       if (update.autoexecCommands !== undefined) {
-        const data = readAutoexec(deadlockPath);
-        data.commands = update.autoexecCommands;
-        writeAutoexec(deadlockPath, data);
+        const data = readAutoexec(staging); data.commands = update.autoexecCommands;
+        writeAutoexec(staging, data);
+      }
+      if (getConfigWorkspace(deadlockPath).reviewToken !== before.reviewToken) throw new Error('Configuration changed during preparation. Review again.');
+      const journal = await createRecoveryJournal(deadlockPath, loadSettings().activeProfileId ?? null);
+      journalCreated = true;
+      const writes: Array<{ target: string; hash: string | null; before: string | null }> = [];
+      for (let i = 0; i < staged.length; i++) {
+        const next = readOptional(staged[i]);
+        if (next === originals[i]) continue;
+        const hash = next === null ? null : await retainRecoveryFile(staged[i]);
+        const previousHash = originals[i] === null ? null : createHash('sha256').update(originals[i]!).digest('hex');
+        await journalRecoveryPaths(journal, [{ path: targets[i], hash: hash ?? undefined, expectedBefore: previousHash }]);
+        writes.push({ target: targets[i], hash, before: originals[i] });
+      }
+      if (update.launchOptions !== undefined) await journalLaunchOptions(journal, before.launchOptions, update.launchOptions);
+      await beginRecoveryMutation(journal);
+      for (const write of writes) {
+        const validate = async () => { if (readOptional(write.target) !== write.before) throw new Error('Configuration changed before placement'); };
+        if (write.hash) await placeRecoveryFile(write.hash, write.target, validate);
+        else { await validate(); await fs.unlink(write.target); }
       }
       if (update.launchOptions !== undefined) saveSettings({ ...loadSettings(), steamLaunchOptions: update.launchOptions });
-      return getConfigWorkspace(deadlockPath);
+      const result = getConfigWorkspace(deadlockPath);
+      await clearRecoveryJournal();
+      return result;
     } catch (error) {
-      const failures: string[] = [];
-      const restore = (action: () => void) => { try { action(); } catch (failure) { failures.push(String(failure)); } };
-      restore(() => restorePerformanceConfigFiles(deadlockPath, original.gameinfo, original.sidecar));
-      restore(() => restoreAutoexecContent(deadlockPath, original.autoexec));
-      restore(() => saveSettings({ ...loadSettings(), steamLaunchOptions: before.launchOptions }));
-      throw new Error(`${String(error)}${failures.length ? `; rollback incomplete: ${failures.join('; ')}` : '; previous configuration restored.'}`);
-    }
+      if (!journalCreated) throw new Error(`${String(error)}; previous configuration restored.`);
+      // Use the journal's reviewed rollback so external edits are never overwritten.
+      const { recoverInterruptedUnlocked } = await import('./profileRecovery');
+      try { await recoverInterruptedUnlocked(deadlockPath); }
+      catch (failure) { throw new Error(`${String(error)}; rollback incomplete: ${String(failure)}`); }
+      throw new Error(`${String(error)}; previous configuration restored.`);
+    } finally { await fs.rm(staging, { recursive: true, force: true }); }
   });
 }

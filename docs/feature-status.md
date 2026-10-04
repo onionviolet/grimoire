@@ -33,8 +33,9 @@ record is [upstream-absorption-1.30.md](./upstream-absorption-1.30.md).
   the active marker. New v2 points retain deduplicated VPK/chunk copies and can
   restore deleted assets. Explicit interrupted-restore recovery uses a persistent
   journal and preserves external edits. Legacy points remain readable. Reserved
-  Locker cosmetics are outside this snapshot; profile application itself is not
-  process-crash atomic.
+  Locker cosmetics are outside this snapshot. Profile application, Config writes
+  and isolation session transitions now use the persistent restore journal.
+  Failed profile operations roll the batch back rather than leaving a partial setup.
 - Local/Foundry profile identities are captured by the existing canonical hash
   helper, so ordinary enable/disable renames no longer detach saved entries.
 - Recovery scans local configuration, VPK headers/trees, metadata and free space
@@ -46,8 +47,10 @@ record is [upstream-absorption-1.30.md](./upstream-absorption-1.30.md).
   restores the original state. Trials require explicit review and a stopped game.
 - Foundry's Models tool lists exact base-game model paths, previews static GLBs
   on demand and exports through the native save dialog. The cache is bounded to
-  256 MiB. This is basic asset inspection, not a model authoring/forge surface or
-  an in-engine fidelity claim.
+  256 MiB. This is basic asset inspection. Compiled model VPK bundles
+  can now be reviewed, previewed and staged into the shared forge tray, with exact
+  paths, CRC checks and bundled/base dependency checks. GLB and skeleton authoring
+  remain outside this contract.
 - Foundry Assets searches exact texture/material/particle paths. Read-only
   inspection decodes textures, reports material data and projects authored
   particle KV3 through the pinned engine's existing generic decoder. Inspection
@@ -59,11 +62,22 @@ record is [upstream-absorption-1.30.md](./upstream-absorption-1.30.md).
   attachment offsets and honor color operators and applied recolors. Unsupported
   classes and missing attachments are disclosed. Exact cast-particle event joins
   and engine-faithful timing remain unavailable.
-- Config stages typed edits, exposes unknown keys read-only, preserves manual
+- Config keeps staged edits across route navigation, shows complete command and
+  launch-option diffs, exposes unknown keys read-only and preserves manual
   autoexec/crosshair content and saves launch options for the next managed launch.
   Review tokens reject stale files, multi-file failures roll back and state
-  sidecar failures cannot report success. Grimoire-only config bundles stage
+  sidecar failures cannot report success. Writes are prepared outside the game
+  and journaled before placement; interrupted operations can be rolled back. Grimoire-only config bundles stage
   supported values for review without importing paths or arbitrary files.
+- Model/ability previews own and dispose their GLTF resources, including late
+  loads after closing. Ability URLs identify output content; the bounded VPK
+  entry cache invalidates on filesystem changes and explicit writer invalidation.
+- Download jobs persist locally and pause after restart until explicitly resumed.
+  Verified prefix checkpoints resume using HTTP validators and ranges; transient
+  failures receive bounded retries. Completed archives are verified and deduplicated
+  by content hash, with a 512 MiB cache budget (the current archive is protected).
+  Recovery shows per-job history and retry controls. Existing GameBanana mirror
+  selection remains in use.
 - Chat Wheel reads, builds and validates VPKs natively on Windows, macOS and Linux.
   The compiled KV3/RED2 resource matches independent original-converter fixtures;
   original YAML survives byte-for-byte. Packaged builds include pinned native
@@ -71,7 +85,9 @@ record is [upstream-absorption-1.30.md](./upstream-absorption-1.30.md).
 
 Validation and limits for these follow-ups are recorded in
 [recovery-and-models-2026-10-03.md](./recovery-and-models-2026-10-03.md).
-The parallel follow-up and its remaining limits are recorded in
+The implementation hardening record and limits are in
+[implementation-hardening-2026-10-03.md](./implementation-hardening-2026-10-03.md).
+The earlier parallel follow-up and its remaining limits are recorded in
 [parallel-feature-followup-2026-10-03.md](./parallel-feature-followup-2026-10-03.md).
 
 ## Shipped 2026-07-30
@@ -217,10 +233,10 @@ re-derive them from an older revision of this file.
 
 What is genuinely still missing, in the order it would be worth building:
 
-1. **Foundry model edits have no forge serializer.** `FoundryForgeEdit`
-   (`src/types/foundry.ts:423`) admits `sound`, `texture`, and `recolor`. The
-   tray refuses a model edit explicitly rather than dropping it silently.
-   Inspection exists, but an authoring/staging contract does not. Backlog B-01.
+1. **General model authoring remains unavailable.** Compiled model bundles can
+   enter the shared forge tray. Arbitrary GLB editing, new skeletons and broader
+   dependency authoring still need an engine-backed contract. Backlog B-01.
+
 2. **Advanced merge composition.** Merge recipes, editable include/exclude
    path policy, merge-content presets, and rebuild diffs are absent, and a
    reviewed order cannot be applied to a selection containing a merged mod.

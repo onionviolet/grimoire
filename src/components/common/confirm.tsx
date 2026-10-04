@@ -58,11 +58,11 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
             {request?.items && request.items.length > 0 && (
               <>
                 <p className="mt-3 text-xs uppercase tracking-wide text-text-secondary">
-                  {t('common.confirm.affects', { count: request.items.length })}
+                  {request.itemsLabel ?? t('common.confirm.affects', { count: request.items.length })}
                 </p>
                 <ul className="mt-1.5 max-h-48 space-y-1 overflow-y-auto scrollbar-glass rounded-md border border-border bg-bg-sunken/60 p-2">
                   {request.items.map((item) => (
-                    <li key={item} className="truncate text-sm text-text-primary" title={item}>
+                    <li key={item} className={`${request.wrapItems ? 'whitespace-pre-wrap break-all' : 'truncate'} text-sm text-text-primary`} title={item}>
                       {item}
                     </li>
                   ))}

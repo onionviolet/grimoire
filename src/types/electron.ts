@@ -1384,6 +1384,8 @@ export interface ElectronAPI {
 
     // Download Queue
     getDownloadQueue: () => Promise<DownloadQueueItem[]>;
+    getDownloadJobs: () => Promise<import('./downloadJobs').DownloadJob[]>;
+    retryDownloadJob: (id: string) => Promise<void>;
     getCurrentDownload: () => Promise<DownloadQueueItem | null>;
     removeFromQueue: (modId: number, fileId?: number) => Promise<boolean>;
     cancelActiveDownload: () => Promise<boolean>;
@@ -1611,6 +1613,7 @@ export interface ElectronAPI {
         inspectAsset: (path: string) => Promise<import('./assetInspection').AssetInspectionResult>;
         models: () => Promise<import('./foundryModels').FoundryModelEntry[]>;
         modelPreview: (entryPath: string) => Promise<import('./foundryModels').FoundryModelPreview>;
+        selectModelReplacement: (entryPath: string) => Promise<import('./modelReplacement').ModelReplacementSelection | null>;
         exportModel: (entryPath: string) => Promise<import('./foundry').FoundryAssetExportResult>;
         heroes: () => Promise<import('./foundry').HeroInfo[]>;
         /** Scan the installed base pak; never stages or changes game files. */

@@ -33,7 +33,7 @@ export function listFoundryModels(deadlockPath: string): FoundryModelEntry[] {
     })).sort((a, b) => a.path.localeCompare(b.path));
 }
 
-async function validateGlb(path: string): Promise<number> {
+export async function validateGlb(path: string): Promise<number> {
     const stat = await fs.stat(path);
     if (stat.size < 20 || stat.size > CACHE_LIMIT) throw new Error('The model preview is empty or exceeds the preview size limit.');
     const file = await fs.open(path, 'r');

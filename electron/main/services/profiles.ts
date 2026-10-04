@@ -18,9 +18,11 @@ import {
     type ResolvedMatch,
 } from './profileResolver';
 import { isLockerManaged } from './lockerVpk';
-import { captureProfileRecoveryUnlocked } from './profileRecovery';
+import { captureProfileRecoveryUnlocked, recoverInterruptedUnlocked } from './profileRecovery';
+import { createRecoveryJournal, journalRecoveryMetadata, journalRecoveryPaths, beginRecoveryMutation, clearRecoveryJournal, withRecoveryMutationJournal } from './recoveryJournal';
+import { createHash } from 'crypto';
 import { loadSettings, saveSettings } from './settings';
-import { readAutoexec, writeAutoexec } from './autoexec';
+import { readAutoexec, writeAutoexec, buildAutoexec, getAutoexecPath } from './autoexec';
 import {
     assertCanMoveLoadedGameMods,
     syncRunningGameModSnapshotFromMods,
@@ -408,10 +410,8 @@ export async function applyProfile(deadlockPath: string, profileId: string, revi
     // off of - the interleave that used to throw "Mod not found" partway and drop
     // every remaining mod (#bugs: profile apply "dropped like 5 mods").
     //
-    // Per-mod enable/disable failures are caught and counted, not rethrown: a
-    // single locked VPK (game running, antivirus, our own VPK readers) must not
-    // abort the rest of the apply. renameWithRetry in mods.ts already clears the
-    // transient case; a genuinely stuck file is logged and skipped.
+    // A failed operation rolls the journaled batch back. renameWithRetry clears
+    // transient locks; a genuinely stuck file must not leave a partial setup.
     let stableHits = 0;
     let hashHits = 0;
     let fileNameHits = 0;
@@ -420,7 +420,6 @@ export async function applyProfile(deadlockPath: string, profileId: string, revi
     let enabledCount = 0;
     let disabledCount = 0;
     let orphanedDisabledCount = 0;
-    const failures: string[] = [];
     let unresolved: ProfileApplyEntry[] = [];
 
     await runExclusiveModMutation(async () => {
@@ -493,144 +492,148 @@ export async function applyProfile(deadlockPath: string, profileId: string, revi
         }
 
         await captureProfileRecoveryUnlocked(deadlockPath, profile.name, currentMods);
-        // Once mutations start, the old marker no longer describes the disk if a later step fails.
-        const pendingSettings = loadSettings();
-        pendingSettings.activeProfileId = null;
-        saveSettings(pendingSettings);
+        const journal = await createRecoveryJournal(deadlockPath, loadSettings().activeProfileId ?? null);
+        try {
+            await journalRecoveryMetadata(journal, currentMods.map(mod => mod.metaKey));
+            await beginRecoveryMutation(journal);
+            await withRecoveryMutationJournal(journal, async () => {
+                // Once mutations start, the old marker no longer describes the disk if a later step fails.
+                const pendingSettings = loadSettings();
+                pendingSettings.activeProfileId = null;
+                saveSettings(pendingSettings);
 
-        // Two passes, disables BEFORE enables. The disabled library is uncapped now,
-        // so a profile that swaps a large enabled set for a large disabled one could,
-        // in a single interleaved pass, enable past the 99 active-slot ceiling before
-        // freeing the slots it's about to vacate - throwing mid-apply and leaving a
-        // half-applied profile. Freeing first guarantees every slot the profile needs
-        // is available, and the enable pass can never exceed 99 (a profile holds at
-        // most 99 enabled mods). The two passes act on disjoint sets of currentMods
-        // (was-enabled vs was-disabled), so the snapshot ids stay valid across both.
-        for (const mod of currentMods) {
-            if (!mod.enabled) continue;
-            // Locker-managed VPKs (hero cards + ability sounds) aren't part of any
-            // profile: they're hidden, auto-pinned, and owned by the Locker. Never
-            // disable them on a profile switch, or applied cosmetics would silently
-            // stop loading. They get re-pinned to the front after the reorder pass.
-            if (isLockerManaged(mod.metaKey)) continue;
-            const profileMod = profileModByCurrentId.get(mod.id);
-            if (profileMod && profileMod.enabled) continue; // keep it enabled
-            try {
-                await disableModUnlocked(deadlockPath, mod.id);
-            } catch (err) {
-                failures.push(`disable ${mod.fileName}: ${String(err)}`);
-                console.warn(`[profiles] disable failed (continuing): ${mod.fileName}: ${String(err)}`);
-                continue;
-            }
-            if (profileMod) {
-                console.log(`[profiles] toggle disable: ${mod.fileName}`);
-                disabledCount++;
-            } else {
-                console.log(`[profiles] toggle disable (not in profile): ${mod.fileName}`);
-                orphanedDisabledCount++;
-            }
-        }
-        for (const mod of currentMods) {
-            if (mod.enabled) continue;
-            const profileMod = profileModByCurrentId.get(mod.id);
-            if (!profileMod || !profileMod.enabled) continue;
-            console.log(`[profiles] toggle enable: ${mod.fileName}`);
-            try {
-                await enableModUnlocked(deadlockPath, mod.id);
-                enabledCount++;
-            } catch (err) {
-                failures.push(`enable ${mod.fileName}: ${String(err)}`);
-                console.warn(`[profiles] enable failed (continuing): ${mod.fileName}: ${String(err)}`);
-            }
-        }
-        console.log(
-            `[profiles] toggle summary: ${enabledCount} enabled, ${disabledCount} disabled, ` +
-            `${orphanedDisabledCount} disabled-not-in-profile`
-        );
+                // Two passes, disables BEFORE enables. The disabled library is uncapped now,
+                // so a profile that swaps a large enabled set for a large disabled one could,
+                // in a single interleaved pass, enable past the 99 active-slot ceiling before
+                // freeing the slots it's about to vacate - throwing mid-apply and leaving a
+                // half-applied profile. Freeing first guarantees every slot the profile needs
+                // is available, and the enable pass can never exceed 99 (a profile holds at
+                // most 99 enabled mods). The two passes act on disjoint sets of currentMods
+                // (was-enabled vs was-disabled), so the snapshot ids stay valid across both.
+                for (const mod of currentMods) {
+                    if (!mod.enabled) continue;
+                    // Locker-managed VPKs (hero cards + ability sounds) aren't part of any
+                    // profile: they're hidden, auto-pinned, and owned by the Locker. Never
+                    // disable them on a profile switch, or applied cosmetics would silently
+                    // stop loading. They get re-pinned to the front after the reorder pass.
+                    if (isLockerManaged(mod.metaKey)) continue;
+                    const profileMod = profileModByCurrentId.get(mod.id);
+                    if (profileMod && profileMod.enabled) continue; // keep it enabled
+                    try {
+                        await disableModUnlocked(deadlockPath, mod.id);
+                    } catch (err) {
+                        throw new Error(`disable ${mod.fileName}: ${String(err)}`);
+                    }
+                    if (profileMod) {
+                        console.log(`[profiles] toggle disable: ${mod.fileName}`);
+                        disabledCount++;
+                    } else {
+                        console.log(`[profiles] toggle disable (not in profile): ${mod.fileName}`);
+                        orphanedDisabledCount++;
+                    }
+                }
+                for (const mod of currentMods) {
+                    if (mod.enabled) continue;
+                    const profileMod = profileModByCurrentId.get(mod.id);
+                    if (!profileMod || !profileMod.enabled) continue;
+                    console.log(`[profiles] toggle enable: ${mod.fileName}`);
+                    try {
+                        await enableModUnlocked(deadlockPath, mod.id);
+                        enabledCount++;
+                    } catch (err) {
+                        throw new Error(`enable ${mod.fileName}: ${String(err)}`);
+                    }
+                }
+                console.log(
+                    `[profiles] toggle summary: ${enabledCount} enabled, ${disabledCount} disabled, ` +
+                    `${orphanedDisabledCount} disabled-not-in-profile`
+                );
 
-        // 1b. Apply priority order in a single two-phase pass via reorderMods.
-        // The previous implementation called setModPriority per mod and swallowed
-        // "Priority X is already in use" errors. Common when switching between
-        // profiles, since the OTHER profile's mods still occupy the target slots
-        // until later iterations move them. reorderMods stages every rename via
-        // a tmp prefix first, so transient mid-loop collisions can't happen.
-        //
-        // Re-resolve after enable/disable: enableMod assigns a fresh pakNN slot and
-        // disableMod renames to a free-form name, so the previous resolver's
-        // id-to-mod (and fileName) mapping is stale.
-        const refreshedMods = await scanMods(deadlockPath);
-        const resolveAgainstRefreshed = buildProfileModResolver(refreshedMods);
-        const orderedIds: string[] = [];
-        const seen = new Set<string>();
-        let reorderSkippedDisabled = 0;
-        let reorderSkippedUnmatched = 0;
-        for (const pm of [...profile.mods].sort((a, b) => a.priority - b.priority)) {
-            if (!pm.enabled) continue;
-            if (![...profileModByCurrentId.values()].includes(pm)) continue;
-            const resolution = resolveAgainstRefreshed(pm);
-            if (resolution.mod === undefined) {
-                reorderSkippedUnmatched++;
-                continue;
-            }
-            if (!resolution.mod.enabled) {
-                reorderSkippedDisabled++;
-                continue;
-            }
-            if (seen.has(resolution.mod.id)) continue;
-            seen.add(resolution.mod.id);
-            orderedIds.push(resolution.mod.id);
-        }
-        if (orderedIds.length > 0) {
-            console.log(
-                `[profiles] reorder: ${orderedIds.length} mods laid out densely across addon folders ` +
-                `(skipped ${reorderSkippedUnmatched} unmatched, ${reorderSkippedDisabled} disabled)`
-            );
-            await reorderModsUnlocked(deadlockPath, orderedIds);
-        } else {
-            console.log(`[profiles] reorder: nothing to reorder`);
-        }
+                // 1b. Apply priority order in a single two-phase pass via reorderMods.
+                // The previous implementation called setModPriority per mod and swallowed
+                // "Priority X is already in use" errors. Common when switching between
+                // profiles, since the OTHER profile's mods still occupy the target slots
+                // until later iterations move them. reorderMods stages every rename via
+                // a tmp prefix first, so transient mid-loop collisions can't happen.
+                //
+                // Re-resolve after enable/disable: enableMod assigns a fresh pakNN slot and
+                // disableMod renames to a free-form name, so the previous resolver's
+                // id-to-mod (and fileName) mapping is stale.
+                const refreshedMods = await scanMods(deadlockPath);
+                const resolveAgainstRefreshed = buildProfileModResolver(refreshedMods);
+                const orderedIds: string[] = [];
+                const seen = new Set<string>();
+                let reorderSkippedDisabled = 0;
+                let reorderSkippedUnmatched = 0;
+                for (const pm of [...profile.mods].sort((a, b) => a.priority - b.priority)) {
+                    if (!pm.enabled) continue;
+                    if (![...profileModByCurrentId.values()].includes(pm)) continue;
+                    const resolution = resolveAgainstRefreshed(pm);
+                    if (resolution.mod === undefined) {
+                        reorderSkippedUnmatched++;
+                        continue;
+                    }
+                    if (!resolution.mod.enabled) {
+                        reorderSkippedDisabled++;
+                        continue;
+                    }
+                    if (seen.has(resolution.mod.id)) continue;
+                    seen.add(resolution.mod.id);
+                    orderedIds.push(resolution.mod.id);
+                }
+                if (orderedIds.length > 0) {
+                    console.log(
+                        `[profiles] reorder: ${orderedIds.length} mods laid out densely across addon folders ` +
+                        `(skipped ${reorderSkippedUnmatched} unmatched, ${reorderSkippedDisabled} disabled)`
+                    );
+                    await reorderModsUnlocked(deadlockPath, orderedIds);
+                } else {
+                    console.log(`[profiles] reorder: nothing to reorder`);
+                }
 
-        if (failures.length > 0) {
-            console.warn(
-                `[profiles] apply '${profile.name}' completed with ${failures.length} ` +
-                `mod op failure(s) (file likely locked by the running game): ${failures.join('; ')}`
-            );
+
+                // Re-assert the Locker-managed VPKs at the front: the profile reorder only
+                // sequences the profile's own mods (managed VPKs are excluded), so pin them
+                // back to pak01.. so applied cards/sounds keep winning every collision.
+                const finalMods = (await scanMods(deadlockPath)).filter(mod => mod.enabled).sort((a, b) => a.priority - b.priority);
+                const lockerRank = (mod: typeof finalMods[number]): number => {
+                    const meta = getModMetadata(mod.metaKey);
+                    return meta?.lockerCosmetics ? 0 : meta?.lockerSounds ? 1 : 2;
+                };
+                const managed = finalMods.filter(mod => isLockerManaged(mod.metaKey)).sort((a, b) => lockerRank(a) - lockerRank(b));
+                if (managed.length && !managed.every((mod, index) => finalMods[index]?.id === mod.id)) {
+                    await reorderModsUnlocked(deadlockPath, [...managed, ...finalMods.filter(mod => !isLockerManaged(mod.metaKey))].map(mod => mod.id));
+                }
+
+                // 2. Apply Autoexec & Crosshair
+                const currentAutoexec = readAutoexec(deadlockPath);
+
+                // Update commands if present in profile
+                if (profile.autoexecCommands) {
+                    currentAutoexec.commands = profile.autoexecCommands;
+                }
+
+                // Update crosshair if present in profile
+                if (profile.crosshair) {
+                    currentAutoexec.crosshair = generateCrosshairCommands(profile.crosshair);
+                }
+
+                await journalRecoveryPaths(journal, [{ path: getAutoexecPath(deadlockPath), hash: createHash('sha256').update(buildAutoexec(currentAutoexec)).digest('hex') }]);
+                writeAutoexec(deadlockPath, currentAutoexec);
+                const settings = loadSettings();
+                settings.activeProfileId = unresolved.length === 0 ? profileId : null;
+                saveSettings(settings);
+            });
+            await clearRecoveryJournal();
+        } catch (error) {
+            try { await recoverInterruptedUnlocked(deadlockPath); }
+            catch (rollback) { throw new Error(`Profile apply failed: ${String(error)}; rollback incomplete: ${String(rollback)}`); }
+            throw new Error(`Profile apply failed and previous state was restored: ${String(error)}`);
         }
-
-        // Re-assert the Locker-managed VPKs at the front: the profile reorder only
-        // sequences the profile's own mods (managed VPKs are excluded), so pin them
-        // back to pak01.. so applied cards/sounds keep winning every collision.
-        const finalMods = (await scanMods(deadlockPath)).filter(mod => mod.enabled).sort((a, b) => a.priority - b.priority);
-        const lockerRank = (mod: typeof finalMods[number]): number => {
-            const meta = getModMetadata(mod.metaKey);
-            return meta?.lockerCosmetics ? 0 : meta?.lockerSounds ? 1 : 2;
-        };
-        const managed = finalMods.filter(mod => isLockerManaged(mod.metaKey)).sort((a, b) => lockerRank(a) - lockerRank(b));
-        if (managed.length && !managed.every((mod, index) => finalMods[index]?.id === mod.id)) {
-            await reorderModsUnlocked(deadlockPath, [...managed, ...finalMods.filter(mod => !isLockerManaged(mod.metaKey))].map(mod => mod.id));
-        }
-
-        // 2. Apply Autoexec & Crosshair
-        const currentAutoexec = readAutoexec(deadlockPath);
-
-        // Update commands if present in profile
-        if (profile.autoexecCommands) {
-            currentAutoexec.commands = profile.autoexecCommands;
-        }
-
-        // Update crosshair if present in profile
-        if (profile.crosshair) {
-            currentAutoexec.crosshair = generateCrosshairCommands(profile.crosshair);
-        }
-
-        writeAutoexec(deadlockPath, currentAutoexec);
-        const settings = loadSettings();
-        settings.activeProfileId = failures.length === 0 && unresolved.length === 0 ? profileId : null;
-        saveSettings(settings);
     });
 
     console.log(`[profiles] apply '${profile.name}' complete`);
-    return { profile, failures, unresolved };
+    return { profile, failures: [], unresolved };
 }
 
 /**
