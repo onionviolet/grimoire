@@ -1,0 +1,64 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { promises as fs } from 'fs';
+import { join } from 'path';
+import { tmpdir } from 'os';
+import type { Mod } from '../../../src/types/mod';
+const h = vi.hoisted(() => ({ root: '', mods: [] as Mod[], launch: '' }));
+vi.mock('../utils/paths', () => ({ getUserDataPath: () => h.root }));
+vi.mock('./mods', () => ({ scanMods: async () => h.mods, runExclusiveModMutation: async (work: () => Promise<unknown>) => work() }));
+vi.mock('./settings', () => ({ loadSettings: () => ({ steamLaunchOptions: h.launch }) }));
+vi.mock('./deadlock', () => ({ getCitadelPath: (path: string) => join(path, 'game/citadel'), getGameinfoPath: (path: string) => join(path, 'game/citadel/gameinfo.gi'),
+  getGrimoirePath: (path: string) => join(path, 'game/citadel/grimoire'), isReservedPriorityVpkArtifact: (name: string) => /^pak0[1-4]_dir\.vpk$/.test(name) }));
+vi.mock('./autoexec', () => ({ getAutoexecPath: (path: string) => join(path, 'game/citadel/cfg/autoexec.cfg') }));
+vi.mock('./vpk', () => ({ findChunkSiblingNames: () => [] }));
+import { getSetupTestHistory, recordSetupTest } from './setupTestHistory';
+let game: string;
+beforeEach(async () => {
+  h.root = await fs.mkdtemp(join(await fs.realpath(tmpdir()), 'grimoire-setup-tests-'));
+  game = join(h.root, 'install'); h.launch = '';
+  const citadel = join(game, 'game/citadel');
+  await fs.mkdir(join(citadel, 'cfg'), { recursive: true });
+  await fs.writeFile(join(citadel, 'pak01_dir.vpk'), 'base index');
+  await fs.writeFile(join(citadel, 'cfg/autoexec.cfg'), 'manual command');
+  const path = join(citadel, 'mod_dir.vpk'); await fs.writeFile(path, 'mod bytes');
+  h.mods = [{ id: 'a', path, fileName: 'mod_dir.vpk', name: 'Local', enabled: true, priority: 1 } as Mod];
+});
+afterEach(async () => fs.rm(h.root, { recursive: true, force: true }));
+describe('local setup test evidence', () => {
+  it('survives reload and treats names as labels, while mod bytes, order, config and launch options invalidate results', async () => {
+    const initial = await getSetupTestHistory(game);
+    await recordSetupTest(game, initial.current.reviewToken, 'works', 'One full match');
+    h.mods[0].name = 'Renamed';
+    expect((await getSetupTestHistory(game)).records[0].current).toBe(true);
+    const originalPath = h.mods[0].path;
+    const globalRoot = join(game, 'game/citadel/grimoire'); await fs.mkdir(globalRoot);
+    h.mods[0].path = join(globalRoot, h.mods[0].fileName); await fs.rename(originalPath, h.mods[0].path);
+    expect((await getSetupTestHistory(game)).records[0].current).toBe(false);
+    await fs.rename(h.mods[0].path, originalPath); h.mods[0].path = originalPath;
+    await fs.writeFile(join(globalRoot, 'pak01_dir.vpk'), 'applied Locker card');
+    expect((await getSetupTestHistory(game)).records[0].current).toBe(false);
+    expect((await getSetupTestHistory(game)).current.managedFileCount).toBe(1);
+    await fs.unlink(join(globalRoot, 'pak01_dir.vpk'));
+    await fs.writeFile(h.mods[0].path, 'new mod bytes');
+    expect((await getSetupTestHistory(game)).records[0]).toMatchObject({ current: false, sameBuild: true });
+    await fs.writeFile(h.mods[0].path, 'mod bytes'); h.mods[0].priority = 2;
+    expect((await getSetupTestHistory(game)).records[0].current).toBe(false);
+    h.mods[0].priority = 1; h.launch = '-new-option';
+    expect((await getSetupTestHistory(game)).records[0].current).toBe(false);
+    h.launch = ''; await fs.writeFile(join(game, 'game/citadel/cfg/autoexec.cfg'), 'edited');
+    expect((await getSetupTestHistory(game)).records[0].current).toBe(false);
+    await fs.writeFile(join(game, 'game/citadel/pak01_dir.vpk'), 'patched base index');
+    expect((await getSetupTestHistory(game)).records[0].sameBuild).toBe(false);
+  });
+  it('rejects stale feedback and keeps records separate across installations', async () => {
+    const initial = await getSetupTestHistory(game);
+    await fs.writeFile(h.mods[0].path, 'changed');
+    await expect(recordSetupTest(game, initial.current.reviewToken, 'works')).rejects.toThrow('changed since review');
+    const current = await getSetupTestHistory(game);
+    await recordSetupTest(game, current.current.reviewToken, 'crashes');
+    const other = join(h.root, 'other'); await fs.mkdir(join(other, 'game/citadel'), { recursive: true });
+    await fs.writeFile(join(other, 'game/citadel/pak01_dir.vpk'), 'base index');
+    h.mods = [];
+    expect((await getSetupTestHistory(other)).records).toEqual([]);
+  });
+});

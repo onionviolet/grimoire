@@ -1312,7 +1312,14 @@
       "noReleaseNotes": "No release notes available.",
       "manual": "Updates have to be downloaded manually.",
       "manualUnsignedExplanation": "The macOS build is ad-hoc signed rather than notarized, so macOS will not let Grimoire replace itself in place. Grimoire can still tell you when a new version is out.",
-      "manualDownloadLink": "Download the latest release"
+      "manualDownloadLink": "Download the latest release",
+      "channel": "Release channel",
+      "stable": "Stable releases",
+      "preview": "Preview releases (opt in)",
+      "channelHelp": "Preview may offer experimental releases from this fork. Changing channel does not download an update or downgrade this installation. Check for updates after changing it.",
+      "startupCheck": "Check for updates on startup",
+      "startupCheckHelp": "Opt in to a release check when Grimoire starts. Off by default; manual checks remain available.",
+      "channelChanged": "Release channel changed. Check for updates again before downloading or installing."
     },
     "appearance": {
       "accentNamed": "Use {{name}} accent color",
@@ -1564,7 +1571,26 @@
       "blockListChoose": "Choose a blocklist file",
       "blockListClear": "Use built-in list only",
       "blockListError": "Filter lists failed to load: ",
-      "blockListHint": "Any hosts file, plain domain list, or uBlock Origin / EasyList filter list, one entry per line. The app bundles real filter lists and refreshes them with each release."
+      "blockListHint": "Hosts files and supported uBlock Origin / EasyList rules are accepted. Updates are checked only when you ask.",
+      "engineStatus": "Filter engine: {{status}}",
+      "status": {
+        "off": "Off",
+        "loading": "Loading",
+        "active": "Ready",
+        "fallback": "Basic domain list only",
+        "error": "Failed to attach"
+      },
+      "listVersion": "Lists: {{revision}}, downloaded {{date}}",
+      "unknownDate": "date unknown",
+      "checkUpdate": "Check for list updates",
+      "reloadList": "Reload custom list",
+      "updateReview": "Revision {{revision}}: {{network}} network and {{cosmetic}} cosmetic rules. Current bundled rules: {{current}}.",
+      "applyUpdate": "Apply reviewed update",
+      "dismissUpdate": "Dismiss",
+      "customReport": "{{accepted}} recognized lines, {{rejected}} rejected. Rejected line numbers: {{lines}}",
+      "exceptions": "Sites with blocking paused",
+      "removeException": "Remove exception",
+      "reloadPages": "Reload open pages after changing filters to refresh hidden elements."
     },
     "viewPrefs": {
       "title": "Reset view preferences",
@@ -2896,7 +2922,7 @@
     "abilityPreview": {
       "open": "Preview abilities",
       "title": "{{hero}} ability inspection",
-      "hint": "Experimental animation and sound audition. Uses the viewer’s selected outfit and applied slot sound when available. Playback begins together after decoding with approximate timing; Source 2 cast events are not reproduced.",
+      "hint": "Experimental animation and sound audition with a shared playback timeline. Uses the viewer’s selected outfit and applied slot sound when available. Source 2 cast effects are not reproduced.",
       "missingClip": "The exported model does not contain the selected animation clip.",
       "loading": "Resolving known ability slots...",
       "select": "Ability",
@@ -2909,7 +2935,6 @@
       "noEffectJoin": "Cast VFX unavailable: no verified animation-to-particle event join. Use Assets to inspect particles separately.",
       "noAbilities": "No known ability slots for this hero.",
       "failed": "Could not play this animation",
-      "audio": "Base ability sound",
       "noAmbient": "No curated ambient effect is available for this hero.",
       "showAmbient": "Show ambient recolor preview",
       "hideAmbient": "Hide ambient recolor preview",
@@ -2928,7 +2953,33 @@
       "skinFallback": "The full outfit stack could not export. This uses the same selected single-outfit fallback as the viewer.",
       "appliedSound": "Sound source: applied Locker slot",
       "baseSound": "Sound source: base game (no Locker slot selection)",
-      "tuningHint": "Initial audition approximates the slot’s pitch and attenuation. Positive gain is capped at normal browser volume; native replay controls play the original clip."
+      "tuningHint": "Uses the slot’s saved pitch and volume. Playback speed changes the whole audition; sound pitch remains a separate setting.",
+      "source": "Audition source",
+      "sourceApplied": "Applied outfit and sound",
+      "sourceBase": "Stock model and sound",
+      "pause": "Pause",
+      "resume": "Resume",
+      "replay": "Replay without exporting again",
+      "clipSelect": "Animation clip for this audition",
+      "clipAutomatic": "Use automatic ability match",
+      "manualClip": "This is your selected animation audition, not a verified ability-event match.",
+      "timeline": "Playback position",
+      "timelineTime": "{{position}} / {{duration}} s",
+      "speed": "Playback speed",
+      "speedValue": "{{speed}}x",
+      "assetsLoading": "Loading model and decoding sound...",
+      "finished": "Playback finished",
+      "playing": "Playing",
+      "paused": "Paused",
+      "audioFailed": "The ability sound could not be loaded or decoded. Try preparing the preview again.",
+      "audioResumeFailed": "Sound playback could not start. Select Resume to enable audio and play the preview.",
+      "eventsTitle": "Animation events ({{count}})",
+      "eventsHint": "Events authored in the selected animation. Their sound and effect resources have not been linked to this ability or verified against the game.",
+      "noEvents": "This animation contains no authored events.",
+      "eventTime": "Time",
+      "eventName": "Event",
+      "eventTimeUnknown": "Unavailable",
+      "eventSeconds": "{{time}} s"
     }
   },
   "profiles": {
@@ -3064,11 +3115,16 @@
         "changed": "File changed since saving",
         "missing": "Not installed",
         "replaced": "Saved slot now belongs to another mod",
-        "ambiguous": "More than one possible match"
+        "ambiguous": "More than one possible match",
+        "mapped": "Mapped by you"
       },
       "apply": "Apply reviewed matches",
       "noMatches": "No enabled entries can be matched. Cancel and repair the profile or install its missing mods first.",
-      "partial": "Applied the reviewed matches. Skipped saved entries: {{count}}. This setup is not marked as a complete profile."
+      "partial": "Applied the reviewed matches. Skipped saved entries: {{count}}. This setup is not marked as a complete profile.",
+      "mappingHint": "Choose a local replacement explicitly, then review the updated counts. Mappings apply only to this operation; the saved profile is unchanged.",
+      "mappingFailed": "The mapping is stale, unavailable, or uses a local mod twice. Review your selection again.",
+      "mapEntry": "Local replacement for {{name}}",
+      "keepResolution": "Keep automatic resolution"
     },
     "recovery": {
       "title": "Local restore points",
@@ -4131,7 +4187,22 @@
       "title": "Browser is off",
       "description": "Enable the in-app browser in Settings to use this page."
     },
+    "find": {
+      "open": "Find in page",
+      "placeholder": "Find text on this page",
+      "matches": "{{current}} of {{total}}",
+      "previous": "Previous match",
+      "next": "Next match",
+      "close": "Close find"
+    },
+    "zoom": {
+      "in": "Zoom in",
+      "out": "Zoom out",
+      "reset": "Reset zoom",
+      "value": "{{percent}}%"
+    },
     "catalog": {
+      "toggle": "Site shortcuts",
       "groups": {
         "modHost": "Mod hosts",
         "tool": "Tools",
@@ -4149,6 +4220,20 @@
       "interrupted": "The download did not finish. Nothing was added.",
       "downloading": "Downloading from {{tool}}...",
       "replaced": "Replaced with a newer download from {{tool}}."
+    },
+    "blocker": {
+      "label": "Ad blocker",
+      "off": "Off",
+      "paused": "Paused here",
+      "on": "On",
+      "checking": "Loading",
+      "fallback": "Basic blocking",
+      "error": "Needs attention",
+      "stopped_one": "{{count}} request stopped since launch",
+      "stopped_other": "{{count}} requests stopped since launch",
+      "pauseSite": "Pause for this site",
+      "resumeSite": "Resume for this site",
+      "reloadNote": "This reloads the page. Saved exceptions apply only to this exact site address."
     }
   },
   "chatWheel": {
@@ -4720,7 +4805,10 @@
       "confirmInterrupted": "Close Deadlock first. Restore the file contents and configuration recorded before the interrupted action? Changes made outside recovery block this action.",
       "confirmRestore": "Close Deadlock first. Restore the original user mods, file order and configuration, then end isolation?",
       "confirm": "Continue",
-      "refreshReview": "Refresh recovery review"
+      "refreshReview": "Refresh recovery review",
+      "deltaScope": "After the empty baseline, reproduce the original failure. A group is removed only when the remaining trial is reported crashing. Subsets and complements can identify interactions; results are leads, not proven causes.",
+      "originalReady": "Restore the original enabled set for a trial and confirm that its crash reproduces.",
+      "interacting": "Reported crash needs this tested group: {{names}}. Each tested removal worked. This is a lead for a mod interaction, not a proven cause."
     }
   },
   "downloadHistory": {
@@ -4739,5 +4827,60 @@
       "cancelled": "Cancelled",
       "completed": "Completed"
     }
+  },
+  "setupTests": {
+    "title": "Setup test history",
+    "description": "Record your own in-game result for the reviewed setup. Records stay local. A patch, enabled mod, load-order or configuration change makes the old result outdated; a successful test is not a compatibility guarantee.",
+    "review": "Review current setup",
+    "failed": "The setup could not be read or changed since review. Review it again before recording a result.",
+    "identity": "Base index {{build}} · {{count}} enabled user mods · {{managed}} managed Locker files",
+    "note": "Test notes (optional)",
+    "works": "I tested this setup: works",
+    "crashes": "I tested this setup: crashes",
+    "empty": "No in-game test has been recorded for this installation.",
+    "result": {
+      "works": "Reported working",
+      "crashes": "Reported crashing"
+    },
+    "current": "Matches the current reviewed setup",
+    "setupChanged": "Setup changed since this test",
+    "buildChanged": "Base game changed since this test"
+  },
+  "downloadCache": {
+    "title": "Download cache",
+    "description": "Review local archive copies before cleanup. Installed files and recovery backups live separately. Retryable partials and transfers in use stay protected; orphan partials are eligible after seven days.",
+    "review": "Review cache",
+    "clean": "Clean reviewed copies",
+    "failed": "The cache changed, is in use, or could not be read. Review it again before cleanup.",
+    "summary": "{{count}} cache files · {{size}} MiB",
+    "confirmTitle": "Clean these cached copies?",
+    "confirmDescription": "Removes only the reviewed download-cache files. Removed archives will need downloading again if reused.",
+    "cleaned": "Removed {{count}} files ({{size}} MiB). {{failed}} files could not be removed.",
+    "reasons": {
+      "copy": "Eligible cached copy",
+      "retryable": "Protected: a download can still be retried",
+      "recent": "Protected: recent partial download",
+      "in-use": "Protected: download cache is in use"
+    },
+    "file": "{{name}} ({{size}} MiB)",
+    "item": "{{size}} MiB · {{reason}}",
+    "fileCount": "Cache files ({{count}})"
+  },
+  "mergeRecipes": {
+    "title": "Recipes and path selection",
+    "help": "Use one exact game path or folder prefix ending in / per line. Empty inclusion keeps every path. Exclusion wins. Filtering can omit dependencies; review the output paths before merging. Recipes stay local and do not install anything.",
+    "include": "Include paths or folders",
+    "exclude": "Exclude paths or folders",
+    "select": "Choose saved recipe",
+    "load": "Load and compare",
+    "save": "Save reviewed recipe",
+    "saved": "Recipe saved. Saving the same name updates that local recipe.",
+    "failed": "The recipe could not be saved or loaded. Select the same unambiguous sources, use a name under 120 characters, and refresh the merge review.",
+    "diff": "Compared with saved output: {{added}} added, {{removed}} removed, {{changed}} changed",
+    "added": "Added",
+    "removed": "Removed",
+    "changed": "Changed",
+    "outputPaths": "Review {{count}} output paths",
+    "sharingHint": "The share code describes the source mods. Local path filters and composition recipes are not included."
   }
 }

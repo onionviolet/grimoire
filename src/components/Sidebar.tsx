@@ -304,7 +304,6 @@ export default function Sidebar() {
 
   useEffect(() => {
     window.electronAPI.updater.getVersion().then(v => setAppVersion(`v${v}`)).catch(() => setAppVersion('v???'));
-    window.electronAPI.updater.checkForUpdates().catch(() => { });
     window.electronAPI.updater.getStatus().then(status => {
       if (status) setUpdateAvailable(status.available || status.downloaded);
     });

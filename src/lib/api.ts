@@ -1265,12 +1265,12 @@ export async function updateProfile(profileId: string, crosshairSettings?: Profi
   return window.electronAPI.updateProfile(profileId, crosshairSettings);
 }
 
-export async function previewProfile(profileId: string): Promise<ProfileApplyPreview> {
-  return window.electronAPI.previewProfile(profileId);
+export async function previewProfile(profileId: string, mappings?: import('../types/electron').ProfileApplyMapping[]): Promise<ProfileApplyPreview> {
+  return window.electronAPI.previewProfile(profileId, mappings);
 }
 
-export async function applyProfile(profileId: string, reviewToken?: string): Promise<ApplyProfileResult> {
-  return withGameRunningWarning(() => window.electronAPI.applyProfile(profileId, reviewToken));
+export async function applyProfile(profileId: string, reviewToken?: string, mappings?: import('../types/electron').ProfileApplyMapping[]): Promise<ApplyProfileResult> {
+  return withGameRunningWarning(() => window.electronAPI.applyProfile(profileId, reviewToken, mappings));
 }
 
 export async function deleteProfile(profileId: string): Promise<void> {
@@ -1725,9 +1725,11 @@ export async function foundryCheckAudioPaths(paths: string[]): Promise<string[]>
  *  each collided path, for the given source order. */
 export async function analyzeMerge(
   modIds: string[],
-  respectOrder = false
+  respectOrder = false,
+  flatten = false,
+  pathPolicy?: import('../types/mergeRecipe').MergePathPolicy
 ): Promise<import('../types/mod').MergeAnalysisResult> {
-  return window.electronAPI.analyzeMerge(modIds, respectOrder);
+  return window.electronAPI.analyzeMerge(modIds, respectOrder, flatten, pathPolicy);
 }
 
 /** Bake one PNG onto a catalog texture and install it as a managed local mod. */
@@ -1836,4 +1838,10 @@ export async function recordModIsolationResult(reviewToken: string, result: 'wor
 }
 export async function finishModIsolation(reviewToken: string): Promise<void> {
   return window.electronAPI.finishModIsolation(reviewToken);
+}
+export async function getSetupTestHistory(): Promise<import('../types/setupTestHistory').SetupTestHistory> {
+  return window.electronAPI.getSetupTestHistory();
+}
+export async function recordSetupTest(reviewToken: string, result: 'works' | 'crashes', note: string): Promise<void> {
+  return window.electronAPI.recordSetupTest(reviewToken, result, note);
 }

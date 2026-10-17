@@ -10,6 +10,8 @@ import { Textarea } from '../components/common/forms';
 import HealthIssues from '../components/recovery/HealthIssues';
 import RecoveryTools from '../components/recovery/RecoveryTools';
 import DownloadHistory from '../components/downloads/DownloadHistory';
+import SetupTestHistory from '../components/recovery/SetupTestHistory';
+import DownloadCacheManager from '../components/downloads/DownloadCacheManager';
 
 export default function Recovery() {
   const { t } = useTranslation();
@@ -88,7 +90,9 @@ export default function Recovery() {
           <p className="text-xs text-text-tertiary">{t('recovery.scope')}</p>
         </section>}
       {health?.pathState === 'ready' && <RecoveryTools />}
+      {health?.pathState === 'ready' && <SetupTestHistory />}
       <DownloadHistory />
+      <DownloadCacheManager />
       <section className="space-y-3 rounded-sm border border-border bg-bg-secondary p-4">
         <SectionHeader>{t('recovery.diagnosticsTitle')}</SectionHeader>
         <p className="text-sm text-text-secondary">{t('recovery.diagnosticsDescription')}</p>

@@ -1,4 +1,5 @@
 import { ipcMain, shell } from 'electron';
+import { listMergeRecipes, saveMergeRecipe, reviewMergeRecipe } from '../services/mergeRecipes';
 import { modSafetySnapshot } from '../services/modSafety';
 import { reserveOutputSlot } from '../services/modMerger';
 import { importDisabledVpk } from '../services/importDisabledVpk';
@@ -2624,10 +2625,22 @@ ipcMain.handle(
 // unmerge can either re-enable the originals or fall back to the share code.
 // Read-only and additive: newer renderers may preview collisions while older
 // clients continue to call merge-mods exactly as before.
-ipcMain.handle('analyze-merge', async (_, modIds: string[], respectOrder = false): Promise<MergeAnalysisResult> => {
+ipcMain.handle('analyze-merge', async (_, modIds: string[], respectOrder = false, flatten = false, pathPolicy?: import('../../../src/types/mergeRecipe').MergePathPolicy): Promise<MergeAnalysisResult> => {
     const deadlockPath = getActiveDeadlockPath();
     if (!deadlockPath) throw new Error('No Deadlock path configured');
-    return analyzeMerge(deadlockPath, modIds, { respectOrder: !!respectOrder });
+    return analyzeMerge(deadlockPath, modIds, { respectOrder: !!respectOrder, flatten: !!flatten, pathPolicy });
+});
+
+ipcMain.handle('merge-recipes:list', () => listMergeRecipes());
+ipcMain.handle('merge-recipes:save', (_, args: import('../../../src/types/mergeRecipe').MergeRecipeSave) => {
+    const path = getActiveDeadlockPath();
+    if (!path) throw new Error('No Deadlock path configured');
+    return saveMergeRecipe(path, args);
+});
+ipcMain.handle('merge-recipes:review', (_, id: string, modIds: string[]) => {
+    const path = getActiveDeadlockPath();
+    if (!path) throw new Error('No Deadlock path configured');
+    return reviewMergeRecipe(path, id, modIds);
 });
 
 ipcMain.handle('merge-mods', async (_, args: MergeModsArgs): Promise<Mod> => {
@@ -2640,6 +2653,8 @@ ipcMain.handle('merge-mods', async (_, args: MergeModsArgs): Promise<Mod> => {
         thumbnailDataUrl: args.thumbnailDataUrl,
         strict: args.strict,
         sourceOrder: args.sourceOrder,
+        reviewToken: args.reviewToken,
+        pathPolicy: args.pathPolicy,
     });
     return enrichMod(result.mod);
 });

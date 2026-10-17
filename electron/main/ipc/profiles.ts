@@ -73,19 +73,19 @@ ipcMain.handle('update-profile', async (_, profileId: string, crosshairSettings?
 });
 
 // apply-profile
-ipcMain.handle('preview-profile', async (_, profileId: string) => {
+ipcMain.handle('preview-profile', async (_, profileId: string, mappings?: import('../../../src/types/electron').ProfileApplyMapping[]) => {
     const deadlockPath = getActiveDeadlockPath();
     if (!deadlockPath) throw new Error('No Deadlock path configured');
-    return previewProfile(deadlockPath, profileId);
+    return previewProfile(deadlockPath, profileId, mappings);
 });
 
-ipcMain.handle('apply-profile', async (_, profileId: string, reviewToken?: string): Promise<ApplyProfileResult> => {
+ipcMain.handle('apply-profile', async (_, profileId: string, reviewToken?: string, mappings?: import('../../../src/types/electron').ProfileApplyMapping[]): Promise<ApplyProfileResult> => {
     const deadlockPath = getActiveDeadlockPath();
     if (!deadlockPath) {
         throw new Error('No Deadlock path configured');
     }
 
-    const result = await applyProfile(deadlockPath, profileId, reviewToken);
+    const result = await applyProfile(deadlockPath, profileId, reviewToken, mappings);
 
     return result;
 });

@@ -1,13 +1,21 @@
 import { createHash } from 'node:crypto';
 import type { Mod } from '../../../src/types/mod';
-import type { Profile, ProfileApplyEntry, ProfileApplyPreview } from '../../../src/types/electron';
+import type { Profile, ProfileApplyEntry, ProfileApplyPreview, ProfileApplyMapping } from '../../../src/types/electron';
 import { buildProfileModResolver, normalizeVpkIndex, type MetaLookup } from './profileResolver';
 
 /** Resolve once for both the review and the mutation; ambiguous entries stay out. */
-export function buildProfileApplyPlan(profile: Profile, mods: Mod[], getMeta: MetaLookup) {
+export function buildProfileApplyPlan(profile: Profile, mods: Mod[], getMeta: MetaLookup, mappings: ProfileApplyMapping[] = [], mappingFingerprints: Record<string, string> = {}) {
+    if (!Array.isArray(mappings) || mappings.length > profile.mods.length) throw new Error('Invalid profile mappings');
+    const mapped = new Map<number, Mod>();
+    for (const mapping of mappings) {
+        if (!mapping || !Number.isSafeInteger(mapping.entryIndex) || mapping.entryIndex < 0 || mapping.entryIndex >= profile.mods.length || mapped.has(mapping.entryIndex)) throw new Error('Invalid profile mapping entry');
+        const mod = mods.find(mod => mod.id === mapping.modId);
+        if (!mod) throw new Error('Mapped local mod is no longer available');
+        mapped.set(mapping.entryIndex, mod);
+    }
     const resolve = buildProfileModResolver(mods, getMeta);
     const matches = new Map<string, Profile['mods'][number]>();
-    const entries: ProfileApplyEntry[] = profile.mods.map((entry) => {
+    const entries: ProfileApplyEntry[] = profile.mods.map((entry, entryIndex) => {
         const resolution = resolve(entry);
         const candidates = mods.filter((mod) => {
             const meta = getMeta(mod.metaKey);
@@ -31,11 +39,14 @@ export function buildProfileApplyPlan(profile: Profile, mods: Mod[], getMeta: Me
                 status = 'changed';
             }
         }
-        if (resolution.mod && (status === 'matched' || status === 'changed')) {
-            matches.set(resolution.mod.id, entry);
+        const selected = mapped.get(entryIndex) ?? resolution.mod;
+        if (mapped.has(entryIndex)) status = 'mapped';
+        if (selected && (status === 'matched' || status === 'changed' || status === 'mapped')) {
+            if (matches.has(selected.id) && [...mapped.values()].some(mod => mod.id === selected.id)) throw new Error('Two profile entries cannot map to the same local mod');
+            matches.set(selected.id, entry);
         }
-        return { fileName: entry.fileName, enabled: entry.enabled, status,
-            modName: resolution.mod?.name, modId: matches.has(resolution.mod?.id ?? '') ? resolution.mod?.id : undefined };
+        return { entryIndex, fileName: entry.fileName, enabled: entry.enabled, status,
+            modName: selected?.name, modId: matches.has(selected?.id ?? '') ? selected?.id : undefined };
     });
     const issues = entries.filter((entry) => entry.enabled && entry.status !== 'matched');
     const enableCount = mods.filter((mod) => !mod.enabled && matches.get(mod.id)?.enabled).length;
@@ -43,10 +54,13 @@ export function buildProfileApplyPlan(profile: Profile, mods: Mod[], getMeta: Me
     // Covers profile edits, metadata, toggle state and order changes since review.
     const reviewToken = createHash('sha256').update(JSON.stringify({
         profile,
-        mods: mods.map((mod) => [mod.id, mod.metaKey, mod.enabled, mod.priority, getMeta(mod.metaKey)]),
+        mods: mods.map((mod) => [mod.id, mod.metaKey, mod.enabled, mod.priority, mod.size, getMeta(mod.metaKey)]),
+        mappings: [...mappings].sort((a, b) => a.entryIndex - b.entryIndex),
+        mappingFingerprints,
     })).digest('hex');
     const preview: ProfileApplyPreview = { profileId: profile.id, profileName: profile.name,
-        entries, issues, enableCount, disableCount, reviewToken };
+        entries, issues, enableCount, disableCount, reviewToken, mappings,
+        localMods: mods.map(mod => ({ id: mod.id, name: mod.name, fileName: mod.fileName })) };
     return { preview, matches };
 }
 

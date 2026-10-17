@@ -6,9 +6,10 @@ open as of the date in the header.
 
 **Reconciled:** 2026-09-01, by reading the code rather than the docs.
 
-**Updated 2026-10-03:** B-02 inspection is implemented in source. B-01 now
-tracks general authoring beyond the delivered compiled-bundle forge contract; B-04 is narrowed to retarget and exact
-cast-particle event joins. Other entries retain their reconciliation dates.
+**Updated 2026-10-03:** B-02 inspection and B-03 local merge recipes are
+implemented in source. B-01 and B-04 retain their engine-dependent authoring
+and event-playback boundaries. B-08 and B-09 hold the remaining setup-recovery
+and application-update work. Other entries retain their reconciliation dates.
 
 ## Where things live
 
@@ -56,9 +57,19 @@ are not re-planned a third time.
 Models provides exact base paths, static GLB preview and export. Assets now
 searches all indexed textures/materials/particles and offers on-demand texture,
 material and authored particle inspection. Sprite playback is experimental,
-approximate and explicit about unsupported classes. Neither surface authors or
-installs model edits. Evidence and limits:
+approximate and explicit about unsupported classes. Inspection does not author assets; the compiled model replacement contract
+is recorded under B-01. Evidence and limits:
 `docs/parallel-feature-followup-2026-10-03.md`.
+
+### B-03. Reviewed merge recipes and path policy
+Saved local recipes now retain winner-first source identities, strict mode,
+exact-path/folder include and exclude rules, and an output CRC/size baseline.
+Loading a recipe compares added, removed and changed output paths. The review
+flattens nested selections to the same leaves the builder uses; physical-byte
+review tokens reject drift before installation. Filtered builds are bounded to
+256 MiB with CRC checks. Rebuilds preserve local policy and composition order.
+Portable source share codes and the v1 imprint do not carry local recipes.
+Evidence: `docs/setup-evidence-and-auditions-2026-10-03.md`.
 
 ## Open
 
@@ -70,22 +81,17 @@ skeletons and authoring new dependency graphs remain outside this slice.
 Evidence: `docs/implementation-hardening-2026-10-03.md`.
 **Size:** large. **Needs:** an engine-backed authoring contract beyond compiled bundles.
 
-### B-03. Advanced merge composition
-Review and reviewed source order shipped. Merge recipes, editable
-include/exclude path policy, merge-content presets, and rebuild diffs are
-absent (`MergeRecipe` appears nowhere in the tree). A reviewed order still
-cannot be applied to a selection containing a merged mod, because flattening
-contributes leaves the review never showed.
-**Size:** large. **Note:** assessed 2026-07-28 as the lowest-value item on the
-board: pure groundwork, no standalone user benefit, nothing breaks without it.
-Do not start unless the merge-recipe UI is actually wanted.
-
 ### B-04. Animation retarget and exact cast-particle event joins
 Material/lighting parity, NPR, cloth, and the rigged export path have landed.
-Experimental applied-source clip/audio auditions and native ambient sprite
-previews now exist. Retarget and verified cast-particle event joins remain open.
+Experimental stock/applied clip/audio auditions, explicit manual clip selection,
+shared timeline pause/seek/speed/replay, common hero materials and native ambient
+sprite previews now exist. Exact-entry exports can inspect bounded authored
+animation events without claiming a slot, sound or particle association.
+Retarget, verified cast-particle event joins and a real-game cast pilot remain open.
 Approximate sprite playback does not establish engine timing or full operator
 fidelity. Unknown hero/ability joins remain unavailable.
+Evidence: `docs/ability-playback-implementation-2026-10-09.md`. Packaged playback
+verification is pending because the test launch stalled in macOS Keychain access.
 **Size:** large.
 
 ### B-05. TOS gate placement is an unresolved decision
@@ -109,6 +115,26 @@ Recorded as a disposition in ADR-018; listed here because reversing it is
 real work.
 **Size:** medium. **Note:** the local gate cannot catch sibling-repo breaks;
 `pnpm typecheck` resolves the sibling from disk while CI checks it out fresh.
+
+### B-08. Complete setup profiles and Locker recovery
+Manual mapping now re-reviews a selected local replacement and binds its exact
+bytes to one apply operation; it does not rewrite the saved profile. User-mod
+byte retention, rolling restore history and interrupted rollback are implemented.
+Reserved Locker artifacts and their owning selections remain outside profile
+snapshots. Complete setup capture needs an explicit multi-owner restore contract
+before those artifacts can safely join profile recovery.
+**Size:** medium to large. **Evidence:** current `profileRecovery.ts` and
+`docs/setup-evidence-and-auditions-2026-10-03.md`.
+
+### B-09. Verified publisher identity and application rollback
+Stable/preview selection, startup-check opt-in and optional Windows certificate
+hooks now exist in source. A hook does not establish a signed release. Trusted
+publisher credentials and signed artifact verification still need real CI evidence.
+Last-known-good installer retention and rollback across app-data migrations remain
+unimplemented; archive-cache cleanup is not application rollback. macOS remains
+manual-update-only under the current ad-hoc-signing contract.
+**Size:** medium to large. **Needs:** publisher credentials and a platform-specific
+installer plus app-data rollback contract. Fork issue 29 remains partly open.
 
 ## Deferred by decision
 

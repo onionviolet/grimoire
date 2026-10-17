@@ -1,6 +1,6 @@
 # Feature status
 
-Status snapshot: **2026-10-03**, reconciled against the working tree by reading
+Status snapshot: **2026-10-04**, reconciled against the working tree by reading
 the code rather than the docs. The two "Shipped" sections date from the
 2026-07-28 audit ([spec-audit-prompt.md](./spec-audit-prompt.md)) and its three
 waves and are kept as shipped history; the gap and verification sections were
@@ -12,7 +12,20 @@ It holds **no forward plan**: see [.planning/ROADMAP.md](../.planning/ROADMAP.md
 for the current milestone and [.planning/BACKLOG.md](../.planning/BACKLOG.md)
 for everything else.
 
+Ability playback follow-through was source- and test-verified on 2026-10-09:
+[implementation record](./ability-playback-implementation-2026-10-09.md).
+The macOS directory package built and passed ad-hoc signature verification;
+packaged playback and real-game cast fidelity remain unverified.
+
 ## Source improvements 2026-10-03 (not released)
+
+The setup-evidence follow-through is recorded in
+[setup-evidence-and-auditions-2026-10-03.md](./setup-evidence-and-auditions-2026-10-03.md).
+It adds local build/setup test history, interaction-aware manual isolation,
+explicit profile replacements, reviewed merge recipes/path filters and rebuild
+diffs, stock/applied animation audition controls, reviewed download-cache cleanup,
+release-channel selection and optional publisher-certificate hooks. These are
+source changes, not a signed or published release.
 
 The current source takes upstream through v1.30.1. The intake and verification
 record is [upstream-absorption-1.30.md](./upstream-absorption-1.30.md).
@@ -58,7 +71,10 @@ record is [upstream-absorption-1.30.md](./upstream-absorption-1.30.md).
   exports protected from pruning.
 - Experimental ability previews default off. Known clips can audition selected
   outfit stacks and the applied Locker sound bytes, with explicit fallback or
-  unavailable states. Ambient sprite previews use authored control points and
+  unavailable states. Decoded audio and animation share a pause/seek/speed/replay
+  timeline and the hero viewer's lighting and material passes. Exact-entry
+  exports can inspect authored animation event metadata without claiming a
+  slot, sound or particle association. Ambient sprite previews use authored control points and
   attachment offsets and honor color operators and applied recolors. Unsupported
   classes and missing attachments are disclosed. Exact cast-particle event joins
   and engine-faithful timing remain unavailable.
@@ -82,6 +98,17 @@ record is [upstream-absorption-1.30.md](./upstream-absorption-1.30.md).
   The compiled KV3/RED2 resource matches independent original-converter fixtures;
   original YAML survives byte-for-byte. Packaged builds include pinned native
   data and licensing rather than invoking a Windows executable.
+- Browser filtering now reports live status and real rule counts, supports exact-site
+  pause/resume and saved exceptions, reloads custom files with rejected-line
+  feedback and offers explicit reviewed list updates from immutable source
+  revisions. Filtering registers before the first guest navigation; reloads
+  recheck cached resources. Its contract lives in
+  [browser-scope-boundary.md](./browser-scope-boundary.md).
+- Browser adds native find with match counts and previous/next controls, guest
+  zoom from 50% to 200% and collapsible site shortcuts. Navigation listeners
+  bind after async settings arrive, wait for guest readiness and ignore
+  subframe errors. Its privilege and download-confirmation contracts remain
+  recorded in [browser-scope-boundary.md](./browser-scope-boundary.md).
 
 Validation and limits for these follow-ups are recorded in
 [recovery-and-models-2026-10-03.md](./recovery-and-models-2026-10-03.md).
@@ -237,13 +264,16 @@ What is genuinely still missing, in the order it would be worth building:
    enter the shared forge tray. Arbitrary GLB editing, new skeletons and broader
    dependency authoring still need an engine-backed contract. Backlog B-01.
 
-2. **Advanced merge composition.** Merge recipes, editable include/exclude
-   path policy, merge-content presets, and rebuild diffs are absent, and a
-   reviewed order cannot be applied to a selection containing a merged mod.
-   Backlog B-03.
+2. **Complete setup recovery.** User-mod history, retained bytes and explicit
+   local mappings exist. Reserved Locker artifacts and their owning selections
+   still need a complete restore contract. Backlog B-08.
 3. **Animation retarget and exact cast-particle event joins.** Rigged animation,
    native sprite inspection and experimental applied-source auditions exist.
    Retarget and event-timed ability effects remain open. Backlog B-04.
+
+4. **Publisher identity and application rollback.** Channel selection and
+   certificate hooks exist; signed release verification and a previous-app/data
+   rollback contract do not. Backlog B-09.
 
 Two further items are decisions rather than gaps: where the social TOS gate
 fires (B-05) and whether to fork `grimoire-social` or upstream the dormant

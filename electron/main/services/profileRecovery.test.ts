@@ -280,6 +280,11 @@ describe('manual assisted isolation', () => {
     expect(await fs.readdir(asset('addons', ''))).toEqual([]);
     session = await recordModIsolationResult(game, session.reviewToken, 'works');
     expect(session.phase).toBe('ready');
+    expect(session.trialKind).toBe('original');
+    expect(session.testIds).toHaveLength(2);
+    session = await applyModIsolationTrial(game, session.reviewToken);
+    session = await recordModIsolationResult(game, session.reviewToken, 'crashes');
+    expect(session.phase).toBe('ready');
     expect(session.testIds).toHaveLength(1);
     session = await applyModIsolationTrial(game, session.reviewToken);
     expect(state.active).toBe(null);

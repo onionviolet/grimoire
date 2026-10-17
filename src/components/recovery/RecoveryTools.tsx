@@ -34,7 +34,7 @@ export default function RecoveryTools() {
   };
   const testing = session?.phase === 'testing' || session?.phase === 'baseline-testing';
   const ready = session?.phase === 'ready' || session?.phase === 'baseline-ready';
-  const testNames = session?.candidates.filter(mod => session.testIds.includes(mod.id)).map(mod => mod.name) ?? [];
+  const testNames = session?.candidates.filter(mod => session.phase === 'complete' || session.testIds.includes(mod.id)).map(mod => mod.name) ?? [];
   return <div className="space-y-4">
     {error && <p role="alert" className="text-sm text-state-danger">{t('recovery.tools.failed')}</p>}
     {interrupted && <Card title={t('recovery.tools.interruptedTitle')} accentEdge="none">
@@ -66,13 +66,14 @@ export default function RecoveryTools() {
     <Card title={t('recovery.tools.isolationTitle')} description={t('recovery.tools.isolationDescription')} accentEdge="none">
       <div className="space-y-3">
         <p className="text-sm text-text-secondary">{t('recovery.tools.isolationScope')}</p>
+        {session?.strategy === 'delta' && <p className="text-xs text-text-secondary">{t('recovery.tools.deltaScope')}</p>}
         {!session ? <Button variant="secondary" disabled={busy || !!interrupted} onClick={() => void run(startModIsolation)}>{t('recovery.tools.startIsolation')}</Button>
           : <>
             <p role="status" className="text-sm text-text-primary">{session.phase === 'baseline-ready' ? t('recovery.tools.baselineReady')
               : session.phase === 'baseline-testing' ? t('recovery.tools.baselineTesting')
-              : session.phase === 'ready' ? t('recovery.tools.trialReady', { count: session.testIds.length, remaining: session.candidates.length })
+              : session.phase === 'ready' ? session.trialKind === 'original' ? t('recovery.tools.originalReady') : t('recovery.tools.trialReady', { count: session.testIds.length, remaining: session.candidates.length })
               : session.phase === 'testing' ? t('recovery.tools.trialTesting')
-              : session.phase === 'complete' ? t('recovery.tools.candidate', { name: session.candidates[0]?.name }) : t('recovery.tools.inconclusive')}</p>
+              : session.phase === 'complete' ? session.interactingSet ? t('recovery.tools.interacting', { names: session.candidates.map(mod => mod.name).join(', ') }) : t('recovery.tools.candidate', { name: session.candidates[0]?.name }) : t('recovery.tools.inconclusive')}</p>
             {!!testNames.length && <ul className="list-disc pl-5 space-y-1 text-sm text-text-secondary">{testNames.map((name, index) => <li key={index}>{name}</li>)}</ul>}
             <div className="flex flex-wrap gap-2">
               {ready && <Button variant="secondary" disabled={busy || !!interrupted} onClick={() => setConfirm('trial')}>{t('recovery.tools.applyTrial')}</Button>}

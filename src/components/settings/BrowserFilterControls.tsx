@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FolderOpen, X } from 'lucide-react';
+import { FolderOpen, X, RotateCw, Download } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 import { Button, Toggle } from '../common/ui';
 import Tx from '../translation/Tx';
-import type { BrowserFilterStats } from '../../types/foundry';
+import { useBrowserFilterStats } from '../browser/useBrowserFilterStats';
+import type { BrowserFilterUpdateReview } from '../../types/browserFilter';
 
 
 /**
@@ -28,24 +29,16 @@ export default function BrowserFilterControls() {
   const { t } = useTranslation();
   const settings = useAppStore((s) => s.settings);
   const saveSettings = useAppStore((s) => s.saveSettings);
-  const [stats, setStats] = useState<BrowserFilterStats | null>(null);
-
+  const stats = useBrowserFilterStats();
+  const [review, setReview] = useState<BrowserFilterUpdateReview | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const blocking = settings?.browserBlockTrackers !== false;
   const listPath = settings?.browserBlockListPath ?? '';
-
-  // Re-read after any change to the toggle or the list, because the main
-  // process rebuilds the set on save and the entry count is the only feedback
-  // that a custom list actually loaded.
-  useEffect(() => {
-    let cancelled = false;
-    window.electronAPI.browser
-      .filterStats()
-      .then((s) => !cancelled && setStats(s))
-      .catch(() => !cancelled && setStats(null));
-    return () => {
-      cancelled = true;
-    };
-  }, [blocking, listPath]);
+  const perform = async (action: () => Promise<unknown>) => {
+    setBusy(true); setError(null);
+    try { await action(); } catch (cause) { setError(String(cause)); } finally { setBusy(false); }
+  };
 
   const pickList = async () => {
     const chosen = await window.electronAPI.showOpenDialog({
@@ -68,11 +61,47 @@ export default function BrowserFilterControls() {
         }
       />
 
+      <p role="status" className="text-xs text-text-secondary">
+        {t('settings.browser.engineStatus', { status: t(({ off: 'settings.browser.status.off', loading: 'settings.browser.status.loading', active: 'settings.browser.status.active', fallback: 'settings.browser.status.fallback', error: 'settings.browser.status.error' })[stats?.status ?? 'loading']) })}
+      </p>
+      {stats?.list && <p className="text-xs text-text-secondary">
+        {t('settings.browser.listVersion', { revision: stats.list.revision.slice(0, 12), date: stats.list.fetchedAt ? new Date(stats.list.fetchedAt).toLocaleDateString() : t('settings.browser.unknownDate') })}
+      </p>}
+      <div className="flex flex-wrap gap-2">
+        <Button variant="secondary" size="sm" icon={Download} disabled={busy} isLoading={busy}
+          onClick={() => void perform(async () => setReview(await window.electronAPI.browser.checkFilterUpdate()))}>
+          <Tx k="settings.browser.checkUpdate" />
+        </Button>
+        {listPath && <Button variant="secondary" size="sm" icon={RotateCw} disabled={busy}
+          onClick={() => void perform(() => window.electronAPI.browser.reloadFilter())}><Tx k="settings.browser.reloadList" /></Button>}
+      </div>
+      {review && <div className="space-y-2 rounded-sm border border-border p-3 text-xs text-text-secondary">
+        <p>{t('settings.browser.updateReview', { revision: review.revision.slice(0, 12), network: review.networkFilters, cosmetic: review.cosmeticFilters, current: review.currentFilters })}</p>
+        <Button variant="secondary" size="sm" disabled={busy} onClick={() => void perform(async () => {
+          await window.electronAPI.browser.applyFilterUpdate(review.reviewId); setReview(null);
+        })}><Tx k="settings.browser.applyUpdate" /></Button>
+        <Button variant="ghost" size="sm" disabled={busy} onClick={() => setReview(null)}><Tx k="settings.browser.dismissUpdate" /></Button>
+      </div>}
+      {error && <p role="alert" className="text-xs text-state-warning">{error}</p>}
+      {blocking && stats && listPath && <p className="text-xs text-text-secondary">
+        {t('settings.browser.customReport', { accepted: stats.custom.accepted, rejected: stats.custom.rejected, lines: stats.custom.rejectedLines.join(', ') })}
+      </p>}
+      {!!stats?.exceptions.length && <div className="space-y-2 text-xs text-text-secondary">
+        <p><Tx k="settings.browser.exceptions" /></p>
+        {stats.exceptions.map(site => <div key={site} className="flex flex-wrap items-center gap-2">
+          <span className="break-all">{site}</span>
+          <Button variant="ghost" size="sm" disabled={busy} onClick={() => settings && void perform(async () => {
+            await saveSettings({ ...settings, browserFilterExceptions: stats.exceptions.filter(value => value !== site) });
+            await window.electronAPI.browser.reloadFilter();
+          })}><Tx k="settings.browser.removeException" /></Button>
+        </div>)}
+      </div>}
+      <p className="text-xs text-text-secondary"><Tx k="settings.browser.reloadPages" /></p>
       {blocking && (
         <>
           <p className="text-xs text-text-secondary">
             {stats?.error ? (
-              <span className="text-warning">
+              <span className="text-state-warning">
                 {t('settings.browser.blockListError', 'Filter lists failed to load: ')}
                 {stats.error}
               </span>
@@ -99,11 +128,11 @@ export default function BrowserFilterControls() {
               </Button>
             )}
           </div>
-          {listPath && <p className="break-all font-mono text-[11px] text-text-secondary">{listPath}</p>}
-          <p className="text-[11px] text-text-secondary/70">
+          {listPath && <p className="break-all font-mono text-2xs text-text-secondary">{listPath}</p>}
+          <p className="text-2xs text-text-secondary/70">
             <Tx
               k="settings.browser.blockListHint"
-              fallback="Any hosts file, plain domain list, or uBlock Origin / EasyList filter list, one entry per line. The app bundles real filter lists and refreshes them with each release."
+              fallback="Hosts files and supported uBlock Origin / EasyList rules are accepted. Updates are checked only when you ask."
             />
           </p>
         </>

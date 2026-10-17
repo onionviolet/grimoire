@@ -146,7 +146,7 @@ import { initUpdater, checkForUpdates, getInstallSource } from './services/updat
 import { runStartupRecovery } from './ipc/launch';
 import './ipc/modSafety';
 import { loadSettings, saveSettings, type AppSettings } from './services/settings';
-import { attachBrowserFilter, configureFilter } from './services/browserContentFilter';
+import { attachBrowserFilter, configureFilter, reloadBrowserFilter } from './services/browserContentFilter';
 import { attachBrowserDownloadCapture, sweepToolDownloadTempRoot, toolDownloadTempRoot } from './services/browserDownloadCapture';
 import { hardenGuestWebPreferences } from './services/webviewHardening';
 import {
@@ -300,6 +300,10 @@ function resolveInitialBounds(saved: AppSettings['windowBounds']): {
 
 function createWindow(): void {
     const settings = loadSettings();
+    configureFilter({ enabled: settings.browserBlockTrackers !== false, userListPath: settings.browserBlockListPath,
+        exceptions: settings.browserFilterExceptions });
+    attachBrowserFilter(session.fromPartition('persist:grimoire-browser'));
+    const filtering = reloadBrowserFilter().catch(error => console.warn('[Adblocker] Startup initialization failed:', error));
     const initial = resolveInitialBounds(settings.windowBounds);
     mainWindow = new BrowserWindow({
         width: initial.width,
@@ -415,6 +419,7 @@ function createWindow(): void {
         configureFilter({
             enabled: settings.browserBlockTrackers !== false,
             userListPath: settings.browserBlockListPath,
+            exceptions: settings.browserFilterExceptions,
         });
         attachBrowserFilter(guest.session);
 
@@ -494,14 +499,15 @@ function createWindow(): void {
         persistZoom(next);
     });
 
-    // Load the renderer
-    if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-        mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL']);
-    } else {
-        const rendererPath = join(__dirname, '../renderer/index.html');
-        console.log('[Main] Loading renderer from:', rendererPath);
-        mainWindow.loadFile(rendererPath);
-    }
+    // Register and load filtering before a guest's first navigation, including
+    // its cosmetic preload. This uses local files only and does not fetch lists.
+    void filtering.then(() => {
+        if (!mainWindow || mainWindow.isDestroyed()) return;
+        if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+            return mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL']);
+        }
+        return mainWindow.loadFile(join(__dirname, '../renderer/index.html'));
+    }).catch(error => console.error('[Main] Failed to load renderer:', error));
 
     // Open DevTools in development only
     if (is.dev) {
@@ -684,7 +690,7 @@ if (!gotTheLock) {
         // for apt/AUR/snap installs since the package manager owns updates.
         if (!is.dev && mainWindow) {
             initUpdater(mainWindow);
-            if (getInstallSource() !== 'managed') {
+            if (getInstallSource() !== 'managed' && loadSettings().checkUpdatesOnStartup) {
                 setTimeout(() => {
                     checkForUpdates().catch((err) => {
                         console.log('[Updater] Auto-check failed:', err.message);

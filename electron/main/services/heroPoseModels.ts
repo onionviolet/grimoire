@@ -35,6 +35,8 @@ import { getCitadelPath, getAddonsPath, getDisabledPath } from './deadlock';
 import { resolvePreviewVpk } from './previewVpkRegistry';
 import { exportNativeParticleBundle } from './particleBundle';
 import { heroParticleAttachments } from './particleAttachments';
+import { readEmbeddedClipEvents } from './abilityClipEvents';
+import type { EmbeddedClipEventMetadata } from '../../../src/types/abilityEvents';
 
 export const HERO_POSE_SCHEME = 'grimoire-hero';
 
@@ -924,7 +926,7 @@ export async function exportRiggedHeroPose(
 export async function exportHeroAbilityPose(
     deadlockPath: string, heroName: string, clipName: string, out: string,
     skinSources?: HeroPoseSkinSource[], fallbackSkinMetaKey?: string,
-): Promise<{ skinApplied: boolean; skinFallback: boolean }> {
+): Promise<{ skinApplied: boolean; skinFallback: boolean; clipEvents?: EmbeddedClipEventMetadata }> {
     const normalized = normalizeSkinSources(skinSources);
     const pak01 = join(getCitadelPath(deadlockPath), 'pak01_dir.vpk');
     const run = async (sources: HeroPoseSkinSource[], skinFallback: boolean) => {
@@ -934,9 +936,22 @@ export async function exportHeroAbilityPose(
             for (const selector of modelSelectorsForHero(heroName)) {
                 try {
                     const clips = parseModelClipsJson(await runVpkmergeStdout(['model', 'clips', '--vpk', source.vpk, ...selector, '--base', pak01, '--json']));
-                    if (!clips.some(clip => clip.name === clipName && isAnimatedClip(clip))) continue;
+                    const clip = clips.find(clip => clip.name === clipName && isAnimatedClip(clip));
+                    if (!clip) continue;
                     await runVpkmerge(['model', 'export', '--vpk', source.vpk, ...selector, '--base', pak01, '--clip', clipName, '--out', out]);
-                    return { skinApplied: source.sources.length > 0, skinFallback };
+                    // A hero-discovery selector does not report its chosen entry.
+                    // Inspect only exact entries, while merged source bytes exist.
+                    let clipEvents: EmbeddedClipEventMetadata | undefined;
+                    if (selector[0] === '--entry') {
+                        const expected = { fps: clip.fps, frameCount: clip.frameCount };
+                        clipEvents = await readEmbeddedClipEvents(source.vpk, selector[1], clipName, join(tmpdir(), 'grimoire-clip-events'), expected);
+                        // Match the exporter's base-clip fallback only after the
+                        // source conclusively contains zero embedded animations.
+                        if (clipEvents.hasEmbeddedClips === false && source.vpk !== pak01) {
+                            clipEvents = await readEmbeddedClipEvents(pak01, selector[1], clipName, join(tmpdir(), 'grimoire-clip-events'), expected);
+                        }
+                    }
+                    return { skinApplied: source.sources.length > 0, skinFallback, ...(clipEvents ? { clipEvents } : {}) };
                 } catch (error) { lastError = error; }
             }
             throw lastError instanceof Error ? lastError : new Error('Selected source has no supported ability clip.');

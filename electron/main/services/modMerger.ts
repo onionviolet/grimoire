@@ -2,7 +2,7 @@ import { promises as fs, existsSync } from 'fs';
 import { join, dirname, resolve, basename } from 'path';
 import { tmpdir } from 'os';
 import { spawn } from 'child_process';
-import { randomUUID } from 'crypto';
+import { randomUUID, createHash } from 'crypto';
 import { app } from 'electron';
 import { assertVpkSafety, carryVpkSafety, moveSafetySnapshot } from './modSafety';
 import { modTempPath } from './modTemps';
@@ -18,7 +18,11 @@ import {
 } from './mods';
 import { getModMetadata, setModMetadata, removeModMetadata } from './metadata';
 import { resolveVpkIdentity, type OriginalIdentity } from './vpkIdentity';
-import { parseVpkDirectoriesAsync, parseVpkEntryStats } from './vpk';
+import { parseVpkDirectoriesAsync, parseVpkEntryStats, parseVpkEntryIndex, readVpkEntryBytes, findChunkSiblingNames } from './vpk';
+import { fingerprintFile } from './fileMatch';
+import { writeNativeVpk, vpkCrc32 } from './nativeVpk';
+import { mergePathSelected, normalizeMergePolicy } from '../../../src/lib/mergePathPolicy';
+import type { MergePathPolicy } from '../../../src/types/mergeRecipe';
 import { parseVpkDirectoryCached } from './vpk';
 import { IGNORED_CONFLICT_FILES } from './conflicts';
 import { VPKMERGE_BINARY_BY_PLATFORM, type SupportedPlatform } from './vpkmergeBinary';
@@ -496,11 +500,12 @@ async function assertMergeOutputSafety(sourcePaths: string[], outputPath: string
  * conflict detection ignores) are skipped here and left to vpkmerge's normal
  * last-input-wins rule.
  */
-export function assertNoStrictCollisions(vpkPaths: string[]): void {
+export function assertNoStrictCollisions(vpkPaths: string[], policy?: MergePathPolicy): void {
     const seen = new Set<string>();
     const collisions = new Set<string>();
     for (const vpkPath of vpkPaths) {
         for (const entry of new Set(parseVpkDirectoryCached(vpkPath) ?? [])) {
+            if (policy && !mergePathSelected(entry, policy)) continue;
             const fileName = entry.toLowerCase().split('/').pop() ?? '';
             if (IGNORED_CONFLICT_FILES.has(fileName)) continue;
             if (seen.has(entry)) collisions.add(entry);
@@ -529,6 +534,34 @@ export interface MergeOptions {
      *  Rejected when any selected mod is a parent merge, because those are
      *  flattened into leaves the reviewer never saw or ordered. */
     sourceOrder?: string[];
+    reviewToken?: string;
+    pathPolicy?: MergePathPolicy;
+}
+
+async function mergeReviewToken(sources: Mod[], policy: MergePathPolicy): Promise<string> {
+    const inputs = [];
+    for (const source of sources) {
+        const files = [source.path, ...findChunkSiblingNames(source.fileName, await fs.readdir(dirname(source.path))).sort().map(name => join(dirname(source.path), name))];
+        const hashes = [];
+        for (const file of files) hashes.push((await fingerprintFile(file)).sha256);
+        inputs.push([source.id, hashes]);
+    }
+    return createHash('sha256').update(JSON.stringify({ inputs, policy })).digest('hex');
+}
+
+async function filterMergeOutput(path: string, policy: MergePathPolicy): Promise<void> {
+    const index = parseVpkEntryIndex(path);
+    if (!index) throw new Error('Merge output is unreadable');
+    const selected = index.filter(entry => !MERGE_ANALYSIS_IGNORED_ENTRIES.has(entry.path.toLowerCase()) && mergePathSelected(entry.path, policy));
+    if (!selected.length || selected.length > 100000 || selected.reduce((sum, entry) => sum + entry.size, 0) > 256 * 1024 * 1024) throw new Error('Filtered merge must contain assets and fit within 256 MiB');
+    const data = new Map<string, Buffer>();
+    for (const entry of selected) {
+        if (entry.size > 64 * 1024 * 1024) throw new Error('A filtered merge asset exceeds 64 MiB');
+        const bytes = readVpkEntryBytes(path, entry.path);
+        if (!bytes || bytes.length !== entry.size || vpkCrc32(bytes) !== entry.crc) throw new Error('Merge asset CRC check failed');
+        data.set(entry.path, bytes);
+    }
+    await fs.writeFile(path, writeNativeVpk(data));
 }
 
 export interface MergeResult {
@@ -567,17 +600,22 @@ function mergeCollisionCategory(entryPath: string): MergeCollisionCategory {
 export async function analyzeMerge(
     deadlockPath: string,
     modIds: string[],
-    options: { respectOrder?: boolean } = {}
+    options: { respectOrder?: boolean; flatten?: boolean; pathPolicy?: MergePathPolicy } = {}
 ): Promise<MergeAnalysisResult> {
     if (modIds.length < 2) throw new Error('Select at least two mods to analyze a merge.');
     if (new Set(modIds).size !== modIds.length) throw new Error('The same mod was selected more than once.');
 
     const installed = await scanMods(deadlockPath);
-    const selected = modIds.map((id) => {
+    let selected = modIds.map((id) => {
         const mod = installed.find((candidate) => candidate.id === id);
         if (!mod) throw new Error(`Selected mod not found (id: ${id}).`);
         return mod;
     });
+    if (options.flatten) {
+        const resolved = await resolveMergeSources(installed, modIds);
+        selected = resolved.locatedSources.map(source => ({ ...source.mod, priority: source.snapshot.compositionRank ?? source.snapshot.priorityAtMergeTime }));
+    }
+    const policy = normalizeMergePolicy(options.pathPolicy);
     // Match mergeModsLocked: lower pak priority wins in Deadlock and therefore
     // must be passed last to vpkmerge's last-input-wins merge. With
     // `respectOrder`, `modIds` is already a reviewed winner-first order, so it
@@ -601,6 +639,7 @@ export async function analyzeMerge(
         for (const entry of entries) {
             const normalized = entry.replace(/\\/g, '/').toLowerCase();
             if (MERGE_ANALYSIS_IGNORED_ENTRIES.has(normalized)) continue;
+            if (!mergePathSelected(normalized, policy)) continue;
             const sourceIds = pathSources.get(normalized) ?? [];
             sourceIds.push(mod.id);
             pathSources.set(normalized, sourceIds);
@@ -616,7 +655,7 @@ export async function analyzeMerge(
       .sort((a, b) => a.path.localeCompare(b.path));
     const warnings: string[] = [];
     if (unreadableModIds.length > 0) warnings.push('One or more VPKs could not be read; collision results are incomplete.');
-    if (selected.some((mod) => !!getModMetadata(mod.metaKey)?.merged)) {
+    if (!options.flatten && selected.some((mod) => !!getModMetadata(mod.metaKey)?.merged)) {
         warnings.push('Selected merged mods are analyzed as packed VPKs; the final merge flattens their recorded sources.');
     }
 
@@ -639,6 +678,7 @@ export async function analyzeMerge(
         totalEntries,
         unreadableModIds,
         warnings,
+        ...(options.flatten ? { flattened: true, reviewToken: await mergeReviewToken(ordered, policy), outputPaths: [...pathSources.keys()].sort() } : {}),
     };
 }
 
@@ -657,14 +697,7 @@ export async function mergeMods(
     return runExclusiveModMutation(() => mergeModsLocked(deadlockPath, modIds, options, trimmedName));
 }
 
-async function mergeModsLocked(
-    deadlockPath: string,
-    modIds: string[],
-    options: MergeOptions,
-    trimmedName: string
-): Promise<MergeResult> {
-    const installed = await scanMods(deadlockPath);
-    await syncRunningGameModSnapshotFromMods(installed);
+async function resolveMergeSources(installed: Mod[], modIds: string[]) {
     const selected = modIds.map((id) => {
         const mod = installed.find((candidate) => candidate.id === id);
         if (!mod) throw new Error(`Selected mod not found (id: ${id}).`);
@@ -750,6 +783,19 @@ async function mergeModsLocked(
         throw new Error("Can't create the flattened merge: too few unique source VPKs remain on disk.");
     }
 
+    return { locatedSources, parentMerges };
+}
+
+async function mergeModsLocked(
+    deadlockPath: string,
+    modIds: string[],
+    options: MergeOptions,
+    trimmedName: string
+): Promise<MergeResult> {
+    const installed = await scanMods(deadlockPath);
+    await syncRunningGameModSnapshotFromMods(installed);
+    const { locatedSources, parentMerges } = await resolveMergeSources(installed, modIds);
+
     assertCanMoveLoadedGameMods([
         ...parentMerges,
         ...locatedSources.filter((source) => source.mod.enabled).map((source) => source.mod),
@@ -764,7 +810,7 @@ async function mergeModsLocked(
         // exactly the selected mods and none of them was a parent merge: a
         // flattened parent contributes leaves that were never on screen, so
         // there is no honest way to place them in an order the user approved.
-        if (parentMerges.length > 0) {
+        if (parentMerges.length > 0 && !options.reviewToken) {
             throw new Error(
                 'A reviewed source order cannot be applied to a selection that includes a merged mod, '
                 + 'because merged mods are flattened into sources the review never showed. '
@@ -782,11 +828,14 @@ async function mergeModsLocked(
         locatedSources.sort((a, b) => rank.get(b.mod.id)! - rank.get(a.mod.id)!);
     } else {
         locatedSources.sort(
-            (a, b) => b.snapshot.priorityAtMergeTime - a.snapshot.priorityAtMergeTime
+            (a, b) => (b.snapshot.compositionRank ?? b.snapshot.priorityAtMergeTime) - (a.snapshot.compositionRank ?? a.snapshot.priorityAtMergeTime)
         );
     }
     const sources = locatedSources.map((source) => source.mod);
-    if (options.strict) assertNoStrictCollisions(sources.map((source) => source.path));
+    const policy = normalizeMergePolicy(options.pathPolicy);
+    const filtered = policy.include.length > 0 || policy.exclude.length > 0;
+    if ((filtered || options.reviewToken) && (!options.reviewToken || options.reviewToken !== await mergeReviewToken(sources, policy))) throw new Error('Merge review is stale. Review the exact sources and paths again.');
+    if (options.strict) assertNoStrictCollisions(sources.map((source) => source.path), policy);
 
     mergeTrace(
         `merge start "${trimmedName}": ${sources.length} sources -> ${sources
@@ -797,9 +846,10 @@ async function mergeModsLocked(
     // Keep the resolved manifest snapshots aligned with the sorted leaf paths.
     // Their captured priority and provenance, rather than the disabled files'
     // current fallback priority, must drive both the manifest and share code.
-    const preDisableSnapshot: MergedModSource[] = locatedSources.map((source) => ({
+    const preDisableSnapshot: MergedModSource[] = locatedSources.map((source, index) => ({
         ...source.snapshot,
         fileName: source.mod.fileName,
+        ...(options.sourceOrder ? { compositionRank: locatedSources.length - index } : {}),
     }));
     const portable = buildPortableForSources(sources, trimmedName, preDisableSnapshot);
     const shareCode = encodeShareCode(JSON.stringify(portable));
@@ -818,8 +868,10 @@ async function mergeModsLocked(
 
     try {
         await runVpkmerge(args);
+        if (filtered) await filterMergeOutput(stagingPath, policy);
         await verifyVpkOutput(stagingPath);
         await assertMergeOutputSafety(args.slice(1), stagingPath, trimmedName);
+        if (options.reviewToken && options.reviewToken !== await mergeReviewToken(sources, policy)) throw new Error('Merge sources changed during the build');
         // Claim the slot only once the output is accepted: a review can take
         // minutes, and a claim left behind by quitting mid-review would be an
         // empty VPK in a live slot. wx errors with EEXIST if a concurrent
@@ -855,6 +907,7 @@ async function mergeModsLocked(
         createdAt: new Date().toISOString(),
         shareCode,
         sources: preDisableSnapshot,
+        ...(filtered ? { pathPolicy: policy } : {}),
     };
 
     // Stamp the metadata BEFORE the disable loop. If disable fails partway
@@ -1358,16 +1411,17 @@ async function addMergeSourcesLocked(
         }
 
         const ordered = [...existing, ...additionSnapshots].sort(
-            (a, b) => b.snapshot.priorityAtMergeTime - a.snapshot.priorityAtMergeTime
+            (a, b) => (b.snapshot.compositionRank ?? b.snapshot.priorityAtMergeTime) - (a.snapshot.compositionRank ?? a.snapshot.priorityAtMergeTime)
         );
         const args = [buildPath, ...ordered.map((source) => source.mod.path)];
-        if (options.strict) assertNoStrictCollisions(args.slice(1));
+        if (options.strict) assertNoStrictCollisions(args.slice(1), oldManifest.pathPolicy);
 
         mergeTrace(
             `add-sources start merge=${oldManifest.id} key=${target.metaKey}: `
             + `+${additionSnapshots.length} -> ${basename(buildPath)}`
         );
         await runVpkmerge(args);
+        if (oldManifest.pathPolicy) await filterMergeOutput(buildPath, normalizeMergePolicy(oldManifest.pathPolicy));
         await verifyVpkOutput(buildPath);
 
         const rebuiltOriginal = await computeOriginalIdentity(buildPath);
@@ -1382,6 +1436,7 @@ async function addMergeSourcesLocked(
             createdAt: oldManifest.createdAt,
             shareCode: encodeShareCode(JSON.stringify(portable)),
             sources: snapshots,
+            ...(oldManifest.pathPolicy ? { pathPolicy: oldManifest.pathPolicy } : {}),
         };
 
         // Embed before the swap so sidecar and in-VPK provenance advance as a
@@ -1630,16 +1685,17 @@ async function replaceMergeSourcesLocked(
         }
 
         const ordered = [...pending].sort(
-            (a, b) => b.snapshot.priorityAtMergeTime - a.snapshot.priorityAtMergeTime
+            (a, b) => (b.snapshot.compositionRank ?? b.snapshot.priorityAtMergeTime) - (a.snapshot.compositionRank ?? a.snapshot.priorityAtMergeTime)
         );
         const args = [buildPath, ...ordered.map((source) => source.mod.path)];
-        if (options.strict) assertNoStrictCollisions(args.slice(1));
+        if (options.strict) assertNoStrictCollisions(args.slice(1), oldManifest.pathPolicy);
 
         mergeTrace(
             `replace-sources start merge=${oldManifest.id} key=${target.metaKey}: `
             + `${replacements.length} swapped -> ${basename(buildPath)}`
         );
         await runVpkmerge(args);
+        if (oldManifest.pathPolicy) await filterMergeOutput(buildPath, normalizeMergePolicy(oldManifest.pathPolicy));
         await verifyVpkOutput(buildPath);
 
         const rebuiltOriginal = await computeOriginalIdentity(buildPath);
@@ -1654,6 +1710,7 @@ async function replaceMergeSourcesLocked(
             createdAt: oldManifest.createdAt,
             shareCode: encodeShareCode(JSON.stringify(portable)),
             sources: snapshots,
+            ...(oldManifest.pathPolicy ? { pathPolicy: oldManifest.pathPolicy } : {}),
         };
 
         // Embed before the swap so sidecar and in-VPK provenance advance as a
@@ -1826,7 +1883,7 @@ async function extractMergeSourceLocked(
     // is index-aligned with remainingSnapshots: the missing check above
     // guarantees every snapshot resolved.)
     const ordered = remainingOnDisk
-        .map((mod, i) => ({ mod, priority: remainingSnapshots[i].priorityAtMergeTime }))
+        .map((mod, i) => ({ mod, priority: remainingSnapshots[i].compositionRank ?? remainingSnapshots[i].priorityAtMergeTime }))
         .sort((a, b) => b.priority - a.priority)
         .map((p) => p.mod);
 
@@ -1845,6 +1902,7 @@ async function extractMergeSourceLocked(
     let rebuiltOriginal: OriginalIdentity;
     try {
         await runVpkmerge([buildPath, ...ordered.map((m) => m.path)]);
+        if (manifest.pathPolicy) await filterMergeOutput(buildPath, normalizeMergePolicy(manifest.pathPolicy));
         await verifyVpkOutput(buildPath);
         // Capture the rebuilt output's canonical identity from its PRE-EMBED bytes,
         // exactly like mergeModsLocked does for a fresh merge: the rebuilt VPK is a
@@ -1877,6 +1935,7 @@ async function extractMergeSourceLocked(
         createdAt: manifest.createdAt,
         shareCode: encodeShareCode(JSON.stringify(portable)),
         sources: remainingSnapshots,
+        ...(manifest.pathPolicy ? { pathPolicy: manifest.pathPolicy } : {}),
     };
 
     removeModMetadata(target.metaKey);

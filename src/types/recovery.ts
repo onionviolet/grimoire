@@ -51,4 +51,9 @@ export interface ModIsolationSession {
   steps: number;
   reviewToken: string;
   restoreReviewToken?: string;
+  strategy?: 'delta';
+  trialKind?: 'original' | 'subset' | 'complement';
+  partitionCount?: number;
+  trialIndex?: number;
+  interactingSet?: boolean;
 }

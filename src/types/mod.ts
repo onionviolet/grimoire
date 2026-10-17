@@ -16,6 +16,7 @@ export interface MergedModSource {
   section?: string;
   enabledAtMergeTime: boolean;
   priorityAtMergeTime: number;
+  compositionRank?: number;
   /** sha256 of the source VPK captured before disable. Used as a content-
    *  identity fallback when the fileName lookup misses (e.g. reconcile
    *  renamed the file after merge). Optional because legacy merges before
@@ -52,6 +53,7 @@ export interface MergedModInfo {
    *  representation of this merged mod (paste into someone else's Grimoire). */
   shareCode: string;
   sources: MergedModSource[];
+  pathPolicy?: import('./mergeRecipe').MergePathPolicy;
 }
 
 /**
@@ -745,6 +747,8 @@ export interface MergeModsArgs {
   /** Composition order from the merge review, winner first. Omitted by the
    *  legacy merge path, which orders purely by pak priority. */
   sourceOrder?: string[];
+  reviewToken?: string;
+  pathPolicy?: import('./mergeRecipe').MergePathPolicy;
 }
 
 /** Provenance for a one-entry Foundry texture/icon replacement local mod. */
@@ -817,6 +821,9 @@ export interface MergeAnalysisResult {
   totalEntries: number;
   unreadableModIds: string[];
   warnings: string[];
+  reviewToken?: string;
+  flattened?: boolean;
+  outputPaths?: string[];
 }
 
 export interface UnmergeModResult {
@@ -1229,6 +1236,8 @@ export interface AppSettings {
   autoEnableDownloads: boolean;
   /** Args written to Steam's localconfig.vdf for Deadlock just before launch. */
   steamLaunchOptions: string;
+  updateReleaseChannel: 'stable' | 'preview';
+  checkUpdatesOnStartup: boolean;
   /** Currently active profile. */
   activeProfileId: string | null;
   /** Ask for confirmation before "Update" overwrites a profile with the current
@@ -1357,9 +1366,11 @@ export interface AppSettings {
    *  runs uBlock in their real browser would otherwise be unprotected here
    *  precisely because they came in through Grimoire. */
   browserBlockTrackers?: boolean;
+  /** Exact HTTP(S) origins where ad/tracker filtering is paused. */
+  browserFilterExceptions?: string[];
   /** Optional path to a user blocklist (hosts file or one domain per line),
    *  merged on top of the built-in set. The escape hatch for anything the small
-   *  built-in list misses, since real filter lists are not shipped. */
+   *  bundled lists miss. Accepts supported EasyList/uBO syntax too. */
   browserBlockListPath?: string;
   /** Absolute path to a custom `vpkmerge` engine binary. Overrides the bundled
    *  one in ANY build, including packaged, which the dev-only `$VPKMERGE_BINARY`

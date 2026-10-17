@@ -29,6 +29,9 @@ interface Props {
   onResetOrder?: () => void;
   /** Set when reordering is deliberately unavailable, with the reason shown. */
   reorderBlockedReason?: string | null;
+  flatten?: boolean;
+  pathPolicy?: import('../types/mergeRecipe').MergePathPolicy;
+  onAnalysis?: (analysis: MergeAnalysisResult) => void;
 }
 
 /**
@@ -47,6 +50,9 @@ export default function MergeReviewPanel({
   onReorder,
   onResetOrder,
   reorderBlockedReason,
+  flatten = false,
+  pathPolicy,
+  onAnalysis,
 }: Props) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -61,12 +67,13 @@ export default function MergeReviewPanel({
   } | null>(null);
 
   const orderKey = order.join(',');
-  const requestKey = `${orderKey}|${respectOrder}|${attempt}`;
+  const policyKey = JSON.stringify(pathPolicy);
+  const requestKey = `${orderKey}|${respectOrder}|${attempt}|${flatten}|${policyKey}`;
   useEffect(() => {
     let cancelled = false;
-    analyzeMerge(orderKey.split(','), respectOrder)
+    analyzeMerge(orderKey.split(','), respectOrder, flatten, policyKey ? JSON.parse(policyKey) : undefined)
       .then((result) => {
-        if (!cancelled) setData({ key: requestKey, result, error: null });
+        if (!cancelled) { setData({ key: requestKey, result, error: null }); onAnalysis?.(result); }
       })
       .catch((cause) => {
         if (!cancelled) {
@@ -80,7 +87,7 @@ export default function MergeReviewPanel({
     return () => {
       cancelled = true;
     };
-  }, [orderKey, respectOrder, requestKey]);
+  }, [orderKey, respectOrder, requestKey, flatten, policyKey, onAnalysis]);
 
   const ready = data?.key === requestKey ? data : null;
   const analysis = ready?.result ?? null;

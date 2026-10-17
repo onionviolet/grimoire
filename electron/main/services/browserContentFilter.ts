@@ -8,7 +8,10 @@ import {
     writeFileSync,
 } from 'node:fs';
 import path from 'node:path';
-import { app, type Session } from 'electron';
+import { app, webContents, type Session } from 'electron';
+import { randomUUID } from 'node:crypto';
+import { readFilterUpdate, fetchFilterUpdate, saveFilterUpdate, removeFilterUpdate, filterBundleHash, type BrowserFilterBundle } from './browserFilterUpdates';
+import type { BrowserFilterListInfo, BrowserCustomListInfo, BrowserFilterUpdateReview } from '../../../src/types/browserFilter';
 import { ElectronBlocker, parseFilters } from '@ghostery/adblocker-electron';
 import type { BrowserFilterStats } from '../../../src/types/foundry';
 
@@ -65,6 +68,7 @@ export interface FilterConfig {
      *  syntax (`0.0.0.0 example.com`) are both accepted, so a list downloaded
      *  from the usual sources works without editing. */
     userListPath?: string;
+    exceptions?: string[];
 }
 
 interface FilterState {
@@ -88,6 +92,11 @@ interface FilterState {
     injectedNetworkFilterIds: number[];
     /** Cosmetic rules previously injected into the Ghostery engine. */
     injectedCosmeticFilterIds: number[];
+    exceptions: string[];
+    status: BrowserFilterStats['status'];
+    listInfo: BrowserFilterListInfo | null;
+    custom: BrowserCustomListInfo;
+    engineError: string | null;
 }
 
 const state: FilterState = {
@@ -102,10 +111,69 @@ const state: FilterState = {
     fallbackSessions: new Set(),
     injectedNetworkFilterIds: [],
     injectedCosmeticFilterIds: [],
+    exceptions: [], status: 'loading', listInfo: null,
+    custom: { accepted: 0, rejected: 0, rejectedLines: [] }, engineError: null,
 };
 
 let blockerInstance: ElectronBlocker | null = null;
 let blockerInitPromise: Promise<ElectronBlocker | null> | null = null;
+let activeBundle: BrowserFilterBundle | null = null;
+let baseNetworkIds = new Set<number>();
+let baseCosmeticIds = new Set<number>();
+let syncQueue: Promise<void> = Promise.resolve();
+let pendingUpdate: { review: BrowserFilterUpdateReview; bundle: BrowserFilterBundle; base: string } | null = null;
+let checkingUpdate = false;
+
+export function normalizeFilterExceptions(values: unknown): string[] {
+    if (!Array.isArray(values)) return [];
+    const origins = new Set<string>();
+    for (const value of values.slice(0, 200)) {
+        try {
+            const url = new URL(String(value));
+            if (url.protocol === 'https:' || url.protocol === 'http:') origins.add(url.origin);
+        } catch { /* Ignore invalid saved entries. */ }
+    }
+    return [...origins].sort();
+}
+
+function isPaused(url: string): boolean {
+    try { return state.exceptions.includes(new URL(url).origin); } catch { return false; }
+}
+function pausedRequest(details: { webContentsId?: number; referrer?: string; url?: string; resourceType?: string }): boolean {
+    if (details.resourceType === 'mainFrame') return isPaused(details.url ?? '');
+    const owner = details.webContentsId === undefined ? undefined : webContents?.fromId?.(details.webContentsId);
+    return isPaused(owner && !owner.isDestroyed() ? owner.getURL() : details.referrer ?? '');
+}
+function prepareBlocker(blocker: ElectronBlocker): ElectronBlocker {
+    const before = blocker.onBeforeRequest;
+    const headers = blocker.onHeadersReceived;
+    const cosmetics = blocker.onInjectCosmeticFilters;
+    blocker.onBeforeRequest = (details, callback) => !state.enabled || pausedRequest(details) ? callback({}) : before(details, callback);
+    blocker.onHeadersReceived = (details, callback) => !state.enabled || pausedRequest(details) ? callback({}) : headers(details, callback);
+    blocker.onInjectCosmeticFilters = (event, url, msg) => {
+        if (!state.enabled || isPaused(event.sender.getURL())) return Promise.resolve();
+        return cosmetics(event, url, msg);
+    };
+    blocker.on('request-blocked', () => { state.blocked += 1; });
+    const filters = blocker.getFilters();
+    baseNetworkIds = new Set(filters.networkFilters.map(filter => filter.getId()));
+    baseCosmeticIds = new Set(filters.cosmeticFilters.map(filter => filter.getId()));
+    state.bundledFilterCount = filters.networkFilters.length + filters.cosmeticFilters.length;
+    return blocker;
+}
+function scheduleSync(): Promise<void> {
+    const operation = syncQueue.then(syncBlockerState);
+    syncQueue = operation.catch(error => { state.engineError = String(error); state.status = 'error'; });
+    return operation;
+}
+export async function reloadBrowserFilter(): Promise<BrowserFilterStats> {
+    configureFilter({ enabled: state.enabled, userListPath: state.userListPath, exceptions: state.exceptions });
+    await syncQueue;
+    // A resource fetched while filtering was paused must be checked again on
+    // the next load. Keep cookies/storage; invalidate only guest HTTP caches.
+    for (const session of state.attachedSessions) await session.clearCache?.();
+    return filterStats();
+}
 
 /** Directory the bundled filter lists ship in: repo resources/ in dev,
  *  process.resourcesPath/filters in the packaged app (extraResources). */
@@ -126,7 +194,7 @@ function getFiltersDir(): string | null {
 interface BundledLists {
     filters: string;
     resources: string;
-    meta: { networkFilters: number; cosmeticFilters: number } | null;
+    meta: { networkFilters: number; cosmeticFilters: number; tag?: string; fetchedAt?: string } | null;
 }
 
 function loadBundledLists(): BundledLists | null {
@@ -145,7 +213,7 @@ function loadBundledLists(): BundledLists | null {
             try {
                 const parsed = JSON.parse(readFileSync(metaPath, 'utf-8')) as {
                     networkFilters?: number;
-                    cosmeticFilters?: number;
+                    cosmeticFilters?: number; tag?: string; fetchedAt?: string;
                 };
                 if (
                     typeof parsed.networkFilters === 'number' &&
@@ -156,6 +224,8 @@ function loadBundledLists(): BundledLists | null {
                     meta = {
                         networkFilters: parsed.networkFilters,
                         cosmeticFilters: parsed.cosmeticFilters,
+                        tag: typeof parsed.tag === 'string' ? parsed.tag : undefined,
+                        fetchedAt: typeof parsed.fetchedAt === 'string' && Number.isFinite(Date.parse(parsed.fetchedAt)) ? parsed.fetchedAt : undefined,
                     };
                 }
             } catch {
@@ -217,7 +287,13 @@ async function getOrLoadBlocker(): Promise<ElectronBlocker | null> {
     if (blockerInitPromise) return blockerInitPromise;
 
     blockerInitPromise = (async () => {
-        const bundled = loadBundledLists();
+        let update: BrowserFilterBundle | null = null;
+        try { update = await readFilterUpdate(); } catch (error) { state.bundledError = String(error); }
+        const local = loadBundledLists();
+        activeBundle = update ?? (local ? { filters: local.filters, resources: local.resources,
+            info: { source: 'bundled', revision: local.meta?.tag ?? 'bundled', fetchedAt: local.meta?.fetchedAt ?? null } } : null);
+        state.listInfo = activeBundle?.info ?? { source: 'fallback', revision: 'built-in domains', fetchedAt: null };
+        const bundled = activeBundle ? { ...activeBundle, meta: null } : null;
         const cachePath = bundled ? getEngineCachePath(bundled) : null;
         if (cachePath && existsSync(cachePath)) {
             try {
@@ -241,9 +317,6 @@ async function getOrLoadBlocker(): Promise<ElectronBlocker | null> {
                     blockerInstance = ElectronBlocker.parse(bundled.filters);
                     blockerInstance.updateResources(bundled.resources, '' + bundled.resources.length);
                     state.bundledError = null;
-                    state.bundledFilterCount = bundled.meta
-                        ? bundled.meta.networkFilters + bundled.meta.cosmeticFilters
-                        : 0;
                     if (cachePath) {
                         try {
                             const dir = path.dirname(cachePath);
@@ -261,14 +334,13 @@ async function getOrLoadBlocker(): Promise<ElectronBlocker | null> {
                         err
                     );
                     blockerInstance = ElectronBlocker.empty();
+                    activeBundle = null;
+                    state.listInfo = { source: 'fallback', revision: 'built-in domains', fetchedAt: null };
                 }
             }
         }
 
-        blockerInstance.on('request-blocked', () => {
-            state.blocked += 1;
-        });
-
+        prepareBlocker(blockerInstance);
         return blockerInstance;
     })();
 
@@ -288,11 +360,13 @@ async function syncBlockerState(): Promise<void> {
                 }
             }
         }
+        state.status = 'off';
         return;
     }
 
+    state.status = 'loading';
     const blocker = await getOrLoadBlocker();
-    if (!blocker) return;
+    if (!blocker || !state.enabled) { state.status = 'off'; return; }
 
     // The settings UI promises that a replacement or cleared custom list takes
     // effect immediately. FiltersEngine.update is additive by default, so pass
@@ -313,26 +387,35 @@ async function syncBlockerState(): Promise<void> {
     const nextNetworkFilters = dedupeById([
         ...parsedDomains.networkFilters,
         ...parsedUser.networkFilters,
-    ]);
-    const nextCosmeticFilters = dedupeById(parsedUser.cosmeticFilters);
+    ]).filter(filter => !baseNetworkIds.has(filter.getId()));
+    const nextCosmeticFilters = dedupeById(parsedUser.cosmeticFilters).filter(filter => !baseCosmeticIds.has(filter.getId()));
+    const oldNetwork = new Set(state.injectedNetworkFilterIds);
+    const oldCosmetic = new Set(state.injectedCosmeticFilterIds);
+    const nextNetwork = new Set(nextNetworkFilters.map(filter => filter.getId()));
+    const nextCosmetic = new Set(nextCosmeticFilters.map(filter => filter.getId()));
+    // Removal and addition must be disjoint. The engine does not promise that
+    // an id removed and re-added in the same update remains present.
     blocker.update({
-        newNetworkFilters: nextNetworkFilters,
-        removedNetworkFilters: state.injectedNetworkFilterIds,
-        newCosmeticFilters: nextCosmeticFilters,
-        removedCosmeticFilters: state.injectedCosmeticFilterIds,
+        newNetworkFilters: nextNetworkFilters.filter(filter => !oldNetwork.has(filter.getId())),
+        removedNetworkFilters: state.injectedNetworkFilterIds.filter(id => !nextNetwork.has(id)),
+        newCosmeticFilters: nextCosmeticFilters.filter(filter => !oldCosmetic.has(filter.getId())),
+        removedCosmeticFilters: state.injectedCosmeticFilterIds.filter(id => !nextCosmetic.has(id)),
     });
     state.injectedNetworkFilterIds = nextNetworkFilters.map((filter) => filter.getId());
     state.injectedCosmeticFilterIds = nextCosmeticFilters.map((filter) => filter.getId());
 
+    state.engineError = null;
     for (const session of state.attachedSessions) {
         try {
             if (!blocker.isBlockingEnabled(session)) {
                 blocker.enableBlockingInSession(session);
             }
         } catch (err) {
+            state.engineError = String(err);
             console.warn('[Adblocker] Failed to enable blocking on session:', err);
         }
     }
+    state.status = state.engineError ? 'error' : activeBundle ? 'active' : 'fallback';
 }
 
 /** Parse a hosts-style or plain-domain blocklist. Tolerant on purpose: a bad
@@ -426,13 +509,18 @@ function dedupeById<T extends { getId(): number }>(filters: T[]): T[] {
 export function configureFilter(config: FilterConfig): { count: number; error: string | null } {
     state.enabled = config.enabled;
     state.userListPath = config.userListPath;
+    state.exceptions = normalizeFilterExceptions(config.exceptions);
     state.domains = new Set(config.enabled ? BUILTIN_BLOCKLIST : []);
     state.userFilterText = '';
     state.userListError = null;
+    state.custom = { accepted: 0, rejected: 0, rejectedLines: [] };
 
     if (config.enabled && config.userListPath) {
         try {
-            const { domains, filterLines } = splitUserList(readFileSync(config.userListPath, 'utf-8'));
+            const text = readFileSync(config.userListPath, 'utf-8');
+            if (Buffer.byteLength(text) > 8 * 1024 * 1024 || text.split('\n').length > 150_000) throw new Error('Custom list exceeds 8 MiB or 150,000 lines.');
+            const { domains, filterLines } = splitUserList(text);
+            state.custom = inspectCustomList(text);
             for (const domain of domains) {
                 state.domains.add(domain);
             }
@@ -445,7 +533,7 @@ export function configureFilter(config: FilterConfig): { count: number; error: s
         }
     }
 
-    syncBlockerState().catch((err) => console.warn('[Adblocker] Failed to sync blocker state:', err));
+    void scheduleSync().catch(() => {});
 
     return { count: state.domains.size, error: state.userListError };
 }
@@ -458,7 +546,9 @@ export function filterStats(): BrowserFilterStats {
             state.injectedCosmeticFilterIds.length,
         domains: state.domains.size,
         blocked: state.blocked,
-        error: state.userListError ?? state.bundledError,
+        error: state.userListError ?? state.engineError ?? state.bundledError,
+        status: state.status, list: state.listInfo, custom: state.custom,
+        exceptions: state.exceptions,
     };
 }
 
@@ -498,7 +588,7 @@ export function attachBrowserFilter(session: Session): void {
                 callback({ cancel: false });
                 return;
             }
-            if (!state.enabled) {
+            if (!state.enabled || pausedRequest(details)) {
                 callback({ cancel: false });
                 return;
             }
@@ -522,6 +612,82 @@ export function attachBrowserFilter(session: Session): void {
         });
     }
 
-    syncBlockerState().catch((err) => console.warn('[Adblocker] Sync on attach failed:', err));
+    void scheduleSync().catch(() => {});
 }
 
+
+export function inspectCustomList(text: string): BrowserCustomListInfo {
+    let accepted = 0;
+    const rejectedLines: number[] = [];
+    let rejected = 0;
+    for (const [index, raw] of text.split(/\r?\n/).entries()) {
+        const line = raw.trim();
+        if (!line || line.startsWith('!') || /^#(?:\s|$)/.test(line) || line.startsWith('[Adblock')) continue;
+        const parsed = isDomainEntryLine(line) ? parseFilters(parseBlocklist(line).map(domain => `||${domain}^`).join('\n')) : parseFilters(line);
+        if (parsed.networkFilters.length || parsed.cosmeticFilters.length) accepted += 1;
+        else { rejected += 1; if (rejectedLines.length < 8) rejectedLines.push(index + 1); }
+    }
+    return { accepted, rejected, rejectedLines };
+}
+
+export async function checkBrowserFilterUpdate(): Promise<BrowserFilterUpdateReview> {
+    if (checkingUpdate) throw new Error('A filter update check is already running.');
+    checkingUpdate = true;
+    pendingUpdate = null;
+    try {
+        const bundle = await fetchFilterUpdate();
+        const engine = ElectronBlocker.parse(bundle.filters);
+        engine.updateResources(bundle.resources, filterBundleHash(bundle));
+        const { networkFilters, cosmeticFilters } = engine.getFilters();
+        if (networkFilters.length < 50_000 || cosmeticFilters.length < 1_000) throw new Error('Filter update has too few supported rules.');
+        const review = { reviewId: randomUUID(), revision: bundle.info.revision,
+            fetchedAt: bundle.info.fetchedAt!, networkFilters: networkFilters.length,
+            cosmeticFilters: cosmeticFilters.length, currentFilters: state.bundledFilterCount };
+        pendingUpdate = { review, bundle, base: activeBundle ? filterBundleHash(activeBundle) : '' };
+        return review;
+    } finally { checkingUpdate = false; }
+}
+
+export async function applyBrowserFilterUpdate(reviewId: string): Promise<BrowserFilterStats> {
+    const pending = pendingUpdate;
+    if (!pending || pending.review.reviewId !== reviewId) throw new Error('Filter update review has expired. Check again.');
+    pendingUpdate = null;
+    const operation = syncQueue.then(async () => {
+        if (pending.base !== (activeBundle ? filterBundleHash(activeBundle) : '')) throw new Error('Active lists changed since review. Check again.');
+        // Prepare and validate before changing either the active engine or its durable record.
+        const replacement = ElectronBlocker.parse(pending.bundle.filters);
+        replacement.updateResources(pending.bundle.resources, filterBundleHash(pending.bundle));
+        const previousRecord = await readFilterUpdate().catch(() => null);
+        const previous = { engine: blockerInstance, bundle: activeBundle, info: state.listInfo,
+            network: baseNetworkIds, cosmetic: baseCosmeticIds, count: state.bundledFilterCount,
+            injectedNetwork: state.injectedNetworkFilterIds, injectedCosmetic: state.injectedCosmeticFilterIds };
+        await saveFilterUpdate(pending.bundle);
+        try {
+            if (blockerInstance) for (const session of state.attachedSessions) {
+                if (blockerInstance.isBlockingEnabled(session)) blockerInstance.disableBlockingInSession(session);
+            }
+            activeBundle = pending.bundle;
+            state.listInfo = pending.bundle.info;
+            blockerInstance = prepareBlocker(replacement);
+            blockerInitPromise = Promise.resolve(blockerInstance);
+            state.injectedNetworkFilterIds = []; state.injectedCosmeticFilterIds = [];
+            state.bundledError = null;
+            await syncBlockerState();
+            if (state.status === 'error') throw new Error(state.engineError ?? 'Updated engine failed to attach.');
+            return filterStats();
+        } catch (error) {
+            for (const session of state.attachedSessions) {
+                if (replacement.isBlockingEnabled(session)) replacement.disableBlockingInSession(session);
+            }
+            blockerInstance = previous.engine; blockerInitPromise = null;
+            activeBundle = previous.bundle; state.listInfo = previous.info;
+            baseNetworkIds = previous.network; baseCosmeticIds = previous.cosmetic; state.bundledFilterCount = previous.count;
+            state.injectedNetworkFilterIds = previous.injectedNetwork; state.injectedCosmeticFilterIds = previous.injectedCosmetic;
+            if (previousRecord) await saveFilterUpdate(previousRecord); else await removeFilterUpdate();
+            await syncBlockerState();
+            throw error;
+        }
+    });
+    syncQueue = operation.then(() => {}, () => {});
+    return operation;
+}

@@ -1,7 +1,9 @@
-import { useId, useMemo, useState } from 'react';
+import { useCallback, useId, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Layers, AlertTriangle, Info, ListTree } from 'lucide-react';
-import type { Mod } from '../types/mod';
+import type { Mod, MergeAnalysisResult } from '../types/mod';
+import type { MergePathPolicy } from '../types/mergeRecipe';
+import MergeRecipeControls from './mods/MergeRecipeControls';
 import ModThumbnail from './ModThumbnail';
 import MergeReviewPanel from './MergeReviewPanel';
 import { Button, ModalHeader } from './common/ui';
@@ -19,6 +21,8 @@ interface Props {
     /** Winner-first composition order, only when the user reordered it in the
      *  review. Absent leaves the legacy priority ordering untouched. */
     sourceOrder?: string[];
+    reviewToken?: string;
+    pathPolicy?: MergePathPolicy;
   }) => Promise<void>;
 }
 
@@ -71,6 +75,10 @@ export default function MergeModsModal({ sources, hideNsfw, onCancel, onConfirm 
   const [review, setReview] = useState<{ key: string; order: string[] } | null>(null);
   const effectiveIdKey = effectiveSources.map((source) => source.id).join(',');
   const reviewOrder = review?.key === effectiveIdKey ? review.order : null;
+  const [includeText, setIncludeText] = useState('');
+  const [excludeText, setExcludeText] = useState('');
+  const policy = useMemo(() => ({ include: includeText.split('\n').map(line => line.trim()).filter(Boolean), exclude: excludeText.split('\n').map(line => line.trim()).filter(Boolean) }), [includeText, excludeText]);
+  const [latest, setLatest] = useState<{ key: string; analysis: MergeAnalysisResult } | null>(null);
 
   const collageSources = effectiveSources.map((src) => ({
     fileName: src.fileName,
@@ -88,9 +96,6 @@ export default function MergeModsModal({ sources, hideNsfw, onCancel, onConfirm 
   // Flattening a parent merge contributes leaves the review never showed, so a
   // reviewed order could not be applied honestly. Say so instead of offering a
   // control that the merge would then reject.
-  const reorderBlockedReason = mergedSourceCount > 0
-    ? t('mergeMods.review.reorderBlockedMerged')
-    : null;
 
   // Default review order: highest priority (lowest pakNN) first, which is the
   // same source the legacy merge derives its argv order from.
@@ -98,8 +103,12 @@ export default function MergeModsModal({ sources, hideNsfw, onCancel, onConfirm 
     () => [...effectiveSources].sort((a, b) => a.priority - b.priority).map((source) => source.id),
     [effectiveSources]
   );
+  const contextKey = JSON.stringify([effectiveIdKey, reviewOrder ?? priorityOrder, policy]);
+  const receiveAnalysis = useCallback((analysis: MergeAnalysisResult) => setLatest({ key: contextKey, analysis }), [contextKey, setLatest]);
+  const analysis = latest?.key === contextKey ? latest.analysis : null;
+  const needsReview = reviewOpen || policy.include.length > 0 || policy.exclude.length > 0 || reviewOrder !== null;
 
-  const canSubmit = !!liveName.trim() && !submitting && effectiveSources.length >= 2;
+  const canSubmit = !!liveName.trim() && !submitting && effectiveSources.length >= 2 && (!needsReview || !!analysis?.reviewToken && !analysis.unreadableModIds.length && !!analysis.outputPaths?.length);
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
@@ -110,7 +119,9 @@ export default function MergeModsModal({ sources, hideNsfw, onCancel, onConfirm 
         modIds: effectiveSources.map((s) => s.id),
         name: liveName.trim(),
         strict,
-        sourceOrder: reviewOrder ?? undefined,
+        sourceOrder: needsReview && analysis ? [...analysis.sources].reverse().map(source => source.modId) : undefined,
+        reviewToken: needsReview ? analysis?.reviewToken : undefined,
+        pathPolicy: needsReview ? policy : undefined,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -292,9 +303,22 @@ export default function MergeModsModal({ sources, hideNsfw, onCancel, onConfirm 
                 respectOrder={reviewOrder !== null}
                 onReorder={(next) => setReview({ key: effectiveIdKey, order: next })}
                 onResetOrder={() => setReview(null)}
-                reorderBlockedReason={reorderBlockedReason}
+                flatten
+                pathPolicy={policy}
+                onAnalysis={receiveAnalysis}
               />
             )}
+            {reviewOpen && <MergeRecipeControls name={liveName} strict={strict} modIds={effectiveSources.map(source => source.id)}
+              analysis={analysis} policy={policy} includeText={includeText} excludeText={excludeText}
+              onInclude={setIncludeText} onExclude={setExcludeText} onLoad={loaded => {
+                setName(loaded.recipe.name); setNameTouched(true); setStrict(loaded.recipe.strict);
+                setIncludeText(loaded.recipe.policy.include.join('\n')); setExcludeText(loaded.recipe.policy.exclude.join('\n'));
+                setReview({ key: effectiveIdKey, order: [...loaded.analysis.sources].reverse().map(source => source.modId) });
+              }} />}
+            {reviewOpen && analysis?.outputPaths && <details className="text-xs text-text-secondary">
+              <summary className="cursor-pointer">{t('mergeRecipes.outputPaths', { count: analysis.outputPaths.length })}</summary>
+              <ul className="max-h-48 overflow-y-auto">{analysis.outputPaths.map(path => <li key={path} className="break-all font-mono py-1">{path}</li>)}</ul>
+            </details>}
           </div>
 
           <label className="flex items-start gap-2 text-sm text-text-primary cursor-pointer select-none">

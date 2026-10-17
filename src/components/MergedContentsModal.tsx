@@ -196,6 +196,7 @@ export default function MergedContentsModal({
               <p className="text-text-secondary text-xs leading-relaxed pt-1">
                 {t('mergedContents.sourcesStayOnDisk')}
               </p>
+              {(merged.pathPolicy || merged.sources.some(source => source.compositionRank !== undefined)) && <p className="text-text-secondary text-xs">{t('mergeRecipes.sharingHint')}</p>}
               {staleCount > 0 && (
                 <div className="flex flex-wrap items-center gap-2 pt-1">
                   <p className="text-amber-200/90 text-xs leading-relaxed flex-1 min-w-[16rem]">
@@ -383,7 +384,7 @@ export default function MergedContentsModal({
                       {addReviewOpen ? t('mergeMods.review.hide') : t('mergeMods.review.button')}
                     </button>
                     {addReviewOpen && (
-                      <MergeReviewPanel order={[mod.id, ...selectedAddIds]} respectOrder={false} />
+                      <MergeReviewPanel order={[mod.id, ...selectedAddIds]} respectOrder={false} flatten pathPolicy={merged.pathPolicy} />
                     )}
                   </div>
                 )}
