@@ -11,6 +11,7 @@ import { captureIsolationRecoveryUnlocked, applyIsolationRecoveryUnlocked, resto
 import { assertRecoveryPath, recoveryDirectory, writeRecoveryJson } from './recoveryBackup';
 import { readRecoveryJournal, writeJournaledIsolation } from './recoveryJournal';
 import type { ModIsolationSession } from '../../../src/types/recovery';
+import { advanceIsolationTrial } from '../../../src/lib/isolationTrials';
 
 interface StoredSession extends ModIsolationSession { gamePath: string; originalIds: string[] }
 const sessionPath = () => join(recoveryDirectory(), 'isolation.json');
@@ -25,6 +26,10 @@ async function readSession(gamePath: string): Promise<StoredSession | null> {
       !Array.isArray(session.testIds) || !session.testIds.every(id => typeof id === 'string' && session.originalIds.includes(id)) ||
       !['baseline-ready', 'baseline-testing', 'ready', 'testing', 'complete', 'inconclusive'].includes(session.phase) ||
       !Number.isSafeInteger(session.steps) || session.steps < 0 || typeof session.reviewToken !== 'string') throw new Error('Invalid isolation session');
+  if (session.strategy !== undefined && (session.strategy !== 'delta' ||
+      session.trialKind !== undefined && !['original', 'subset', 'complement'].includes(session.trialKind) ||
+      session.partitionCount !== undefined && (!Number.isSafeInteger(session.partitionCount) || session.partitionCount < 2 || session.partitionCount > session.candidates.length) ||
+      session.trialIndex !== undefined && (!Number.isSafeInteger(session.trialIndex) || session.trialIndex < 0 || session.trialIndex >= (session.partitionCount ?? 2)))) throw new Error('Invalid isolation trial state');
   return session;
 }
 async function liveToken(gamePath: string): Promise<string> {
@@ -66,7 +71,7 @@ export function startModIsolation(gamePath: string): Promise<ModIsolationSession
     const point = await captureIsolationRecoveryUnlocked(gamePath);
     const session: StoredSession = { id: randomUUID(), gamePath: resolve(gamePath), recoveryPointId: point.id,
       createdAt: new Date().toISOString(), candidates: mods.map(mod => ({ id: mod.id, name: mod.name })), originalIds: mods.map(mod => mod.id),
-      testIds: [], steps: 0, phase: 'baseline-ready', reviewToken: await liveToken(gamePath) };
+      testIds: [], steps: 0, phase: 'baseline-ready', strategy: 'delta', reviewToken: await liveToken(gamePath) };
     await writeRecoveryJson(sessionPath(), session);
     return session;
   });
@@ -93,14 +98,16 @@ export function recordModIsolationResult(gamePath: string, token: string, result
     if (!session || !['baseline-testing', 'testing'].includes(session.phase) || !['works', 'crashes'].includes(result)) throw new Error('Invalid isolation feedback');
     await validateReview(gamePath, session, token);
     session.steps++;
-    if (session.phase === 'baseline-testing') {
+    if (session.strategy === 'delta') {
+      Object.assign(session, advanceIsolationTrial(session, result));
+    } else if (session.phase === 'baseline-testing') {
       if (result === 'crashes') session.phase = 'inconclusive';
       else session.phase = 'ready';
     } else {
       session.candidates = session.candidates.filter(mod => result === 'crashes' ? session.testIds.includes(mod.id) : !session.testIds.includes(mod.id));
       session.phase = !session.candidates.length ? 'inconclusive' : session.candidates.length === 1 ? 'complete' : 'ready';
     }
-    if (session.phase === 'ready') session.testIds = session.candidates.slice(0, Math.max(1, Math.ceil(session.candidates.length / 2))).map(mod => mod.id);
+    if (session.phase === 'ready' && session.strategy !== 'delta') session.testIds = session.candidates.slice(0, Math.max(1, Math.ceil(session.candidates.length / 2))).map(mod => mod.id);
     await writeRecoveryJson(sessionPath(), session);
     return session;
   });

@@ -42,6 +42,21 @@ async function click(key: string) {
 }
 
 describe('shared profile apply review', () => {
+    it('re-reviews an explicit replacement and sends exactly the accepted mapping', async () => {
+        const issue = { ...preview.issues[0], entryIndex: 1 };
+        h.preview.mockResolvedValueOnce({ ...preview, issues: [issue], localMods: [{ id: 'local', name: 'Local', fileName: 'local.vpk' }] });
+        h.preview.mockResolvedValueOnce({ ...preview, reviewToken: 'mapped-state', mappings: [{ entryIndex: 1, modId: 'local' }],
+            entries: [...preview.entries, { ...issue, status: 'mapped', modId: 'local', modName: 'Local' }], issues: [{ ...issue, status: 'mapped', modId: 'local', modName: 'Local' }] });
+        let pending!: ReturnType<typeof run>;
+        await act(async () => { pending = run('p'); });
+        const control = document.querySelector('select') as HTMLSelectElement;
+        await act(async () => { control.value = 'local'; control.dispatchEvent(new Event('change', { bubbles: true })); });
+        expect(h.preview).toHaveBeenLastCalledWith('p', [{ entryIndex: 1, modId: 'local' }]);
+        expect(h.apply).not.toHaveBeenCalled();
+        expect(document.querySelector('[role="dialog"]')?.textContent).toContain('missing.vpk');
+        await click('profiles.review.apply'); await pending;
+        expect(h.apply).toHaveBeenLastCalledWith('p', 'mapped-state', [{ entryIndex: 1, modId: 'local' }]);
+    });
     it('cancels without writing any game state', async () => {
         let pending!: ReturnType<typeof run>;
         await act(async () => { pending = run('p'); });

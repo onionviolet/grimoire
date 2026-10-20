@@ -16,6 +16,17 @@ const plan = (saved: Profile, mods: Mod[], metadata: Record<string, VpkIndexMeta
     buildProfileApplyPlan(saved, mods, (key) => metadata[key]);
 
 describe('profile apply review', () => {
+    it('binds explicit local mappings to the review and rejects duplicate or disappeared targets', () => {
+        const saved = profile([{ fileName: 'missing.vpk' }]);
+        const mods = [mod('local')];
+        const original = plan(saved, mods).preview;
+        const mapped = buildProfileApplyPlan(saved, mods, () => undefined, [{ entryIndex: 0, modId: 'local' }]);
+        expect(mapped.preview.entries[0]).toMatchObject({ status: 'mapped', modId: 'local', entryIndex: 0 });
+        expect(mapped.matches.get('local')).toBe(saved.mods[0]);
+        expect(() => assertProfileReview(mapped.preview, original.reviewToken)).toThrow('fresh review');
+        expect(() => buildProfileApplyPlan(saved, mods, () => undefined, [{ entryIndex: 0, modId: 'gone' }])).toThrow('no longer available');
+        expect(() => buildProfileApplyPlan(profile([{ fileName: 'local.vpk' }, {}]), mods, () => undefined, [{ entryIndex: 1, modId: 'local' }])).toThrow('same local mod');
+    });
     it('matches renamed local/Foundry files by hash and counts changes without mutating the scan', () => {
         const mods = [mod('renamed'), mod('other', { enabled: true })];
         const before = structuredClone(mods);

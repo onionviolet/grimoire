@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync, unlinkSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync, unlinkSync, promises as filePromises } from 'fs';
 import { join, dirname } from 'path';
 import { getUserDataPath } from '../utils/paths';
 import { assertVpkSafety } from './modSafety';
@@ -8,8 +8,9 @@ import {
     enableModUnlocked,
     disableModUnlocked,
     reorderModsUnlocked,
+    type Mod,
 } from './mods';
-import { getModMetadata, loadMetadata, setModMetadataWithHash } from './metadata';
+import { getModMetadata, loadMetadata, setModMetadataWithHash, setModMetadata } from './metadata';
 import {
     normalizeVpkIndex,
     inferMissingVpkIndexes as resolverInferMissingVpkIndexes,
@@ -29,7 +30,10 @@ import {
 } from './gameSessionMods';
 import { generateCrosshairCommands, normalizeCrosshairSettings } from '../../../src/lib/crosshair';
 import { assertProfileReview, buildProfileApplyPlan } from './profileApplyPlan';
-import type { ProfileApplyEntry, ProfileApplyPreview } from '../../../src/types/electron';
+import { fingerprintFile } from './fileMatch';
+import { findChunkSiblingNames } from './vpk';
+import { resolveVpkIdentity } from './vpkIdentity';
+import type { ProfileApplyEntry, ProfileApplyPreview, ProfileApplyMapping } from '../../../src/types/electron';
 
 // The Profile wire types are single-sourced in src/types/electron.ts
 // (docstrings included); re-exported because portableProfile.ts and the
@@ -376,20 +380,44 @@ function describeProfileMod(pm: ProfileMod): string {
 /**
  * Apply a profile - enable/disable mods, restore autoexec and crosshair
  */
-export async function previewProfile(deadlockPath: string, profileId: string): Promise<ProfileApplyPreview> {
+async function mappedFileFingerprints(mods: Mod[], mappings: ProfileApplyMapping[]): Promise<Record<string, string>> {
+    const result: Record<string, string> = {};
+    for (const mapping of [...mappings].sort((a, b) => a.entryIndex - b.entryIndex)) {
+        const mod = mods.find(mod => mod.id === mapping.modId)!;
+        const files = [mod.path, ...findChunkSiblingNames(mod.fileName, await filePromises.readdir(dirname(mod.path))).sort().map(name => join(dirname(mod.path), name))];
+        const hashes = [];
+        for (const file of files) hashes.push((await fingerprintFile(file)).sha256);
+        result[mod.id] = createHash('sha256').update(JSON.stringify(hashes)).digest('hex');
+    }
+    return result;
+}
+async function mappedCanonicalMetadata(mods: Mod[], mappings: ProfileApplyMapping[]) {
+    const metadata = new Map<string, NonNullable<ReturnType<typeof getModMetadata>>>();
+    for (const mapping of mappings) {
+        const mod = mods.find(mod => mod.id === mapping.modId)!;
+        metadata.set(mod.metaKey, { ...getModMetadata(mod.metaKey), sha256: (await resolveVpkIdentity(mod.path)).sha256 });
+    }
+    return metadata;
+}
+export async function previewProfile(deadlockPath: string, profileId: string, mappings: ProfileApplyMapping[] = []): Promise<ProfileApplyPreview> {
+    return runExclusiveModMutation(async () => {
     const profile = loadProfiles().find((entry) => entry.id === profileId);
     if (!profile) throw new Error(`Profile not found: ${profileId}`);
     const mods = (await scanMods(deadlockPath)).filter((mod) => !isLockerManaged(mod.metaKey));
-    return buildProfileApplyPlan(profile, mods, getModMetadata).preview;
+    buildProfileApplyPlan(profile, mods, getModMetadata, mappings);
+    const metadata = await mappedCanonicalMetadata(mods, mappings);
+    return buildProfileApplyPlan(profile, mods, key => metadata.get(key) ?? getModMetadata(key), mappings, await mappedFileFingerprints(mods, mappings)).preview;
+    });
 }
 
-export async function applyProfile(deadlockPath: string, profileId: string, reviewToken?: string): Promise<ApplyProfileResult> {
+export async function applyProfile(deadlockPath: string, profileId: string, reviewToken?: string, mappings: ProfileApplyMapping[] = []): Promise<ApplyProfileResult> {
     const profiles = loadProfiles();
     const profile = profiles.find(p => p.id === profileId);
 
     if (!profile) {
         throw new Error(`Profile not found: ${profileId}`);
     }
+    let appliedProfile: Profile = profile;
 
     const profileStableCount = profile.mods.filter(
         (pm) =>
@@ -423,10 +451,17 @@ export async function applyProfile(deadlockPath: string, profileId: string, revi
     let unresolved: ProfileApplyEntry[] = [];
 
     await runExclusiveModMutation(async () => {
+        const profile = loadProfiles().find(profile => profile.id === profileId);
+        if (!profile) throw new Error('Profile is no longer available');
+        appliedProfile = profile;
         // Resolve by archive id first, using vpkIndex for multi-VPK siblings.
         // FileName fallback is only for stable-id-less local mods.
         const currentMods = await scanMods(deadlockPath);
-        const plan = buildProfileApplyPlan(profile, currentMods.filter((mod) => !isLockerManaged(mod.metaKey)), getModMetadata);
+        const eligibleMods = currentMods.filter((mod) => !isLockerManaged(mod.metaKey));
+        buildProfileApplyPlan(profile, eligibleMods, getModMetadata, mappings);
+        const mappedMetadata = await mappedCanonicalMetadata(eligibleMods, mappings);
+        const mappingFingerprints = await mappedFileFingerprints(eligibleMods, mappings);
+        const plan = buildProfileApplyPlan(profile, eligibleMods, key => mappedMetadata.get(key) ?? getModMetadata(key), mappings, mappingFingerprints);
         assertProfileReview(plan.preview, reviewToken);
         unresolved = plan.preview.entries.filter((entry) => entry.enabled && !entry.modId);
         await syncRunningGameModSnapshotFromMods(currentMods);
@@ -435,6 +470,11 @@ export async function applyProfile(deadlockPath: string, profileId: string, revi
         // currentMod.id -> ProfileMod, when matched. Drives the enable/disable
         // loop and the reorder pass below.
         const profileModByCurrentId = plan.matches;
+        const reorderEntries = [...plan.matches].map(([id, entry]) => {
+            const manual = mappings.some(mapping => profile.mods[mapping.entryIndex] === entry);
+            const selected = eligibleMods.find(mod => mod.id === id)!;
+            return manual ? { ...toProfileMod(selected, entry.enabled), sha256: mappedMetadata.get(selected.metaKey)?.sha256, priority: entry.priority } : entry;
+        });
         for (const profileMod of profile.mods) {
             const resolution = resolveProfileMod(profileMod);
             if (resolution.mod !== undefined && profileModByCurrentId.has(resolution.mod.id)) {
@@ -492,11 +532,13 @@ export async function applyProfile(deadlockPath: string, profileId: string, revi
         }
 
         await captureProfileRecoveryUnlocked(deadlockPath, profile.name, currentMods);
+        if (JSON.stringify(await mappedFileFingerprints(eligibleMods, mappings)) !== JSON.stringify(mappingFingerprints)) throw new Error('Mapped source changed after review');
         const journal = await createRecoveryJournal(deadlockPath, loadSettings().activeProfileId ?? null);
         try {
             await journalRecoveryMetadata(journal, currentMods.map(mod => mod.metaKey));
             await beginRecoveryMutation(journal);
             await withRecoveryMutationJournal(journal, async () => {
+                for (const [key, metadata] of mappedMetadata) setModMetadata(key, { sha256: metadata.sha256 });
                 // Once mutations start, the old marker no longer describes the disk if a later step fails.
                 const pendingSettings = loadSettings();
                 pendingSettings.activeProfileId = null;
@@ -565,9 +607,8 @@ export async function applyProfile(deadlockPath: string, profileId: string, revi
                 const seen = new Set<string>();
                 let reorderSkippedDisabled = 0;
                 let reorderSkippedUnmatched = 0;
-                for (const pm of [...profile.mods].sort((a, b) => a.priority - b.priority)) {
+                for (const pm of [...reorderEntries].sort((a, b) => a.priority - b.priority)) {
                     if (!pm.enabled) continue;
-                    if (![...profileModByCurrentId.values()].includes(pm)) continue;
                     const resolution = resolveAgainstRefreshed(pm);
                     if (resolution.mod === undefined) {
                         reorderSkippedUnmatched++;
@@ -621,7 +662,7 @@ export async function applyProfile(deadlockPath: string, profileId: string, revi
                 await journalRecoveryPaths(journal, [{ path: getAutoexecPath(deadlockPath), hash: createHash('sha256').update(buildAutoexec(currentAutoexec)).digest('hex') }]);
                 writeAutoexec(deadlockPath, currentAutoexec);
                 const settings = loadSettings();
-                settings.activeProfileId = unresolved.length === 0 ? profileId : null;
+                settings.activeProfileId = unresolved.length === 0 && mappings.length === 0 ? profileId : null;
                 saveSettings(settings);
             });
             await clearRecoveryJournal();
@@ -633,7 +674,7 @@ export async function applyProfile(deadlockPath: string, profileId: string, revi
     });
 
     console.log(`[profiles] apply '${profile.name}' complete`);
-    return { profile, failures: [], unresolved };
+    return { profile: appliedProfile, failures: [], unresolved };
 }
 
 /**
