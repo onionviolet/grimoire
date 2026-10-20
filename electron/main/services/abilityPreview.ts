@@ -51,6 +51,7 @@ export async function listHeroAbilityPreviews(deadlockPath: string, heroName: st
         if (!meta) return [];
         const paths = [...new Set(sounds.filter(sound => sound.slot === slot).flatMap(sound => sound.vsnd))];
         return [{ slot, label: meta.display || meta.token, token: meta.token, clip: resolveAbilityClip(clips, meta.token, tokens),
+            clipChoices: [...new Set(clips.filter(clip => clip.durationSeconds > 0.001 && clip.frameCount > 1).map(clip => clip.name))].slice(0, 256),
             soundPath: paths.length === 1 ? paths[0] : null,
             // Particle filenames do not provide an authoritative slot-to-cast
             // join. Broad inspection is available separately, never guessed.
@@ -59,8 +60,14 @@ export async function listHeroAbilityPreviews(deadlockPath: string, heroName: st
 }
 const pending = new Map<string, Promise<HeroAbilityPlayback>>();
 export async function prepareHeroAbilityPreview(deadlockPath: string, heroName: string, slot: AbilitySlot, options: HeroAbilityPreviewOptions = {}): Promise<HeroAbilityPlayback> {
+    if (options.sourceMode !== undefined && !['base', 'applied'].includes(options.sourceMode)) throw new Error('Invalid ability preview source');
+    const baseOnly = options.sourceMode === 'base';
     const ability = (await listHeroAbilityPreviews(deadlockPath, heroName)).find(ability => ability.slot === slot);
     if (!ability) throw new Error('No known ability slot for this hero.');
+    if (options.clipName !== undefined) {
+        if (!ability.clipChoices?.includes(options.clipName)) throw new Error('The requested audition clip is no longer available.');
+        ability.clip = options.clipName;
+    }
     const cache = await inspectionCache(deadlockPath, `ability:${heroName}:${slot}:${ability.clip}:${JSON.stringify(options)}`);
     const current = pending.get(cache.dir);
     if (current) return current;
@@ -68,11 +75,12 @@ export async function prepareHeroAbilityPreview(deadlockPath: string, heroName: 
     const work = (async (): Promise<HeroAbilityPlayback> => {
         let modelUrl: string | null = null;
         let skinApplied = false, skinFallback = false;
+        let clipEvents: HeroAbilityPlayback['clipEvents'] = null;
         if (ability.clip) {
             const path = join(cache.dir, 'ability.glb');
             const temporary = join(cache.dir, `${randomUUID()}.glb`);
             try {
-                const source = await exportHeroAbilityPose(deadlockPath, heroName, ability.clip, temporary, options.skinSources, options.fallbackSkinMetaKey);
+                const source = await exportHeroAbilityPose(deadlockPath, heroName, ability.clip, temporary, baseOnly ? undefined : options.skinSources, baseOnly ? undefined : options.fallbackSkinMetaKey);
                 const stat = await fs.stat(temporary);
                 if (stat.size > 128 * 1024 * 1024 || stat.size < 20) throw new Error('Ability preview exceeds the size limit.');
                 const bytes = await fs.readFile(temporary);
@@ -81,14 +89,15 @@ export async function prepareHeroAbilityPreview(deadlockPath: string, heroName: 
                 await fs.rename(temporary, path);
                 modelUrl = cache.url + `ability.glb?v=${createHash('sha256').update(bytes).digest('hex')}`;
                 skinApplied = source.skinApplied; skinFallback = source.skinFallback;
+                clipEvents = source.clipEvents ?? null;
             } finally { await fs.rm(temporary, { force: true }); }
             if (!modelUrl) throw new Error('The selected ability animation could not be exported.');
         }
-        const applied = ability.soundPath ? await previewAppliedHeroSound(deadlockPath, heroName, slot, ability.soundPath) : null;
+        const applied = ability.soundPath && !baseOnly ? await previewAppliedHeroSound(deadlockPath, heroName, slot, ability.soundPath) : null;
         const soundUrl = ability.soundPath ? applied?.selected ? applied.url : await ensureVoiceclip(deadlockPath, ability.soundPath) : null;
         if (cache.key !== await foundryBuildFingerprintKey(deadlockPath)) throw new Error('The game files changed during ability export. Refresh the catalog.');
         return { ability, modelUrl, soundUrl, soundSource: soundUrl ? applied?.selected ? 'applied' : 'base' : 'unavailable',
-            soundParams: applied?.params, skinApplied, skinFallback, effect: null, recolor: getActiveHeroColor(heroName) };
+            soundParams: applied?.params, skinApplied, skinFallback, effect: null, recolor: baseOnly ? null : getActiveHeroColor(heroName), clipEvents };
     })();
     pending.set(cache.dir, work);
     try { return await work; } finally { pending.delete(cache.dir); release(); await pruneInspectionCaches(cache.dir).catch(() => {}); }

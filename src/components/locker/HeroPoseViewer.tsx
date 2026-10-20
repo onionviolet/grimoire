@@ -14,9 +14,7 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls as DreiOrbitControls } from '@react-three/drei';
 import { Leva, folder, useControls } from 'leva';
 import * as THREE from 'three';
-import { HDRCubeTextureLoader } from 'three/examples/jsm/loaders/HDRCubeTextureLoader.js';
 import { AlertTriangle, Loader2, RotateCw } from 'lucide-react';
-import { getAssetPath } from '../../lib/assetPath';
 import {
   getHeroPoseInfo,
   exportHeroPose,
@@ -38,20 +36,19 @@ import { useClothSim } from '../../lib/useClothSim';
 import type { ClothModel } from '../../lib/feModel';
 import { BloomEffect } from './BloomEffect';
 import {
-  isNprMaterial,
-  isSelfIllumMaterial,
-  wrapMaterialWithNpr,
-  unwrapNprBase,
+  HERO_PREVIEW_CAMERA,
+  HERO_PREVIEW_GL,
+  enableHeroPreviewVertexColors,
+  normalizeHeroPreview,
+} from './heroPreviewSceneSetup';
+import { HeroPreviewLighting, HeroPreviewAppearance } from './HeroPreviewScene';
+import {
   summarizeNprScene,
-  applySource2MaterialHints,
   getMorphic,
   flag,
-  type NprWrapResult,
   type MorphicExtras,
   type MorphicDynamicExpr,
 } from '../../lib/source2NprMaterial';
-import { buildDeadlockMaterial, type DeadlockMaterialResult } from '../../lib/deadlockMaterial';
-import { compileSource2DrawState, summarizeSource2Scene } from '../../lib/source2Preview';
 import { resolveHeroPoseRenderFeatures } from './heroPoseRenderFeatures';
 import type { HeroPoseSkinSource } from '../../types/portrait';
 import type { TrippySpriteResult } from '../../types/mod';
@@ -75,20 +72,6 @@ import { attributeBrokenSkinSources } from './poseFailureAttribution';
  */
 
 const HERO_POSE_SCHEME = 'grimoire-hero';
-
-// Six faces of a real Deadlock skybox IBL probe (the overcast probe: bright and
-// neutral, not the moody dusk one), baked from the game's HDR cubemap to Radiance
-// .hdr by `vpkmerge cubemap`. Order is the loader's expected [+X, -X, +Y, -Y, +Z,
-// -Z]. Image-based lighting from this makes metallic and glossy surfaces read like
-// in-game instead of dead-flat under bare directionals.
-const IBL_FACES = [
-  getAssetPath('/ibl/px.hdr'),
-  getAssetPath('/ibl/nx.hdr'),
-  getAssetPath('/ibl/py.hdr'),
-  getAssetPath('/ibl/ny.hdr'),
-  getAssetPath('/ibl/pz.hdr'),
-  getAssetPath('/ibl/nz.hdr'),
-];
 
 const USE_CLOTH: boolean = false;
 
@@ -260,24 +243,6 @@ function disposeScene(root: THREE.Object3D): void {
   });
 }
 
-/** Enable per-vertex COLOR multiply wherever the attribute exists. Pure
- *  read/write of an existing material flag, so material identity is untouched
- *  (the NPR CustomShaderMaterial wrap still finds the same instances). */
-function enableVertexColors(scene: THREE.Object3D): void {
-  scene.traverse((obj) => {
-    const mesh = obj as THREE.Mesh;
-    if (!mesh.isMesh || !mesh.geometry?.attributes.color) return;
-    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-    for (const m of mats) {
-      const sm = m as THREE.MeshStandardMaterial;
-      if (sm && !sm.vertexColors) {
-        sm.vertexColors = true;
-        sm.needsUpdate = true;
-      }
-    }
-  });
-}
-
 /** Pick the rigged clip to play. The backend should ship exactly one animated
  *  clip; null means reject this rigged GLB and use the static pose path. */
 function pickIdleClip(clips: THREE.AnimationClip[]): THREE.AnimationClip | null {
@@ -380,21 +345,12 @@ export function PosedModel({
 
   // Normalize by the largest dimension so every hero fills the frame the same
   // regardless of native model scale, and recenter on the origin.
-  const norm = useMemo(() => {
-    const box = new THREE.Box3().setFromObject(scene);
-    const size = new THREE.Vector3();
-    const center = new THREE.Vector3();
-    box.getSize(size);
-    box.getCenter(center);
-    const maxDim = Math.max(size.x, size.y, size.z);
-    const scale = maxDim > 0 ? 2.0 / maxDim : 1;
-    return { scale, center };
-  }, [scene]);
+  const norm = useMemo(() => normalizeHeroPreview(scene), [scene]);
 
   // Per-vertex COLOR multiply where present (skin tone / accents render flat
-  // white without it); see enableVertexColors.
+  // white without it); see enableHeroPreviewVertexColors.
   useEffect(() => {
-    enableVertexColors(scene);
+    enableHeroPreviewVertexColors(scene);
   }, [scene]);
 
   useTurntable(groupRef, interaction);
@@ -444,24 +400,10 @@ function RiggedModel({
   // Normalize from the BIND/rest pose, once. Force the skeleton to bind pose and
   // flush world matrices first so the AABB is the true rest extent and does not
   // change frame to frame.
-  const norm = useMemo(() => {
-    scene.traverse((obj) => {
-      const s = obj as THREE.SkinnedMesh;
-      if (s.isSkinnedMesh && s.skeleton) s.skeleton.pose();
-    });
-    scene.updateWorldMatrix(true, true);
-    const box = new THREE.Box3().setFromObject(scene);
-    const size = new THREE.Vector3();
-    const center = new THREE.Vector3();
-    box.getSize(size);
-    box.getCenter(center);
-    const maxDim = Math.max(size.x, size.y, size.z);
-    const scale = maxDim > 0 ? 2.0 / maxDim : 1;
-    return { scale, center };
-  }, [scene]);
+  const norm = useMemo(() => normalizeHeroPreview(scene, { bindPose: true }), [scene]);
 
   useEffect(() => {
-    enableVertexColors(scene);
+    enableHeroPreviewVertexColors(scene);
   }, [scene]);
 
   // Build the mixer + play the idle clip once per scene. Kept in a ref so React
@@ -551,42 +493,6 @@ function Controls({ interaction }: { interaction: RefObject<TurntableInteraction
       }}
     />
   );
-}
-
-/** Image-based lighting from the baked Deadlock dusk probe. Loads the six .hdr
- *  faces once, runs them through PMREM, and assigns the result as
- *  `scene.environment` so every MeshStandardMaterial gets real reflections and
- *  ambient instead of dead-flat directional-only shading. The PMREM target is
- *  bound to this Canvas's GL context, so it is generated per-mount (the per-hero
- *  view shows a single viewer); SoulContainerViewer would want a shared probe.
- *  Drei Environment is not used here: the viewer needs HDRCubeTextureLoader's
- *  six-face Radiance cubemap path and HalfFloat PMREM for the Deadlock IBL. */
-function Environment() {
-  const { gl, scene } = useThree();
-  useEffect(() => {
-    let disposed = false;
-    const pmrem = new THREE.PMREMGenerator(gl);
-    let envRT: THREE.WebGLRenderTarget | null = null;
-    new HDRCubeTextureLoader()
-      .setDataType(THREE.HalfFloatType)
-      .load(IBL_FACES, (cube) => {
-        if (disposed) {
-          cube.dispose();
-          pmrem.dispose();
-          return;
-        }
-        envRT = pmrem.fromCubemap(cube);
-        scene.environment = envRT.texture;
-        cube.dispose();
-        pmrem.dispose();
-      });
-    return () => {
-      disposed = true;
-      scene.environment = null;
-      envRT?.dispose();
-    };
-  }, [gl, scene]);
-  return null;
 }
 
 /** Live trippy-skin preview: paints the body meshes with the trippy pattern and
@@ -686,223 +592,6 @@ function TrippyPaint({
     );
     tex.needsUpdate = true;
   });
-
-  return null;
-}
-
-/** Wraps every NPR-eligible material in `scene` with a CSM that layers the
- *  Deadlock cel ramp + rim + tint mask on the lit PBR output. Side-effects the
- *  shared scene graph in place (like the model effects / TrippyPaint), so one
- *  instance serves both PosedModel and RiggedModel (both render the same scene).
- *  Restores originals and disposes its CSM wrappers + mask clones on cleanup.
- *  No-op when disabled or when no material carries morphic data. */
-function NprMaterials({
-  scene,
-  enabled,
-  tint,
-  unified,
-  source2Active,
-  celV2,
-}: {
-  scene: THREE.Object3D;
-  enabled: boolean;
-  tint: THREE.Color | null;
-  /** When true, build each material via the unified single pass
-   *  (buildDeadlockMaterial) instead of the old applySource2MaterialHints +
-   *  wrapMaterialWithNpr two-pass. */
-  unified: boolean;
-  /** Forces legacy wraps to rebuild after the mutating Source2 hint pass changes. */
-  source2Active: boolean;
-  celV2: boolean;
-}) {
-  // Live handle to the builds so the tint effect + uTime ticker can poke uniforms
-  // without a rebuild. Both paths expose { material, uniforms } so the per-frame /
-  // tint effects below are path-agnostic.
-  const buildsRef = useRef<
-    Map<
-      THREE.Material,
-      {
-        material: THREE.Material;
-        uniforms: Record<string, THREE.IUniform>;
-        selfIllumPulseFn?: ((t: number) => number) | null;
-      }
-    >
-  >(new Map());
-
-  useEffect(() => {
-    if (!enabled) return;
-    const builds = new Map<
-      THREE.Material,
-      {
-        material: THREE.Material;
-        uniforms: Record<string, THREE.IUniform>;
-        selfIllumPulseFn?: ((t: number) => number) | null;
-      }
-    >();
-    // Per-build teardown (dispose the owned CSM/clone/masks). On the unified path
-    // this is the build's own dispose(); on the legacy path it mirrors the old
-    // CSM + ownedTextures dispose.
-    const disposers: Array<() => void> = [];
-    const restore: Array<() => void> = [];
-
-    scene.traverse((obj) => {
-      const mesh = obj as THREE.Mesh;
-      const skinned = obj as THREE.SkinnedMesh;
-      if (!mesh.isMesh && !skinned.isSkinnedMesh) return;
-
-      const list = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-      list.forEach((mat, i) => {
-        if (!mat) return;
-        // NPR materials always; on the unified path also non-NPR self-illum
-        // materials (familiar eyes) - they get the glow with cel/rim disabled.
-        if (!isNprMaterial(mat) && !(unified && isSelfIllumMaterial(mat))) return;
-        // Idempotency: legacy CSM stamps `__csm` on the base it wraps. Unified
-        // wraps an owned clone, so per-pass dedup is handled by the builds map.
-        if (!unified && (mat as { __csm?: unknown }).__csm) return;
-
-        let b = builds.get(mat);
-        if (!b) {
-          if (unified) {
-            // ONE pass: state + CSM on an owned clone; base is never mutated.
-            const built: DeadlockMaterialResult = buildDeadlockMaterial(mat, undefined, tint);
-            built.uniforms.uCelV2.value = celV2 ? 1.0 : 0.0;
-            b = {
-              material: built.material,
-              uniforms: built.uniforms,
-              selfIllumPulseFn: built.selfIllumPulseFn,
-            };
-            builds.set(mat, b);
-            disposers.push(built.dispose);
-          } else {
-            const built: NprWrapResult | null = wrapMaterialWithNpr(mat, undefined, tint);
-            if (!built) return;
-            built.uniforms.uCelV2.value = celV2 ? 1.0 : 0.0;
-            b = { material: built.material, uniforms: built.uniforms };
-            builds.set(mat, b);
-            disposers.push(() => {
-              built.material.dispose();
-              built.ownedTextures.forEach((t) => t.dispose());
-            });
-          }
-        }
-        const next = b.material;
-        if (Array.isArray(mesh.material)) {
-          const arr = mesh.material;
-          arr[i] = next;
-          restore.push(() => {
-            arr[i] = mat;
-            // Legacy path mutates the base in place (onBeforeCompile / emissive),
-            // so it must be reversed. The unified path never touched the base.
-            if (!unified) unwrapNprBase(mat);
-          });
-        } else {
-          mesh.material = next;
-          restore.push(() => {
-            mesh.material = mat;
-            if (!unified) unwrapNprBase(mat);
-          });
-        }
-      });
-    });
-
-    buildsRef.current = builds;
-
-    return () => {
-      // Restore the original mesh.material references first, then dispose only what
-      // this effect created. The parent loader effect's disposeScene then disposes
-      // the restored originals, so there is no double-free.
-      restore.forEach((fn) => fn());
-      disposers.forEach((fn) => fn());
-      builds.clear();
-      buildsRef.current = new Map();
-    };
-    // `tint` is intentionally excluded: the separate effect below applies it by
-    // mutating uniforms, so a recolor never tears down and rebuilds the builds.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scene, enabled, unified, source2Active]);
-
-  // Drive uTime for the self-illum UV scroll (viscous_head's liquid glow).
-  useFrame((state) => {
-    if (!enabled) return;
-    const t = state.clock.elapsedTime;
-    buildsRef.current.forEach((b) => {
-      if (b.uniforms.uTime) b.uniforms.uTime.value = t;
-      // Drive a dynamic self-illum envelope (inferno body's 0.5*sin(3*time())+0.5).
-      // Static scales have no fn and keep uSelfIllumPulse at 1.
-      if (b.selfIllumPulseFn && b.uniforms.uSelfIllumPulse) {
-        const s = b.selfIllumPulseFn(t);
-        // Guard: a future divergent expr could go NaN/Inf mid-stream; one bad
-        // uniform write blows out the whole material.
-        if (Number.isFinite(s)) b.uniforms.uSelfIllumPulse.value = s;
-      }
-    });
-  });
-
-  // Live tint (ability-recolor preview): mutate uniforms only, no rebuild.
-  useEffect(() => {
-    if (!enabled) return;
-    buildsRef.current.forEach((b) => {
-      const u = b.uniforms.uTintColor.value as THREE.Color;
-      if (tint) u.copy(tint);
-      else u.setRGB(1, 1, 1);
-    });
-  }, [tint, enabled]);
-
-  useEffect(() => {
-    if (!enabled) return;
-    buildsRef.current.forEach((b) => {
-      if (b.uniforms.uCelV2) b.uniforms.uCelV2.value = celV2 ? 1.0 : 0.0;
-    });
-  }, [celV2, enabled]);
-
-  return null;
-}
-
-/**
- * Always-on Source 2 draw state. Applies additive / translucent blend, backface
- * culling, and overlay render-order to EVERY material carrying morphic extras,
- * independent of the NPR / unified / source2 / bloom dev flags. This is the one
- * pass that runs on the default preview path, so additive self-illum glow
- * overlays (kept by the vpkmerge exporter) composite as `AdditiveBlending` rather
- * than rendering an opaque white hull. Mesh-level `renderOrder` is the piece the
- * material builders cannot set and persists across the flag-gated material swaps.
- */
-function Source2DrawState({ scene, debug }: { scene: THREE.Object3D; debug: boolean }) {
-  useEffect(() => {
-    const compiled = compileSource2DrawState(scene);
-    if (debug) {
-      // Phase 3 round-trip inspection: blend-mode + renderOrder distribution and
-      // the overlay mesh names, so a maintainer can confirm kept glow overlays
-      // composite additively. Logging only; the compile itself is always-on.
-      console.info('[source2drawstate]', compiled.stats, summarizeSource2Scene(scene));
-    }
-    return () => compiled.restore();
-  }, [scene, debug]);
-
-  return null;
-}
-
-function Source2MaterialHints({
-  scene,
-  enabled,
-  debug,
-  skipNpr,
-}: {
-  scene: THREE.Object3D;
-  enabled: boolean;
-  debug: boolean;
-  skipNpr: boolean;
-}) {
-  useEffect(() => {
-    if (!enabled) return;
-    const hints = applySource2MaterialHints(
-      scene,
-      debug,
-      skipNpr ? (mat) => !isNprMaterial(mat) : undefined
-    );
-    if (debug) console.info('[source2hints] summary', hints.stats);
-    return () => hints.restore();
-  }, [scene, enabled, debug, skipNpr]);
 
   return null;
 }
@@ -1263,21 +952,14 @@ export default function HeroPoseViewer({
         </div>
       )}
       <Canvas
-        camera={{ position: [0, 0, 3.2], fov: 40 }}
+        camera={HERO_PREVIEW_CAMERA}
         dpr={[1, 2]}
-        gl={{
-          alpha: true,
-          toneMapping: THREE.ACESFilmicToneMapping,
-          toneMappingExposure: 0.8,
-        }}
+        gl={HERO_PREVIEW_GL}
       >
         {/* The IBL probe supplies ambient + reflections, so the bare ambientLight
             is gone and the directionals are softened to a warm key + cool fill
             that just shapes the form on top of the environment. */}
-        <Environment />
-        <ambientLight intensity={0.12} />
-        <directionalLight position={[3, 5, 4]} intensity={1.1} color="#fff3e0" />
-        <directionalLight position={[-4, 2, -3]} intensity={0.4} color="#cfe0ff" />
+        <HeroPreviewLighting />
         {rigged ? (
           <RiggedModel
             scene={scene}
@@ -1290,25 +972,7 @@ export default function HeroPoseViewer({
         ) : (
           <PosedModel scene={scene} interaction={interaction} effect={effect} />
         )}
-        {scene && <Source2DrawState scene={scene} debug={features.nprDebugEnabled} />}
-        {features.source2ShaderHintsEnabled && scene && (
-          <Source2MaterialHints
-            scene={scene}
-            enabled={features.source2ShaderHintsEnabled}
-            debug={features.nprDebugEnabled}
-            skipNpr={features.source2SkipNpr}
-          />
-        )}
-        {features.nprMaterialsEnabled && scene && (
-          <NprMaterials
-            scene={scene}
-            enabled={features.nprMaterialsEnabled}
-            tint={null /* wire to a recolor color once the Locker recolor surface exists */}
-            unified={features.unifiedEnabled}
-            source2Active={features.source2ShaderHintsEnabled}
-            celV2={features.celV2Enabled}
-          />
-        )}
+        {scene && <HeroPreviewAppearance scene={scene} features={features} />}
         {trippySprite && <TrippyPaint scene={scene} sprite={trippySprite} />}
         {features.bloomEnabled && (
           <BloomEffect
