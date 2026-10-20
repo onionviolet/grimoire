@@ -5,6 +5,8 @@ import { app, BrowserWindow } from 'electron';
 import log from 'electron-log';
 import { isValidSemver } from './version';
 import { pruneUpdaterCache } from './updaterCache';
+import { loadSettings } from './settings';
+import { updateChannelPolicy, updateVersionAllowed } from './updatePolicy';
 
 export type InstallSource = 'managed' | 'appimage' | 'standard' | 'fork' | 'manual';
 
@@ -81,6 +83,7 @@ autoUpdater.fullChangelog = true;
 let mainWindow: BrowserWindow | null = null;
 
 export interface UpdateStatus {
+    checked?: boolean;
     checking: boolean;
     available: boolean;
     downloading: boolean;
@@ -91,6 +94,7 @@ export interface UpdateStatus {
 }
 
 let currentStatus: UpdateStatus = {
+    checked: false,
     checking: false,
     available: false,
     downloading: false,
@@ -133,6 +137,9 @@ export function initUpdater(window: BrowserWindow) {
         return;
     }
 
+    app.on('before-quit', () => {
+        if (!updateVersionAllowed(loadSettings().updateReleaseChannel, currentStatus.updateInfo?.version)) autoUpdater.autoInstallOnAppQuit = false;
+    });
     autoUpdater.on('checking-for-update', () => {
         currentStatus = { ...currentStatus, checking: true, error: null };
         sendStatusToRenderer();
@@ -143,6 +150,7 @@ export function initUpdater(window: BrowserWindow) {
             ...currentStatus,
             checking: false,
             available: true,
+            checked: true,
             updateInfo: info,
         };
         sendStatusToRenderer();
@@ -153,6 +161,7 @@ export function initUpdater(window: BrowserWindow) {
             ...currentStatus,
             checking: false,
             available: false,
+            checked: true,
             updateInfo: null,
         };
         sendStatusToRenderer();
@@ -196,6 +205,9 @@ export function getAppVersion(): string {
 export async function checkForUpdates(): Promise<UpdateInfo | null> {
     if (updaterDisabled) return null;
     try {
+        const policy = updateChannelPolicy(loadSettings().updateReleaseChannel);
+        autoUpdater.allowPrerelease = policy.allowPrerelease;
+        autoUpdater.allowDowngrade = policy.allowDowngrade;
         const result = await autoUpdater.checkForUpdates();
         return result?.updateInfo ?? null;
     } catch (error) {
@@ -209,6 +221,11 @@ export async function downloadUpdate(): Promise<void> {
     // Squirrel.Mac a payload it will refuse to install, so stop earlier and
     // let the UI point at the download page instead.
     if (!canInstallInPlace) return;
+    if (!updateVersionAllowed(loadSettings().updateReleaseChannel, currentStatus.updateInfo?.version)) {
+        autoUpdater.autoInstallOnAppQuit = false;
+        currentStatus = { ...currentStatus, available: false, downloaded: false, updateInfo: null, error: 'UPDATE_CHANNEL_CHANGED' };
+        sendStatusToRenderer(); return;
+    }
     try {
         await autoUpdater.downloadUpdate();
     } catch (error) {
@@ -219,6 +236,11 @@ export async function downloadUpdate(): Promise<void> {
 
 export function quitAndInstall(): void {
     if (!canInstallInPlace) return;
+    if (!updateVersionAllowed(loadSettings().updateReleaseChannel, currentStatus.updateInfo?.version)) {
+        autoUpdater.autoInstallOnAppQuit = false;
+        currentStatus = { ...currentStatus, available: false, downloaded: false, updateInfo: null, error: 'UPDATE_CHANNEL_CHANGED' };
+        sendStatusToRenderer(); return;
+    }
     autoUpdater.quitAndInstall(false, true);
 }
 

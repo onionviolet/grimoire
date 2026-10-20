@@ -1,5 +1,6 @@
 appId: com.grimoire.modmanager
 productName: Grimoire
+generateUpdatesFilesForAllChannels: true
 # GameBanana 1-Click Mod Installer protocol registration
 protocols:
   - name: Grimoire 1-Click Installer

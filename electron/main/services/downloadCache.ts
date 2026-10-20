@@ -5,6 +5,7 @@ import { getUserDataPath } from '../utils/paths';
 import { assertRecoveryPath, writeRecoveryJson } from './recoveryBackup';
 import { downloadTransfer, type DownloadTransferOptions } from './downloadTransfer';
 import { validateDownloadUrl, validateFileSize } from './security';
+import { withArchiveCacheUse } from './downloadCacheManagement';
 
 async function hashFile(path: string): Promise<string> {
   const hash = createHash('sha256');
@@ -13,6 +14,9 @@ async function hashFile(path: string): Promise<string> {
 }
 /** Stable partials live outside disposable extraction directories. Completed bytes are content-addressed. */
 export async function downloadCachedArchive(url: string, destinationPath: string, expectedSize: number, options: Omit<DownloadTransferOptions, 'candidateUrls' | 'destinationPath'>, transfer?: (partial: string, metadata: string, identity: string) => Promise<void>): Promise<void> {
+  return withArchiveCacheUse(() => downloadArchive(url, destinationPath, expectedSize, options, transfer));
+}
+async function downloadArchive(url: string, destinationPath: string, expectedSize: number, options: Omit<DownloadTransferOptions, 'candidateUrls' | 'destinationPath'>, transfer?: (partial: string, metadata: string, identity: string) => Promise<void>): Promise<void> {
   validateDownloadUrl(url);
   const root = join(getUserDataPath(), 'download-cache');
   await assertRecoveryPath(root); await fs.mkdir(join(root, 'blobs'), { recursive: true });

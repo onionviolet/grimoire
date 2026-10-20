@@ -5,6 +5,9 @@ import DOMPurify from 'dompurify';
 import { Badge, Button, Card, ModalHeader } from '../../common/ui';
 import { Modal, ModalBody, ModalFooter } from '../../common/Modal';
 import Tx from '../../translation/Tx';
+import { Select } from '../../common/forms';
+import { Toggle } from '../../common/ui';
+import { useAppStore } from '../../../stores/appStore';
 
 // GitHub Releases is the source of truth for changelogs. When we have local
 // release notes (an update is pending) we show them in-app; otherwise we link
@@ -32,8 +35,11 @@ function ReleaseVersionLink({ version, className = '' }: { version?: string | nu
 }
 
 export default function UpdatesSection() {
+  const { t } = useTranslation();
+  const { settings, saveSettings } = useAppStore();
   const [appVersion, setAppVersion] = useState<string>('');
   const [updateStatus, setUpdateStatus] = useState<{
+    checked?: boolean;
     checking: boolean;
     available: boolean;
     downloading: boolean;
@@ -52,11 +58,11 @@ export default function UpdatesSection() {
   const [installSource, setInstallSource] = useState<'managed' | 'appimage' | 'standard' | 'fork' | 'manual'>('standard');
   // See UpdateModal: 'managed' defers to the package manager, 'manual' (ad-hoc
   // signed macOS) can check but cannot apply an update in place.
-  const canSelfInstall = installSource !== 'managed' && installSource !== 'manual';
+  const canSelfInstall = installSource !== 'managed' && installSource !== 'manual' && window.electronAPI.platform !== 'darwin';
 
   // Derived, not state: a check in flight sets `checking`, so this falls back
   // to false on its own while one runs.
-  const upToDate = !!updateStatus && !updateStatus.checking && !updateStatus.available && !updateStatus.error;
+  const upToDate = updateStatus?.checked === true && !updateStatus.checking && !updateStatus.available && !updateStatus.error;
 
   useEffect(() => {
     window.electronAPI.updater.getVersion().then(setAppVersion);
@@ -102,6 +108,18 @@ export default function UpdatesSection() {
     <>
       <Card title={<Tx k="settings.sections.updates" fallback="Updates" />} icon={Download}>
         <div className="space-y-4">
+          {installSource !== 'managed' && <>
+            <label htmlFor="update-release-channel" className="block text-sm text-text-secondary">{t('settings.updates.channel')}</label>
+            <Select id="update-release-channel" value={settings?.updateReleaseChannel ?? 'stable'} className="max-w-80"
+              disabled={!settings || !!updateStatus?.checking || !!updateStatus?.downloading || !!updateStatus?.downloaded}
+              onChange={event => { if (settings) void saveSettings({ ...settings, updateReleaseChannel: event.target.value as 'stable' | 'preview' }); setUpdateStatus(null); }}>
+              <option value="stable">{t('settings.updates.stable')}</option>
+              <option value="preview">{t('settings.updates.preview')}</option>
+            </Select>
+            <p className="text-xs text-text-secondary">{t('settings.updates.channelHelp')}</p>
+            <Toggle checked={settings?.checkUpdatesOnStartup ?? false} disabled={!settings} onChange={checked => { if (settings) void saveSettings({ ...settings, checkUpdatesOnStartup: checked }); }}
+              label={t('settings.updates.startupCheck')} description={t('settings.updates.startupCheckHelp')} />
+          </>}
           <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
               <div className="flex items-center gap-2">
@@ -129,7 +147,7 @@ export default function UpdatesSection() {
                 </span>
               )}
               {updateStatus?.error && (
-                <span className="text-xs text-state-danger basis-full">{updateStatus.error}</span>
+                <span className="text-xs text-state-danger basis-full">{updateStatus.error === 'UPDATE_CHANNEL_CHANGED' ? t('settings.updates.channelChanged') : updateStatus.error}</span>
               )}
             </div>
             <div className="flex flex-wrap gap-2">
@@ -214,7 +232,7 @@ export default function UpdatesSection() {
             </div>
           )}
 
-          {installSource === 'manual' && (
+          {(installSource === 'manual' || window.electronAPI.platform === 'darwin') && (
             <div className="rounded-lg bg-bg-tertiary border border-hl/10 p-3 text-sm text-text-secondary space-y-2">
               <p className="text-text-primary font-medium">
                 <Tx k="settings.updates.manual" fallback="Updates have to be downloaded manually." />
@@ -226,7 +244,7 @@ export default function UpdatesSection() {
                 />
               </p>
               <a
-                href="https://github.com/Slush97/grimoire/releases/latest"
+                href={updateStatus?.available ? releaseTagUrl(updateStatus.updateInfo?.version) : `${GITHUB_RELEASES_URL}/latest`}
                 target="_blank"
                 rel="noreferrer noopener"
                 className="inline-block font-mono text-text-primary underline underline-offset-2 hover:text-accent transition-colors"
