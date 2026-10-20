@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import {
     DndContext,
@@ -38,6 +39,7 @@ import { Input } from './common/forms';
 import { Modal } from './common/Modal';
 import { formatRelativeDate, formatAbsoluteDate } from '../lib/dates';
 import { formatBytes } from '../lib/formatBytes';
+import { shakeElement } from '../lib/shakeElement';
 
 type DropPosition = 'before' | 'after';
 type VariantSection = 'enabled' | 'disabled';
@@ -48,7 +50,7 @@ interface Props {
     modName: string;
     variants: Mod[];
     /** Toggle a single variant's enabled state. Variants are independent. */
-    onToggle: (target: Mod) => Promise<void> | void;
+    onToggle: (target: Mod) => Promise<boolean> | void;
     /** Swap a variant with its picker-neighbor. */
     onMoveVariant: (target: Mod, direction: 'up' | 'down') => Promise<void> | void;
     /** Drag-drop reorder. Drops source before or after neighbor in load order. */
@@ -73,10 +75,8 @@ interface Props {
     /** Trigger an in-place update for every flagged variant in this group.
      *  Omitted when nothing in the group has an update. */
     onUpdateGroup?: () => void | Promise<void>;
-    /** True while an update run is in progress (shared with the page-level
-     *  Update-all button) so this modal mirrors the same disabled/progress UX. */
+    /** Shared batch state keeps this action disabled while work remains. */
     isUpdating?: boolean;
-    updateProgress?: { done: number; total: number } | null;
     onClose: () => void;
 }
 
@@ -147,7 +147,6 @@ export default function VariantPickerModal({
     variantsWithUpdate,
     onUpdateGroup,
     isUpdating = false,
-    updateProgress = null,
     onClose,
 }: Props) {
     const { t } = useTranslation();
@@ -218,11 +217,12 @@ export default function VariantPickerModal({
         }
     };
 
-    const pick = async (target: Mod) => {
+    const pick = async (target: Mod, row: HTMLElement | null) => {
         if (pending) return;
         setPending(target.id);
         try {
-            await onToggle(target);
+            const toggled = await onToggle(target);
+            if (target.enabled && toggled === false) shakeElement(row);
         } finally {
             setPending(null);
         }
@@ -330,7 +330,7 @@ export default function VariantPickerModal({
             >
                 <button
                     type="button"
-                    onClick={overlay ? undefined : () => pick(v)}
+                    onClick={overlay ? undefined : (event) => pick(v, event.currentTarget.parentElement)}
                     disabled={overlay || !!pending || isEditing}
                     className="flex-1 min-w-0 text-left cursor-pointer disabled:cursor-default disabled:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded"
                     title={isActive ? 'Disable this file' : 'Enable this file'}
@@ -370,7 +370,7 @@ export default function VariantPickerModal({
                                     {v.isArchived && <ArchivedTag />}
                                     {hasUpdate && (
                                         <Tag
-                                            tone="accent"
+                                            tone="update"
                                             icon={Download}
                                             title={t('variantPicker.updateAvailable')}
                                             className="flex-shrink-0 uppercase tracking-wide"
@@ -561,13 +561,16 @@ export default function VariantPickerModal({
                         ))}
                     </div>
                 </SortableContext>
-                <DragOverlay>
-                    {activeVariant ? (
-                        <div className="pointer-events-none opacity-95 shadow-2xl">
-                            {renderVariantRow(activeVariant, activeIndex, sectionVariants, true)}
-                        </div>
-                    ) : null}
-                </DragOverlay>
+                {createPortal(
+                    <DragOverlay zIndex={60} className="pointer-events-none">
+                        {activeVariant ? (
+                            <div className="opacity-95 shadow-2xl">
+                                {renderVariantRow(activeVariant, activeIndex, sectionVariants, true)}
+                            </div>
+                        ) : null}
+                    </DragOverlay>,
+                    document.body,
+                )}
             </DndContext>
         );
     };
@@ -616,15 +619,18 @@ export default function VariantPickerModal({
                                     size="sm"
                                     icon={Download}
                                     isLoading={isUpdating}
-                                    onClick={() => void onUpdateGroup()}
+                                    onClick={() => {
+                                        void onUpdateGroup();
+                                        onClose();
+                                    }}
                                     title={
                                         isUpdating
                                             ? t('variantPicker.updateInProgress')
                                             : t('variantPicker.updateGroupHint', { count: variantsWithUpdate.size })
                                     }
                                 >
-                                    {isUpdating && updateProgress
-                                        ? t('variantPicker.updatingProgress', { done: updateProgress.done, total: updateProgress.total })
+                                    {isUpdating
+                                        ? t('installed.updateAll.updating')
                                         : t('variantPicker.updateCount', { count: variantsWithUpdate.size })}
                                 </Button>
                             )}

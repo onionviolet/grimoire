@@ -19,25 +19,33 @@
 // is restored on write: line-based regexes silently fail on CR-terminated
 // lines otherwise (JS `.` does not match \r), which would inject duplicate
 // convars with ambiguous engine precedence on Windows CRLF files.
+//
+// Presets whose upstream ships a video.txt also write its render settings into
+// the user's video.txt (performanceVideo.ts). That half rides along with every
+// apply and remove, but its undo record lives in the sidecar, not in markers.
 import { createHash } from 'crypto';
 import { existsSync, readFileSync, unlinkSync, writeFileSync, renameSync } from 'fs';
 import { dirname, join } from 'path';
 import { getGameinfoPath } from './deadlock';
 import { findAutoexecConvars } from './autoexec';
 import { CONFIG_KEY_BY_NAME, CONFIG_KEY_INDEX, USER_CONTROL_KEYS } from './configKeyIndex';
+import { applyVideo, getVideoPath, revertVideo, videoApplied, type VideoState } from './performanceVideo';
 import type {
     PerformanceConfigStatus,
     PerformanceConvarOrigin,
     PerformanceConvarState,
     PerformancePresetSummary,
 } from '../../../src/types/electron';
+import { keyExcluded } from './performancePresetGen';
 import {
+    CLASSIFICATION,
     DEFAULT_PRESET_ID,
     getPreset,
     hasVersion,
     PRESETS,
     type PerformancePreset,
     type SectionOp,
+    type VideoVariant,
 } from './performanceConfigData';
 // Fork-owned user controls. Separate module because performanceConfigData.ts is
 // generated and `pnpm perf:presets` overwrites anything hand-written in it.
@@ -145,7 +153,9 @@ type UserConvars = Record<string, OverrideEntry>;
  *  listed stays out of the file). Undefined uses the creator defaults:
  *  visibility/camera on, developer/testing tools off. An explicit empty list
  *  disables every optional gameplay setting. `version` picks which bundled
- *  upstream release of that preset to write, defaulting to the newest. */
+ *  upstream release of that preset to write, defaulting to the newest.
+ *  A preset whose upstream ships a video.txt always writes it too;
+ *  `videoVariant` picks which one when the release ships several. */
 export interface ApplyOptions {
     presetId?: string;
     version?: string | null;
@@ -155,6 +165,17 @@ export interface ApplyOptions {
     convarOverrides?: Record<string, string>;
     /** Transactional Config edits must fail if their state sidecar cannot persist. */
     requireStateWrite?: boolean;
+    /** Write the preset's video values over ones changed in game since. */
+    restoreVideo?: boolean;
+    videoVariant?: string | null;
+}
+
+/** The video.txt variant to write: the requested one when the release ships
+ *  it, otherwise its default. Null for a release with one video.txt or none. */
+function pickVideoVariant(preset: PerformancePreset, wanted: string | null | undefined): VideoVariant | null {
+    const variants = preset.videoVariants;
+    if (!variants?.length) return null;
+    return variants.find((variant) => variant.id === wanted) ?? variants[0];
 }
 
 /** The convars a preset writes for a given opt-in selection: its performance
@@ -420,11 +441,17 @@ function presetKeyIndex(
 // the definition has moved, only the unambiguous signal counts: a marker line
 // the user commented out. Overrides banked while the definitions matched are
 // untouched; the caller still layers them.
+//
+// `rulesMoved` is the milder case: same upstream release, but Grimoire's
+// classification changed since the file was written (a key excluded or
+// un-excluded, an opt-in moved). Values on the lines we wrote still mean what
+// they say; only absence stops proving a deletion.
 function harvestOverrides(
     content: string,
     preset: PerformancePreset,
     convars: ReadonlyArray<readonly [string, string]>,
-    marker: AppliedMarker | null
+    marker: AppliedMarker | null,
+    rulesMoved: boolean
 ): Overrides {
     const idx = presetKeyIndex(preset, convars);
     const overrides: Overrides = {};
@@ -447,8 +474,10 @@ function harvestOverrides(
             if (managed === null) continue; // ambiguous bare key
             if (!managed) {
                 // Not in the preset: the user's own convar inside our block,
-                // unless the preset definition moved under us (see above).
-                if (!drift && !isCommented && entry) {
+                // unless the preset definition moved under us (see above), or
+                // it is a key Grimoire never writes, left by a build that
+                // wrote it before the key was excluded (r_lightmap_size).
+                if (!drift && !isCommented && entry && !keyExcluded(key, CLASSIFICATION)) {
                     overrides[`ConVars/${key}`] = { value: unquote(entry.value) };
                 }
                 continue;
@@ -474,8 +503,8 @@ function harvestOverrides(
     // Deleted preset convars: every applied convar key is present after an
     // apply (edited in place or injected), so one with no active entry left in
     // the ConVars section was removed by the user. Absence proves nothing once
-    // the preset definition has moved.
-    const convarRange = drift ? null : findSectionByPath(content, ['ConVars']);
+    // the preset definition or the rules have moved.
+    const convarRange = drift || rulesMoved ? null : findSectionByPath(content, ['ConVars']);
     if (convarRange) {
         const activeKeys = new Set(
             content
@@ -554,6 +583,71 @@ function harvestUserConvars(
         else delete next[key];
     }
     return next;
+}
+
+// ---------------------------------------------------------------------------
+// video.txt
+// ---------------------------------------------------------------------------
+
+/** What an apply wrote into video.txt, and which video.txt that was. */
+type VideoRecord = VideoState & { path: string };
+
+/** Take video.txt from whatever an earlier apply left there to `settings`.
+ *  When the game now reads a different video.txt (it created the userdata
+ *  copy, or another Steam account launched it), the old one is reverted first.
+ *  A missing or unrecognizable file skips the video half (the earlier record
+ *  is kept, so Remove can still undo it) and the note says so. A file that
+ *  cannot be read or written throws: the caller rolls back gameinfo.gi rather
+ *  than leave the two halves describing different presets. */
+function syncVideo(
+    deadlockPath: string,
+    previous: VideoRecord | null,
+    settings: ReadonlyArray<readonly [string, string]>,
+    restore: boolean
+): { state: VideoRecord | null; note: string } {
+    const path = getVideoPath(deadlockPath);
+    if (previous && (previous.path !== path || !settings.length)) {
+        revertVideoFile(previous);
+        previous = null;
+    }
+    if (!settings.length) return { state: null, note: '' };
+    if (!existsSync(path)) {
+        return { state: previous, note: ' Video settings skipped: launch Deadlock once, then apply again.' };
+    }
+    const text = readFileSync(path, 'utf-8');
+    const result = applyVideo(text, settings, previous, restore);
+    if (!result.ok) return { state: previous, note: ` ${result.error}, so its settings were skipped.` };
+    if (result.text !== text) writeFileSync(path, result.text, 'utf-8');
+    const n = Object.keys(result.state.written).length;
+    return {
+        state: { ...result.state, path },
+        note: n ? ` Set ${n} video setting${n === 1 ? '' : 's'}.` : '',
+    };
+}
+
+/** Throws when video.txt exists but cannot be restored, so Remove keeps the
+ *  record instead of forgetting values it never put back. */
+function revertVideoFile(state: VideoRecord | undefined): void {
+    if (!state || !existsSync(state.path)) return;
+    const text = readFileSync(state.path, 'utf-8');
+    const restored = revertVideo(text, state);
+    if (restored !== text) writeFileSync(state.path, restored, 'utf-8');
+}
+
+/** Values written to a video.txt the game no longer reads count as not
+ *  applied, so the card offers to put them back (into the one it reads). */
+function videoStatus(
+    deadlockPath: string,
+    state: VideoRecord | undefined
+): PerformanceConfigStatus['video'] {
+    if (!state) return undefined;
+    const total = Object.keys(state.written).length;
+    if (state.path !== getVideoPath(deadlockPath)) return { applied: 0, total };
+    try {
+        return { applied: videoApplied(readFileSync(state.path, 'utf-8'), state), total };
+    } catch {
+        return { applied: 0, total };
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -673,7 +767,9 @@ export function applyPerformanceConfig(
                     content,
                     appliedPreset,
                     effectiveConvars(appliedPreset, appliedOptIns),
-                    readMarker(applied)
+                    readMarker(applied),
+                    // No sidecar keeps the old marker-only reading.
+                    sidecar !== null && sidecar.classification !== CLASSIFICATION_HASH
                 ),
             };
         }
@@ -815,6 +911,28 @@ export function applyPerformanceConfig(
         const finalText = crlf ? content.split('\n').join('\r\n') : content;
         writeConfigText(gameinfoPath, finalText);
         saved[preset.id] = presetOverrides;
+        const videoVariant = pickVideoVariant(preset, opts?.videoVariant);
+        // A different config, or the other video.txt of this one, is a new
+        // look: all of its values go in, over ones changed in game under the
+        // old one. Only a reapply of the same one keeps those.
+        const newLook =
+            !!sidecar?.video &&
+            (sidecar.presetId !== preset.id || (sidecar.videoVariant ?? null) !== (videoVariant?.id ?? null));
+        let video: ReturnType<typeof syncVideo>;
+        try {
+            video = syncVideo(
+                deadlockPath,
+                sidecar?.video ?? null,
+                videoVariant?.video ?? preset.video,
+                opts?.restoreVideo === true || newLook
+            );
+        } catch (err) {
+            writeConfigText(gameinfoPath, original);
+            return status(
+                'error',
+                `video.txt could not be updated, so nothing was changed (${err}). Make sure it is not read-only.`
+            );
+        }
         writeAppliedState(gameinfoPath, {
             presetId: preset.id,
             version: preset.version,
@@ -822,6 +940,8 @@ export function applyPerformanceConfig(
             optIns,
             overridesByPreset: saved,
             userConvars,
+            video: video.state,
+            videoVariant: videoVariant?.id ?? null,
         }, opts?.requireStateWrite);
 
         const kept = Object.keys(presetOverrides).length;
@@ -832,7 +952,7 @@ export function applyPerformanceConfig(
             : '';
         return status(
             'applied',
-            `${preset.name} v${preset.version} applied${note}.${switchNote}${keptNote}`,
+            `${preset.name} v${preset.version} applied${note}.${switchNote}${keptNote}${video.note}`,
             kept,
             false,
             preset
@@ -1034,6 +1154,8 @@ function writeUserConvarState(
         version: sidecar?.version ?? '',
         contentHash: sidecar?.contentHash ?? '',
         optIns: sidecar?.optIns ?? [],
+        video: sidecar?.video ?? null,
+        videoVariant: sidecar?.videoVariant ?? null,
         overridesByPreset: allOverrides(sidecar),
         userConvars,
     }, requireStateWrite);
@@ -1078,6 +1200,8 @@ export function clearPerformanceConvars(deadlockPath: string | null, keys: strin
         writeAppliedState(gameinfoPath, {
             presetId: sidecar?.presetId ?? '',
             version: sidecar?.version ?? '',
+            video: sidecar?.video ?? null,
+            videoVariant: sidecar?.videoVariant ?? null,
             // Only re-stamp a hash that was describing a preset apply. Without
             // one the reset would otherwise report itself as a hand edit.
             contentHash: sidecar?.contentHash
@@ -1155,6 +1279,9 @@ export function removePerformanceConfig(deadlockPath: string | null): Performanc
         return status('error', 'gameinfo.gi not found.');
     }
     try {
+        // A game update that wiped gameinfo.gi leaves video.txt alone, so this
+        // runs whether or not the markers are still there.
+        revertVideoFile(readAppliedState(gameinfoPath)?.video);
         const content = readFileSync(gameinfoPath, 'utf-8');
         if (!content.includes(MARKER)) {
             clearAppliedState(gameinfoPath);
@@ -1173,9 +1300,7 @@ export function removePerformanceConfig(deadlockPath: string | null): Performanc
 /** Put back what a game update wiped: the preset, release and optional
  *  settings the sidecar recorded, not whatever the Settings card has selected
  *  now. Anything other than a patchable wipe is returned untouched. */
-export function reapplyWipedPerformanceConfig(
-    deadlockPath: string | null
-): PerformanceConfigStatus {
+export function reapplyWipedPerformanceConfig(deadlockPath: string | null): PerformanceConfigStatus {
     const current = getPerformanceConfigStatus(deadlockPath);
     if (current.state !== 'wiped' || current.canRestoreBackup) return current;
     const sidecar = readAppliedState(getGameinfoPath(deadlockPath!))!;
@@ -1185,6 +1310,7 @@ export function reapplyWipedPerformanceConfig(
         // The sidecar drops an empty list, so absent means "all off", not
         // "creator defaults".
         optIns: sidecar.optIns ?? [],
+        videoVariant: sidecar.videoVariant,
     });
 }
 
@@ -1240,20 +1366,24 @@ export function listPerformancePresets(): PerformancePresetSummary[] {
         // that never touches the version picker gets. `versions` carries the
         // rest, newest first.
         const newest = family.releases[0];
-        const summarize = (release: (typeof family.releases)[number]) => ({
-            version: release.version,
-            ref: release.ref,
-            refKind: release.refKind,
-            commit: release.commit,
-            historyCommit: release.historyCommit,
-            date: release.date,
-            settingCount: release.convars.length + release.sectionOps.length,
-            optIn: release.optIn.map((control) => ({
-                key: control.key,
-                value: control.value,
-                group: control.group,
-            })),
-        });
+        const summarize = (release: (typeof family.releases)[number]) => {
+            const variants = getPreset(family.id, release.version).videoVariants;
+            return {
+                version: release.version,
+                ref: release.ref,
+                refKind: release.refKind,
+                commit: release.commit,
+                date: release.date,
+                settingCount: release.convars.length + release.sectionOps.length,
+                videoSettingCount: release.video.length,
+                ...(variants ? { videoVariants: variants.map((variant) => variant.id) } : {}),
+                optIn: release.optIn.map((control) => ({
+                    key: control.key,
+                    value: control.value,
+                    group: control.group,
+                })),
+            };
+        };
         return {
             id: family.id,
             name: family.name,
@@ -1318,14 +1448,22 @@ export function getPerformanceConfigStatus(deadlockPath: string | null): Perform
                     savedConvarValues[okey.slice('ConVars/'.length)] = override.value;
                 }
             }
+            const video = videoStatus(deadlockPath, sidecar?.video);
+            const outdated =
+                !!known &&
+                (!isCurrentDefinition(resolvePreset(appliedId, begin[2]), readMarker(begin)) ||
+                    (sidecar !== null && sidecar.classification !== CLASSIFICATION_HASH));
             const appliedName = known?.name ?? appliedId;
             // "Newest we bundle", not "the one the user picked": the selection
             // lives in renderer settings, so the card decides whether a newer
             // release is a nag ("you are behind") or a note ("you rolled back
             // on purpose"). Main only reports the two facts.
             const newestVersion = known?.releases[0].version ?? null;
+            // A tracked upstream release is not bundled and is newer, not older.
+            const olderBundled =
+                !!newestVersion && begin[2] !== newestVersion && !!known?.releases.some((r) => r.version === begin[2]);
             const base =
-                newestVersion && begin[2] !== newestVersion
+                olderBundled
                     ? `${appliedName} v${begin[2]} is applied; v${newestVersion} is available (reapply to update).`
                     : `${appliedName} v${begin[2]} is applied.`;
             const overrideNote = overrideCount
@@ -1341,13 +1479,18 @@ export function getPerformanceConfigStatus(deadlockPath: string | null): Perform
                 // from an unrelated preset would be a lie.
                 bundledVersion: newestVersion ?? begin[2],
                 appliedOptIns: sidecar?.optIns ?? [],
+                ...(sidecar?.videoVariant ? { appliedVideoVariant: sidecar.videoVariant } : {}),
                 managedConvarValues: managedConvarValues(content),
                 savedConvarValues,
                 handEdited,
+                ...(outdated ? { outdated } : {}),
                 overrideCount,
                 convarValues,
                 convarStates,
                 autoexecConflicts,
+                ...(video ? { video } : {}),
+                videoAvailable: known ? resolvePreset(appliedId, begin[2]).video.length : 0,
+                ...(existsSync(getVideoPath(deadlockPath)) ? {} : { videoFileMissing: true }),
                 message: handEdited
                     ? `${base}${overrideNote} The file has manual edits: Reapply folds them into your overrides.`
                     : `${base}${overrideNote}`,
@@ -1495,7 +1638,18 @@ interface AppliedState {
      *  instead; `userConvarsOf` hoists those out so an existing install keeps
      *  its settings rather than resetting to defaults. */
     userConvars?: UserConvars;
+    /** Which video.txt the last apply wrote, what it wrote and what it replaced. Absent
+     *  when it wrote nothing there (a preset without one, or no video.txt yet). */
+    video?: VideoRecord;
+    /** Which of the release's video.txt variants that was. Absent for a release
+     *  that ships only one. */
+    videoVariant?: string;
+    /** Fingerprint of the classification rules the body was written under.
+     *  Absent on sidecars written before it was recorded. */
+    classification?: string;
 }
+
+const CLASSIFICATION_HASH = sha256(JSON.stringify(CLASSIFICATION)).slice(0, 16);
 
 /** Overrides keyed by preset id, migrating the flat single-preset shape that
  *  sidecars written before multi-preset support used. That map belongs to
@@ -1562,6 +1716,8 @@ function writeAppliedState(
         optIns: string[];
         overridesByPreset: Record<string, Overrides>;
         userConvars: UserConvars;
+        video: VideoRecord | null;
+        videoVariant: string | null;
     },
     requireStateWrite = false
 ): void {
@@ -1569,6 +1725,7 @@ function writeAppliedState(
         const trimmed: AppliedState = {
             presetId: state.presetId,
             version: state.version,
+            classification: CLASSIFICATION_HASH,
         };
         // Empty means "no preset is recorded here" (a sidecar written only to
         // hold control values). Writing the empty strings out would make a
@@ -1582,6 +1739,8 @@ function writeAppliedState(
             ([, map]) => Object.keys(map).length > 0
         );
         if (kept.length) trimmed.overridesByPreset = Object.fromEntries(kept);
+        if (state.video) trimmed.video = state.video;
+        if (state.videoVariant) trimmed.videoVariant = state.videoVariant;
         writeConfigText(statePath(gameinfoPath), JSON.stringify(trimmed));
     } catch (error) {
         // Best-effort: losing the sidecar only degrades wiped-detection to

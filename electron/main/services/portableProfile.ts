@@ -6,6 +6,7 @@ import { getModMetadata } from './metadata';
 import { isLockerManaged } from './lockerVpk';
 import { fetchModDetails } from './gamebanana';
 import { normalizeCrosshairSettings } from '../../../src/lib/crosshair';
+import { isGameBananaImageUrl } from '../utils/gamebananaImage';
 import type {
     PortableProfile,
     PortableModEntry,
@@ -71,11 +72,13 @@ export function decodeShareCode(code: string): string {
             const kb = Math.round(MAX_INFLATED_SHARE_CODE_BYTES / 1024);
             throw new Error(
                 `Share code is too large to import (exceeds ${kb} KB after decompression). ` +
-                `Export the profile to a .modprofile.json file and load it from disk instead.`
+                `Export the profile to a .modprofile.json file and load it from disk instead.`,
+                { cause: err }
             );
         }
         throw new Error(
-            `Invalid share code (gzip payload rejected: ${msg.slice(0, 120)})`
+            `Invalid share code (gzip payload rejected: ${msg.slice(0, 120)})`,
+            { cause: err }
         );
     }
     return decompressed.toString('utf8');
@@ -95,7 +98,7 @@ export async function buildPortableProfileFromInstalled(
     const mods: PortableModEntry[] = [];
     const warnings: string[] = [];
 
-    for (const installedMod of installed) {
+    for (const [index, installedMod] of installed.entries()) {
         // Locker-managed VPKs (cards/sounds) are internal and have no GameBanana
         // ref, so silently skip them rather than warning "Skipped local mod".
         if (isLockerManaged(installedMod.metaKey)) continue;
@@ -128,7 +131,7 @@ export async function buildPortableProfileFromInstalled(
                 ...(vpkStem !== null ? { vpkStem } : {}),
             },
             enabled: installedMod.enabled,
-            priority: installedMod.priority,
+            priority: index + 1,
             hint: {
                 name: metadata?.modName || installedMod.name,
                 category: metadata?.categoryName,
@@ -320,6 +323,10 @@ function validatePortable(obj: unknown): PortableProfile {
         if (!m.ref || typeof m.ref !== 'object') throw new Error(`mods[${i}].ref missing`);
         if (typeof m.enabled !== 'boolean') throw new Error(`mods[${i}].enabled missing`);
         if (typeof m.priority !== 'number') throw new Error(`mods[${i}].priority missing`);
+        const hint = m.hint as Record<string, unknown> | undefined;
+        if (hint && typeof hint === 'object' && !isGameBananaImageUrl(hint.thumbnailUrl)) {
+            delete hint.thumbnailUrl;
+        }
 
         if (m.source === 'gamebanana') {
             const ref = m.ref as Record<string, unknown>;
@@ -351,7 +358,7 @@ export function parsePortableProfile(input: string): PortableProfile {
     try {
         parsed = JSON.parse(json);
     } catch (err) {
-        throw new Error(`Invalid JSON: ${err instanceof Error ? err.message : String(err)}`);
+        throw new Error(`Invalid JSON: ${err instanceof Error ? err.message : String(err)}`, { cause: err });
     }
     return validatePortable(parsed);
 }

@@ -20,7 +20,7 @@ function previewScene() {
     new Float32Array(geometry.attributes.position.count * 3).fill(1), 3
   ));
   const bodyMaterial = new THREE.MeshStandardMaterial();
-  bodyMaterial.userData = { morphic: { shader: 'pbr.vfx', ints: { F_USE_NPR_LIGHTING: 1 } } };
+  bodyMaterial.userData = { morphic: { shader: 'pbr.vfx', ints: { F_USE_NPR_LIGHTING: 1, F_VERTEX_COLOR: 1 } } };
   const body = new THREE.Mesh(geometry, bodyMaterial);
   body.position.set(0, 2, 0);
   const glowMaterial = new THREE.MeshStandardMaterial();

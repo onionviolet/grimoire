@@ -1,10 +1,12 @@
 import { useSyncExternalStore } from 'react';
-import type { DownloadQueueItem } from '../types/electron';
+import type { DownloadEventData, DownloadQueueItem } from '../types/electron';
 
 export interface DownloadActivitySnapshot {
   current: DownloadQueueItem | null;
   queue: DownloadQueueItem[];
   requested: DownloadQueueItem[];
+  /** Successful installs awaiting a library scan that started after completion. */
+  finishing: readonly DownloadEventData[];
   progress: { downloaded: number; total: number } | null;
   extracting: boolean;
 }
@@ -20,12 +22,14 @@ export type FileDownloadActivity =
   | { phase: 'starting'; progress: null }
   | { phase: 'downloading'; progress: { downloaded: number; total: number } | null }
   | { phase: 'extracting'; progress: { downloaded: number; total: number } | null }
+  | { phase: 'finishing' }
   | { phase: 'queued'; position: number };
 
 const EMPTY_SNAPSHOT: DownloadActivitySnapshot = {
   current: null,
   queue: [],
   requested: [],
+  finishing: [],
   progress: null,
   extracting: false,
 };
@@ -43,10 +47,14 @@ let subscribers = 0;
 let backendRevision = 0;
 let stopListening: (() => void) | null = null;
 const listeners = new Set<() => void>();
+const PROGRESS_INTERVAL_MS = 100;
 
 const targetKey = (modId: number, fileId: number) => `${modId}:${fileId}`;
 const itemKey = (item: Pick<DownloadQueueItem, 'modId' | 'fileId'>) =>
   targetKey(item.modId, item.fileId);
+const jobKey = (item: DownloadQueueItem | null) => item ? item.jobId ?? itemKey(item) : null;
+const isInstalling = (item: DownloadQueueItem | null) =>
+  item?.phase === 'installing' || item?.phase === 'finalizing';
 
 function publish(next: DownloadActivitySnapshot) {
   if (
@@ -66,9 +74,10 @@ function publish(next: DownloadActivitySnapshot) {
 
 export function applyDownloadProgress(
   state: DownloadActivitySnapshot,
-  data: { modId: number; fileId: number; downloaded: number; total: number },
+  data: { modId: number; fileId: number; jobId?: string; downloaded: number; total: number },
 ): DownloadActivitySnapshot {
   if (!state.current || itemKey(state.current) !== targetKey(data.modId, data.fileId)) return state;
+  if (data.jobId && data.jobId !== state.current.jobId) return state;
   return {
     ...state,
     progress: { downloaded: data.downloaded, total: data.total },
@@ -78,40 +87,47 @@ export function applyDownloadProgress(
 
 export function applyDownloadExtracting(
   state: DownloadActivitySnapshot,
-  data: { modId: number; fileId: number },
+  data: { modId: number; fileId: number; jobId?: string },
 ): DownloadActivitySnapshot {
   if (!state.current || itemKey(state.current) !== targetKey(data.modId, data.fileId)) return state;
+  if (data.jobId && data.jobId !== state.current.jobId) return state;
   return { ...state, extracting: true };
 }
 
 function beginListening() {
   if (stopListening || typeof window === 'undefined') return;
 
+  let active = true;
+  let lastProgressAt: number | null = null;
+  const resetProgressTiming = () => { lastProgressAt = null; };
   const hydrationRevision = backendRevision;
+  const hydrationProgress = snapshot.progress;
   void Promise.all([
     window.electronAPI.getDownloadQueue(),
     window.electronAPI.getCurrentDownload(),
   ]).then(([queue, current]) => {
     // An event that arrived while these IPC reads were in flight is newer than
     // the hydration response and must win.
-    if (backendRevision !== hydrationRevision) return;
+    if (!active || backendRevision !== hydrationRevision) return;
     const currentKey = current ? itemKey(current) : null;
     // The two IPC reads are concurrent, so the queue read can observe an item
     // just before it is shifted while the current read observes it just after.
-    const hydratedQueue = currentKey ? queue.filter((item) => itemKey(item) !== currentKey) : queue;
+    const hydratedQueue = currentKey ? queue.filter((item) => jobKey(item) !== jobKey(current)) : queue;
     const backendKeys = new Set([...hydratedQueue, ...(current ? [current] : [])].map(itemKey));
-    const switched = itemKey(snapshot.current ?? { modId: 0, fileId: 0 }) !==
-      itemKey(current ?? { modId: 0, fileId: 0 });
+    const switched = jobKey(snapshot.current) !== jobKey(current);
+    if (switched) resetProgressTiming();
     publish({
       ...snapshot,
       queue: hydratedQueue,
       current,
       requested: snapshot.requested.filter((item) => !backendKeys.has(itemKey(item))),
-      progress: switched ? null : snapshot.progress,
-      extracting: switched ? false : snapshot.extracting,
+      progress: !switched && snapshot.progress !== hydrationProgress
+        ? snapshot.progress
+        : current?.progress ?? (switched ? null : snapshot.progress),
+      extracting: switched ? isInstalling(current) : isInstalling(current) || snapshot.extracting,
     });
   }).catch((error) => {
-    console.error('[DownloadActivity] Failed to hydrate queue state:', error);
+    if (active) console.error('[DownloadActivity] Failed to hydrate queue state:', error);
   });
 
   const queueUnsub = window.electronAPI.onDownloadQueueUpdated((data) => {
@@ -119,41 +135,63 @@ function beginListening() {
     const backendKeys = new Set(
       [...data.queue, ...(data.currentDownload ? [data.currentDownload] : [])].map(itemKey),
     );
-    const switched = itemKey(snapshot.current ?? { modId: 0, fileId: 0 }) !==
-      itemKey(data.currentDownload ?? { modId: 0, fileId: 0 });
+    const switched = jobKey(snapshot.current) !== jobKey(data.currentDownload);
+    if (switched) resetProgressTiming();
     publish({
+      ...snapshot,
       current: data.currentDownload,
       queue: data.queue,
       requested: snapshot.requested.filter((item) => !backendKeys.has(itemKey(item))),
-      progress: switched ? null : snapshot.progress,
-      extracting: switched ? false : snapshot.extracting,
+      progress: data.currentDownload?.progress ?? (switched ? null : snapshot.progress),
+      extracting: isInstalling(data.currentDownload) || (!switched && snapshot.extracting),
     });
   });
 
   const progressUnsub = window.electronAPI.onDownloadProgress((data) => {
+    if (!snapshot.current || itemKey(snapshot.current) !== targetKey(data.modId, data.fileId)) return;
+    if (data.jobId && data.jobId !== snapshot.current.jobId) return;
+    const now = Date.now();
+    const elapsed = lastProgressAt === null ? Infinity : now - lastProgressAt;
+    const finished = data.total > 0 && data.downloaded >= data.total;
+    const restarted = snapshot.progress && data.downloaded < snapshot.progress.downloaded;
+    // Network chunks can arrive much faster than the UI can paint. Keep first
+    // and final samples immediate without relying on background-throttled frames.
+    if (!finished && !restarted && elapsed >= 0 && elapsed < PROGRESS_INTERVAL_MS) return;
+    lastProgressAt = now;
     const next = applyDownloadProgress(snapshot, data);
     if (next !== snapshot) publish(next);
   });
 
   const extractingUnsub = window.electronAPI.onDownloadExtracting((data) => {
     const next = applyDownloadExtracting(snapshot, data);
-    if (next !== snapshot) publish(next);
+    if (next !== snapshot) {
+      resetProgressTiming();
+      publish(next);
+    }
   });
 
-  const settle = (modId: number, fileId: number) => {
+  const settle = (data: DownloadEventData, succeeded: boolean) => {
+    const { modId, fileId, jobId } = data;
     backendRevision += 1;
     const key = targetKey(modId, fileId);
+    const activeSettled = snapshot.current && itemKey(snapshot.current) === key
+      && (!jobId || snapshot.current.jobId === jobId);
+    if (activeSettled) resetProgressTiming();
     publish({
       ...snapshot,
+      finishing: succeeded
+        ? [...snapshot.finishing.filter(item => !sameCompletion(item, data)), data]
+        : snapshot.finishing,
       requested: snapshot.requested.filter((item) => itemKey(item) !== key),
-      progress: snapshot.current && itemKey(snapshot.current) === key ? null : snapshot.progress,
-      extracting: snapshot.current && itemKey(snapshot.current) === key ? false : snapshot.extracting,
+      progress: activeSettled ? null : snapshot.progress,
+      extracting: activeSettled ? false : snapshot.extracting,
     });
   };
-  const completeUnsub = window.electronAPI.onDownloadComplete(({ modId, fileId }) => settle(modId, fileId));
-  const errorUnsub = window.electronAPI.onDownloadError(({ modId, fileId }) => settle(modId, fileId));
+  const completeUnsub = window.electronAPI.onDownloadComplete(data => settle(data, true));
+  const errorUnsub = window.electronAPI.onDownloadError(data => settle(data, false));
 
   stopListening = () => {
+    active = false;
     queueUnsub();
     progressUnsub();
     extractingUnsub();
@@ -183,7 +221,32 @@ export function useDownloadActivity(): DownloadActivitySnapshot {
  * byte-progress tick. File-level progress UI should use useDownloadActivity.
  */
 export function useDownloadQueueActivity(): DownloadQueueActivitySnapshot {
-  return useSyncExternalStore(subscribe, () => queueSnapshot, () => EMPTY_SNAPSHOT);
+  return useSyncExternalStore(subscribe, getDownloadQueueActivitySnapshot, () => EMPTY_SNAPSHOT);
+}
+
+/** Queue membership for event handlers that do not need a React subscription. */
+export function getDownloadQueueActivitySnapshot(): DownloadQueueActivitySnapshot {
+  return queueSnapshot;
+}
+
+function sameCompletion(a: DownloadEventData, b: DownloadEventData): boolean {
+  return a.modId === b.modId && a.fileId === b.fileId && a.jobId === b.jobId;
+}
+
+/** Capture before scanning so an older read cannot release a newer completion. */
+export function getPendingDownloadCompletions(): readonly DownloadEventData[] {
+  return snapshot.finishing;
+}
+
+/** Stable between completions and scans, regardless of transfer progress. */
+export function usePendingDownloadCompletions(): readonly DownloadEventData[] {
+  return useSyncExternalStore(subscribe, getPendingDownloadCompletions, () => EMPTY_SNAPSHOT.finishing);
+}
+
+/** Called only after the fresh installed state has been published. */
+export function acknowledgeDownloadCompletions(completions: readonly DownloadEventData[]): void {
+  const finishing = snapshot.finishing.filter(item => !completions.some(completion => sameCompletion(item, completion)));
+  if (finishing.length !== snapshot.finishing.length) publish({ ...snapshot, finishing });
 }
 
 /**
@@ -196,6 +259,7 @@ export function requestDownload(item: DownloadQueueItem): boolean {
   if (snapshot.current && itemKey(snapshot.current) === key) return false;
   if (snapshot.queue.some((queued) => itemKey(queued) === key)) return false;
   if (snapshot.requested.some((requested) => itemKey(requested) === key)) return false;
+  if (snapshot.finishing.some(item => targetKey(item.modId, item.fileId) === key)) return false;
   publish({ ...snapshot, requested: [...snapshot.requested, item] });
   return true;
 }
@@ -246,6 +310,7 @@ export function selectFileDownloadActivity(
     }
     return { phase: 'queued', position: state.queue.length + requestIndex + 1 };
   }
+  if (state.finishing.some(item => targetKey(item.modId, item.fileId) === key)) return { phase: 'finishing' };
   return { phase: 'idle' };
 }
 

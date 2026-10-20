@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Bug, Check, Copy, FileText, Github, Heart, LifeBuoy } from 'lucide-react';
+import { Bug, Check, Copy, FileText, Heart, LifeBuoy } from 'lucide-react';
 import { useAppStore } from '../../../stores/appStore';
 import { buildDiagnosticReport } from '../../../lib/api';
 import { Button, Card } from '../../common/ui';
 import { Textarea } from '../../common/forms';
+import { GithubIcon } from '../../common/BrandIcons';
 import Tx from '../../translation/Tx';
+import CrashHistoryPanel from '../CrashHistoryPanel';
 
 // Every outward link this section can offer, split by who it actually belongs
 // to. The Ko-fi jar came with the project and still points at the original
@@ -20,7 +22,8 @@ const FORK_LICENSE = 'https://github.com/onionviolet/grimoire/blob/main/LICENSE'
 // GitHub issue.
 export default function SupportSection() {
   const { t } = useTranslation();
-  const { settings, saveSettings } = useAppStore();
+  const settings = useAppStore((s) => s.settings);
+  const saveSettings = useAppStore((s) => s.saveSettings);
 
   const [bugDescription, setBugDescription] = useState('');
   const [bugReportText, setBugReportText] = useState<string | null>(null);
@@ -35,13 +38,14 @@ export default function SupportSection() {
   useEffect(() => {
     window.electronAPI.updater.getVersion().then(setAppVersion);
   }, []);
+  const [crashReportIds, setCrashReportIds] = useState<string[]>([]);
 
   const handleGenerateBugReport = async () => {
     setIsBuildingReport(true);
     setBugReportError(null);
     setBugCopyState('idle');
     try {
-      const text = await buildDiagnosticReport(bugDescription, { includeFullLog });
+      const text = await buildDiagnosticReport(bugDescription, { includeFullLog, crashReportIds });
       setBugReportText(text);
     } catch (err) {
       setBugReportError(t('settings.support.reportBuildFailed', { error: String(err) }));
@@ -158,11 +162,19 @@ export default function SupportSection() {
               title={t('settings.support.githubIssuesTitle')}
               className="inline-flex items-center justify-center gap-2 rounded-sm px-4 py-2 text-sm font-medium border border-border bg-bg-tertiary/40 text-text-primary hover:bg-bg-tertiary/70 hover:border-text-secondary/60 transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-text-secondary/60 whitespace-nowrap"
             >
-              <Github className="w-4 h-4" aria-hidden="true" />
+              <GithubIcon className="w-4 h-4" aria-hidden="true" />
               <Tx k="settings.support.githubIssues" fallback="GitHub Issues" />
             </a>
           </div>
         </div>
+
+        <div className="h-px bg-hl/5" />
+
+        <CrashHistoryPanel selectedIds={crashReportIds} onToggle={id => {
+          setCrashReportIds(previous => previous.includes(id) ? previous.filter(item => item !== id)
+            : previous.length < 10 ? [...previous, id] : previous);
+          setBugReportText(null);
+        }} />
 
         <div className="h-px bg-hl/5" />
 
@@ -264,7 +276,7 @@ export default function SupportSection() {
                   rel="noreferrer noopener"
                   className="inline-flex items-center justify-center gap-2 rounded-sm px-3 py-1.5 text-sm font-medium border border-border bg-bg-tertiary/40 text-text-primary hover:bg-bg-tertiary/70 hover:border-text-secondary/60 transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-text-secondary/60"
                 >
-                  <Github className="w-4 h-4" aria-hidden="true" />
+                  <GithubIcon className="w-4 h-4" aria-hidden="true" />
                   <Tx k="settings.support.openGithubIssue" fallback="Open GitHub issue" />
                 </a>
               </div>

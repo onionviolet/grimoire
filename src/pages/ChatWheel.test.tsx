@@ -443,7 +443,7 @@ describe('ChatWheel page remove wheel', () => {
     expect(request.items).toEqual(['Wheel One']);
     expect(String(request.message)).toContain('Chat Wheel settings');
     expect(String(request.message)).toContain('crash');
-    expect(apiMock.deleteMod).toHaveBeenCalledWith('wheel-1');
+    expect(apiMock.deleteMod).toHaveBeenCalledWith(expect.objectContaining({ id: 'wheel-1' }));
     expect(appStoreMock.loadMods).toHaveBeenCalled();
     // The page falls back to a new-wheel draft rather than pointing at a
     // wheel that no longer exists.

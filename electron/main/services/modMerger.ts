@@ -6,6 +6,7 @@ import { randomUUID, createHash } from 'crypto';
 import { app } from 'electron';
 import { assertVpkSafety, carryVpkSafety, moveSafetySnapshot } from './modSafety';
 import { modTempPath } from './modTemps';
+import { captureModBackup } from './modBackups';
 import { metaKeyFor } from './deadlock';
 import { loadSettings } from './settings';
 import {
@@ -478,7 +479,8 @@ export async function reserveOutputSlot(path: string): Promise<void> {
         const code = (err as NodeJS.ErrnoException).code;
         if (code === 'EEXIST') {
             throw new Error(
-                `Cannot create merged mod: ${path.split(/[\\/]/).pop()} was claimed by another operation. Try again.`
+                `Cannot create merged mod: ${path.split(/[\\/]/).pop()} was claimed by another operation. Try again.`,
+                { cause: err }
             );
         }
         throw err;
@@ -694,7 +696,7 @@ export async function mergeMods(
         throw new Error('The same mod was selected more than once.');
     }
 
-    return runExclusiveModMutation(() => mergeModsLocked(deadlockPath, modIds, options, trimmedName));
+    return runExclusiveModMutation(() => mergeModsLocked(deadlockPath, modIds, options, trimmedName), { healPath: deadlockPath });
 }
 
 async function resolveMergeSources(installed: Mod[], modIds: string[]) {
@@ -872,6 +874,10 @@ async function mergeModsLocked(
         await verifyVpkOutput(stagingPath);
         await assertMergeOutputSafety(args.slice(1), stagingPath, trimmedName);
         if (options.reviewToken && options.reviewToken !== await mergeReviewToken(sources, policy)) throw new Error('Merge sources changed during the build');
+        // Preserve the parent merges before installing output or disabling sources.
+        for (const parent of parentMerges) {
+            await captureModBackup(parent.path, getModMetadata(parent.metaKey), parent.name);
+        }
         // Claim the slot only once the output is accepted: a review can take
         // minutes, and a claim left behind by quitting mid-review would be an
         // empty VPK in a live slot. wx errors with EEXIST if a concurrent
@@ -1199,7 +1205,7 @@ export async function unmergeMod(
     deadlockPath: string,
     mergedModId: string
 ): Promise<UnmergeModResult> {
-    return runExclusiveModMutation(() => unmergeModLocked(deadlockPath, mergedModId));
+    return runExclusiveModMutation(() => unmergeModLocked(deadlockPath, mergedModId), { healPath: deadlockPath });
 }
 
 async function unmergeModLocked(
@@ -1217,6 +1223,8 @@ async function unmergeModLocked(
     }
     assertCanMoveLoadedGameMod(target);
     const manifest = meta.merged;
+
+    await captureModBackup(target.path, meta, target.name);
 
     // Recover each source from disk via the shared locator (disabled folder by
     // fileName, then a content-hash fallback, then the enabled folder). The
@@ -1285,7 +1293,8 @@ export async function addMergeSources(
         throw new Error('The same mod was selected more than once.');
     }
     return runExclusiveModMutation(() =>
-        addMergeSourcesLocked(deadlockPath, mergedModId, addModIds, options)
+        addMergeSourcesLocked(deadlockPath, mergedModId, addModIds, options),
+        { healPath: deadlockPath }
     );
 }
 
@@ -1464,6 +1473,7 @@ async function addMergeSourcesLocked(
         // and metaKey. The metadata setter merges this patch with unrelated
         // fields already stored for the merge.
         await assertMergeOutputSafety(args.slice(1), buildPath, targetMeta.modName || target.name);
+        await captureModBackup(target.path, targetMeta, target.name);
         await fs.rename(buildPath, target.path);
         moveSafetySnapshot(buildPath, target.path);
         swapped = true;
@@ -1537,7 +1547,8 @@ export async function replaceMergeSources(
         throw new Error('The same replacement mod was selected more than once.');
     }
     return runExclusiveModMutation(() =>
-        replaceMergeSourcesLocked(deadlockPath, mergedModId, replacements, options)
+        replaceMergeSourcesLocked(deadlockPath, mergedModId, replacements, options),
+        { healPath: deadlockPath }
     );
 }
 
@@ -1735,6 +1746,10 @@ async function replaceMergeSourcesLocked(
         await verifyVpkOutput(buildPath);
 
         await assertMergeOutputSafety(args.slice(1), buildPath, targetMeta.modName || target.name);
+        await captureModBackup(target.path, targetMeta, target.name);
+        for (const retired of retiredMods) {
+            await captureModBackup(retired.path, getModMetadata(retired.metaKey), retired.name);
+        }
         await fs.rename(buildPath, target.path);
         moveSafetySnapshot(buildPath, target.path);
         swapped = true;
@@ -1805,7 +1820,8 @@ export async function extractMergeSource(
     sourceFileName: string
 ): Promise<ExtractMergeSourceResult> {
     return runExclusiveModMutation(() =>
-        extractMergeSourceLocked(deadlockPath, mergedModId, sourceFileName)
+        extractMergeSourceLocked(deadlockPath, mergedModId, sourceFileName),
+        { healPath: deadlockPath }
     );
 }
 
@@ -1850,6 +1866,7 @@ async function extractMergeSourceLocked(
 
     // ---- Collapse: fewer than two sources would remain, so fully unmerge. ----
     if (remainingSnapshots.length < 2) {
+        await captureModBackup(target.path, meta, target.name);
         const survivor = remainingSnapshots[0];
         if (survivor) {
             const onDisk = await locator.locate(survivor);
@@ -1913,6 +1930,7 @@ async function extractMergeSourceLocked(
         // Inspect before atomically replacing the old VPK. A refused rebuild keeps
         // the previous file, metadata and load order intact.
         await assertMergeOutputSafety(ordered.map((m) => m.path), buildPath, meta.modName || target.name);
+        await captureModBackup(target.path, meta, target.name);
         await fs.rename(buildPath, target.path);
         moveSafetySnapshot(buildPath, target.path);
     } catch (err) {

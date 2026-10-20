@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Globe2,
@@ -35,6 +35,13 @@ import SocialStateNotice from '../components/social/SocialStateNotice';
 import { classifySocialError, type ClassifiedSocialError } from '../components/social/socialErrors';
 import { getActiveDeadlockPath, shouldBlurNsfw } from '../lib/appSettings';
 import { formatRelativeDate } from '../lib/dates';
+import { mergeProfileLikes } from '../components/social/profileLikes';
+import { currentPixelRatio, sizeGameBananaThumbUrl } from '../lib/gameBananaImage';
+import { RevealImage } from '../components/common/RevealImage';
+import { Skeleton, SkeletonCircle, SkeletonText } from '../components/common/Skeleton';
+
+// A 2x2 mosaic tile on a ~300px card. GameBanana's 220 variant covers it at 1x.
+const MOSAIC_TILE_WIDTH = 180;
 
 // 'mine' is a client-side view, not a backend sort. We branch on it before
 // hitting /v1/profiles and render the user's own published profiles instead.
@@ -103,15 +110,7 @@ export default function Discover() {
   // Merge the viewer_has_liked field from a response into our local map.
   // Pulled out so loadProfiles and loadMore can share it.
   const mergeViewerLiked = useCallback((profiles: SocialListProfilesResponse['profiles']) => {
-    setViewerLiked((prev) => {
-      const next = { ...prev };
-      for (const p of profiles) {
-        if (typeof p.viewer_has_liked === 'boolean') {
-          next[p.id] = p.viewer_has_liked;
-        }
-      }
-      return next;
-    });
+    setViewerLiked((prev) => mergeProfileLikes(prev, profiles));
   }, []);
 
   const loadProfiles = useCallback(async () => {
@@ -165,19 +164,24 @@ export default function Discover() {
   // IntersectionObserver-driven infinite scroll. Mirrors the pattern Browse
   // uses so the two pages feel the same.
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
+  const onLoadMoreIntersect = useEffectEvent(() => { void loadMore(); });
   useEffect(() => {
-    if (tab === 'mine' || !hasMore) return;
+    if (tab === 'mine' || !hasMore || loading || loadingMore || error) return;
     const node = loadMoreRef.current;
     if (!node) return;
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0]?.isIntersecting) void loadMore();
+        if (entries[0]?.isIntersecting) onLoadMoreIntersect();
       },
       { rootMargin: '600px 0px' }
     );
+    // Rearm after a new page lands so short pages still fill the viewport, and
+    // after any load settles, including a stale page dropped by a tab switch.
+    // A failed page leaves `error` set, so it never retries in a hot loop;
+    // the next tab switch clears it.
     observer.observe(node);
     return () => observer.disconnect();
-  }, [tab, hasMore, loadMore]);
+  }, [tab, hasMore, loading, loadingMore, error, data?.page, data?.profiles.length]);
 
   // If a signed-in user lands on Your profile and then signs out, fall back
   // to Top so they don't end up staring at an empty owner-only view.
@@ -255,7 +259,7 @@ export default function Discover() {
       </Button>
       <div
         className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-bg-secondary border border-hl/10"
-        title={`Signed in as ${user.display_name}`}
+        title={t('discover.header.signedInAs', { name: user.display_name })}
       >
         {user.avatar_url ? (
           <img
@@ -351,7 +355,7 @@ export default function Discover() {
           </div>
           {tab !== 'mine' && data && (
             <span className="text-xs text-text-tertiary tabular-nums pr-1">
-              {data.total} {data.total === 1 ? 'profile' : 'profiles'}
+              {t('discover.header.profileCount', { count: data.total })}
             </span>
           )}
         </div>
@@ -420,13 +424,24 @@ export default function Discover() {
       )}
 
       {tab !== 'mine' && loading && !data && (
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Card key={i} className="p-4 animate-pulse h-32">
-              <div className="h-4 bg-hl/5 rounded w-1/2 mb-2" />
-              <div className="h-3 bg-hl/5 rounded w-1/3 mb-4" />
-              <div className="h-3 bg-hl/5 rounded w-full mb-1" />
-              <div className="h-3 bg-hl/5 rounded w-3/4" />
+        // Shaped like the profile cards below: 16:9 art, title, blurb, owner row.
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3 items-start" aria-busy="true" aria-live="polite">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <Card key={i} contentClassName="p-0" className="overflow-hidden flex flex-col">
+              <Skeleton className="aspect-video" rounded="none" />
+              <div className="p-4 flex flex-col gap-3">
+                <div className="flex flex-col gap-2">
+                  <Skeleton className="h-4" style={{ width: `${62 + ((i * 17) % 28)}%` }} />
+                  <SkeletonText lines={2} lineClassName="h-3" />
+                </div>
+                <div className="flex items-center gap-2.5">
+                  <SkeletonCircle size={32} />
+                  <div className="flex-1 space-y-1.5">
+                    <Skeleton className="h-3 w-24" />
+                    <Skeleton className="h-2.5 w-32" />
+                  </div>
+                </div>
+              </div>
             </Card>
           ))}
         </div>
@@ -505,15 +520,11 @@ export default function Discover() {
                       <div className="absolute inset-0 grid grid-cols-2 grid-rows-2 gap-px bg-black/40">
                         {mosaicSlots.map((url, i) =>
                           url ? (
-                            <img
+                            <RevealImage
                               key={i}
-                              src={url}
+                              src={sizeGameBananaThumbUrl(url, MOSAIC_TILE_WIDTH, currentPixelRatio())}
                               alt=""
-                              loading="lazy"
                               referrerPolicy="no-referrer"
-                              onError={(e) => {
-                                (e.currentTarget as HTMLImageElement).style.display = 'none';
-                              }}
                               className="w-full h-full object-cover object-top"
                             />
                           ) : (
@@ -523,14 +534,10 @@ export default function Discover() {
                       </div>
                     )}
                     {!mosaicSlots && singleHero && (
-                      <img
+                      <RevealImage
                         src={singleHero}
                         alt=""
-                        loading="lazy"
                         referrerPolicy="no-referrer"
-                        onError={(e) => {
-                          (e.currentTarget as HTMLImageElement).style.display = 'none';
-                        }}
                         className="absolute inset-0 w-full h-full object-cover object-top"
                       />
                     )}
@@ -544,7 +551,7 @@ export default function Discover() {
                         )}
                         {p.has_nsfw && (
                           <span className="inline-flex items-center text-2xs font-medium px-1.5 py-0.5 rounded-sm bg-black/60 backdrop-blur-sm text-yellow-300 border border-yellow-300/30">
-                            NSFW
+                            {t('discover.card.nsfw')}
                           </span>
                         )}
                       </div>
@@ -597,7 +604,7 @@ export default function Discover() {
                           {p.owner.display_name}
                         </div>
                         <div className="text-xs text-text-tertiary mt-0.5">
-                          {formatRelativeDate(isoFromUnix(p.created_at))} · {p.mod_count} {p.mod_count === 1 ? 'mod' : 'mods'}
+                          {formatRelativeDate(isoFromUnix(p.created_at))} · {t('profiles.mods.count', { count: p.mod_count })}
                         </div>
                       </div>
                       <button
@@ -611,8 +618,8 @@ export default function Discover() {
                               : 'text-text-secondary hover:text-state-danger hover:bg-hl/5 cursor-pointer'
                             : 'text-text-tertiary cursor-help hover:bg-hl/5'
                         } disabled:opacity-50`}
-                        title={signedIn ? (liked ? 'Unlike' : 'Like') : 'Sign in to like'}
-                        aria-label={signedIn ? (liked ? 'Unlike profile' : 'Like profile') : 'Sign in to like'}
+                        title={signedIn ? (liked ? t('discover.card.unlike') : t('discover.card.like')) : t('discover.card.signInToLike')}
+                        aria-label={signedIn ? (liked ? t('discover.card.unlikeProfile') : t('discover.card.likeProfile')) : t('discover.card.signInToLike')}
                         aria-pressed={liked}
                       >
                         <Heart className={`w-4 h-4 ${isLiking ? 'animate-pulse' : ''} ${liked ? 'fill-current' : ''}`} />

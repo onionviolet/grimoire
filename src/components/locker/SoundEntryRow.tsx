@@ -40,7 +40,7 @@ interface SoundEntryRowProps {
   /** GameBanana preview clip, when the mod was downloaded with one. */
   audioUrl?: string;
   player: ClipPlayer;
-  onToggleEnabled: (modId: string) => void | Promise<void>;
+  onToggleEnabled: (modId: string) => Promise<unknown> | void;
   onOpenInInstalled: (modId: string) => void;
 }
 

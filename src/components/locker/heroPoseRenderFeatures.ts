@@ -16,10 +16,12 @@ export interface HeroPoseDevFlags {
   celV2: boolean;
   cloth: boolean;
   /** Play the hero's own animated clip on a skinned rig, without cloth. */
-  rigged: boolean;
+  rigged?: boolean;
   bloom: boolean;
   nprDebug: boolean;
   matDebug: boolean;
+  /** The viewer's persisted spelling of the rigged flag; either enables the rig. */
+  animated?: boolean;
 }
 
 export interface HeroPoseRenderFeatures {
@@ -54,7 +56,8 @@ export function resolveHeroPoseRenderFeatures(
     // converse is not true. Keeping cloth as the only way in meant rigged could
     // never be auditioned on its own: switching it on started the WIP cloth sim
     // too, so any frame-cost reading measured both at once.
-    riggedPreviewEnabled: USE_RIGGED_PREVIEW || flags.rigged || clothPreviewEnabled,
+    riggedPreviewEnabled:
+      USE_RIGGED_PREVIEW || flags.rigged === true || flags.animated === true || clothPreviewEnabled,
     source2ShaderHintsEnabled: unifiedEnabled,
     nprDebugEnabled: flags.nprDebug,
     source2SkipNpr: unifiedEnabled && !trippySpriteActive,

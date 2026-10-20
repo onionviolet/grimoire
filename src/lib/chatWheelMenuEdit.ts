@@ -91,12 +91,13 @@ export function hasChatWheelDrag(data: DragData | null | undefined): boolean {
 
 export function readChatWheelDrag(data: DragData | null | undefined): ChatWheelDragPayload | null {
   if (!data) return null;
-  let raw = '';
-  try {
-    raw = data.getData(CHAT_WHEEL_DRAG_TYPE);
-  } catch {
-    return null;
-  }
+  const raw = (() => {
+    try {
+      return data.getData(CHAT_WHEEL_DRAG_TYPE);
+    } catch {
+      return '';
+    }
+  })();
   if (!raw) return null;
   try {
     const parsed: unknown = JSON.parse(raw);

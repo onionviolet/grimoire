@@ -10,6 +10,7 @@ export type { AppSettings };
 
 const DEFAULT_SETTINGS: AppSettings = {
     deadlockPath: null,
+    lastDialogDirectory: null,
     devMode: false,
     devDeadlockPath: null,
     nsfwContentMode: 'blur',
@@ -18,10 +19,15 @@ const DEFAULT_SETTINGS: AppSettings = {
     hiddenMods: [],
     lockerCardsExpandedByDefault: false,
     autoDisableSiblingVariants: true,
+    autoMatchRemainingFiles: true,
+    skipModReplacementConfirmation: false,
+    swapManualReplacementActions: true,
+    keepModBackups: false,
     autoEnableDownloads: false,
     steamLaunchOptions: '',
     updateReleaseChannel: 'stable',
     checkUpdatesOnStartup: false,
+    steamLaunchOptionsManaged: false,
     activeProfileId: null,
     confirmProfileUpdate: true,
     experimentalStats: false,
@@ -159,9 +165,9 @@ export function loadSettings(): AppSettings {
  * The Deadlock path IPC handlers should act on: the dev dummy path when dev
  * mode is active, otherwise the user's configured install. Single-sourced
  * here; IPC modules import it instead of keeping local copies.
+ * Accepts pending settings so callers can compare paths before saving them.
  */
-export function getActiveDeadlockPath(): string | null {
-    const settings = loadSettings();
+export function getActiveDeadlockPath(settings: AppSettings = loadSettings()): string | null {
     if (settings.devMode && settings.devDeadlockPath) {
         return settings.devDeadlockPath;
     }

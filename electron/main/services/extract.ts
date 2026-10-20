@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, copyFileSync, unlinkSync, writeFileSync, readFileSync, rmdirSync } from 'fs';
 import { join, extname, basename, dirname } from 'path';
 import { randomBytes } from 'crypto';
+import { isUtf8 } from 'buffer';
 import AdmZip from 'adm-zip';
 import { spawn } from 'child_process';
 import { createExtractorFromData } from 'node-unrar-js';
@@ -213,9 +214,31 @@ function archiveFormatFromExtension(filePath: string): ArchiveFormat | null {
 }
 
 /**
- * Extract an archive to a destination directory.
+ * adm-zip decodes every entry name as UTF-8 whatever the zip's UTF-8 flag says,
+ * so names in a legacy code page (GBK, Shift-JIS from older Windows tools)
+ * collapse to U+FFFD and distinct variant folders decode to the same string,
+ * which adm-zip 0.6 then rejects as a duplicate. latin1 keeps them distinct.
+ */
+const zipNameDecoder = {
+    efs: true,
+    encode: (name: string) => Buffer.from(name, 'utf8'),
+    decode: (raw: Buffer) => (isUtf8(raw) ? raw.toString('utf8') : raw.toString('latin1')),
+};
+
+function openZip(archivePath: string): AdmZip {
+    return new AdmZip(archivePath, { decoder: zipNameDecoder });
+}
+
+/** adm-zip refuses zips that list one name twice; 7-Zip reads them. */
+function isDuplicateZipEntryError(err: unknown): boolean {
+    return err instanceof Error && err.message.startsWith('ADM-ZIP: Duplicate entry name');
+}
+
+/**
+ * Extract the files `accept` matches by basename (VPKs unless told otherwise)
+ * from an archive into a destination directory, flattened.
  *
- * Returns the list of extracted files that are REAL VPKs. Anything named
+ * With the default matcher this returns the extracted files that are REAL VPKs. Anything named
  * `*.vpk` inside the archive that turns out to be something else is either
  * unwrapped (when it is itself an archive wrapping exactly one VPK, which is
  * the case that shipped six inert mods into a real library) or left out of the
@@ -239,7 +262,12 @@ export async function extractArchive(
     let raw: ExtractedVpk[];
     switch (format) {
         case 'zip':
-            raw = extractZip(archivePath, destDir, accept);
+            try {
+                raw = extractZip(archivePath, destDir, accept);
+            } catch (err) {
+                if (!isDuplicateZipEntryError(err)) throw err;
+                raw = await extract7z(archivePath, destDir, accept);
+            }
             break;
         case '7z':
             raw = await extract7z(archivePath, destDir, accept);
@@ -401,7 +429,7 @@ export async function resolveInstallableVpk(
  * Extract a ZIP archive
  */
 function extractZip(archivePath: string, destDir: string, accept: (fileName: string) => boolean): ExtractedVpk[] {
-    const zip = new AdmZip(archivePath);
+    const zip = openZip(archivePath);
     const extracted: ExtractedVpk[] = [];
     const taken = new Set<string>();
 
@@ -653,11 +681,14 @@ export async function listArchiveContents(
     const ext = resolved ? `.${resolved}` : extname(archivePath).toLowerCase();
 
     if (ext === '.zip') {
-        const zip = new AdmZip(archivePath);
-        return zip.getEntries().map((e) => e.entryName);
+        try {
+            return openZip(archivePath).getEntries().map((e) => e.entryName);
+        } catch (err) {
+            if (!isDuplicateZipEntryError(err)) throw err;
+        }
     }
 
-    // For 7z/rar, use 7z to list - try all candidates
+    // For 7z/rar (and zips adm-zip refuses), use 7z to list - try all candidates
     const candidates = find7zPath();
 
     const tryCandidate = (index: number): Promise<string[]> => {

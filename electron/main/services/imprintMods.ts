@@ -2,8 +2,9 @@ import { promises as fs } from 'fs';
 import { dirname } from 'path';
 import { randomUUID } from 'crypto';
 import { app } from 'electron';
-import { scanMods, runExclusiveModMutation, type Mod } from './mods';
+import { scanMods, healModFolders, runExclusiveModMutation, type Mod } from './mods';
 import { getModMetadata, setModMetadata, type ModMetadata } from './metadata';
+import { getActiveDeadlockPath, loadSettings } from './settings';
 import {
     readEmbeddedAddonInfo,
     carryForwardOriginalIdentity,
@@ -591,7 +592,7 @@ export async function imprintOneMod(deadlockPath: string, modId: string): Promis
         // metaKey are stable; re-scan only to return up-to-date size/state.
         const rescanned = (await scanMods(deadlockPath)).find((m) => m.metaKey === mod.metaKey);
         return rescanned ?? mod;
-    });
+    }, { healPath: deadlockPath });
 }
 
 /**
@@ -780,7 +781,7 @@ export async function imprintAllInstalled(
         await Promise.all(Array.from({ length: Math.min(poolSize, total) }, () => worker()));
 
         return result;
-    });
+    }, { healPath: deadlockPath });
 }
 
 /**
@@ -926,7 +927,7 @@ export async function imprintPreflight(deadlockPath: string): Promise<ImprintPre
         }
 
         return result;
-    });
+    }, { healPath: deadlockPath });
 }
 
 /**
@@ -968,7 +969,10 @@ export async function imprintFreshlyInstalled(deadlockPath: string, fileNames: s
  * run actually does.
  */
 export async function backfillImprintedFlags(deadlockPath: string): Promise<number> {
+    const devMode = loadSettings().devMode;
     return runExclusiveModMutation(async () => {
+        if (getActiveDeadlockPath() !== deadlockPath || loadSettings().devMode !== devMode) return 0;
+        await healModFolders(deadlockPath);
         const installed = await scanMods(deadlockPath);
         let updated = 0;
         for (const mod of installed) {

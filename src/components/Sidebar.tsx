@@ -51,6 +51,8 @@ import { rollMemeTooltip } from '../lib/easterEggs';
 import { DEFAULT_SIDEBAR_HERO, getSidebarHeroImageStyle, getHeroRenderPath, resolveAppearanceBg } from '../lib/lockerUtils';
 import { useAppStore } from '../stores/appStore';
 import UpdateModal from './UpdateModal';
+import { CrashLaunchIndicator } from './CrashAdvisories';
+import { useCrashLaunchSuspect } from '../stores/crashAdvisoryStore';
 import Tx from './translation/Tx';
 import { SidebarActiveBackdrop, SurfaceBackdrop } from './sidebar/surfaceArt';
 
@@ -146,9 +148,11 @@ export default function Sidebar() {
   const installedCount = mods.length;
 
   const [stashStatus, setStashStatus] = useState<VanillaStashStatus>({ active: false });
+  const stashStatusRef = useRef(stashStatus);
   const [launchPending, setLaunchPending] = useState<'modded' | 'vanilla' | null>(null);
   const [launchMode, setLaunchMode] = useState<LaunchMode>(readLaunchModePreference);
   const [gameRunning, setGameRunning] = useState(false);
+  const gameRunningRef = useRef(gameRunning);
   const [stopPending, setStopPending] = useState(false);
   const [restorePending, setRestorePending] = useState(false);
   // Toasts can carry an optional action button (used for "Enable" after a
@@ -258,6 +262,7 @@ export default function Sidebar() {
   }`;
   const navLabelClass = `flex-1 ${labelTransitionClass}`;
   const actionLabelClass = `flex-1 text-left ${labelTransitionClass}`;
+  const crashSuspect = useCrashLaunchSuspect();
   const actionIconClass = 'flex h-full w-10 flex-shrink-0 items-center justify-center';
   // Resolve each customizable surface's background (issue: unify launcher
   // backgrounds). resolveAppearanceBg owns the default + legacy fallback rules.
@@ -287,31 +292,47 @@ export default function Sidebar() {
   }, [collapsed]);
 
   const refreshStashStatus = useCallback(async () => {
+    let next: VanillaStashStatus;
     try {
-      setStashStatus(await getVanillaStashStatus());
+      next = await getVanillaStashStatus();
     } catch {
-      setStashStatus({ active: false });
+      next = { active: false };
     }
+    // Polling usually returns the same status. Skip the setter entirely so
+    // unchanged ticks do not schedule React work, even with other pending state.
+    const prev = stashStatusRef.current;
+    if (
+      prev.active === next.active &&
+      prev.startedAt === next.startedAt &&
+      prev.modCount === next.modCount
+    ) return;
+    stashStatusRef.current = next;
+    setStashStatus(next);
   }, []);
 
   const refreshGameStatus = useCallback(async () => {
+    let next: boolean;
     try {
-      setGameRunning((await getGameRunningStatus()).running);
+      next = (await getGameRunningStatus()).running;
     } catch {
-      setGameRunning(false);
+      next = false;
     }
+    if (gameRunningRef.current === next) return;
+    gameRunningRef.current = next;
+    setGameRunning(next);
   }, []);
 
   useEffect(() => {
     window.electronAPI.updater.getVersion().then(v => setAppVersion(`v${v}`)).catch(() => setAppVersion('v???'));
     window.electronAPI.updater.getStatus().then(status => {
-      if (status) setUpdateAvailable(status.available || status.downloaded);
+      if (status) setUpdateAvailable(status.downloaded || status.available);
     });
     const unsub = window.electronAPI.updater.onStatus((status) => {
-      setUpdateAvailable(status.available || status.downloaded);
+      setUpdateAvailable(status.downloaded || status.available);
     });
     return unsub;
   }, []);
+
 
   // Refresh the conflict badge whenever the mods list changes, which already
   // covers every install / toggle / delete / reorder. No periodic polling: the
@@ -591,22 +612,19 @@ export default function Sidebar() {
   // Enable the glide transition only briefly around an active-target change, so
   // selecting a tab/settings animates the highlight, while nav-list scrolling
   // (same target, new position) tracks instantly with no trailing ease.
-  const [indicatorSliding, setIndicatorSliding] = useState(false);
-  const slideTimerRef = useRef<number | null>(null);
+  const indicatorRef = useRef<HTMLDivElement | null>(null);
+  const indicatorVisible = !!activeNavMetrics && activeNavTone !== 'test';
   useEffect(() => {
-    setIndicatorSliding(true);
-    if (slideTimerRef.current !== null) window.clearTimeout(slideTimerRef.current);
-    slideTimerRef.current = window.setTimeout(() => {
-      setIndicatorSliding(false);
-      slideTimerRef.current = null;
+    const indicator = indicatorRef.current;
+    if (!indicator) return;
+    // Only this DOM class changes when the transition expires. Updating React
+    // state here used to render every nav item twice for each navigation.
+    indicator.classList.add('sidebar-active-indicator--sliding');
+    const timer = window.setTimeout(() => {
+      indicator.classList.remove('sidebar-active-indicator--sliding');
     }, 300);
-    return () => {
-      if (slideTimerRef.current !== null) {
-        window.clearTimeout(slideTimerRef.current);
-        slideTimerRef.current = null;
-      }
-    };
-  }, [activeNavIndex, settingsActive]);
+    return () => window.clearTimeout(timer);
+  }, [activeNavIndex, settingsActive, indicatorVisible]);
 
   useEffect(() => {
     const aside = asideRef.current;
@@ -824,10 +842,9 @@ export default function Sidebar() {
           their transparent active surfaces reveal it. */}
       {activeNavMetrics && activeNavTone !== 'test' && (
         <div
+          ref={indicatorRef}
           aria-hidden
-          className={`sidebar-active-indicator pointer-events-none absolute left-0 top-0 z-0 overflow-hidden rounded-sm ${
-            indicatorSliding ? 'sidebar-active-indicator--sliding' : ''
-          }`}
+          className="sidebar-active-indicator pointer-events-none absolute left-0 top-0 z-0 overflow-hidden rounded-sm"
           style={{
             width: activeNavMetrics.width,
             height: activeNavMetrics.height,
@@ -1122,6 +1139,7 @@ export default function Sidebar() {
             // right-click "hide art" menu is gone (the Appearance surfaces own
             // that now).
             <>
+              <div className="relative min-w-0">
               <button
                 onClick={handleLaunchModded}
                 disabled={!canLaunch || !!launchPending || stopPending}
@@ -1148,11 +1166,13 @@ export default function Sidebar() {
                   )}
                 </span>
                 {labelMounted && (
-                  <span className={`relative z-10 drop-shadow-[0_1px_4px_rgba(0,0,0,0.75)] ${actionLabelClass}`} aria-hidden={!labelsVisible}>
+                  <span className={`relative z-10 drop-shadow-[0_1px_4px_rgba(0,0,0,0.75)] ${actionLabelClass} ${crashSuspect ? 'min-w-0 truncate pr-8' : ''}`} aria-hidden={!labelsVisible}>
                     {t('sidebar.launchModded')}
                   </span>
                 )}
               </button>
+              <CrashLaunchIndicator compact={!labelMounted} />
+              </div>
 
               <button
                 onClick={handleLaunchVanilla}
@@ -1188,8 +1208,9 @@ export default function Sidebar() {
               </button>
             </>
           ) : (
+            <div className="relative min-w-0">
             <div
-              className="group/launch relative"
+              className="group/launch relative min-w-0 flex-1"
               onContextMenu={(e) => {
                 e.preventDefault();
                 if (launchPending || stopPending) return;
@@ -1218,7 +1239,7 @@ export default function Sidebar() {
                 </span>
                 {labelMounted && (
                   <span
-                    className={`relative z-10 drop-shadow-[0_1px_4px_rgba(0,0,0,0.75)] ${actionLabelClass}`}
+                    className={`relative z-10 drop-shadow-[0_1px_4px_rgba(0,0,0,0.75)] ${actionLabelClass} ${isModdedLaunch && crashSuspect ? 'min-w-0 truncate pr-16' : ''}`}
                     aria-hidden={!labelsVisible}
                   >
                     {t(launchConfig.labelKey)}
@@ -1250,6 +1271,8 @@ export default function Sidebar() {
                   <ArrowRightLeft className="h-3 w-3" />
                 </span>
               )}
+            </div>
+            {isModdedLaunch && <CrashLaunchIndicator compact={!labelMounted} unified />}
             </div>
           )}
         </div>
@@ -1332,8 +1355,9 @@ export default function Sidebar() {
                 labelsVisible ? 'opacity-100' : 'opacity-0'
               } ${settingsActive ? 'text-text-primary/70' : 'text-text-secondary/70'}`}
               aria-hidden={!labelsVisible}
+              title={appVersion}
             >
-              {appVersion || 'v...'}
+              {appVersion.includes('-nightly.') ? `${appVersion.split('-nightly.')[0]} ${t('settings.updates.nightly')}` : appVersion || 'v...'}
             </span>
           )}
         </button>

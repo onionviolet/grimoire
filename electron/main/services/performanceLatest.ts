@@ -21,23 +21,18 @@ import {
 } from './performanceConfigData';
 import {
     buildLatestRelease,
-    getCachedHistory,
+    cachedLatestIsCurrent,
     getCachedLatest,
     isCheckFresh,
     latestMatchesBundledNewest,
     readLatestCache,
     resolveCachedPreset,
-    upsertHistory,
     writeLatestCache,
     type LatestRelease,
 } from './performanceLatestCore';
 import { setExtraPresetResolver } from './performanceConfig';
 import { githubRateLimiter } from './rateLimiter';
-import type {
-    PerformanceLatestInfo,
-    PerformanceRemoteVersion,
-    PerformanceRemoteVersionList,
-} from '../../../src/types/electron';
+import type { PerformanceLatestInfo } from '../../../src/types/electron';
 
 const FETCH_TIMEOUT_MS = 20_000;
 // Identifies the client to GitHub, which rejects UA-less API requests. Static
@@ -68,13 +63,47 @@ async function githubJson(url: string): Promise<unknown> {
 }
 
 async function fetchRaw(repo: string, commit: string, path: string): Promise<string> {
+    const text = await fetchRawOptional(repo, commit, path);
+    if (text === null) throw new Error(`Fetch 404 for ${repo}@${commit.slice(0, 8)} ${path}`);
+    return text;
+}
+
+/** Like fetchRaw, but a 404 means "upstream has no such file" (null). */
+async function fetchRawOptional(repo: string, commit: string, path: string): Promise<string | null> {
     const url = `https://raw.githubusercontent.com/${repo}/${commit}/${path
         .split('/')
         .map(encodeURIComponent)
         .join('/')}`;
     const res = await githubFetch(url, 'text/plain');
+    if (res.status === 404) return null;
     if (!res.ok) throw new Error(`Fetch ${res.status} for ${repo}@${commit.slice(0, 8)} ${path}`);
     return res.text();
+}
+
+/** The video.txt files next to the config: the sibling video.txt, or for a
+ *  preset that ships several, each variant under every name it has had. The
+ *  first is the default; the rest are the variants this commit actually has. */
+async function fetchVideos(
+    family: PerformancePresetFamily,
+    commit: string,
+    configPath: string
+): Promise<{ videoText: string | null; videoVariantTexts: Array<{ id: string; text: string }> }> {
+    const files = family.upstream.videoFiles ?? [{ variant: '', files: ['video.txt'] }];
+    const found: Array<{ id: string; text: string | null }> = [];
+    for (const { variant, files: names } of files) {
+        let text: string | null = null;
+        for (const name of names) {
+            text = await fetchRawOptional(family.upstream.repo, commit, configPath.replace(/[^/]*$/, name));
+            if (text !== null) break;
+        }
+        found.push({ id: variant, text });
+    }
+    return {
+        videoText: found[0].text,
+        videoVariantTexts: found
+            .slice(1)
+            .filter((v): v is { id: string; text: string } => v.text !== null),
+    };
 }
 
 /** Newest commit on the default branch that touched `path`. */
@@ -133,7 +162,12 @@ async function resolveUpstream(family: PerformancePresetFamily): Promise<Resolve
         const commit = await resolveTag(repo, release.tag_name);
         return { refKind: 'tag', ref: release.tag_name, commit, date: await commitDate(repo, commit) };
     }
-    const head = await latestCommitFor(repo, family.upstream.path);
+    // A config that ships a video.txt changes when either file does, so watch
+    // its folder rather than gameinfo.gi alone.
+    const watched = family.releases[0].video.length
+        ? family.upstream.path.replace(/\/[^/]*$/, '')
+        : family.upstream.path;
+    const head = await latestCommitFor(repo, watched);
     return { refKind: 'prose', ref: head.sha.slice(0, 8), commit: head.sha, date: head.date };
 }
 
@@ -160,124 +194,6 @@ export function getPerformanceLatestInfo(presetId: string): PerformanceLatestInf
     return toInfo(presetId, getCachedLatest(cacheDir(), presetId));
 }
 
-/** Everything upstream has ever published for `presetId`, newest first: the
- *  release list for tag-published sources, the config file's own commit
- *  history for sources without tags. This is the browsing list only; nothing
- *  is fetched or built until the user picks one. */
-export async function listPerformanceRemoteVersions(
-    presetId: string
-): Promise<PerformanceRemoteVersionList> {
-    if (!PRESETS.some((p) => p.id === presetId)) {
-        return { versions: [], error: `Unknown preset id: ${presetId}` };
-    }
-    const family = getFamily(presetId);
-    const repo = family.upstream.repo;
-    const dir = cacheDir();
-    const cachedVersions = new Set([
-        ...getCachedHistory(dir, presetId).map((r) => r.version),
-        ...(getCachedLatest(dir, presetId) ? [getCachedLatest(dir, presetId)!.version] : []),
-    ]);
-    try {
-        let versions: PerformanceRemoteVersion[];
-        if (family.releases[0].refKind === 'tag') {
-            const releases = (await githubJson(
-                `https://api.github.com/repos/${repo}/releases?per_page=100`
-            )) as Array<{
-                tag_name: string;
-                name: string | null;
-                published_at: string | null;
-                draft: boolean;
-                prerelease: boolean;
-            }>;
-            versions = releases
-                .filter((r) => !r.draft)
-                .map((r) => ({
-                    ref: r.tag_name,
-                    version: r.tag_name.replace(/^v/, ''),
-                    commit: null, // resolved at fetch time; listing stays one API call
-                    date: (r.published_at ?? '').slice(0, 10),
-                    label: r.name && r.name !== r.tag_name ? r.name : null,
-                }));
-        } else {
-            const commits = (await githubJson(
-                `https://api.github.com/repos/${repo}/commits?path=${encodeURIComponent(family.upstream.path)}&per_page=100`
-            )) as Array<{
-                sha: string;
-                commit: { message: string; author?: { date?: string }; committer?: { date?: string } };
-            }>;
-            versions = commits.map((c) => ({
-                ref: c.sha.slice(0, 8),
-                version: c.sha.slice(0, 8),
-                commit: c.sha,
-                date: (c.commit.author?.date ?? c.commit.committer?.date ?? '').slice(0, 10),
-                // The commit subject is the only version prose these sources
-                // have ("2.9 update"), so it is the row's human handle.
-                label: c.commit.message.split('\n')[0].slice(0, 100) || null,
-            }));
-        }
-        for (const v of versions) v.cached = cachedVersions.has(v.version) || undefined;
-        return { versions, error: null };
-    } catch (err) {
-        return { versions: [], error: err instanceof Error ? err.message : String(err) };
-    }
-}
-
-/** Fetch, gate, and cache one specific historical upstream version, so the
- *  user can pin it. `commit` comes from the listing for commit-versioned
- *  sources; tag refs resolve here. Historical fetches try every path the file
- *  has lived at (upstreams rename their config folders across releases). */
-export async function fetchPerformanceRemoteVersion(
-    presetId: string,
-    ref: string,
-    commit?: string | null
-): Promise<PerformanceLatestInfo> {
-    const dir = cacheDir();
-    if (!PRESETS.some((p) => p.id === presetId)) {
-        return toInfo(presetId, null, `Unknown preset id: ${presetId}`);
-    }
-    const family = getFamily(presetId);
-    const refKind = family.releases[0].refKind;
-    try {
-        const sha = commit ?? (await resolveTag(family.upstream.repo, ref));
-        const date = await commitDate(family.upstream.repo, sha);
-        const baselineHead = await latestCommitFor(BASELINE.repo, BASELINE.path);
-        const baselineText = await fetchRaw(BASELINE.repo, baselineHead.sha, BASELINE.path);
-
-        let configText: string | null = null;
-        let lastError = '';
-        for (const path of family.upstream.paths) {
-            try {
-                configText = await fetchRaw(family.upstream.repo, sha, path);
-                break;
-            } catch (err) {
-                lastError = err instanceof Error ? err.message : String(err);
-            }
-        }
-        if (configText === null) {
-            return toInfo(presetId, null, `No config file at any known path: ${lastError}`);
-        }
-
-        const built = buildLatestRelease({
-            presetId,
-            refKind,
-            ref,
-            commit: sha,
-            date,
-            baselineCommit: baselineHead.sha,
-            baselineText,
-            configText,
-            now: new Date(),
-        });
-        if (!built.ok) {
-            return toInfo(presetId, null, `Version ${ref} was rejected: ${built.error}`);
-        }
-        upsertHistory(dir, built.release);
-        return toInfo(presetId, built.release);
-    } catch (err) {
-        return toInfo(presetId, null, err instanceof Error ? err.message : String(err));
-    }
-}
-
 /** Resolve and fetch the newest upstream release of `presetId`, updating the
  *  cache. Network errors degrade to whatever the cache already holds, with the
  *  error carried alongside: the caller then applies bundled or cached data,
@@ -302,19 +218,16 @@ export async function checkPerformanceLatest(
 
         const cache = readLatestCache(dir);
         const cached = cache.byPreset[presetId] ?? null;
-        if (
-            cached &&
-            cached.commit === upstream.commit &&
-            cached.baselineCommit === baselineHead.sha
-        ) {
+        if (cached && cachedLatestIsCurrent(family, cached, upstream.commit, baselineHead.sha)) {
             cache.checkedAt[presetId] = now.toISOString();
             writeLatestCache(dir, cache);
             return toInfo(presetId, cached);
         }
 
-        const [baselineText, configText] = await Promise.all([
+        const [baselineText, configText, videos] = await Promise.all([
             fetchRaw(BASELINE.repo, baselineHead.sha, BASELINE.path),
             fetchRaw(family.upstream.repo, upstream.commit, family.upstream.path),
+            fetchVideos(family, upstream.commit, family.upstream.path),
         ]);
 
         const built = buildLatestRelease({
@@ -326,6 +239,7 @@ export async function checkPerformanceLatest(
             baselineCommit: baselineHead.sha,
             baselineText,
             configText,
+            ...videos,
             now,
         });
         if (!built.ok) {

@@ -2,25 +2,27 @@
 // for the human reviewer the bundled presets get, the cache round-trip, and
 // the end-to-end contract that a cached latest release applies and removes
 // through the patcher exactly like a bundled one.
-import { describe, expect, it, beforeEach, afterEach } from 'vitest';
+import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
+
+// Without this, video.txt resolution would find the real Steam userdata.
+vi.mock('./steamRoots', () => ({ getSteamRoots: () => [] }));
 import {
     buildLatestRelease,
-    getCachedHistory,
+    cachedLatestIsCurrent,
     getCachedLatest,
     isCheckFresh,
     latestAsPreset,
     readLatestCache,
     resolveCachedPreset,
-    upsertHistory,
     writeLatestCache,
     type BuildLatestInput,
     type LatestRelease,
 } from './performanceLatestCore';
-import { validateGameinfoText } from './performancePresetGen';
-import { getFamily } from './performanceConfigData';
+import { generateVideoBody, validateGameinfoText } from './performancePresetGen';
+import { CLASSIFICATION, getFamily } from './performanceConfigData';
 import {
     applyPerformanceConfig,
     getPerformanceConfigStatus,
@@ -102,6 +104,7 @@ function input(overrides: Partial<BuildLatestInput> = {}): BuildLatestInput {
         baselineCommit: '1111111111111111111111111111111111111111',
         baselineText: baselineText(),
         configText: configText(),
+        videoText: null,
         now: new Date('2026-08-18T12:00:00Z'),
         ...overrides,
     };
@@ -153,15 +156,37 @@ describe('buildLatestRelease gates', () => {
         expect(tagged.ok).toBe(true);
         if (tagged.ok) expect(tagged.release.version).toBe('9.9-beta.1');
 
-        // v4.2 is a bundled optilock-fps release; different content under the
-        // same tag must not impersonate it.
+        // Different content under a bundled release's tag must not impersonate it.
+        const bundled = getFamily('optilock-fps').releases[0];
         const colliding = buildLatestRelease(
-            input({ presetId: 'optilock-fps', refKind: 'tag', ref: 'v4.2' })
+            input({ presetId: 'optilock-fps', refKind: 'tag', ref: bundled.ref })
         );
         expect(colliding.ok).toBe(true);
         if (colliding.ok) {
-            expect(colliding.release.version).toBe('4.2.abcdef01');
+            expect(colliding.release.version).toBe(`${bundled.version}.abcdef01`);
         }
+    });
+
+    it('leaves the list-valued RenderModes section alone', () => {
+        // Stock lists seven `game` render modes; a config written before Valve
+        // added ShadowSilhouette ends on FrontDepth, which used to diff to a
+        // `game "FrontDepth"` op that the patcher wrote over every mode.
+        const withModes = (text: string, modes: string[]) =>
+            text.replace(
+                /\n\}\n$/,
+                `\n\tMaterialSystem2\n\t{\n\t\tRenderModes\n\t\t{\n${modes
+                    .map((m) => `\t\t\tgame "${m}"`)
+                    .join('\n')}\n\t\t}\n\t}\n}\n`
+            );
+        const result = buildLatestRelease(
+            input({
+                baselineText: withModes(baselineText(), ['Default', 'FrontDepth', 'ShadowSilhouette']),
+                configText: withModes(configText(), ['Default', 'FrontDepth']),
+            })
+        );
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+        expect(result.release.sectionOps.some((op) => op.path[0] === 'MaterialSystem2')).toBe(false);
     });
 
     it('refuses implausible texts', () => {
@@ -173,6 +198,137 @@ describe('buildLatestRelease gates', () => {
         // An HTML error page is not a gameinfo.gi, however big it is.
         const html = `<html>${'x'.repeat(20000)}</html>`;
         expect(buildLatestRelease(input({ baselineText: html })).ok).toBe(false);
+    });
+
+    const VIDEO = [
+        '\t"setting.defaultres"\t\t"-1"',
+        '\t"setting.monitor_index"\t\t"0"',
+        '\t"setting.mat_vsync"\t\t"0"',
+        '\t"setting.r_shadows"\t\t"0"',
+        '\t"setting.r_citadel_outlines"\t\t"1"',
+        '\t"setting.r_new_glow_quality"\t\t"0"',
+        '\t"setting.r_texture_stream_mip_bias"\t\t"4"',
+        '\t"setting.shaderquality"\t\t"0"',
+        '\t"setting.cpu_level"\t\t"1"',
+        '}',
+    ].join('\n');
+
+    it('classifies a fetched video.txt like the bundled generator', () => {
+        const result = buildLatestRelease(input({ presetId: 'sqooky-testing', videoText: VIDEO }));
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+        // Display keys and the opt-in convar are dropped, the unclassified
+        // gameplay-shaped key is withheld, and render settings remain.
+        expect(result.release.video).toEqual([
+            ['r_shadows', '0'],
+            ['r_texture_stream_mip_bias', '4'],
+            ['shaderquality', '0'],
+            ['cpu_level', '1'],
+        ]);
+        expect(result.release.withheld).toContain('r_new_glow_quality');
+        expect(latestAsPreset(result.release).video).toEqual(result.release.video);
+    });
+
+    it("keeps a verbatim source's display settings and shipped values", () => {
+        const result = buildLatestRelease(
+            input({ presetId: 'optilock-fps', videoText: VIDEO.replace('"4"', '"8"') })
+        );
+        if (!result.ok) throw new Error(result.error);
+        // The opt-in convar and the unclassified key still stay out.
+        expect(result.release.video).toEqual([
+            ['defaultres', '-1'],
+            ['monitor_index', '0'],
+            ['mat_vsync', '0'],
+            ['r_shadows', '0'],
+            ['r_texture_stream_mip_bias', '8'],
+            ['shaderquality', '0'],
+            ['cpu_level', '1'],
+        ]);
+        expect(result.release.withheld).toContain('r_new_glow_quality');
+    });
+
+    it('refuses a fetched video.txt that is not one', () => {
+        expect(buildLatestRelease(input({ videoText: '<html>nope</html>' })).ok).toBe(false);
+    });
+
+    it('treats a cache entry from before video.txt support as having none', () => {
+        const result = buildLatestRelease(input({ presetId: 'optilock-fps', videoText: VIDEO }));
+        if (!result.ok) throw new Error(result.error);
+        expect(latestAsPreset({ ...result.release, video: undefined }).video).toEqual([]);
+    });
+
+    describe('video.txt variants', () => {
+        const ULTRA = 'optilock-ultra-potato';
+        const SHADOWS = VIDEO.replace('"setting.shaderquality"\t\t"0"', '"setting.shaderquality"\t\t"-1"');
+
+        it('keeps the other variants of a preset that ships several, default first', () => {
+            const result = buildLatestRelease(
+                input({ presetId: ULTRA, videoText: VIDEO, videoVariantTexts: [{ id: 'shadows', text: SHADOWS }] })
+            );
+            if (!result.ok) throw new Error(result.error);
+            expect(result.release.videoVariants).toHaveLength(1);
+            expect(result.release.videoVariants![0].id).toBe('shadows');
+            expect(result.release.videoVariants![0].video).toContainEqual(['shaderquality', '-1']);
+
+            const preset = latestAsPreset(result.release);
+            expect(preset.videoVariants!.map((v) => v.id)).toEqual(['noShadows', 'shadows']);
+            expect(preset.videoVariants![0].video).toEqual(preset.video);
+        });
+
+        it('records an empty list, not nothing, when a release ships only the default', () => {
+            const result = buildLatestRelease(input({ presetId: ULTRA, videoText: VIDEO }));
+            if (!result.ok) throw new Error(result.error);
+            expect(result.release.videoVariants).toEqual([]);
+            expect(latestAsPreset(result.release).videoVariants).toBeUndefined();
+        });
+
+        it('ignores variant texts for a preset that ships one video.txt', () => {
+            const result = buildLatestRelease(
+                input({ presetId: 'optilock-fps', videoText: VIDEO, videoVariantTexts: [{ id: 'shadows', text: SHADOWS }] })
+            );
+            if (!result.ok) throw new Error(result.error);
+            expect(result.release.videoVariants).toBeUndefined();
+        });
+
+        it('refuses a variant that ships without the default, or is not a video.txt', () => {
+            expect(
+                buildLatestRelease(
+                    input({ presetId: ULTRA, videoText: null, videoVariantTexts: [{ id: 'shadows', text: SHADOWS }] })
+                ).ok
+            ).toBe(false);
+            expect(
+                buildLatestRelease(
+                    input({ presetId: ULTRA, videoText: VIDEO, videoVariantTexts: [{ id: 'shadows', text: '<html>' }] })
+                ).ok
+            ).toBe(false);
+        });
+
+        it('rebuilds a cached entry from before variant support instead of reusing it', () => {
+            const built = buildLatestRelease(input({ presetId: ULTRA, videoText: VIDEO }));
+            if (!built.ok) throw new Error(built.error);
+            const { commit, baselineCommit } = built.release;
+            const family = getFamily(ULTRA);
+            expect(cachedLatestIsCurrent(family, built.release, commit, baselineCommit)).toBe(true);
+            expect(
+                cachedLatestIsCurrent(family, { ...built.release, videoVariants: undefined }, commit, baselineCommit)
+            ).toBe(false);
+            expect(cachedLatestIsCurrent(family, built.release, 'other', baselineCommit)).toBe(false);
+            // Built under other classification rules, or before they were recorded.
+            expect(
+                cachedLatestIsCurrent(family, { ...built.release, classification: 'other' }, commit, baselineCommit)
+            ).toBe(false);
+            expect(
+                cachedLatestIsCurrent(family, { ...built.release, classification: undefined }, commit, baselineCommit)
+            ).toBe(false);
+
+            // A preset with a single video.txt never needed the field.
+            const fps = buildLatestRelease(input({ presetId: 'optilock-fps', videoText: VIDEO }));
+            if (!fps.ok) throw new Error(fps.error);
+            expect(cachedLatestIsCurrent(getFamily('optilock-fps'), fps.release, commit, baselineCommit)).toBe(true);
+            expect(
+                cachedLatestIsCurrent(getFamily('optilock-fps'), { ...fps.release, video: undefined }, commit, baselineCommit)
+            ).toBe(false);
+        });
     });
 });
 
@@ -186,6 +342,33 @@ describe('validateGameinfoText', () => {
         // Braces inside comments must not count.
         const commented = baselineText().replace('// padding comment line 0', '// stray { brace');
         expect(validateGameinfoText(commented, 'x')).toBeNull();
+    });
+});
+
+describe('generateVideoBody caps', () => {
+    // Past 4 OptiLock needs its Sinner's Light Fix VPK, which Grimoire does not install.
+    it('lowers mip bias above 4 and leaves lower values alone', () => {
+        const capped = (value: string) =>
+            generateVideoBody([['r_texture_stream_mip_bias', value]], CLASSIFICATION).settings;
+        expect(capped('6')).toEqual([['r_texture_stream_mip_bias', '4']]);
+        expect(capped('4')).toEqual([['r_texture_stream_mip_bias', '4']]);
+        expect(capped('2')).toEqual([['r_texture_stream_mip_bias', '2']]);
+    });
+
+    it('leaves a verbatim body uncapped and caps the rest', () => {
+        expect(
+            generateVideoBody([['r_texture_stream_mip_bias', '8']], CLASSIFICATION, true).settings
+        ).toEqual([['r_texture_stream_mip_bias', '8']]);
+    });
+
+    // Verbatim (OptiLock) bodies keep the shipped value: dacooder asked for it.
+    it('caps every bundled release that is not verbatim', () => {
+        for (const id of ['sqooky-testing']) {
+            for (const release of getFamily(id).releases) {
+                const bias = release.video.find(([key]) => key === 'r_texture_stream_mip_bias');
+                if (bias) expect(Number(bias[1])).toBeLessThanOrEqual(4);
+            }
+        }
     });
 });
 
@@ -210,7 +393,6 @@ describe('cache round-trip and resolution', () => {
         writeLatestCache(dir, {
             byPreset: { [r.presetId]: r },
             checkedAt: { [r.presetId]: '2026-08-18T12:00:00Z' },
-            history: {},
         });
         expect(getCachedLatest(dir, r.presetId)).toEqual(r);
         expect(isCheckFresh(dir, r.presetId, new Date('2026-08-18T12:04:00Z'))).toBe(true);
@@ -219,41 +401,14 @@ describe('cache round-trip and resolution', () => {
     });
 
     it('reads a missing or corrupt cache as empty', () => {
-        expect(readLatestCache(dir)).toEqual({ byPreset: {}, checkedAt: {}, history: {} });
+        expect(readLatestCache(dir)).toEqual({ byPreset: {}, checkedAt: {} });
         writeFileSync(join(dir, 'performance-latest.json'), '{not json', 'utf-8');
-        expect(readLatestCache(dir)).toEqual({ byPreset: {}, checkedAt: {}, history: {} });
-    });
-
-    it('keeps fetched historical releases and resolves pins from them', () => {
-        const r = release();
-        const older: LatestRelease = {
-            ...r,
-            version: '11111111',
-            ref: '11111111',
-            commit: '1111111111111111111111111111111111111111',
-        };
-        upsertHistory(dir, r);
-        upsertHistory(dir, older);
-        expect(getCachedHistory(dir, r.presetId).map((x) => x.version)).toEqual([
-            '11111111',
-            r.version,
-        ]);
-        // A refetch replaces its old entry and moves it to the front.
-        upsertHistory(dir, { ...r });
-        expect(getCachedHistory(dir, r.presetId).map((x) => x.version)).toEqual([
-            r.version,
-            '11111111',
-        ]);
-        // Pins resolve from history alone (no tracked-latest entry needed)...
-        expect(resolveCachedPreset(dir, r.presetId, '11111111')?.version).toBe('11111111');
-        // ...but the 'latest' sentinel never does: it means "what the last
-        // check said was newest", which history cannot answer.
-        expect(resolveCachedPreset(dir, r.presetId, 'latest')).toBeNull();
+        expect(readLatestCache(dir)).toEqual({ byPreset: {}, checkedAt: {} });
     });
 
     it("resolves the 'latest' sentinel and the release's own version, nothing else", () => {
         const r = release();
-        writeLatestCache(dir, { byPreset: { [r.presetId]: r }, checkedAt: {}, history: {} });
+        writeLatestCache(dir, { byPreset: { [r.presetId]: r }, checkedAt: {} });
         expect(resolveCachedPreset(dir, r.presetId, 'latest')?.version).toBe(r.version);
         expect(resolveCachedPreset(dir, r.presetId, r.version)?.version).toBe(r.version);
         expect(resolveCachedPreset(dir, r.presetId, '2.8.2')).toBeNull();
@@ -268,6 +423,27 @@ describe('cache round-trip and resolution', () => {
         expect(preset.upstream.commit).toBe(r.commit);
         expect(preset.convars).toEqual(r.convars);
         expect(preset.optIn[0].group).toBe('visibility');
+    });
+
+    it('drops ops an older build cached for a section that is now excluded', () => {
+        const r = release();
+        const renderModes = { path: ['MaterialSystem2', 'RenderModes'], key: 'game', value: 'FrontDepth' };
+        writeLatestCache(dir, {
+            byPreset: { [r.presetId]: { ...r, sectionOps: [...r.sectionOps, renderModes] } },
+            checkedAt: {},
+        });
+        const preset = resolveCachedPreset(dir, r.presetId, 'latest');
+        expect(preset?.sectionOps).toEqual(r.sectionOps);
+    });
+
+    it('drops convars an older build cached for a key that is now excluded', () => {
+        const r = release();
+        writeLatestCache(dir, {
+            byPreset: { [r.presetId]: { ...r, convars: [...r.convars, ['r_lightmap_size', '0']] } },
+            checkedAt: {},
+        });
+        const preset = resolveCachedPreset(dir, r.presetId, 'latest');
+        expect(preset?.convars).toEqual(r.convars);
     });
 });
 
@@ -296,7 +472,6 @@ describe('applying a tracked latest release', () => {
         writeLatestCache(cacheDir, {
             byPreset: { [built.release.presetId]: built.release },
             checkedAt: {},
-            history: {},
         });
         setExtraPresetResolver((id, version) => resolveCachedPreset(cacheDir, id, version));
     });
@@ -349,26 +524,6 @@ describe('applying a tracked latest release', () => {
         expect(read()).toBe(original);
     });
 
-    it('applies a pinned historical version resolved from the history cache', () => {
-        const built = buildLatestRelease(input());
-        if (!built.ok) throw new Error(built.error);
-        const historical: typeof built.release = {
-            ...built.release,
-            version: 'aa11bb22',
-            ref: 'aa11bb22',
-            commit: 'aa11bb22aa11bb22aa11bb22aa11bb22aa11bb22',
-        };
-        upsertHistory(cacheDir, historical);
-
-        const applied = applyPerformanceConfig(gameRoot, {
-            presetId: 'sqooky-default',
-            version: 'aa11bb22',
-        });
-        expect(applied.state).toBe('applied');
-        expect(applied.appliedVersion).toBe('aa11bb22');
-        expect(read()).toContain('preset=sqooky-default vaa11bb22 @aa11bb22aa11');
-    });
-
     it('recognizes and reapplies a tracked tag whose version contains punctuation', () => {
         const built = buildLatestRelease(
             input({ refKind: 'tag', ref: 'v9.9-beta.1', commit: 'bb11cc22'.repeat(5) })
@@ -377,7 +532,6 @@ describe('applying a tracked latest release', () => {
         writeLatestCache(cacheDir, {
             byPreset: { [built.release.presetId]: built.release },
             checkedAt: {},
-            history: {},
         });
 
         const original = read();
@@ -397,6 +551,54 @@ describe('applying a tracked latest release', () => {
 
         expect(removePerformanceConfig(gameRoot).state).toBe('not-applied');
         expect(read()).toBe(original);
+    });
+
+    it('writes the picked video.txt variant of a tracked release', () => {
+        const video = (shaderquality: string) =>
+            [
+                '"video.cfg"',
+                '{',
+                `\t"setting.shaderquality"\t\t"${shaderquality}"`,
+                ...['cpu_level', 'gpu_level', 'r_shadows', 'r_citadel_ssao', 'mem_level'].map(
+                    (key) => `\t"setting.${key}"\t\t"${shaderquality === '3' ? '2' : '0'}"`
+                ),
+                '}',
+                '',
+            ].join('\n');
+        const built = buildLatestRelease(
+            input({
+                presetId: 'optilock-ultra-potato',
+                refKind: 'tag',
+                ref: 'v9.0',
+                videoText: video('0'),
+                videoVariantTexts: [{ id: 'shadows', text: video('-1') }],
+            })
+        );
+        if (!built.ok) throw new Error(built.error);
+        writeLatestCache(cacheDir, {
+            byPreset: { [built.release.presetId]: built.release },
+            checkedAt: {},
+        });
+        const cfg = join(gameRoot, 'game', 'citadel', 'cfg');
+        mkdirSync(cfg, { recursive: true });
+        const videoPath = join(cfg, 'video.txt');
+        const original = video('3');
+        writeFileSync(videoPath, original, 'utf-8');
+
+        const applied = applyPerformanceConfig(gameRoot, {
+            presetId: 'optilock-ultra-potato',
+            version: 'latest',
+            videoVariant: 'shadows',
+        });
+        expect(applied.state).toBe('applied');
+        expect(readFileSync(videoPath, 'utf-8')).toContain('"setting.shaderquality"\t\t"-1"');
+        expect(getPerformanceConfigStatus(gameRoot).appliedVideoVariant).toBe('shadows');
+
+        applyPerformanceConfig(gameRoot, { presetId: 'optilock-ultra-potato', version: 'latest' });
+        expect(readFileSync(videoPath, 'utf-8')).toContain('"setting.shaderquality"\t\t"0"');
+
+        removePerformanceConfig(gameRoot);
+        expect(readFileSync(videoPath, 'utf-8')).toBe(original);
     });
 
     it('falls back to the bundled newest release when the cache has nothing', () => {

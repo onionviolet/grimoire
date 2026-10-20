@@ -462,7 +462,7 @@ export interface ApplyTrippySkinResult {
  * here so the classifier (main) and the Locker grouping/UI (renderer) agree on
  * the union.
  */
-export type GlobalModType = 'soul-container' | 'spirit-urn' | 'hideout' | 'icons' | 'hud' | 'announcer' | 'killstreak-music';
+export type GlobalModType = 'soul-container' | 'spirit-urn' | 'hideout' | 'icons' | 'hud' | 'announcer' | 'killstreak-music' | 'effects';
 export type LockerHeroSource = 'manual' | 'title' | 'vpk' | 'download-title' | 'download-vpk';
 
 /** Deadlock ability slot. 1-3 are the signature abilities; 4 is the ultimate. */
@@ -627,8 +627,33 @@ export interface SoundSwapInfo {
   };
 }
 
+/** A game `.vdata_c` the mod ships that predates the game's copy (from
+ *  `vpkmerge vdata-check`). The mod replaces the whole file, so every game
+ *  field its copy lacks is deleted in game. */
+export interface OutdatedVdata {
+  /** VPK entry, e.g. `scripts/heroes.vdata_c`. */
+  entry: string;
+  /** Game fields the mod's copy lacks. */
+  missing: number;
+  /** First few missing key paths, shallowest first. */
+  sample: string[];
+}
+
+/** A hero model the mod ships that predates Deadlock's camera change (from
+ *  `vpkmerge attachments check`). Its camera and aim attachments still point
+ *  the old way, which breaks the hero's camera in game. `healModAttachments`
+ *  rewrites them from the game's model. */
+export interface StaleModel {
+  /** VPK entry, e.g. `models/heroes_wip/werewolf/werewolf.vmdl_c`. */
+  entry: string;
+  /** Attachments pointing the old way (`standing_pivot`, `aim`, ...). */
+  attachments: string[];
+}
+
 export interface Mod {
   safety?: import('./modSafety').ModSafetySnapshot;
+  outdatedVdata?: OutdatedVdata[];
+  staleModels?: StaleModel[];
   id: string;
   name: string;
   fileName: string;
@@ -647,6 +672,9 @@ export interface Mod {
   gameBananaId?: number;
   gameBananaFileId?: number;
   vpkIndex?: number;
+  /** Where the VPK sat in the downloaded archive ("<variant folder>/<name>").
+   *  Lets an update tell which new VPK replaces which old one. */
+  archiveVpkPath?: string;
   categoryId?: number;
   categoryName?: string;
   sourceSection?: string;
@@ -737,6 +765,15 @@ export interface Mod {
 export interface DeleteModsProgress {
   done: number;
   total: number;
+}
+
+// What a delete names: ids are reused slot paths, so size + installedAt prove
+// the mod at the id is still the one that was picked.
+export type DeleteModEntry = Pick<Mod, 'id' | 'size' | 'installedAt'>;
+
+export interface DeleteModsResult {
+  /** Ids whose mod was gone or had changed since it was picked. Nothing was deleted for them. */
+  skipped: string[];
 }
 
 export interface MergeModsArgs {
@@ -1200,6 +1237,7 @@ export interface HiddenMod {
 
 export interface AppSettings {
   deadlockPath: string | null;
+  lastDialogDirectory: string | null;
   devMode: boolean;
   devDeadlockPath: string | null;
   /** Last directory used for a Foundry stock-asset export. */
@@ -1231,13 +1269,28 @@ export interface AppSettings {
   /** Installing a different file of an already-enabled mod disables the
    *  prior variant (not about updates). */
   autoDisableSiblingVariants: boolean;
+  /** Pair one unmatched installed file with one remaining new upload after
+   *  normal update matching, even when their names and descriptions differ. */
+  autoMatchRemainingFiles: boolean;
+  /** Skip the confirmation before manually replacing an installed mod file. */
+  skipModReplacementConfirmation: boolean;
+  /** Make Replace the main action in the manual update replacement view. */
+  swapManualReplacementActions: boolean;
+  /** Retain removed mod files for 24 hours. Disabling stops new captures only. */
+  keepModBackups: boolean;
   /** After a successful GameBanana download, immediately enable the installed
    *  VPKs instead of leaving them in the disabled library. Off by default. */
   autoEnableDownloads: boolean;
   /** Args written to Steam's localconfig.vdf for Deadlock just before launch. */
   steamLaunchOptions: string;
   updateReleaseChannel: 'stable' | 'preview';
+  /** Ask GitHub for a newer release on launch. Off by default: a fresh install
+   *  sends nothing until the user opts in or checks by hand. */
   checkUpdatesOnStartup: boolean;
+  /** Set once the user saves the Launch Options card. Until then (or while the
+   *  string is non-empty) an empty `steamLaunchOptions` is just the default and
+   *  must never overwrite what the user set in Steam themselves. */
+  steamLaunchOptionsManaged: boolean;
   /** Currently active profile. */
   activeProfileId: string | null;
   /** Ask for confirmation before "Update" overwrites a profile with the current
@@ -1398,17 +1451,16 @@ export interface AppSettings {
    *  means creator defaults (visibility/camera on, developer tools off); an
    *  explicit empty list means the user disabled every optional setting. */
   performanceConfigOptIns?: Record<string, string[]>;
-  /** A historical upstream version the user pinned from the full-history
-   *  browser, per preset id. The version names a release held in the
-   *  main-process fetch cache; ref and date are display metadata. Cleared when
-   *  the user picks a bundled version instead. */
-  performanceConfigRemotePins?: Record<string, { version: string; ref: string; date: string }>;
+  /** Which video.txt variant to write, per preset id, for a preset that ships
+   *  several (OptiLock Ultra Potato: with or without shadows). A missing entry,
+   *  or one the release does not ship, means the preset's default variant. */
+  performanceVideoVariants?: Record<string, string>;
   /** Track the newest upstream release of the selected preset instead of the
    *  newest bundled one: the card fetches upstream (GitHub) on demand and
    *  Apply writes the fetched release, falling back to bundled data when
    *  offline. Undefined = on (the presets exist to mirror living community
    *  configs); explicit false = only ever apply the reviewed bundled
-   *  releases. A per-preset version pin in `performanceConfigVersions` beats
+   *  releases. A per-preset version pick in `performanceConfigVersions` beats
    *  tracking: an explicit rollback is the stronger, deliberate choice. */
   performanceTrackLatest?: boolean;
   /** Editor binary used to open gameinfo.gi for hand edits. null = the OS

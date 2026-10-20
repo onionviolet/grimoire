@@ -3,7 +3,9 @@ import { useTranslation } from 'react-i18next';
 import type { MergedModSource } from '../types/mod';
 import { getHeroRenderPath } from '../lib/lockerUtils';
 import { getForgeBadgePath } from '../lib/assetPath';
+import { currentPixelRatio, sizeGameBananaThumbUrl } from '../lib/gameBananaImage';
 import ImageContextMenu from './ImageContextMenu';
+import { RevealImage } from './common/RevealImage';
 
 interface ModThumbnailProps {
   src?: string;
@@ -32,6 +34,12 @@ interface ModThumbnailProps {
    *  so there is no remote thumbnail to fetch and Grimoire will not go looking
    *  for one: the bundled badge stands in. */
   forgeInstalled?: boolean;
+  /** Displayed box in CSS px. A GameBanana 530 thumbnail is swapped for its
+   *  220 sibling when that covers the box at the current pixel ratio. */
+  width?: number;
+  height?: number;
+  /** First visible row: fetch eagerly at high priority. */
+  priority?: boolean;
 }
 
 export default function ModThumbnail({
@@ -48,6 +56,9 @@ export default function ModThumbnail({
   mergedSources,
   enableImageContextMenu = true,
   forgeInstalled,
+  width,
+  height,
+  priority,
 }: ModThumbnailProps) {
   const { t } = useTranslation();
   const shouldBlur = nsfw && hideNsfw;
@@ -56,7 +67,8 @@ export default function ModThumbnail({
   // shows its hero render in the Locker. NSFW blur is suppressed for both
   // because neither is a user-uploaded image.
   const forgeBadge = forgeInstalled && !src ? getForgeBadgePath() : undefined;
-  const resolvedSrc = heroPortrait ? getHeroRenderPath(heroPortrait) : (src ?? forgeBadge);
+  const sizedSrc = src && width ? sizeGameBananaThumbUrl(src, width, currentPixelRatio(), height) : src;
+  const resolvedSrc = heroPortrait ? getHeroRenderPath(heroPortrait) : (sizedSrc ?? forgeBadge);
   const resolvedBlur = heroPortrait || forgeBadge ? false : shouldBlur;
 
   // Collage path: only when there's no explicit src and we have sources to
@@ -87,11 +99,12 @@ export default function ModThumbnail({
   const thumbnail = (
     <div className={`relative overflow-hidden ${className}`}>
       <div className={`w-full h-full ${imageClassName}`}>
-        <img
+        <RevealImage
           src={resolvedSrc}
+          fallbackSrc={!heroPortrait && sizedSrc !== src ? src : undefined}
           alt={alt}
-          loading="lazy"
-          decoding="async"
+          priority={priority}
+          fallback={fallback}
           className={`block h-full w-full ${imageFit === 'contain' ? 'object-contain' : imageFit === 'fill' ? 'object-fill' : 'object-cover'} transition-[filter] duration-200 ${
             resolvedBlur ? 'blur-xl scale-110' : ''
           }`}
@@ -110,7 +123,7 @@ export default function ModThumbnail({
   if (resolvedBlur || !enableImageContextMenu) return thumbnail;
 
   return (
-    <ImageContextMenu src={resolvedSrc} alt={alt}>
+    <ImageContextMenu src={resolvedSrc} alt={alt} copySrc={heroPortrait ? undefined : src}>
       {thumbnail}
     </ImageContextMenu>
   );
@@ -144,20 +157,16 @@ function MergedCollage({ sources, alt, className, shouldBlur, enableImageContext
           <div key={idx} className="relative bg-bg-tertiary overflow-hidden">
             {cell.kind === 'image' ? (
               shouldBlur ? (
-                <img
+                <RevealImage
                   src={cell.url}
                   alt=""
-                  loading="lazy"
-                  decoding="async"
                   className="block w-full h-full object-cover blur-xl scale-110"
                 />
               ) : enableImageContextMenu ? (
                 <ImageContextMenu src={cell.url} alt={alt}>
-                  <img
+                  <RevealImage
                     src={cell.url}
                     alt=""
-                    loading="lazy"
-                    decoding="async"
                     className="block w-full h-full object-cover"
                   />
                 </ImageContextMenu>
@@ -166,11 +175,9 @@ function MergedCollage({ sources, alt, className, shouldBlur, enableImageContext
                 // right-click), but the cell still marks its own source so that
                 // menu can act on the tile actually under the pointer rather
                 // than on the merged mod's first source.
-                <img
+                <RevealImage
                   src={cell.url}
                   alt=""
-                  loading="lazy"
-                  decoding="async"
                   data-collage-src={cell.url}
                   className="block w-full h-full object-cover"
                 />

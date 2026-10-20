@@ -22,7 +22,7 @@ vi.mock('node:worker_threads', async () => {
 vi.mock('./launch', async (importOriginal) => ({ ...await importOriginal<typeof import('./launch')>(), isDeadlockRunning: async () => false }));
 
 import { approveVpkSafety, inspectVpkSafety, modSafetySnapshot } from './modSafety';
-import { deleteMod, installEnabledVpk, scanMods, swapModPriority } from './mods';
+import { deleteMods, installEnabledVpk, scanMods, swapModPriority } from './mods';
 import { restoreFromStash, stashEnabledMods } from './launch';
 import { saveMetadata } from './metadata';
 
@@ -42,6 +42,7 @@ beforeEach(async () => {
 });
 afterEach(async () => { await fs.rm(root, { recursive: true, force: true }); });
 const idAt = async (path: string) => (await scanMods(root)).find((m) => m.path === path)!.id;
+const entryAt = async (path: string) => (await scanMods(root)).find((m) => m.path === path)!;
 
 describe('safety snapshots follow the bytes', () => {
     it('swap exchanges the badges, so allowing the moved mod sends its own fingerprint', async () => {
@@ -68,7 +69,7 @@ describe('safety snapshots follow the bytes', () => {
         await inspectVpkSafety(pak03);
         await inspectVpkSafety(pak05);
 
-        await deleteMod(root, await idAt(pak03));
+        await deleteMods(root, [await entryAt(pak03)]);
         await fs.writeFile(pak03, other);
         await fs.writeFile(pak05, other);
 

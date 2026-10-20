@@ -55,7 +55,7 @@ const ALIASED: ReadonlyArray<{
     { display: 'Venator', panorama: ['priest'], sound: 'priest' },
     { display: 'Victor', panorama: ['frank'], sound: 'frank' },
     { display: 'Vindicta', panorama: ['hornet'], sound: 'hornet' },
-    { display: 'Vyper', panorama: ['viper'], sound: 'viper' },
+    { display: 'Vyper', panorama: ['viper', 'kali'], sound: 'viper' },
 ];
 
 describe('the aliased roster', () => {

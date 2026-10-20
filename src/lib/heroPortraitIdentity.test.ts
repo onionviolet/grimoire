@@ -70,7 +70,7 @@ describe('portrait hero identity', () => {
     ['Venator', ['priest']],
     ['Victor', ['frank']],
     ['Vindicta', ['hornet']],
-    ['Vyper', ['viper']],
+    ['Vyper', ['viper', 'kali']],
   ];
 
   it.each(ALIASED_PANORAMA)('round-trips every %s portrait folder', (displayName, codenames) => {

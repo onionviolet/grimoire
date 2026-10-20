@@ -163,6 +163,91 @@ describe('idempotency: a second run adopts nothing and mints no duplicates', () 
   });
 });
 
+describe('unknown-mod rows from startup do not count as managed', () => {
+  const sha = (content: Buffer) => createHash('sha256').update(content).digest('hex');
+
+  it('adopts shared-folder files that only carry the backfilled hash and inferred hero', async () => {
+    const sb = makeSandbox();
+    const enabledBytes = vpkBytes('DMM-ENABLED-SKIN-111');
+    const disabledBytes = vpkBytes('DMM-DISABLED-HUD-222');
+    const liveSlot = join(sb.addons, 'pak50_dir.vpk');
+    const disabledSlot = join(sb.disabled, 'hud_thing_dir.vpk');
+    writeFileSync(liveSlot, enabledBytes);
+    writeFileSync(disabledSlot, disabledBytes);
+    // What backfillMissingMetadataHashes + enrichMod leave on unknown VPKs.
+    writeFileSync(
+      join(sb.userData, 'mod-metadata.json'),
+      JSON.stringify({
+        'pak50_dir.vpk': {
+          sha256: sha(enabledBytes),
+          globalType: null,
+          globalTypeClassifierVersion: 4,
+          lockerHero: 'Mina',
+          lockerHeroVpkChecked: true,
+          abilitySounds: null,
+        },
+        'hud_thing_dir.vpk': { sha256: sha(disabledBytes), globalType: 'hud', globalTypeClassifierVersion: 4 },
+      })
+    );
+    writeState(sb, [
+      { id: 111, name: 'Enabled Skin', enabled: true, vpks: [liveSlot] },
+      { id: 222, name: 'Hud Thing', enabled: false, vpks: [disabledSlot] },
+    ]);
+
+    const addonsBefore = fileNames(sb.addons);
+    const report = await run(sb);
+    expect(report.adopted.map((a) => a.submissionId).sort()).toEqual([111, 222]);
+    const meta = JSON.parse(readFileSync(join(sb.userData, 'mod-metadata.json'), 'utf-8'));
+    expect(meta['pak50_dir.vpk'].gameBananaId).toBe(111);
+    expect(meta['hud_thing_dir.vpk'].gameBananaId).toBe(222);
+    // Adopted in place: no extra slot, no copy.
+    expect(fileNames(sb.addons)).toEqual(addonsBefore);
+  });
+
+  it('a hero the user assigned by hand still protects the file', async () => {
+    const sb = makeSandbox();
+    const bytes = vpkBytes('USERS-OWN-SKIN');
+    const liveSlot = join(sb.addons, 'pak50_dir.vpk');
+    writeFileSync(liveSlot, bytes);
+    writeFileSync(
+      join(sb.userData, 'mod-metadata.json'),
+      JSON.stringify({ 'pak50_dir.vpk': { sha256: sha(bytes), lockerHero: 'Mina', lockerHeroSource: 'manual' } })
+    );
+    writeState(sb, [{ id: 111, name: 'Enabled Skin', enabled: true, vpks: [liveSlot] }]);
+
+    const report = await run(sb);
+    expect(report.adopted).toEqual([]);
+    expect(report.skipped[0].reason).toContain('already managed');
+  });
+
+  it('identifies an unknown twin instead of copying the same bytes again', async () => {
+    const sb = makeSandbox();
+    const bytes = vpkBytes('PROFILE-COPY-333');
+    const profileVpk = join(sb.separate, 'pak01_dir.vpk');
+    const twin = join(sb.addons, 'pak50_dir.vpk');
+    writeFileSync(profileVpk, bytes);
+    writeFileSync(twin, bytes);
+    writeFileSync(join(sb.userData, 'mod-metadata.json'), JSON.stringify({ 'pak50_dir.vpk': { sha256: sha(bytes) } }));
+    writeState(sb, [{ id: 333, name: 'Profile Mod', enabled: true, vpks: [profileVpk] }]);
+
+    const addonsBefore = fileNames(sb.addons);
+    const report = await run(sb);
+    expect(report.adopted.map((a) => [a.submissionId, a.installedAs])).toEqual([[333, 'pak50_dir.vpk']]);
+    expect(fileNames(sb.addons)).toEqual(addonsBefore);
+    expect(existsSync(profileVpk)).toBe(true);
+  });
+});
+
+/** Scanning mints a sidecar `modUid` for every VPK (a Grimoire feature); drop it so the rest of each entry can be compared. */
+function withoutModUid(meta: Record<string, Record<string, unknown>>): Record<string, Record<string, unknown>> {
+  const out: Record<string, Record<string, unknown>> = {};
+  for (const [key, value] of Object.entries(meta)) {
+    const { modUid: _modUid, ...rest } = value;
+    if (Object.keys(rest).length > 0) out[key] = rest;
+  }
+  return out;
+}
+
 describe('staleness guard: stale DMM records cannot hijack reused slots', () => {
   it('skips a bare pakNN slot that is newer than the record claiming it', async () => {
     const sb = makeSandbox();
@@ -178,7 +263,7 @@ describe('staleness guard: stale DMM records cannot hijack reused slots', () => 
     // No identity was stamped onto the file.
     const metaPath = join(sb.userData, 'mod-metadata.json');
     if (existsSync(metaPath)) {
-      expect(JSON.parse(readFileSync(metaPath, 'utf-8'))['pak50_dir.vpk']).toBeUndefined();
+      expect(withoutModUid(JSON.parse(readFileSync(metaPath, 'utf-8')))['pak50_dir.vpk']).toBeUndefined();
     }
   });
 
@@ -240,8 +325,10 @@ describe('catalog validation: unknown submission ids are never stamped', () => {
     const scan = await run(sb, { planOnly: true, isKnownSubmission: (id) => id === 111 });
     expect(scan.preview.map((p) => p.submissionId)).toEqual([111]);
     expect(scan.skipped.map((s) => s.submissionId)).toEqual([76]);
-    // Dry run: nothing written.
-    expect(existsSync(join(sb.userData, 'mod-metadata.json'))).toBe(false);
+    // Dry run: no adoption identity written. (Scanning mints a sidecar modUid
+    // per VPK, which is a Grimoire identity and not an adoption stamp.)
+    const metaPath = join(sb.userData, 'mod-metadata.json');
+    if (existsSync(metaPath)) expect(withoutModUid(JSON.parse(readFileSync(metaPath, 'utf-8')))).toEqual({});
   });
 });
 
@@ -250,6 +337,7 @@ describe('recoverability: sidecar backup before the batch write', () => {
     const sb = makeSandbox();
     const liveSlot = join(sb.addons, 'pak50_dir.vpk');
     writeFileSync(liveSlot, vpkBytes('ENABLED-MOD-111'));
+    writeFileSync(join(sb.addons, 'pak01_dir.vpk'), vpkBytes('PRECIOUS'));
     const seeded = JSON.stringify({ 'pak01_dir.vpk': { gameBananaId: 42, modName: 'Precious' } });
     writeFileSync(join(sb.userData, 'mod-metadata.json'), seeded);
     writeState(sb, [{ id: 111, name: 'Enabled A', enabled: true, vpks: [liveSlot] }]);
@@ -258,7 +346,7 @@ describe('recoverability: sidecar backup before the batch write', () => {
     const backupDir = join(sb.userData, 'mod-metadata.backups');
     const backups = fileNames(backupDir);
     expect(backups.length).toBe(1);
-    expect(readFileSync(join(backupDir, backups[0]), 'utf-8')).toBe(seeded);
+    expect(withoutModUid(JSON.parse(readFileSync(join(backupDir, backups[0]), 'utf-8')))).toEqual(JSON.parse(seeded));
 
     // No-op re-runs (everything already managed) must not add backups.
     await run(sb);
@@ -272,6 +360,7 @@ describe('recoverability: sidecar backup before the batch write', () => {
     const staleVpk = join(sb.disabled, 'hijack_me_dir.vpk');
     writeFileSync(liveSlot, vpkBytes('ENABLED-MOD-111'));
     writeFileSync(staleVpk, vpkBytes('SOMEONE-ELSES-MOD'));
+    writeFileSync(join(sb.addons, 'pak01_dir.vpk'), vpkBytes('PRECIOUS'));
     const seeded = JSON.stringify({ 'pak01_dir.vpk': { gameBananaId: 42 } });
     writeFileSync(join(sb.userData, 'mod-metadata.json'), seeded);
     writeState(sb, [
@@ -286,7 +375,7 @@ describe('recoverability: sidecar backup before the batch write', () => {
     const backupDir = join(sb.userData, 'mod-metadata.backups');
     const backups = fileNames(backupDir);
     expect(backups.length).toBe(1);
-    expect(readFileSync(join(backupDir, backups[0]), 'utf-8')).toBe(seeded);
+    expect(withoutModUid(JSON.parse(readFileSync(join(backupDir, backups[0]), 'utf-8')))).toEqual(JSON.parse(seeded));
 
     // Entry 222 stays adoptable-but-stale forever; repeated clicks execute
     // again but write nothing, so no new backup may appear (it would rotate

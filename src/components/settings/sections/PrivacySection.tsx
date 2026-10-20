@@ -1,6 +1,6 @@
 import { useSegmentedTabs } from '../../common/useSegmentedTabs';
 import { useCallback, useEffect, useState } from 'react';
-import { useTranslation } from 'react-i18next';
+import { Trans, useTranslation } from 'react-i18next';
 import { Eye, EyeClosed, EyeOff, Shield } from 'lucide-react';
 import { useAppStore } from '../../../stores/appStore';
 import { showToast } from '../../../stores/toastStore';
@@ -10,11 +10,14 @@ import { HiddenCreatorsManager, HiddenCreatorsModal, HiddenModsManager, HiddenMo
 import type { SaltIngestStatus } from '../../../types/electron';
 import type { HiddenCreator, HiddenMod, NsfwContentMode } from '../../../types/mod';
 
+const PRIVACY_PAGE_URL = 'https://github.com/onionviolet/grimoire/blob/main/docs/guide/privacy.md';
+
 // What Grimoire shows you and what it shares on your behalf.
 export default function PrivacySection() {
   const { t } = useTranslation();
   const nsfwTabs = useSegmentedTabs<NsfwContentMode>();
-  const { settings, saveSettings } = useAppStore();
+  const settings = useAppStore((s) => s.settings);
+  const saveSettings = useAppStore((s) => s.saveSettings);
   const [hiddenCreatorsOpen, setHiddenCreatorsOpen] = useState(false);
   const [hiddenModsOpen, setHiddenModsOpen] = useState(false);
   const [saltIngestStatus, setSaltIngestStatus] = useState<SaltIngestStatus | null>(null);
@@ -79,7 +82,25 @@ export default function PrivacySection() {
 
   return (
     <>
-      <Card title={<Tx k="settings.nav.privacy" fallback="Privacy & Content" />} icon={Shield}>
+      <Card
+        title={<Tx k="settings.nav.privacy" fallback="Privacy & Content" />}
+        description={
+          <Trans
+            i18nKey="settings.privacy.whatGrimoireSends"
+            components={{
+              privacyLink: (
+                <a
+                  href={PRIVACY_PAGE_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline decoration-dotted underline-offset-2 transition-colors hover:text-accent"
+                />
+              ),
+            }}
+          />
+        }
+        icon={Shield}
+      >
         <div className="space-y-6">
           <div>
             <span className="block text-sm font-medium text-text-primary">

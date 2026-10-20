@@ -38,24 +38,36 @@ describe('appStore deleteMods', () => {
 
   it('drops the deleted ids and forwards progress', async () => {
     const onProgress = vi.fn();
-    deleteMods.mockImplementationOnce(async (_ids, report) => {
+    deleteMods.mockImplementationOnce(async (_mods, report) => {
       report?.({ done: 1, total: 2 });
       report?.({ done: 2, total: 2 });
+      return { skipped: [] };
     });
 
-    await useAppStore.getState().deleteMods(['a', 'c'], onProgress);
+    await useAppStore.getState().deleteMods([mod('a'), mod('c')], onProgress);
 
-    expect(deleteMods).toHaveBeenCalledWith(['a', 'c'], onProgress);
+    expect(deleteMods).toHaveBeenCalledWith([mod('a'), mod('c')], onProgress);
     expect(onProgress.mock.calls).toEqual([[{ done: 1, total: 2 }], [{ done: 2, total: 2 }]]);
     expect(useAppStore.getState().mods.map((m) => m.id)).toEqual(['b']);
     expect(getMods).not.toHaveBeenCalled();
+  });
+
+  it('keeps skipped mods in the list and resyncs', async () => {
+    deleteMods.mockResolvedValueOnce({ skipped: ['c'] });
+    getMods.mockResolvedValueOnce([mod('b'), mod('c')]);
+
+    await useAppStore.getState().deleteMods([mod('a'), mod('c')]);
+
+    expect(useAppStore.getState().mods.map((m) => m.id)).toEqual(['b', 'c']);
+    expect(getMods).toHaveBeenCalledTimes(1);
+    expect(useAppStore.getState().modsError).toBeNull();
   });
 
   it('resyncs and surfaces an unexpected failure', async () => {
     deleteMods.mockRejectedValueOnce(new Error('EBUSY'));
     getMods.mockResolvedValueOnce([mod('b'), mod('c')]);
 
-    await useAppStore.getState().deleteMods(['a', 'c']);
+    await useAppStore.getState().deleteMods([mod('a'), mod('c')]);
 
     expect(useAppStore.getState().mods.map((m) => m.id)).toEqual(['b', 'c']);
     expect(useAppStore.getState().modsError).toBe('Error: EBUSY');
@@ -65,7 +77,7 @@ describe('appStore deleteMods', () => {
     deleteMods.mockRejectedValueOnce(new Error('Game is running'));
     getMods.mockResolvedValueOnce([mod('a'), mod('b'), mod('c')]);
 
-    await useAppStore.getState().deleteMods(['a']);
+    await useAppStore.getState().deleteMods([mod('a')]);
 
     expect(useAppStore.getState().mods.map((m) => m.id)).toEqual(['a', 'b', 'c']);
     expect(useAppStore.getState().modsError).toBeNull();

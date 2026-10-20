@@ -145,7 +145,7 @@ interface MatchRowProps {
     durationS: number
     startTime?: number
     netWorth?: number
-    damage?: number
+    damage?: number | null
     compact?: boolean
 }
 
@@ -204,7 +204,9 @@ export function MatchRow({
                     <div className="text-xs text-text-secondary">{t('stats.primitives.souls')}</div>
                 </div>
             )}
-            {!compact && damage != null && (
+            {/* Rows persisted before damage became nullable carry a literal 0
+                standing in for "unknown", so treat 0 as absent too. */}
+            {!compact && damage != null && damage > 0 && (
                 <div className="text-right shrink-0 w-24 hidden lg:block">
                     <div className="text-sm tabular-nums">{damage.toLocaleString()}</div>
                     <div className="text-xs text-text-secondary">{t('stats.primitives.damage')}</div>

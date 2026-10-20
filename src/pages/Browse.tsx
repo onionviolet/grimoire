@@ -1,4 +1,3 @@
-import { useVirtualizer } from '@tanstack/react-virtual';
 import type { LucideIcon } from 'lucide-react';
 import {
 AlertTriangle,
@@ -26,7 +25,8 @@ import React,{ useCallback,useEffect,useId,useLayoutEffect,useMemo,useRef,useSta
 import { useTranslation } from 'react-i18next';
 import { useNavigate,useSearchParams } from 'react-router-dom';
 import { BrowseArtistBanner } from '../components/browse/BrowseArtistBanner';
-import { MemoizedModCard,ModCardSkeleton } from '../components/browse/BrowseModCard';
+import { ModCardSkeleton } from '../components/browse/BrowseModCard';
+import { BrowseVirtualGrid } from '../components/browse/BrowseVirtualGrid';
 import {
 estimateBrowseRowHeight,
 getReadableCardGridGap,
@@ -47,19 +47,19 @@ import ImportCollectionModal from '../components/ImportCollectionModal';
 import ModDetailsModal from '../components/ModDetailsModal';
 import ImportProfileDialog from '../components/profiles/ImportProfileDialog';
 import {
-assertReplacementSafety,
 backfillGameBananaFileId,
 browseMods,
-createSnapshot,
-deleteMod as deleteModApi,
 downloadMod,
 getGamebananaCategories,
 getGamebananaSections,
 getModDetails,
 getSubmitterLinks,
+isGameRunningModLockError,
 } from '../lib/api';
 import { getActiveDeadlockPath,shouldBlurNsfw } from '../lib/appSettings';
 import { parseGameBananaImportHandoff } from '../lib/browserImportHandoff';
+import { browseRemoteFilters } from '../lib/browseFilters';
+import { categorySubtreeIds } from '../lib/heroFilter';
 import {
 getVisibleDownloadQueue,
 isDownloadRequestPending,
@@ -69,7 +69,6 @@ requestDownload,
 useDownloadQueueActivity,
 } from '../lib/downloadActivity';
 import { findCategoryByName,inferHeroFromTitle } from '../lib/lockerUtils';
-import { findReplacementTargetIdsAfterInstall } from '../lib/replacementCleanup';
 import { CARD_SIZE_MAX,CARD_SIZE_MIN,readPref,writePref } from '../lib/uiPrefs';
 import { decideFileDownload,replaceableFilesFor,summarizeUpdateScope } from '../lib/updateActions';
 import { mergeSourceFileIds } from '../lib/updateCheck';
@@ -77,11 +76,6 @@ import { classifyModFiles } from '../lib/updateFileMatch';
 import { usePrefersReducedMotion } from '../lib/usePrefersReducedMotion';
 import { useStableCallback } from '../lib/useStableCallback';
 import { visibleInstalledMods } from '../lib/visibleMods';
-import {
-createEnabledVpkRestoreSnapshot,
-createGlobalVpkRestoreSnapshot,
-restoreReplacementVpkState,
-} from '../lib/vpkRestore';
 import type { BrowseArtistRef,BrowseLayout,BrowseTimeRange } from '../stores/appStore';
 import {
 useAppStore,
@@ -99,6 +93,7 @@ GameBananaSection,
 } from '../types/gamebanana';
 import { getPrimaryFile,isModOutdated } from '../types/gamebanana';
 import type { HiddenCreator,HiddenMod,NsfwContentMode } from '../types/mod';
+import { useElasticOverscroll } from '../lib/useElasticOverscroll';
 
 const DEFAULT_PER_PAGE = 36;
 // Row count below which the local catalog mirror is treated as unusable. A
@@ -234,7 +229,6 @@ type QueuedDownloadState = {
   position: number;
 };
 
-const BROWSE_GRID_OVERSCAN_ROWS = 4;
 const BROWSE_CARD_SIZE_MIN = 220;
 const BROWSE_CARD_SIZE_BASE = 118;
 const BROWSE_CARD_SIZE_VW = 0.07;
@@ -271,18 +265,6 @@ function clampBrowseCardSizeMultiplier(value: number): number {
 // to leave Installed untouched. uiPrefs reads either page's old key.
 function readBrowseCardSizeMultiplier(): number {
   return readPref('cardSize');
-}
-
-function getBrowseCardSizeCss(multiplier: number): string {
-  const nextMultiplier = clampBrowseCardSizeMultiplier(multiplier);
-  return `clamp(${BROWSE_CARD_SIZE_MIN * nextMultiplier}px, calc(${BROWSE_CARD_SIZE_BASE * nextMultiplier}px + ${BROWSE_CARD_SIZE_VW * 100 * nextMultiplier}vw + ${BROWSE_CARD_SIZE_VH * 100 * nextMultiplier}vh), ${BROWSE_CARD_SIZE_MAX * nextMultiplier}px)`;
-}
-
-function getBrowseCardSizeGridStyle(multiplier: number): React.CSSProperties {
-  return {
-    '--card-size': getBrowseCardSizeCss(multiplier),
-    gridTemplateColumns: 'repeat(auto-fill, minmax(var(--card-size), 1fr))',
-  } as React.CSSProperties;
 }
 
 function getResponsiveBrowseCardSize(metrics: BrowseViewportMetrics, multiplier: number): number {
@@ -342,6 +324,19 @@ function renderErrorWithLinks(text: string): React.ReactNode {
     }
     return <span key={i}>{part}</span>;
   });
+}
+
+const USER_CANCELLED_MESSAGES = new Set(['Cancelled by user', 'CANCELLED_BY_USER', 'User cancelled multi-VPK pick']);
+
+// `error` only renders over an empty grid, so a failed install or details
+// load would otherwise vanish while results are on screen. Game-running
+// refusals already toast in lib/api.
+function toastModActionError(err: unknown) {
+  if (isGameRunningModLockError(err)) return;
+  const detail = (err instanceof Error ? err.message : String(err))
+    .replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
+  if (USER_CANCELLED_MESSAGES.has(detail)) return;
+  showToast(detail, { tone: 'error', duration: 7000 });
 }
 
 function BrowseViewOptionControl<T extends string>({
@@ -423,7 +418,6 @@ export default function Browse() {
   const loadMods = useAppStore((s) => s.loadMods);
   const deleteMod = useAppStore((s) => s.deleteMod);
   const toggleMod = useAppStore((s) => s.toggleMod);
-  const setModPriorityFolder = useAppStore((s) => s.setModPriorityFolder);
   const installedMods = useAppStore((s) => s.mods);
   const cursorPacks = useCursorPackStore((s) => s.packs);
   const loadCursorPacks = useCursorPackStore((s) => s.load);
@@ -461,10 +455,6 @@ export default function Browse() {
   const [browseViewportMetrics, setBrowseViewportMetrics] = useState<BrowseViewportMetrics>(DEFAULT_BROWSE_VIEWPORT_METRICS);
   const [browseCardSizeMultiplier, setBrowseCardSizeMultiplierState] = useState(readBrowseCardSizeMultiplier);
   const browseCardSize = getResponsiveBrowseCardSize(browseViewportMetrics, browseCardSizeMultiplier);
-  const browseCardSizeGridStyle = useMemo(
-    () => getBrowseCardSizeGridStyle(browseCardSizeMultiplier),
-    [browseCardSizeMultiplier]
-  );
   const viewMode: ViewMode = layout === 'list' ? 'list' : 'grid';
   const setSearch = useCallback((v: string) => setBrowseUi({ search: v }), [setBrowseUi]);
   const setLayout = useCallback((v: BrowseLayout) => setBrowseUi({ layout: v }), [setBrowseUi]);
@@ -514,6 +504,7 @@ export default function Browse() {
   const perPage = DEFAULT_PER_PAGE; // Fixed value for infinite scroll
   const [sections, setSections] = useState<GameBananaSection[]>([]);
   const [categories, setCategories] = useState<GameBananaCategoryNode[]>([]);
+  const [categoriesSection, setCategoriesSection] = useState<string | null>(null);
   // Hero list comes from the Mod section's category tree (Mod -> Skins -> heroes).
   // Cached separately so hero filtering still works on the Sound tab, where the
   // current section's category tree has no Skins parent.
@@ -589,6 +580,8 @@ export default function Browse() {
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   // Section tabs (Mods / Sounds / Wip), so arrow-key movement can follow focus.
   const sectionTabRefs = useRef<(HTMLButtonElement | null)[]>([]);
+
+  useElasticOverscroll(scrollContainerRef);
   // The virtualized grid's relative wrapper (the div sized to getTotalSize()).
   // Used by the scroll anchor below to translate scrollTop into item space.
   const gridWrapRef = useRef<HTMLDivElement | null>(null);
@@ -746,12 +739,12 @@ export default function Browse() {
   // Outside-click and Escape for the filters popover live in AnchoredPopover:
   // the panel is portaled to <body>, so a containment check against filtersRef
   // alone would read every click inside the panel as an outside click.
-  const closeFilters = useCallback(() => setFiltersOpen(false), []);
+  const closeFilters = useCallback(() => setFiltersOpen(false), [setFiltersOpen]);
 
-  const closeImportMenu = useCallback(() => setImportMenuOpen(false), []);
+  const closeImportMenu = useCallback(() => setImportMenuOpen(false), [setImportMenuOpen]);
 
   // Same as the filters panel: dismissal is AnchoredPopover's job now.
-  const closeViewMenu = useCallback(() => setViewMenuOpen(false), []);
+  const closeViewMenu = useCallback(() => setViewMenuOpen(false), [setViewMenuOpen]);
 
   // Availability of the local catalog mirror. Content rating, date-added, A-Z
   // sort and FTS search can ONLY be served from it, so this one flag decides
@@ -844,6 +837,7 @@ export default function Browse() {
   // having no items, and stale ids restored from a previous session.
   const rootCategoryNameById = useMemo(() => {
     const map = new Map<number, string>();
+    if (categoriesSection !== section) return map;
     const walk = (nodes: GameBananaCategoryNode[], rootName: string | null) => {
       for (const node of nodes) {
         const root = rootName ?? node.name;
@@ -853,7 +847,7 @@ export default function Browse() {
     };
     walk(categories, null);
     return map;
-  }, [categories]);
+  }, [categories, categoriesSection, section]);
 
   const effectiveCategoryName =
     effectiveCategoryId === undefined ? undefined : rootCategoryNameById.get(effectiveCategoryId);
@@ -862,10 +856,14 @@ export default function Browse() {
   // Sound or Wip. Resolve this outside searchLocal so the asynchronously loaded
   // name can participate in the request identity below.
   const skinsCategory = findCategoryByName(modCategories, 'Skins');
-  const skinsCategoryId = skinsCategory?.id;
-  const selectedHeroName = heroCategoryId !== 'all' && skinsCategory?.children
-    ? skinsCategory.children.find((child) => child.id === heroCategoryId)?.name
+  const selectedHeroNode = heroCategoryId !== 'all' && skinsCategory?.children
+    ? skinsCategory.children.find((child) => child.id === heroCategoryId)
     : undefined;
+  const selectedHeroName = selectedHeroNode?.name;
+  const selectedHeroCategoryIds = useMemo(
+    () => (selectedHeroNode ? categorySubtreeIds(selectedHeroNode) : undefined),
+    [selectedHeroNode]
+  );
 
   // Debounce the search input: every keystroke previously fired a full FTS5
   // query + count + render, which felt slow even when the DB was fast. 250ms
@@ -1180,15 +1178,18 @@ export default function Browse() {
     setError(null);
 
     try {
+      const remoteFilters = browseRemoteFilters({
+        section, search: effectiveSearch, heroCategoryId, selectedHeroName, effectiveCategoryId,
+      });
       const response = await browseMods(
         page,
         perPage,
         // In artist mode the grid is scoped by submitter; text search and
         // category don't combine cleanly with that on the API, so they're
         // dropped while viewing an artist.
-        submitter ? undefined : (effectiveSearch || undefined),
+        submitter ? undefined : remoteFilters.search,
         section,
-        submitter ? undefined : effectiveCategoryId,
+        submitter ? undefined : remoteFilters.categoryId,
         sort !== 'default' ? sort : undefined,
         submitter?.id
       );
@@ -1274,6 +1275,8 @@ export default function Browse() {
     section,
     perPage,
     effectiveCategoryId,
+    heroCategoryId,
+    selectedHeroName,
     fetchFilterStamp,
     useLocalSearch,
     submitter,
@@ -1328,12 +1331,12 @@ export default function Browse() {
         section: section,
         categoryId: effectiveCategoryId,
         // The cached rows have no category id, only a root category name; see
-        // rootCategoryNameById. Ignored when a hero is selected, which scopes by
-        // title instead.
+        // rootCategoryNameById. Ignored when a hero is selected.
         categoryName: effectiveCategoryName,
-        // Enhanced hero search: pass hero name and skins parent ID
-        heroName: selectedHeroName,
-        skinsCategoryId,
+        // Mod skins match the hero's category. Sound and Wip have no hero
+        // categories, so they can only match the title.
+        heroCategoryIds: section === 'Mod' ? selectedHeroCategoryIds : undefined,
+        heroName: section === 'Mod' ? undefined : selectedHeroName,
         sortBy: sortMap[sort] || 'relevance',
         nsfw,
         addedWithin,
@@ -1414,7 +1417,7 @@ export default function Browse() {
         setLoadingMore(false);
       }
     }
-  }, [page, effectiveSearch, section, sort, perPage, effectiveCategoryId, effectiveCategoryName, selectedHeroName, skinsCategoryId, nsfw, addedWithin, customAddedFrom, customAddedTo, hiddenCreatorIds, fetchFilterStamp]);
+  }, [page, effectiveSearch, section, sort, perPage, effectiveCategoryId, effectiveCategoryName, selectedHeroName, selectedHeroCategoryIds, nsfw, addedWithin, customAddedFrom, customAddedTo, hiddenCreatorIds, fetchFilterStamp]);
 
   // Value-compare gate for the filter-reset: remember what filters last
   // triggered a reset; only reset when the new combination is actually
@@ -1519,35 +1522,25 @@ export default function Browse() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Track whether `section` actually changed (vs. the effect just firing on
-  // mount because deps populated for the first time). Without this guard the
-  // hero/category filters were reset to 'all' on every remount, which then
-  // triggered a refetch and threw away the cached scroll position.
-  const lastLoadedSectionRef = useRef<string | null>(null);
+  // The store switches filters with the section. Category loading must never
+  // reset them, including a selection made while this request is in flight.
   useEffect(() => {
     let active = true;
     const selected = sections.find((entry) => entry.modelName === section);
     if (!selected) {
       setCategories([]);
+      setCategoriesSection(null);
       return () => {
         active = false;
       };
     }
-
-    const sectionChanged = lastLoadedSectionRef.current !== null && lastLoadedSectionRef.current !== section;
-    lastLoadedSectionRef.current = section;
 
     const loadCategories = async () => {
       try {
         const data = await getGamebananaCategories(selected.categoryModelName);
         if (!active) return;
         setCategories(data);
-        // Only reset the hero/category filter when the user actually
-        // switched sections — not on every remount.
-        if (sectionChanged) {
-          setHeroCategoryId('all');
-          setCategoryId('all');
-        }
+        setCategoriesSection(section);
       } catch (err) {
         if (active) {
           setError(String(err));
@@ -1560,7 +1553,7 @@ export default function Browse() {
     return () => {
       active = false;
     };
-  }, [sections, section, setCategoryId, setHeroCategoryId]);
+  }, [sections, section]);
 
   // fetchMods and searchLocal share `lastFetchedStampRef`, and its key
   // (`page` + fetchFilterStamp) describes the FILTERS only, not which backend
@@ -1672,7 +1665,10 @@ export default function Browse() {
           setPage(prev => prev + 1);
         }
       },
-      { threshold: 0.1, rootMargin: '100px' }
+      // Rooted on the grid's own scroller: with the viewport as root its
+      // overflow clip swallowed the margin, so the next page only started at
+      // the very end. A screen of lead time lets it land before it is needed.
+      { root: scrollContainerRef.current, threshold: 0, rootMargin: '0px 0px 900px 0px' }
     );
 
     if (loadMoreRef.current) {
@@ -1841,14 +1837,14 @@ export default function Browse() {
     }
   };
 
-  const handleModClick = async (mod: GameBananaMod) => {
+  const handleModClick = useStableCallback(async (mod: GameBananaMod) => {
     try {
       const details = await getModDetails(mod.id, section, { includeSubmitter: true });
       await applyLoadedModDetails(mod, details, section);
     } catch (err) {
-      setError(String(err));
+      toastModActionError(err);
     }
-  };
+  });
 
   const handleNavigateMod = async (mod: GameBananaMod, direction: ModDetailsNavigationDirection): Promise<void> => {
     if (modalNavigation) return;
@@ -1863,7 +1859,7 @@ export default function Browse() {
       await applyLoadedModDetails(mod, details, section);
     } catch (err) {
       if (modalNavigationRequestRef.current === requestId) {
-        setError(String(err));
+        toastModActionError(err);
       }
     } finally {
       if (modalNavigationRequestRef.current === requestId) {
@@ -1906,7 +1902,7 @@ export default function Browse() {
       }
     } catch (err) {
       if (modalNavigationRequestRef.current === requestId) {
-        setError(String(err));
+        toastModActionError(err);
       }
     } finally {
       if (modalNavigationRequestRef.current === requestId) {
@@ -1925,6 +1921,29 @@ export default function Browse() {
     navigate('/browse', { replace: true });
   }, [browserHandoffItem, handleOpenGameBananaItem, navigate]);
 
+  // Without this, a file the author re-uploaded renders as a plain "Install" and
+  // the mod reads as never downloaded, even though the Installed page flags the
+  // same mod as updatable. The open modal's file list is already the live list,
+  // so the check costs no extra request here. Same classifier, rules and
+  // visible set as the Installed page, over every installed file of the mod.
+  const selectedUpdate = useMemo(() => {
+    const classification = classifyModFiles(
+      selectedMod?.id ?? -1,
+      selectedMod?.files ?? [],
+      visibleMods,
+      mergedFileIds,
+      settings?.autoMatchRemainingFiles ?? true,
+    );
+    const summary = summarizeUpdateScope(classification);
+    return {
+      classification,
+      flagged: summary.flagged,
+      archived: summary.archived,
+      updateFileIds: new Set(summary.targets.keys()),
+      replaceableFiles: replaceableFilesFor(summary.needsPick, visibleMods),
+    };
+  }, [selectedMod, visibleMods, mergedFileIds, settings?.autoMatchRemainingFiles]);
+
   // Stable identity (useStableCallback) so the memoized ModDetailsModal does
   // not re-render every time this large component does (e.g. on every
   // virtualizer range change while the docked sidebar is open).
@@ -1942,91 +1961,21 @@ export default function Browse() {
         visibleMods.filter((mod) => mod.gameBananaId === selectedMod.id),
         { replaceFileId },
       );
-      const replacedIds = new Set(decision.replacedModIds);
-      const replacementTargets = visibleMods.filter((mod) => replacedIds.has(mod.id));
-      const restoreEnabled = createEnabledVpkRestoreSnapshot(replacementTargets);
-      const restoreGlobal = createGlobalVpkRestoreSnapshot(replacementTargets);
-      if (restoreGlobal.ambiguous) {
-        throw new Error(t('installed.updateAll.ambiguousGlobalState'));
-      }
-
-      if (replacementTargets.length > 0) {
-        try {
-          await createSnapshot('pre-update');
-        } catch (error) {
-          console.warn('[Browse download] Failed to capture replacement snapshot:', error);
-        }
-      }
-
-      // When the user already has the picked file (an update onto an installed
-      // successor, or a confirmed replace onto it), nothing is downloaded: the
-      // replaced file is deleted and its state restored onto the installed one.
-      const installedReplacementIds = visibleMods
-        .filter(
-          (mod) =>
-            mod.gameBananaId === selectedMod.id &&
-            mod.gameBananaFileId === fileId &&
-            !replacedIds.has(mod.id),
-        )
-        .map((mod) => mod.id);
-
-      if (installedReplacementIds.length === 0) {
-        // Snapshot capture can leave an optimistic row on screen long enough
-        // for the user to cancel it. Do not cross IPC after that cancellation.
-        if (!isDownloadRequestPending(selectedMod.id, fileId)) return;
-        await downloadMod(
-          selectedMod.id,
-          fileId,
-          fileName,
-          selectedDetailsSection,
-          effectiveCategoryId,
-          selectedMod.name,
-          decision.replacedModIds.length > 0,
-        );
-        await loadMods();
-        const installedAfterDownload = useAppStore.getState().mods;
-        const targetIds = findReplacementTargetIdsAfterInstall(
-          installedAfterDownload,
-          replacementTargets,
-          fileId,
-        );
-        for (const targetId of targetIds) await deleteModApi(targetId);
-      } else {
-        if (!isDownloadRequestPending(selectedMod.id, fileId)) return;
-        await assertReplacementSafety(installedReplacementIds);
-        for (const target of replacementTargets) await deleteModApi(target.id);
-      }
+      // Honor a queued click canceled before it reaches the main process.
+      if (!isDownloadRequestPending(selectedMod.id, fileId)) return;
+      await downloadMod(
+        selectedMod.id,
+        fileId,
+        fileName,
+        selectedDetailsSection,
+        effectiveCategoryId,
+        selectedMod.name,
+        decision.replacedModIds.length > 0,
+        decision.replacedModIds,
+      );
       await loadMods({ force: true });
-
-      if (restoreEnabled.hadEnabled || restoreGlobal.hadGlobal) {
-        const replacements = useAppStore
-          .getState()
-          .mods.filter(
-            (mod) => mod.gameBananaId === selectedMod.id && mod.gameBananaFileId === fileId,
-          );
-        const failures = await restoreReplacementVpkState(
-          replacements,
-          restoreEnabled,
-          restoreGlobal,
-          {
-            setGlobal: (modId) => setModPriorityFolder(modId, true),
-            enable: async (modId) => {
-              if (!await toggleMod(modId)) throw new Error('Failed to enable replacement mod');
-            },
-          },
-        );
-        if (failures.length > 0) {
-          showToast(
-            t('installed.updateAll.restoreStateFailed', {
-              details: failures.map((failure) => `${failure.action}: ${String(failure.error)}`).join('; '),
-            }),
-            { tone: 'warning', duration: 7000 },
-          );
-          await loadMods({ force: true });
-        }
-      }
     } catch (err) {
-      setError(String(err));
+      toastModActionError(err);
     } finally {
       releaseDownloadRequest(selectedMod.id, fileId);
     }
@@ -2039,13 +1988,13 @@ export default function Browse() {
     try {
       await downloadMod(modId, file.id, file.fileName, section, effectiveCategoryId);
     } catch (err) {
-      setError(String(err));
+      toastModActionError(err);
     } finally {
       releaseDownloadRequest(modId, file.id);
     }
   };
 
-  const handleQuickDownload = async (mod: GameBananaMod, anchor?: HTMLElement) => {
+  const handleQuickDownload = useStableCallback(async (mod: GameBananaMod, anchor?: HTMLElement) => {
     if (!activeDeadlockPath) return;
 
     // Check if already downloading or in queue
@@ -2057,7 +2006,7 @@ export default function Browse() {
       // shows the artist card) without a second round-trip against the limiter.
       const details = await getModDetails(mod.id, section, { includeSubmitter: true });
       if (!details.files || details.files.length === 0) {
-        setError(t('browse.errors.noDownloadableFiles'));
+        showToast(t('browse.errors.noDownloadableFiles'), { tone: 'error', duration: 7000 });
         return;
       }
 
@@ -2085,9 +2034,9 @@ export default function Browse() {
 
       await runDownload(mod.id, getPrimaryFile(installable));
     } catch (err) {
-      setError(String(err));
+      toastModActionError(err);
     }
-  };
+  });
 
   const heroOptions = useMemo(() => {
     const skins = findCategoryByName(modCategories, 'Skins');
@@ -2101,6 +2050,7 @@ export default function Browse() {
   }, [modCategories]);
 
   const categoryOptions = useMemo(() => {
+    if (categoriesSection !== section) return [];
     // Per-hero entries under Skins are handled by the dedicated Hero filter, so
     // exclude them here. Everything else (Skins, Model Replacement, HUD,
     // Gameplay Modifications, Maps, Music, Killsounds, ...) becomes a mod-type
@@ -2123,7 +2073,7 @@ export default function Browse() {
     }
 
     return Array.from(byLabel.values()).sort((a, b) => a.label.localeCompare(b.label));
-  }, [categories, heroOptions]);
+  }, [categories, categoriesSection, section, heroOptions]);
 
   const installedIds = useMemo(() => {
     const ids = new Set<number>();
@@ -2176,38 +2126,16 @@ export default function Browse() {
   // file id (rare, e.g. dupe installs), prefer the enabled one as the
   // representative since that's the actionable state.
   const installedFileStates = useMemo(() => {
-    const map = new Map<number, { modId: string; enabled: boolean }>();
+    const map = new Map<number, { modId: string; enabled: boolean; size: number; installedAt: string }>();
     for (const mod of visibleMods) {
       if (typeof mod.gameBananaFileId !== 'number') continue;
       const existing = map.get(mod.gameBananaFileId);
       if (!existing || (mod.enabled && !existing.enabled)) {
-        map.set(mod.gameBananaFileId, { modId: mod.id, enabled: mod.enabled });
+        map.set(mod.gameBananaFileId, { modId: mod.id, enabled: mod.enabled, size: mod.size, installedAt: mod.installedAt });
       }
     }
     return map;
   }, [visibleMods]);
-
-  // Without this, a file the author re-uploaded renders as a plain "Install" and
-  // the mod reads as never downloaded, even though the Installed page flags the
-  // same mod as updatable. The open modal's file list is already the live list,
-  // so the check costs no extra request here. Same classifier, rules and
-  // visible set as the Installed page, over every installed file of the mod.
-  const selectedUpdate = useMemo(() => {
-    const classification = classifyModFiles(
-      selectedMod?.id ?? -1,
-      selectedMod?.files ?? [],
-      visibleMods,
-      mergedFileIds,
-    );
-    const summary = summarizeUpdateScope(classification);
-    return {
-      classification,
-      flagged: summary.flagged,
-      archived: summary.archived,
-      updateFileIds: new Set(summary.targets.keys()),
-      replaceableFiles: replaceableFilesFor(summary.needsPick, visibleMods),
-    };
-  }, [selectedMod, visibleMods, mergedFileIds]);
 
   const queuedByModId = useMemo(() => {
     const map = new Map<number, QueuedDownloadState>();
@@ -2532,18 +2460,6 @@ export default function Browse() {
     section
   );
   const virtualRowHeight = virtualCardHeight + gridGap;
-  const virtualRowCount = Math.ceil(displayMods.length / virtualColumnCount);
-  const rowVirtualizer = useVirtualizer({
-    count: virtualRowCount,
-    getScrollElement: () => scrollContainerRef.current,
-    estimateSize: () => virtualRowHeight,
-    overscan: BROWSE_GRID_OVERSCAN_ROWS,
-  });
-
-  useLayoutEffect(() => {
-    rowVirtualizer.measure();
-  }, [rowVirtualizer, virtualRowHeight, virtualColumnCount, gridGap, browseCardDesign]);
-
   // Scroll anchor: when the grid's geometry changes (column count or row
   // height, e.g. the details sidebar opening/closing or a window resize),
   // the same scrollTop suddenly points at different mods and the view appears
@@ -3222,21 +3138,6 @@ export default function Browse() {
         className="relative z-0 flex-1 p-4"
       >
         {(() => {
-          const gridClass =
-            layout === 'list'
-              ? 'flex flex-col gap-3'
-              : browseCardDesign === 'readable'
-                ? 'grid'
-                : 'grid gap-3';
-          const gridStyle =
-            layout === 'list'
-              ? undefined
-              : browseCardDesign === 'readable'
-                ? {
-                    gridTemplateColumns: `repeat(auto-fit, minmax(${readableCardTargetWidth}px, 1fr))`,
-                    gap: `${gridGap}px`,
-                  }
-                : browseCardSizeGridStyle;
           const hasActiveFilters =
             search.trim().length > 0 ||
             heroCategoryId !== 'all' ||
@@ -3247,12 +3148,21 @@ export default function Browse() {
             addedTo.length > 0;
 
           if (loading || (pagingPastFilteredPage && !error)) {
-            // Match perPage so the skeleton grid fills roughly the same footprint
-            // as the real results once they arrive.
+            // Same columns, card height and gap as the virtualized grid below,
+            // so the results land exactly where their placeholders were.
             return (
-              <div className={gridClass} style={gridStyle} aria-busy="true" aria-live="polite">
-                {Array.from({ length: DEFAULT_PER_PAGE }).map((_, i) => (
-                  <ModCardSkeleton key={i} viewMode={viewMode} />
+              <div
+                className="grid"
+                style={{
+                  gridTemplateColumns: `repeat(${virtualColumnCount}, minmax(0, 1fr))`,
+                  gridAutoRows: `${virtualCardHeight}px`,
+                  gap: `${gridGap}px`,
+                }}
+                aria-busy="true"
+                aria-live="polite"
+              >
+                {Array.from({ length: Math.min(DEFAULT_PER_PAGE, virtualColumnCount * 6) }).map((_, i) => (
+                  <ModCardSkeleton key={i} viewMode={viewMode} cardDesign={browseCardDesign} height={virtualCardHeight} index={i} />
                 ))}
               </div>
             );
@@ -3298,79 +3208,35 @@ export default function Browse() {
               />
             );
           }
-          const virtualRows = rowVirtualizer.getVirtualItems();
           return (
-            <div
-              ref={gridWrapRef}
-              className="relative w-full"
-              style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
-            >
-              {virtualRows.map((virtualRow) => {
-                const rowStart = virtualRow.index * virtualColumnCount;
-                const rowMods = displayMods.slice(rowStart, rowStart + virtualColumnCount);
-                return (
-                  <div
-                    key={virtualRow.key}
-                    data-index={virtualRow.index}
-                    className={layout === 'list' ? 'absolute left-0 top-0 w-full' : 'absolute left-0 top-0 grid w-full'}
-                    style={{
-                      transform: `translateY(${virtualRow.start}px)`,
-                      height: `${virtualCardHeight}px`,
-                      gridTemplateColumns:
-                        layout === 'list'
-                          ? undefined
-                          : `repeat(${virtualColumnCount}, minmax(0, 1fr))`,
-                      gap: layout === 'list' ? undefined : `${gridGap}px`,
-                    }}
-                  >
-                    {rowMods.map((mod, index) => {
-                      const queuedState = queuedByModId.get(mod.id);
-                      const installedLocal = installedByGbId.get(mod.id);
-                      return (
-                        <div
-                          key={mod.id}
-                          className="browse-result-card min-w-0 [contain:layout_style]"
-                          style={{ animationDelay: `${Math.min(index * 18, 72)}ms` }}
-                        >
-                          <MemoizedModCard
-                            key={mod.id}
-                            mod={mod}
-                            installed={installedIds.has(mod.id)}
-                            installedDisabled={!!installedLocal && !installedLocal.enabled}
-                            downloading={downloading?.modId === mod.id}
-                            queuePosition={queuedState?.position}
-                            viewMode={viewMode}
-                            cardDesign={browseCardDesign}
-                            cardSize={browseCardSize}
-                            cardWidth={virtualColumnWidth}
-                            cardHeight={virtualCardHeight}
-                            section={section}
-                            volume={soundVolume}
-                            onVolumeChange={setSoundVolume}
-                            hideNsfwPreviews={browseBlurNsfwPreviews}
-                            isPlaying={playingModId === mod.id}
-                            suppressHoverIntentRef={isBrowseScrollingRef}
-                            enableModId={installedLocal && !installedLocal.enabled ? installedLocal.id : undefined}
-                            actionContextKey={`${activeDeadlockPath ?? ''}|${section}|${effectiveCategoryId ?? ''}`}
-                            onPlayingChange={(playing) => {
-                              setPlayingModId((prev) => {
-                                if (playing) return mod.id;
-                                return prev === mod.id ? null : prev;
-                              });
-                            }}
-                            onClick={() => handleModClick(mod)}
-                            onQuickDownload={(anchor) => handleQuickDownload(mod, anchor)}
-                            onEnable={installedLocal && !installedLocal.enabled
-                              ? () => toggleMod(installedLocal.id)
-                              : undefined}
-                          />
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              })}
-            </div>
+            <BrowseVirtualGrid
+              mods={displayMods}
+              scrollRef={scrollContainerRef}
+              gridRef={gridWrapRef}
+              columnCount={virtualColumnCount}
+              columnWidth={virtualColumnWidth}
+              cardHeight={virtualCardHeight}
+              gridGap={gridGap}
+              layout={layout}
+              viewMode={viewMode}
+              cardDesign={browseCardDesign}
+              cardSize={browseCardSize}
+              section={section}
+              installedIds={installedIds}
+              installedByGbId={installedByGbId}
+              queuedByModId={queuedByModId}
+              downloadingModId={downloading?.modId}
+              volume={soundVolume}
+              onVolumeChange={setSoundVolume}
+              hideNsfwPreviews={browseBlurNsfwPreviews}
+              playingModId={playingModId}
+              onPlayingModIdChange={setPlayingModId}
+              suppressHoverIntentRef={isBrowseScrollingRef}
+              actionContextKey={`${activeDeadlockPath ?? ''}|${section}|${effectiveCategoryId ?? ''}`}
+              onModClick={handleModClick}
+              onQuickDownload={handleQuickDownload}
+              onEnable={toggleMod}
+            />
           );
         })()}
         {/* Infinite Scroll Trigger */}

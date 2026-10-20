@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { HDRCubeTextureLoader } from 'three/examples/jsm/loaders/HDRCubeTextureLoader.js';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { getAssetPath } from '../../lib/assetPath';
 import {
   isNprMaterial,
@@ -16,6 +17,7 @@ import { compileSource2DrawState, summarizeSource2Scene } from '../../lib/source
 import { BloomEffect, type BloomParams } from './BloomEffect';
 import type { HeroPoseRenderFeatures } from './heroPoseRenderFeatures';
 import { enableHeroPreviewVertexColors } from './heroPreviewSceneSetup';
+import type { HeroViewerScene } from './HeroViewerToolbar';
 
 // The existing warm key and cool fill, expressed as sRGB components so the
 // THREE.Color conversion preserves the original lighting colors.
@@ -73,6 +75,30 @@ export function HeroPreviewLighting({
   );
 }
 
+/** The main hero viewer's stage: a dark studio room probe, a warm key (shadow
+ *  casting) with a cool rim, and a shadow-catching floor. `scene` picks the
+ *  midtown (warm, brighter) or plain studio variant; a transparent stage drops
+ *  the floor so the figure composites over whatever is behind the canvas. */
+export function HeroViewerStage({ scene }: { scene: HeroViewerScene }) {
+  const midtown = scene === 'midtown';
+  return (
+    <>
+      <Environment intensity={midtown ? 1.6 : 1.1} studio />
+      <hemisphereLight args={[new THREE.Color(96 / 255, 135 / 255, 183 / 255), new THREE.Color(0.32, 0.25, 0.2), 1.5]} />
+      <directionalLight castShadow position={[-3, 4, 3]} intensity={midtown ? 2.2 : 1.4}
+        color={midtown ? new THREE.Color(254 / 255, 153 / 255, 91 / 255) : new THREE.Color(1, 1, 1)}
+        shadow-mapSize={[1024, 1024]} shadow-bias={-0.0005} />
+      <directionalLight position={[3, 2, -3]} intensity={1.2} color={new THREE.Color(0.65, 0.78, 1)} />
+      {scene !== 'transparent' && (
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -1.02, 0]} receiveShadow>
+          <planeGeometry args={[20, 20]} />
+          <shadowMaterial transparent opacity={0.25} />
+        </mesh>
+      )}
+    </>
+  );
+}
+
 /** The same reversible draw state, shader hints, and unified NPR styling for
  *  static and animated scenes. Model playback and turntable remain caller-owned. */
 export function HeroPreviewAppearance({
@@ -110,7 +136,8 @@ export function HeroPreviewAppearance({
   );
 }
 
-/** Image-based lighting from the baked Deadlock overcast probe. Loads the six .hdr
+/** Image-based lighting from a dark studio room, or the baked Deadlock overcast
+ *  probe. For the probe: loads the six .hdr
  *  faces once, runs them through PMREM, and assigns the result as
  *  `scene.environment` so every MeshStandardMaterial gets real reflections and
  *  ambient instead of dead-flat directional-only shading. The PMREM target is
@@ -118,12 +145,36 @@ export function HeroPreviewAppearance({
  *  view shows a single viewer); SoulContainerViewer would want a shared probe.
  *  Drei Environment is not used here: the viewer needs HDRCubeTextureLoader's
  *  six-face Radiance cubemap path and HalfFloat PMREM for the Deadlock IBL. */
-function Environment() {
+function Environment({ intensity = 1, studio = false }: { intensity?: number; studio?: boolean }) {
   const { gl, scene } = useThree();
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/immutability -- R3F owns this mutable Three.js scene.
+    scene.environmentIntensity = intensity;
+  }, [scene, intensity]);
   useEffect(() => {
     let disposed = false;
     const pmrem = new THREE.PMREMGenerator(gl);
     let envRT: THREE.WebGLRenderTarget | null = null;
+    if (studio) {
+      // Dark studio walls leave room for bright softbox highlights on glass and
+      // metal instead of covering the surface with a broad gray reflection.
+      const room = new RoomEnvironment();
+      room.traverse((object) => {
+        if (!(object instanceof THREE.Mesh)) return;
+        for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
+          if (material instanceof THREE.MeshStandardMaterial) material.color.setRGB(0.05, 0.05, 0.05);
+        }
+      });
+      envRT = pmrem.fromScene(room, 0.04);
+      // eslint-disable-next-line react-hooks/immutability -- R3F owns this mutable Three.js scene.
+      scene.environment = envRT.texture;
+      room.dispose();
+      pmrem.dispose();
+      return () => {
+        scene.environment = null;
+        envRT?.dispose();
+      };
+    }
     new HDRCubeTextureLoader()
       .setDataType(THREE.HalfFloatType)
       .load(IBL_FACES, (cube) => {
@@ -142,7 +193,7 @@ function Environment() {
       scene.environment = null;
       envRT?.dispose();
     };
-  }, [gl, scene]);
+  }, [gl, scene, studio]);
   return null;
 }
 

@@ -1,3 +1,4 @@
+import type { Mod } from '../types/mod';
 import {
   isUpdateFlagged,
   type InstalledUpdateEntry,
@@ -17,8 +18,7 @@ export interface UpdateScopeSummary {
 
 /**
  * What a details view shows for the installed files in `scopeFileIds` (all
- * installed files of the mod when omitted). Installed scopes it to the entry
- * that opened the view; Browse looks at every installed file.
+ * installed files of the mod when omitted).
  */
 export function summarizeUpdateScope(
   classification: ModUpdateClassification,
@@ -39,26 +39,42 @@ export function summarizeUpdateScope(
   return summary;
 }
 
-/** Local ids of every VPK extracted from the same GameBanana file as `modId`
- *  (just `modId` without GameBanana provenance). Update state is per file, so
- *  ignoring updates applies to all of them. */
-export function sameFileModIds(mods: readonly InstalledUpdateEntry[], modId: string): string[] {
-  const mod = mods.find((candidate) => candidate.id === modId);
-  if (!mod || typeof mod.gameBananaId !== 'number' || typeof mod.gameBananaFileId !== 'number') return [modId];
-  return mods
-    .filter(
-      (candidate) =>
-        candidate.gameBananaId === mod.gameBananaId && candidate.gameBananaFileId === mod.gameBananaFileId,
-    )
-    .map((candidate) => candidate.id);
+/** All installed variants of the submission shown by a mod page or update row. */
+export function modUpdateGroup<T extends { gameBananaId?: number; sourceSection?: string }>(
+  mods: readonly T[],
+  gameBananaId: number | null,
+  section = 'Mod',
+): T[] {
+  if (gameBananaId === null) return [];
+  return mods.filter(mod => mod.gameBananaId === gameBananaId && (mod.sourceSection ?? 'Mod') === section);
+}
+
+/** The update workflow groups by submission and section, independently of local cards. */
+export function groupModUpdates(mods: readonly Mod[], updateIds: ReadonlySet<string>) {
+  if (updateIds.size === 0) return [];
+  const groups = new Map<string, { key: string; name: string; pending: Mod[]; installed: Mod[] }>();
+  for (const mod of mods) {
+    const key = mod.gameBananaId
+      ? `${mod.sourceSection ?? 'Mod'}:${mod.gameBananaId}`
+      : mod.id;
+    let group = groups.get(key);
+    if (!group) {
+      group = { key, name: mod.name, pending: [], installed: [] };
+      groups.set(key, group);
+    }
+    group.installed.push(mod);
+    if (updateIds.has(mod.id) && !mod.ignoreUpdates) group.pending.push(mod);
+  }
+  return [...groups.values()].filter(group => group.pending.length > 0);
 }
 
 /** A stale installed file the details view offers to replace explicitly. */
 export interface ReplaceableFile {
   /** The stale GameBanana file id. */
   fileId: number;
-  /** How the confirmation names it: the archive name captured at install. */
+  /** Description captured at install, falling back to the archive filename. */
   label: string;
+  fileName: string;
 }
 
 export function replaceableFilesFor(
@@ -67,7 +83,8 @@ export function replaceableFilesFor(
 ): ReplaceableFile[] {
   return needsPick.map((fileId) => {
     const mod = installed.find((candidate) => candidate.gameBananaFileId === fileId);
-    return { fileId, label: mod?.sourceFileName ?? mod?.fileDescription ?? mod?.fileName ?? String(fileId) };
+    const fileName = mod?.sourceFileName || mod?.fileName || String(fileId);
+    return { fileId, label: mod?.fileDescription?.trim() || fileName, fileName };
   });
 }
 
@@ -87,10 +104,9 @@ export type FileDownloadDecision =
  * replaces the stale file it is the confident successor of, or reinstalls the
  * same file; everything else is an ordinary install that deletes nothing.
  * Replacing a stale file without a successor requires `replaceFileId`, set
- * only after the user confirmed exactly that replacement. When the picked
- * file is already installed (a promoted successor, or a replace onto a file
- * the user has), the host skips the download and only removes the replaced
- * mods.
+ * only after the user confirmed exactly that replacement, and may only target
+ * a file that is not installed. A matched successor that is already installed
+ * is promoted: the host skips the download and removes only its predecessor.
  *
  * @param installed installed VPKs of this GameBanana mod
  */
@@ -101,9 +117,11 @@ export function decideFileDownload(
   options: { scopeFileIds?: ReadonlySet<number>; replaceFileId?: number } = {},
 ): FileDownloadDecision {
   const { scopeFileIds, replaceFileId } = options;
+  const sameFile = installed.filter((mod) => mod.gameBananaFileId === fileId).map((mod) => mod.id);
   if (
     replaceFileId !== undefined &&
     replaceFileId !== fileId &&
+    sameFile.length === 0 &&
     (!scopeFileIds || scopeFileIds.has(replaceFileId)) &&
     classification.states.get(replaceFileId)?.kind === 'needs-pick' &&
     classification.currentFileIds.has(fileId)
@@ -114,7 +132,6 @@ export function decideFileDownload(
   const replaced = summarizeUpdateScope(classification, scopeFileIds).targets.get(fileId);
   if (replaced) return { kind: 'update', replacedModIds: replaced };
 
-  const sameFile = installed.filter((mod) => mod.gameBananaFileId === fileId).map((mod) => mod.id);
   return sameFile.length > 0
     ? { kind: 'reinstall', replacedModIds: sameFile }
     : { kind: 'install', replacedModIds: [] };
@@ -128,7 +145,7 @@ export type UpdateRunStep =
 
 /**
  * Resolve each target of an "Update all" / group update run against freshly
- * fetched file rows. Only a confident successor is applied. A file with no
+ * fetched file rows. Only a classified successor is applied. A file with no
  * successor goes to the manual-pick queue when it was deleted, and is skipped
  * when it is current again, archived, ignored or unknown, so a retired file
  * never enters a batch.

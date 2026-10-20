@@ -67,6 +67,37 @@ export function addProfile(profile: Profile): Profile {
 }
 
 /**
+ * Replace a stored profile by id. Used by re-imports that refresh a profile
+ * an earlier import created.
+ */
+export function replaceProfile(profile: Profile): Profile {
+    const profiles = loadProfiles();
+    const index = profiles.findIndex((p) => p.id === profile.id);
+    if (index === -1) throw new Error(`Profile not found: ${profile.id}`);
+    profiles[index] = profile;
+    saveProfiles(profiles);
+    return profile;
+}
+
+/**
+ * Profile entries for chosen installed VPKs, with the same stable ids and
+ * VPK indexes a saved profile carries. `installed` is the full scan, so
+ * multi-VPK indexes are inferred the way applyProfile's resolver infers them.
+ */
+export function profileModsForKeys(
+    installed: Array<{ metaKey: string; fileName: string; size: number }>,
+    picks: Array<{ metaKey: string; enabled: boolean; priority: number }>
+): ProfileMod[] {
+    const byKey = new Map(installed.map((mod) => [mod.metaKey, mod]));
+    const inferredVpkIndexes = inferMissingVpkIndexes(installed);
+    return picks.flatMap((pick) => {
+        const mod = byKey.get(pick.metaKey);
+        if (!mod) return [];
+        return [toProfileMod({ ...mod, priority: pick.priority }, pick.enabled, inferredVpkIndexes)];
+    });
+}
+
+/**
  * Load all profiles from disk
  */
 export function loadProfiles(): Profile[] {
@@ -221,7 +252,8 @@ export async function createProfile(deadlockPath: string, name: string, crosshai
         const profile: Profile = {
             id: generateProfileId(),
             name,
-            mods: enabledMods.map(mod => toProfileMod(mod, true, inferredVpkIndexes)),
+            // scanMods is in complete load order; pakNN priorities repeat in each folder.
+            mods: enabledMods.map((mod, index) => toProfileMod({ ...mod, priority: index + 1 }, true, inferredVpkIndexes)),
             crosshair: crosshairSettings ? normalizeCrosshairSettings(crosshairSettings) : undefined,
             autoexecCommands: autoexecData.commands,
             createdAt: now,
@@ -298,7 +330,7 @@ export async function createProfileFromGameBananaIds(
     const profile: Profile = {
         id: generateProfileId(),
         name,
-        mods: matching.map((mod) => toProfileMod(mod, true, inferredVpkIndexes)),
+        mods: matching.map((mod, index) => toProfileMod({ ...mod, priority: index + 1 }, true, inferredVpkIndexes)),
         autoexecCommands: autoexecData.commands,
         createdAt: now,
         updatedAt: now,
@@ -345,7 +377,8 @@ export async function updateProfile(deadlockPath: string, profileId: string, cro
         const inferredVpkIndexes = inferMissingVpkIndexes(enabledMods);
         profiles[index] = {
             ...profiles[index],
-            mods: enabledMods.map(mod => toProfileMod(mod, true, inferredVpkIndexes)),
+            // scanMods is in complete load order; pakNN priorities repeat in each folder.
+            mods: enabledMods.map((mod, index) => toProfileMod({ ...mod, priority: index + 1 }, true, inferredVpkIndexes)),
             // If crosshairSettings is passed, use it. If undefined/null, remove crosshair from profile.
             // This allows the frontend to explicitly control whether crosshair is included based on feature toggle.
             crosshair: crosshairSettings ? normalizeCrosshairSettings(crosshairSettings) : undefined,
@@ -564,7 +597,7 @@ export async function applyProfile(deadlockPath: string, profileId: string, revi
                     try {
                         await disableModUnlocked(deadlockPath, mod.id);
                     } catch (err) {
-                        throw new Error(`disable ${mod.fileName}: ${String(err)}`);
+                        throw new Error(`disable ${mod.fileName}: ${String(err)}`, { cause: err });
                     }
                     if (profileMod) {
                         console.log(`[profiles] toggle disable: ${mod.fileName}`);
@@ -583,7 +616,7 @@ export async function applyProfile(deadlockPath: string, profileId: string, revi
                         await enableModUnlocked(deadlockPath, mod.id);
                         enabledCount++;
                     } catch (err) {
-                        throw new Error(`enable ${mod.fileName}: ${String(err)}`);
+                        throw new Error(`enable ${mod.fileName}: ${String(err)}`, { cause: err });
                     }
                 }
                 console.log(
@@ -607,7 +640,11 @@ export async function applyProfile(deadlockPath: string, profileId: string, revi
                 const seen = new Set<string>();
                 let reorderSkippedDisabled = 0;
                 let reorderSkippedUnmatched = 0;
-                for (const pm of [...reorderEntries].sort((a, b) => a.priority - b.priority)) {
+                // Saves before 1.31.5 stored per-folder pakNN numbers, which repeat once
+                // mods overflow into addons1+. Those saves list mods in load order.
+                const legacyPriorities = new Set(reorderEntries.map((pm) => pm.priority)).size < reorderEntries.length;
+                const savedOrder = legacyPriorities ? reorderEntries : [...reorderEntries].sort((a, b) => a.priority - b.priority);
+                for (const pm of savedOrder) {
                     if (!pm.enabled) continue;
                     const resolution = resolveAgainstRefreshed(pm);
                     if (resolution.mod === undefined) {
@@ -668,10 +705,14 @@ export async function applyProfile(deadlockPath: string, profileId: string, revi
             await clearRecoveryJournal();
         } catch (error) {
             try { await recoverInterruptedUnlocked(deadlockPath); }
-            catch (rollback) { throw new Error(`Profile apply failed: ${String(error)}; rollback incomplete: ${String(rollback)}`); }
-            throw new Error(`Profile apply failed and previous state was restored: ${String(error)}`);
+            catch (rollback) {
+                throw new Error(`Profile apply failed: ${String(error)}; rollback incomplete: ${String(rollback)}`, {
+                    cause: rollback,
+                });
+            }
+            throw new Error(`Profile apply failed and previous state was restored: ${String(error)}`, { cause: error });
         }
-    });
+    }, { healPath: deadlockPath });
 
     console.log(`[profiles] apply '${profile.name}' complete`);
     return { profile: appliedProfile, failures: [], unresolved };

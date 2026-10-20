@@ -1,25 +1,10 @@
-import { useEffect } from 'react';
+import { lazy, useEffect } from 'react';
+import { listenForModBackupChanges } from './stores/modBackupsStore';
 import { useTranslation } from 'react-i18next';
 import { HashRouter, Routes, Route } from 'react-router-dom';
 import { UploadCloud } from 'lucide-react';
 import Layout from './components/Layout';
 import Installed from './pages/Installed';
-import Browse from './pages/Browse';
-import Saved from './pages/Saved';
-import Browser from './pages/Browser';
-import Discover from './pages/Discover';
-import Servers from './pages/Servers';
-import Locker from './pages/Locker';
-import Foundry from './pages/Foundry';
-import Conflicts from './pages/Conflicts';
-import Profiles from './pages/Profiles';
-import Settings from './pages/Settings';
-import Crosshair from './pages/Crosshair';
-import Autoexec from './pages/Autoexec';
-import Stats from './pages/Stats';
-import ChatWheel from './pages/ChatWheel';
-import Config from './pages/Config';
-import Recovery from './pages/Recovery';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { ConfirmProvider } from './components/common/confirm';
 import { useSocialStore } from './stores/socialStore';
@@ -28,6 +13,28 @@ import { getAssetPath } from './lib/assetPath';
 import { rollMemeAppTitle } from './lib/easterEggs';
 import { useGlobalModFileDrop } from './lib/useGlobalModFileDrop';
 import { ModSafetySync } from './components/ModSafety';
+import { listenForModUpdateChanges } from './lib/updateCheckCache';
+import { listenForModUpdateChecks } from './stores/modUpdateCheckStore';
+
+// Keep other pages (including the 3D viewers) out of shell startup. Installed
+// stays eager because it is the initial page, avoiding a startup chunk waterfall.
+// Declare these once so route changes keep the same lazy component identity.
+const Browse = lazy(() => import('./pages/Browse'));
+const Discover = lazy(() => import('./pages/Discover'));
+const Servers = lazy(() => import('./pages/Servers'));
+const Locker = lazy(() => import('./pages/Locker'));
+const Foundry = lazy(() => import('./pages/Foundry'));
+const Conflicts = lazy(() => import('./pages/Conflicts'));
+const Profiles = lazy(() => import('./pages/Profiles'));
+const Settings = lazy(() => import('./pages/Settings'));
+const Crosshair = lazy(() => import('./pages/Crosshair'));
+const Autoexec = lazy(() => import('./pages/Autoexec'));
+const Stats = lazy(() => import('./pages/Stats'));
+const Saved = lazy(() => import('./pages/Saved'));
+const Browser = lazy(() => import('./pages/Browser'));
+const ChatWheel = lazy(() => import('./pages/ChatWheel'));
+const Config = lazy(() => import('./pages/Config'));
+const Recovery = lazy(() => import('./pages/Recovery'));
 
 const GASSY_SOUND = getAssetPath('/sounds/gassy.mp3');
 
@@ -37,6 +44,10 @@ export default function App() {
   // importer, and swallows the rest so Electron never navigates the window to
   // a dropped file:// URL. Registered zones still handle their own file types.
   const fileDragOver = useGlobalModFileDrop();
+
+  useEffect(listenForModUpdateChecks, []);
+  useEffect(() => listenForModUpdateChanges(window.electronAPI, window), []);
+  useEffect(() => listenForModBackupChanges(), []);
 
   // Easter egg: typing "gassy" anywhere plays the gassy sound.
   useEffect(() => {

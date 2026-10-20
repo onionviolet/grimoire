@@ -1,16 +1,19 @@
 import { Loader2 } from 'lucide-react';
-import { useEffect,useState } from 'react';
+import { Suspense,useEffect,useRef,useState } from 'react';
 import { Trans,useTranslation } from 'react-i18next';
 import { Outlet,useLocation,useNavigate } from 'react-router-dom';
 import { applyAccentColor } from '../lib/accentColor';
 import type { ImportCustomModResult } from '../lib/api';
-import { getSettings,setSettings } from '../lib/api';
+import { getSettings } from '../lib/api';
+import { getDownloadQueueActivitySnapshot } from '../lib/downloadActivity';
+import { useElasticOverscroll } from '../lib/useElasticOverscroll';
 import { getActiveDeadlockPath } from '../lib/appSettings';
 import { applyOledMode } from '../lib/applyOledMode';
 import { applyBackgroundGradient } from '../lib/backgroundGradient';
 import { useBrowserToolDownloadHandoff } from '../lib/useBrowserToolDownloadHandoff';
 import { useAppStore } from '../stores/appStore';
 import { useGameinfoStore } from '../stores/gameinfoStore';
+import { listenForModUpdates,useModUpdatesStore } from '../stores/modUpdatesStore';
 import { showToast } from '../stores/toastStore';
 import type {
 ForgeInstallRequestData,
@@ -18,12 +21,14 @@ MultiVpkPickData,
 OneClickSuspiciousFilesData,
 } from '../types/electron';
 import AppUpdateBanner from './AppUpdateBanner';
+import { CrashAdvisoryHost } from './CrashAdvisories';
 import DiscordPresence from './DiscordPresence';
 import DownloadQueueIndicator from './DownloadQueueIndicator';
 import ForgeInstallModal from './ForgeInstallModal';
 import GameinfoBanner from './GameinfoBanner';
 import ImportCustomModsModal from './ImportCustomModsModal';
 import { ModSafetyBanner } from './ModSafety';
+import { ModUpdateNotices,ModUpdateReplacementHost } from './mods/ModUpdatesHost';
 import MultiVpkPickerModal from './MultiVpkPickerModal';
 import Sidebar from './Sidebar';
 import SyncIndicator from './SyncIndicator';
@@ -36,7 +41,14 @@ export default function Layout() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
-  const outletKey = location.pathname.startsWith('/locker') ? '/locker' : location.pathname;
+  useEffect(listenForModUpdates, []);
+  // Keyed on the top-level route only, so sub-routes (/locker/<hero>, /settings/<section>)
+  // swap content in place instead of remounting the whole page.
+  const outletKey = location.pathname.split('/')[1];
+  // Flow pages (Settings, Profiles, Discover...) scroll here; pages that own a
+  // scroller never overflow this one, so only theirs bounces.
+  const outletScrollRef = useRef<HTMLDivElement | null>(null);
+  useElasticOverscroll(outletScrollRef);
   const [showWelcome, setShowWelcome] = useState(false);
   const [loading, setLoading] = useState(true);
   // Normal one-click download progress is handled by DownloadQueueIndicator.
@@ -62,6 +74,7 @@ export default function Layout() {
   const oledMode = useAppStore((s) => s.settings?.oledMode);
   const loadStoreSettings = useAppStore((s) => s.loadSettings);
   const loadAppearanceImages = useAppStore((s) => s.loadAppearanceImages);
+  const activeDeadlockPath = useAppStore((s) => getActiveDeadlockPath(s.settings));
 
   // Batch local import. Hosted here rather than on Installed because that page
   // early-returns an empty state with no mods: a first-ever import flips it to
@@ -77,6 +90,12 @@ export default function Layout() {
     loadStoreSettings();
     loadAppearanceImages();
   }, [loadStoreSettings, loadAppearanceImages]);
+  useEffect(() => {
+    if (activeDeadlockPath) {
+      const state = useAppStore.getState();
+      void state.loadMods({ silent: state.modsLoaded });
+    }
+  }, [activeDeadlockPath]);
   useEffect(() => {
     applyAccentColor(accentColor);
   }, [accentColor]);
@@ -139,6 +158,12 @@ export default function Layout() {
       const state = useAppStore.getState();
       if (!getActiveDeadlockPath(state.settings)) return;
       if (state.modsLoading) return;
+      const updates = useModUpdatesStore.getState();
+      const downloads = getDownloadQueueActivitySnapshot();
+      // Completed jobs refresh the library. Refocusing mid-transfer should not
+      // start another full scan alongside that work, especially for large libraries.
+      if (updates.submittingModIds.size > 0 || updates.state.preparing ||
+        (updates.state.busy && (downloads.current || downloads.queue.length > 0 || downloads.requested.length > 0))) return;
       const now = Date.now();
       if (now - lastRun < 1500) return;
       lastRun = now;
@@ -190,6 +215,13 @@ export default function Layout() {
     });
     return unsubscribe;
   }, []);
+
+  useEffect(
+    () => window.electronAPI.onModVdataChecked(() => {
+      void useAppStore.getState().loadMods({ force: true, silent: true });
+    }),
+    []
+  );
 
   // Surface GameBanana rate limiting app-wide. The heavy "Fix Unknown"
   // auto-detect is the usual trigger, but any tab can hit it, so the warning
@@ -260,7 +292,8 @@ export default function Layout() {
   const handleSetupComplete = async () => {
     try {
       const settings = await getSettings();
-      await setSettings({ ...settings, hasCompletedSetup: true });
+      // Through the store, so the Sidebar's launch update check sees the flag.
+      await useAppStore.getState().saveSettings({ ...settings, hasCompletedSetup: true });
       setShowWelcome(false);
       // Navigate to Browse tab after first-time setup
       navigate('/browse');
@@ -296,23 +329,28 @@ export default function Layout() {
       <div className="relative z-10 flex min-h-0 flex-1">
       {/* Headless: drives opt-in Discord Rich Presence from the active route. */}
       <DiscordPresence />
+      <CrashAdvisoryHost />
       <Sidebar />
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <GameinfoBanner />
         <AppUpdateBanner />
         <VpkImpostorBanner />
         <ModSafetyBanner />
-        <div key={outletKey} className="min-h-0 flex-1 overflow-auto animate-fade-in [scrollbar-gutter:stable]">
-          <Outlet />
-        </div>
+        <Suspense fallback={null}>
+          <div key={outletKey} ref={outletScrollRef} className="min-h-0 flex-1 overflow-auto animate-fade-in [scrollbar-gutter:stable]">
+            <Outlet />
+          </div>
+        </Suspense>
       </main>
       </div>
       {/* Status indicators stack in the bottom-right corner. */}
       <div className="fixed bottom-4 right-4 z-50 flex flex-col items-end gap-2">
+        <ModUpdateNotices />
         <DownloadQueueIndicator />
         <SyncIndicator />
       </div>
       <ToastStack />
+      <ModUpdateReplacementHost />
       <ConfirmModal
         isOpen={!!suspiciousPrompt}
         title={t('layout.suspicious.title')}

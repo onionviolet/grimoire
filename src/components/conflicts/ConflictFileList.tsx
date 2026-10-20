@@ -4,9 +4,15 @@ import { useTranslation } from 'react-i18next';
 import Tx from '../translation/Tx';
 import { MenuRoot, MenuTrigger, MenuContent, MenuItem, MenuLabel } from '../common/menu';
 
+// Each row carries its own context menu, so a pair sharing thousands of
+// sound or model paths would stall the page if rendered in one go.
+const RENDER_STEP = 200;
+
 interface ConflictFileListProps {
   /** Overlapping paths still flagged for this pair. */
   files: string[];
+  /** Opens the list when it turns true and closes it when it turns false. */
+  autoOpen?: boolean;
   /** True while an ignore/unignore for this pair is in flight. */
   busy: boolean;
   /** Dismiss a single overlapping file for this pair only. */
@@ -24,19 +30,27 @@ interface ConflictFileListProps {
  */
 export default function ConflictFileList({
   files,
+  autoOpen = false,
   busy,
   onIgnoreFile,
   onIgnoreFileEverywhere,
   highlightedFiles = [],
 }: ConflictFileListProps) {
   const { t } = useTranslation();
-  const [userOpen, setUserOpen] = useState(false);
+  const [userOpen, setUserOpen] = useState(autoOpen);
+  const [lastAutoOpen, setLastAutoOpen] = useState(autoOpen);
+  const [limit, setLimit] = useState(RENDER_STEP);
+  if (autoOpen !== lastAutoOpen) {
+    setLastAutoOpen(autoOpen);
+    setUserOpen(autoOpen);
+  }
   // A path search should explain itself without making the person rediscover
   // the disclosure that contains the match. This is derived state so clearing
   // the query restores the person's own disclosure choice.
   const open = userOpen || highlightedFiles.length > 0;
 
   if (files.length === 0) return null;
+  const hidden = files.length - limit;
 
   return (
     <div className="border-t border-border/60">
@@ -55,7 +69,7 @@ export default function ConflictFileList({
       </button>
       {open && (
         <ul className="max-h-44 space-y-1 overflow-auto px-4 pb-3">
-          {files.map((file) => (
+          {files.slice(0, limit).map((file) => (
             <MenuRoot key={file}>
               <MenuTrigger asChild>
                 <li className="flex items-center gap-2 rounded data-[state=open]:bg-bg-tertiary/60">
@@ -91,6 +105,17 @@ export default function ConflictFileList({
               </MenuContent>
             </MenuRoot>
           ))}
+          {hidden > 0 && (
+            <li>
+              <button
+                type="button"
+                onClick={() => setLimit((current) => current + RENDER_STEP)}
+                className="rounded px-2 py-0.5 text-2xs text-text-secondary transition-colors hover:bg-bg-tertiary hover:text-text-primary cursor-pointer"
+              >
+                {t('conflicts.files.showMore', { count: Math.min(hidden, RENDER_STEP) })}
+              </button>
+            </li>
+          )}
         </ul>
       )}
     </div>

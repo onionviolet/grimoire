@@ -163,12 +163,16 @@ export async function applyConfigWorkspace(deadlockPath: string | null, update: 
       await clearRecoveryJournal();
       return result;
     } catch (error) {
-      if (!journalCreated) throw new Error(`${String(error)}; previous configuration restored.`);
+      if (!journalCreated) throw new Error(`${String(error)}; previous configuration restored.`, { cause: error });
       // Use the journal's reviewed rollback so external edits are never overwritten.
       const { recoverInterruptedUnlocked } = await import('./profileRecovery');
       try { await recoverInterruptedUnlocked(deadlockPath); }
-      catch (failure) { throw new Error(`${String(error)}; rollback incomplete: ${String(failure)}`); }
-      throw new Error(`${String(error)}; previous configuration restored.`);
+      catch (failure) {
+        throw new Error(`${String(error)}; rollback incomplete: ${String(failure)}`, {
+          cause: failure,
+        });
+      }
+      throw new Error(`${String(error)}; previous configuration restored.`, { cause: error });
     } finally { await fs.rm(staging, { recursive: true, force: true }); }
   });
 }

@@ -28,13 +28,20 @@ afterEach(async () => { vi.clearAllMocks(); await fs.rm(dir, { recursive: true, 
 describe('native KV3 particle adapter', () => {
     it('preserves authored color/operators/CP and collapses numeric literals', () => {
         const descriptor = descriptorFromKv3(parent, raw());
-        expect(allSpriteLayers(descriptor)[0]).toMatchObject({ emitRate: 2, colorMin: [1, 0, 0], colorMax: [0, 1, 0], controlPoint: 2, attachment: 'ability_cast' });
+        expect(allSpriteLayers(descriptor)[0]).toMatchObject({ emitRate: 2, colorMin: [1, 0, 0], colorMax: [0, 1, 0], attachment: 'ability_cast' });
+        // The adapter still carries the authored driver list; layers no longer
+        // expose a controlPoint field (upstream fxDescriptor derives attachment only).
+        expect(descriptor.controlPoints).toEqual([{ cp: 2, attachType: 'PATTACH_POINT_FOLLOW', attachment: 'ability_cast', entity: null }]);
+        expect(descriptor.operators.find(node => node.class === 'C_OP_PositionLock')?.params).toMatchObject({ m_nControlPointNumber: 2 });
         expect(unsupportedParticleClasses(descriptor)).toEqual([]);
     });
     it('walks exact child paths and decodes unchanged textures with read-only flags', async () => {
         const descriptor = await exportNativeParticleBundle('pak', parent, join(dir, 'effect.json'), dir);
         expect(descriptor.children).toHaveLength(1);
-        expect(allSpriteLayers(descriptor)[1].attachment).toBe('ability_cast');
+        // The child declares no drivers of its own; upstream's allSpriteLayers does not
+        // inherit the parent's control points, so only the root layer carries the attachment.
+        expect(descriptor.children[0].controlPoints).toEqual([]);
+        expect(allSpriteLayers(descriptor).map(layer => layer.attachment)).toEqual(['ability_cast', null]);
         expect(h.stdout.mock.calls.map(call => call[0])).toEqual([['soundevents', parent, '--from-vpk', 'pak'], ['soundevents', child, '--from-vpk', 'pak']]);
         expect(h.run).toHaveBeenCalledWith(['catalog', 'texture', '--vpk', 'pak', '--path', texture, '--thumbs', dir, '--thumb-size', '256']);
         expect(await fs.readFile(join(dir, 'materials_particles_glow_vtex_c.png'), 'utf8')).toBe('inert png fixture');

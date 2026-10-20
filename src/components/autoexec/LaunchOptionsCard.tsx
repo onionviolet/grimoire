@@ -1,11 +1,10 @@
-import { useEffect, useState } from 'react';
+import { memo, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AlertTriangle, Check, Rocket, Save } from 'lucide-react';
 import { getSettings, setSettings } from '../../lib/api';
 import { Card, Button } from '../common/ui';
 import { Input } from '../common/forms';
 import Tx from '../translation/Tx';
-import type { AppSettings } from '../../types/mod';
 import type { SteamLaunchOptionsStatus } from '../../types/electron';
 
 /**
@@ -16,9 +15,10 @@ import type { SteamLaunchOptionsStatus } from '../../types/electron';
  * Self-contained so the page above it does not carry six pieces of state for a
  * concern it never reads.
  */
-export default function LaunchOptionsCard() {
+export default memo(function LaunchOptionsCard() {
   const { t } = useTranslation();
   const [saved, setSaved] = useState<string | null>(null);
+  const [managed, setManaged] = useState(false);
   const [draft, setDraft] = useState('');
   const [status, setStatus] = useState<SteamLaunchOptionsStatus | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -30,6 +30,7 @@ export default function LaunchOptionsCard() {
       const settings = await getSettings();
       setSaved(settings.steamLaunchOptions ?? '');
       setDraft(settings.steamLaunchOptions ?? '');
+      setManaged(settings.steamLaunchOptionsManaged);
       try {
         setStatus(await window.electronAPI.getSteamLaunchOptionsStatus());
       } catch (err) {
@@ -46,13 +47,9 @@ export default function LaunchOptionsCard() {
     setMessage(null);
     setMessageTone(null);
     try {
-      // Re-read settings immediately before writing: this card holds its value
-      // from mount, and another surface (Settings, the welcome flow) may have
-      // changed an unrelated field in the meantime. Spreading a stale snapshot
-      // would silently roll that change back.
-      const current: AppSettings = await getSettings();
-      await setSettings({ ...current, steamLaunchOptions: draft });
+      await setSettings({ steamLaunchOptions: draft, steamLaunchOptionsManaged: true });
       setSaved(draft);
+      setManaged(true);
       setMessage(t('autoexec.launchOptions.saved'));
       setMessageTone('success');
       try {
@@ -148,7 +145,7 @@ export default function LaunchOptionsCard() {
                     {onDisk || t('common.emptyValue')}
                   </code>
                 </div>
-                {!isSaving && (
+                {!isSaving && (managed || saved) && (
                   <p className="text-2xs text-text-secondary/70">
                     <Tx
                       k="autoexec.launchOptions.savedWillOverwrite"
@@ -172,4 +169,4 @@ export default function LaunchOptionsCard() {
       </div>
     </Card>
   );
-}
+});

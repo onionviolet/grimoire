@@ -74,15 +74,14 @@ export function LeaderboardTab() {
                                                 ))}
                                             </span>
                                         )}
+                                        {/* The Valve leaderboard endpoint returns no wins or match count
+                                            (see fetchLeaderboard in services/stats.ts), so those two
+                                            columns never rendered and their strings were dead copy
+                                            shipped to translators. Re-add with the data if the endpoint
+                                            ever provides them. */}
                                         <span className="text-accent w-28 text-right">
                                             {rankLabelFromBadge(entry.badge_level)}
                                         </span>
-                                        {entry.wins !== undefined && (
-                                            <span className="text-green-400">{t('stats.leaderboard.winsCount', { count: entry.wins })}</span>
-                                        )}
-                                        {entry.matches_played !== undefined && (
-                                            <span>{t('stats.leaderboard.matchesCount', { count: entry.matches_played })}</span>
-                                        )}
                                     </div>
                                 </div>
                             ))}

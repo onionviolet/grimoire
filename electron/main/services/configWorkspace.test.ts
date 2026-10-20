@@ -83,9 +83,9 @@ describe('Config workspace ownership and review', () => {
     expect(() => parseConfigBundle(JSON.stringify({ ...bundle, gameinfo: { invented: '5' } }))).toThrow();
   });
   it('preserves the applied preset version during direct edits', async () => {
-    const applied = applyPerformanceConfig(root, { presetId: 'sqooky-default', version: '2.7' });
+    const applied = applyPerformanceConfig(root, { presetId: 'sqooky-default', version: '3.3' });
     if (applied.state !== 'applied') throw new Error(applied.message);
-    expect(applied.appliedVersion).toBe('2.7');
+    expect(applied.appliedVersion).toBe('3.3');
     const before = getConfigWorkspace(root);
     await applyConfigWorkspace(root, { reviewToken: before.reviewToken, gameinfo: { minimap_update_rate_hz: '25' } });
     expect(getPerformanceConfigStatus(root).appliedVersion).toBe(applied.appliedVersion);

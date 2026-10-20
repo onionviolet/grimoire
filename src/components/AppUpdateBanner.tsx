@@ -37,7 +37,7 @@ export default function AppUpdateBanner() {
   }, []);
 
   const downloaded = !!status?.downloaded;
-  const updateReady = !!status && (status.available || status.downloaded);
+  const updateReady = !!status && (status.downloaded || status.available);
   const showBanner = updateReady && !managed && !dismissed;
   const version = status?.updateInfo?.version;
 

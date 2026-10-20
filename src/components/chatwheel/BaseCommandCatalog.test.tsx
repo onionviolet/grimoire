@@ -193,7 +193,7 @@ describe('BaseCommandCatalog', () => {
   it('replaces the list with four skeletons and disables the controls while loading', async () => {
     await render({ loading: true, disabled: true });
     expect(rows()).toHaveLength(0);
-    expect(host.querySelectorAll('.skeleton-shimmer')).toHaveLength(4);
+    expect(host.querySelectorAll('.skeleton')).toHaveLength(4);
     expect(Array.from(host.querySelectorAll('button')).every((button) => button.disabled)).toBe(true);
   });
 

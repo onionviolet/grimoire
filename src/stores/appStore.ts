@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Mod, AppSettings, AppearanceSurface, DeleteModsProgress, EditLocalModArgs, GlobalModType } from '../types/mod';
+import type { Mod, AppSettings, AppearanceSurface, DeleteModEntry, DeleteModsProgress, EditLocalModArgs, GlobalModType } from '../types/mod';
 import type { ImportCustomModArgs, ImportCustomModResult, LocalVariantGroupTarget } from '../types/electron';
 import { getActiveDeadlockPath } from '../lib/appSettings';
 import { readPref, writePref } from '../lib/uiPrefs';
@@ -11,6 +11,7 @@ import { buildHeroList, getLockerSkinKey } from '../lib/lockerUtils';
 import { invalidateAssetClaims } from '../lib/inspectedAssetClaims';
 import { modPreferenceKey } from '../lib/disabledModPrefs';
 import { pathDedupeKey } from '../lib/customModImport';
+import { acknowledgeDownloadCompletions, getPendingDownloadCompletions } from '../lib/downloadActivity';
 import { modRestoreKey, planSoloByKeys, planRestore } from '../lib/soloRestore';
 import {
   SHUFFLE_ON_LAUNCH_KEY,
@@ -221,6 +222,9 @@ export interface BrowseUiState {
   // For Mod section it collapses to 'all' since every Skin lives under a hero.
   heroCategoryId: number | 'all' | 'none';
   categoryId: number | 'all';
+  // Category ids belong to their section. Remember them for this session only.
+  categoryIdsBySection: Partial<Record<string, number | 'all'>>;
+  soundNoHero: boolean;
   // Artist mode: when set, the grid lists only this submitter's mods
   // (GameBanana Generic_Submitter filter) and Browse shows an artist banner.
   // Session-only; carries display fields so the banner needs no extra fetch.
@@ -265,6 +269,8 @@ const DEFAULT_BROWSE_UI: BrowseUiState = {
   addedTo: '',
   heroCategoryId: 'all',
   categoryId: 'all',
+  categoryIdsBySection: {},
+  soundNoHero: false,
 };
 
 // Cached page state: lets the Browse tab resume exactly where the user left
@@ -415,16 +421,17 @@ interface AppState {
    *  page with the loading skeleton. Refreshes are silent by default once a
    *  library has loaded; pass `{ silent: false }` only for an explicit blocking
    *  reload. Pass `{ force: true }` after a filesystem mutation so an older
-   *  in-flight scan cannot be reused. */
-  loadMods: (opts?: { silent?: boolean; force?: boolean }) => Promise<void>;
+   *  in-flight scan cannot be reused. Use `{ afterCurrent: true }` for queued
+   *  writes to wait for the current scan and share one fresh follow-up. */
+  loadMods: (opts?: { silent?: boolean; force?: boolean; afterCurrent?: boolean }) => Promise<void>;
   /** Returns false when the toggle was blocked (e.g. the 99-enabled cap), so
    *  batch callers can stop early. */
   toggleMod: (modId: string) => Promise<boolean>;
   clearModsNotice: () => void;
-  deleteMod: (modId: string) => Promise<void>;
+  deleteMod: (mod: DeleteModEntry) => Promise<void>;
   /** Deletes the ids as one locked main-process batch, with a progress tick
    *  per removed mod. Never throws. */
-  deleteMods: (modIds: string[], onProgress?: (progress: DeleteModsProgress) => void) => Promise<void>;
+  deleteMods: (mods: readonly DeleteModEntry[], onProgress?: (progress: DeleteModsProgress) => void) => Promise<void>;
   setModPriority: (modId: string, priority: number) => Promise<void>;
   swapModPriority: (modIdA: string, modIdB: string) => Promise<void>;
   reorderMods: (orderedIds: string[]) => Promise<void>;
@@ -522,7 +529,9 @@ const ENABLE_CAP_NOTICE =
   'You can have at most 990 mods enabled at once. Disable one to make room.';
 const isEnableCapError = (err: unknown): boolean => /mods enabled at once/.test(String(err));
 const GAME_RUNNING_NOTICE = 'Game is running';
-const isGameRunningModLockError = (err: unknown): boolean => String(err).includes(GAME_RUNNING_NOTICE);
+const VANILLA_WINDOW_NOTICE = 'Vanilla launch in progress';
+const isGameRunningModLockError = (err: unknown): boolean =>
+  String(err).includes(GAME_RUNNING_NOTICE) || String(err).includes(VANILLA_WINDOW_NOTICE);
 
 export const useAppStore = create<AppState>((set, get) => ({
   // Initial state
@@ -583,14 +592,19 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // Save settings to backend
   saveSettings: async (settings: AppSettings) => {
+    const previous = get().settings;
+    // Send this action's changes so a delayed path switch cannot undo other saves.
+    const patch = Object.fromEntries(Object.entries(settings).filter(([key, value]) =>
+      !previous || value !== previous[key as keyof AppSettings],
+    )) as Partial<AppSettings>;
     set({ settingsLoading: true, settingsError: null });
     try {
-      await api.setSettings(settings);
-      setDateFormat(settings.dateFormat);
-      applyLanguagePreference(settings.language);
-      set({ settings, settingsLoading: false });
+      const saved = await api.setSettings(patch);
+      setDateFormat(saved.dateFormat);
+      applyLanguagePreference(saved.language);
+      set({ settings: saved, settingsLoading: false });
       // Reload mods if path changed
-      if (getActiveDeadlockPath(settings)) {
+      if (getActiveDeadlockPath(saved)) {
         get().loadMods({ force: true });
       }
     } catch (err) {
@@ -760,12 +774,18 @@ export const useAppStore = create<AppState>((set, get) => ({
   // supersedes an older scan when a mutation or path change makes reuse unsafe.
   loadMods: (opts) => {
     const existing = modsLoadInFlight;
+    // Update completions need a scan that starts after their write. Wait for
+    // older reads, then let concurrent completion requests share one new scan.
+    if (opts?.afterCurrent && existing && existing.generation === modsGeneration) {
+      return existing.promise.then(() => get().loadMods({ silent: opts.silent }));
+    }
     if (!opts?.force && existing && existing.generation === modsGeneration) {
       return existing.promise;
     }
 
     const silent = opts?.silent ?? get().modsLoaded;
     const gen = ++modsGeneration;
+    const completedDownloads = getPendingDownloadCompletions();
     if (!silent) set({ modsLoading: true, modsError: null });
     const promise = (async () => {
       try {
@@ -806,6 +826,7 @@ export const useAppStore = create<AppState>((set, get) => ({
               shuffleVariants: migrated.shuffleVariants,
             });
           }
+          acknowledgeDownloadCompletions(completedDownloads);
         } else if (!silent) {
           // Superseded by a newer load/mutation: drop the stale list, but still
           // clear our own spinner so the page doesn't hang on it.
@@ -841,6 +862,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({
         mods: get().mods.map((m) => (m.id === modId ? updatedMod : m)),
       });
+      const outdated = updatedMod.enabled ? updatedMod.outdatedVdata?.[0] : undefined;
+      if (outdated) {
+        showToast(
+          i18n.t('installed.outdatedData.enabledToast', { name: updatedMod.name, count: outdated.missing, file: outdated.entry }),
+          { tone: 'warning', duration: 10000 }
+        );
+      }
       return true;
     } catch (err) {
       // The 99-enabled cap is an expected, recoverable outcome - surface it as
@@ -869,22 +897,17 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   clearModsNotice: () => set({ modsNotice: null }),
 
-  // Delete a mod.
-  // "Mod not found" is treated as idempotent success: the file is already
-  // gone (most often because scanMods' reconcile pass renamed a colliding
-  // pakNN file between the renderer's last load and this delete), so the
-  // desired end state is already reached. Surfacing it as modsError would
-  // replace the whole Installed page with the full-page error screen,
-  // which is especially bad mid-batch in bulk delete.
-  deleteMod: async (modId: string) => {
+  // Delete a mod. Main skips it when it is gone or changed since it was
+  // picked, so the local list is resynced instead of guessed.
+  deleteMod: async (mod) => {
     try {
-      await api.deleteMod(modId);
-      set({ mods: get().mods.filter((m) => m.id !== modId) });
-    } catch (err) {
-      if (/Mod not found/.test(String(err))) {
-        set({ mods: get().mods.filter((m) => m.id !== modId) });
+      const { skipped } = await api.deleteMod(mod);
+      if (skipped.length > 0) {
+        await get().loadMods({ silent: true, force: true });
         return;
       }
+      set({ mods: get().mods.filter((m) => m.id !== mod.id) });
+    } catch (err) {
       if (isGameRunningModLockError(err)) {
         return;
       }
@@ -893,12 +916,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   // A failed batch may have deleted some files before stopping, so resync
-  // instead of guessing which ids are gone.
-  deleteMods: async (modIds, onProgress) => {
+  // instead of guessing which ids are gone. The same goes for skipped entries.
+  deleteMods: async (mods, onProgress) => {
     try {
-      await api.deleteMods(modIds, onProgress);
-      const removed = new Set(modIds);
+      const { skipped } = await api.deleteMods(mods, onProgress);
+      const removed = new Set(mods.map((m) => m.id));
+      for (const id of skipped) removed.delete(id);
       set({ mods: get().mods.filter((m) => !removed.has(m.id)) });
+      if (skipped.length > 0) await get().loadMods({ silent: true, force: true });
     } catch (err) {
       await get().loadMods({ silent: true, force: true });
       if (isGameRunningModLockError(err)) return;
@@ -1318,7 +1343,26 @@ export const useAppStore = create<AppState>((set, get) => ({
   // a time without restating the rest. layout + sort also persist, so they
   // survive app restarts.
   setBrowseUi: (partial: Partial<BrowseUiState>) => {
-    const next = { ...get().browseUi, ...partial };
+    const current = get().browseUi;
+    const next = { ...current, ...partial };
+    if (next.section !== current.section) {
+      next.categoryIdsBySection = {
+        ...current.categoryIdsBySection,
+        [current.section]: current.categoryId,
+      };
+      next.categoryId = partial.categoryId ?? next.categoryIdsBySection[next.section] ?? 'all';
+      next.heroCategoryId = partial.heroCategoryId ?? (
+        next.section === 'Sound' && current.soundNoHero
+          ? 'none'
+          : current.heroCategoryId === 'none' ? 'all' : current.heroCategoryId
+      );
+    }
+    if (partial.heroCategoryId !== undefined) {
+      next.soundNoHero = next.section === 'Sound' && partial.heroCategoryId === 'none';
+    }
+    if (next.section !== 'Sound' && next.heroCategoryId === 'none') {
+      next.heroCategoryId = 'all';
+    }
     // An override belongs to the exact navigation that supplied it. Any
     // ordinary submitter change must drop it so a later Installed/Browse link
     // cannot accidentally reveal a creator the user chose to hide.

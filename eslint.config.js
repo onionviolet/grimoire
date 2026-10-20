@@ -6,7 +6,7 @@ import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist', '.claude', 'release']),
+  globalIgnores(['dist', '.claude', 'release', '.codex-run']),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [
@@ -20,6 +20,11 @@ export default defineConfig([
       globals: globals.browser,
     },
     rules: {
+      // Compiler warnings are a ratchet: fix by area, then flip these back to error.
+      'react-hooks/set-state-in-effect': 'warn',
+      'react-hooks/immutability': 'warn',
+      'react-hooks/refs': 'warn',
+      'react-hooks/incompatible-library': 'warn',
       '@typescript-eslint/no-unused-vars': [
         'error',
         {

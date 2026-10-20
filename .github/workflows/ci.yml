@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout grimoire
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           path: grimoire
           # Full history: the upstream backlink guard walks the commits this
@@ -25,7 +25,7 @@ jobs:
       # import becomes an implicit-any and the build fails on the workspace dep.
       # scripts/check-sibling-repos.mjs (preinstall) enforces the layout.
       - name: Checkout grimoire-social (sibling for shared types)
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: Slush97/grimoire-social
           path: grimoire-social
@@ -41,9 +41,9 @@ jobs:
           version: 10
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 24
           cache: pnpm
           cache-dependency-path: grimoire/pnpm-lock.yaml
 
@@ -78,13 +78,19 @@ jobs:
         working-directory: grimoire
         run: pnpm exec tsc -b --noEmit
 
+      - name: Locker artwork covers the full roster
+        working-directory: grimoire
+        run: pnpm locker-art:check
+
       # Vitest covers the FeModel parser, cloth fit math + solver stability,
       # Source 2 / NPR material reconstruction, the dynamic-scalar evaluator and
       # the profiles vpkIndex resolver. Nothing gated these until now, so a PR
       # could break every one of them and still go green.
       - name: Test
         working-directory: grimoire
-        run: pnpm exec vitest run
+        run: |
+          pnpm exec vitest run
+          node --test scripts/nightly-version.test.mjs
 
       # Every referenced t()/Tx key must exist in the English catalog, and the
       # committed locale manifest (what the app fetches from `main` to populate

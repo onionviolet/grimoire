@@ -7,7 +7,7 @@ const h = vi.hoisted(() => ({ userData: '' }));
 vi.mock('electron', () => ({ app: { getPath: () => h.userData } }));
 vi.mock('./launch', () => ({ isDeadlockRunning: async () => false, readStash: async () => null }));
 
-import { scanMods } from './mods';
+import { healModFolders, scanMods } from './mods';
 import { modTempPath } from './modTemps';
 
 const uuid = '0f8fad5b-d9cb-469f-a165-70867728950e';
@@ -40,6 +40,9 @@ describe('stale staging temp sweep', () => {
         for (const path of [...stale, ...kept]) writeFileSync(path, 'x');
 
         await scanMods(root);
+        expect(stale.filter((path) => existsSync(path))).toEqual(stale);
+
+        await healModFolders(root);
 
         expect(stale.filter((path) => existsSync(path))).toEqual([]);
         expect(kept.filter((path) => existsSync(path))).toEqual(kept);

@@ -421,9 +421,9 @@ export interface StoredMatch {
   last_hits: number
   denies: number
   net_worth: number
-  player_damage: number
-  player_healing: number
-  obj_damage: number
+  player_damage: number | null
+  player_healing: number | null
+  obj_damage: number | null
   items: string
   fetched_at: number
 }

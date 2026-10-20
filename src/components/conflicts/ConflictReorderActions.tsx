@@ -1,11 +1,13 @@
 import { ArrowDownUp, Crown } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { ModConflict } from '../../lib/api';
+import { winnerButtonState } from '../../lib/conflictWinner';
 import Tx from '../translation/Tx';
 
 interface ConflictModRef {
   id: string;
   name: string;
+  global?: boolean;
 }
 
 interface ConflictReorderActionsProps {
@@ -51,30 +53,35 @@ export default function ConflictReorderActions({
     ? t('conflicts.reorder.hint')
     : t('conflicts.reorder.enableBothHint');
 
-  const renderButton = (mod: ConflictModRef, other: ConflictModRef, isWinner: boolean) => (
-    <button
-      type="button"
-      onClick={() => onSetWinner(mod.id, other.id)}
-      disabled={busy || !bothEnabled || isWinner}
-      title={
-        !bothEnabled
-          ? t('conflicts.reorder.enableBothHint')
-          : isWinner
-            ? t('conflicts.reorder.alreadyWins', { name: mod.name })
-            : t('conflicts.reorder.makeWinner', { name: mod.name, other: other.name })
-      }
-      className={`flex min-w-0 items-center justify-center gap-1.5 rounded-lg border px-2 py-1.5 text-xs font-medium transition-colors ${
-        isWinner
-          ? 'border-accent/40 bg-accent/15 text-accent cursor-default'
-          : 'border-border bg-bg-tertiary text-text-secondary hover:text-text-primary hover:border-text-tertiary cursor-pointer'
-      } disabled:cursor-not-allowed ${!bothEnabled ? 'opacity-50' : ''}`}
-    >
-      {isWinner && <Crown className="w-3.5 h-3.5 flex-shrink-0" />}
-      <span className="truncate" title={mod.name}>
-        {mod.name}
-      </span>
-    </button>
-  );
+  const renderButton = (mod: ConflictModRef, other: ConflictModRef, isWinner: boolean) => {
+    const state = winnerButtonState(bothEnabled, isWinner, !!other.global);
+    return (
+      <button
+        type="button"
+        onClick={() => onSetWinner(mod.id, other.id)}
+        disabled={busy || state !== 'available'}
+        title={
+          state === 'needsBoth'
+            ? t('conflicts.reorder.enableBothHint')
+            : state === 'wins'
+              ? t('conflicts.reorder.alreadyWins', { name: mod.name })
+              : state === 'globalLocked'
+                ? t('conflicts.reorder.globalLocked')
+                : t('conflicts.reorder.makeWinner', { name: mod.name, other: other.name })
+        }
+        className={`flex min-w-0 items-center justify-center gap-1.5 rounded-lg border px-2 py-1.5 text-xs font-medium transition-colors ${
+          isWinner
+            ? 'border-accent/40 bg-accent/15 text-accent cursor-default'
+            : 'border-border bg-bg-tertiary text-text-secondary hover:text-text-primary hover:border-text-tertiary cursor-pointer'
+        } disabled:cursor-not-allowed ${state === 'needsBoth' || state === 'globalLocked' ? 'opacity-50' : ''}`}
+      >
+        {isWinner && <Crown className="w-3.5 h-3.5 flex-shrink-0" />}
+        <span className="truncate" title={mod.name}>
+          {mod.name}
+        </span>
+      </button>
+    );
+  };
 
   return (
     <div className="px-4 pb-4">

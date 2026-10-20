@@ -13,6 +13,7 @@ vi.mock('./launch', () => ({
 
 import {
     PRIORITY_LIMIT_MESSAGE,
+    healModFolders,
     scanMods,
     setModPriorityFolder,
 } from './mods';
@@ -89,6 +90,7 @@ describe('setModPriorityFolder failure atomicity', () => {
         const { root, grimoire } = createGame();
         const source = join(grimoire, 'pak05_dir.vpk');
         writeVpk(source);
+        await healModFolders(root);
         const target = (await scanMods(root)).find((mod) => mod.path === source)!;
         expect(getModMetadata(target.metaKey)?.priorityMod).toBe(true);
         vi.spyOn(fs, 'rename').mockRejectedValueOnce(

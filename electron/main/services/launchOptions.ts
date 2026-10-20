@@ -352,11 +352,11 @@ function locateAppBlock(text: string, sourcePath: string, appId: string): AppBlo
     // matching }.
     const rootKey = readQuoted(text, skipWhitespace(text, 0));
     if (!rootKey || rootKey.value !== 'UserLocalConfigStore') {
-        throw new Error('localconfig.vdf does not start with UserLocalConfigStore — refusing to edit.');
+        throw new Error('localconfig.vdf does not start with UserLocalConfigStore. Refusing to edit.');
     }
     const rootBraceIdx = text.indexOf('{', rootKey.end + 1);
     if (rootBraceIdx === -1) {
-        throw new Error('Malformed localconfig.vdf — no opening brace after root key.');
+        throw new Error('Malformed localconfig.vdf: no opening brace after root key.');
     }
     // Find matching close for root.
     let depth = 1;
@@ -365,7 +365,7 @@ function locateAppBlock(text: string, sourcePath: string, appId: string): AppBlo
         const c = text[j];
         if (c === '"') {
             const strTok = readQuoted(text, j);
-            if (!strTok) throw new Error('Malformed localconfig.vdf — unterminated string.');
+            if (!strTok) throw new Error('Malformed localconfig.vdf: unterminated string.');
             j = strTok.end + 1;
         } else if (c === '{') {
             depth++; j++;
@@ -377,20 +377,31 @@ function locateAppBlock(text: string, sourcePath: string, appId: string): AppBlo
             j++;
         }
     }
-    if (depth !== 0) throw new Error('Malformed localconfig.vdf — unmatched root braces.');
+    if (depth !== 0) throw new Error('Malformed localconfig.vdf: unmatched root braces.');
     const rootBlock: BlockHandle = { braceOpen: rootBraceIdx, braceClose: j };
 
     const software = findChildBlock(text, rootBlock.braceOpen + 1, rootBlock.braceClose, 'Software');
-    if (!software) throw new Error('localconfig.vdf missing Software block — refusing to edit.');
+    if (!software) throw new Error('localconfig.vdf missing Software block. Refusing to edit.');
     const valve = findChildBlock(text, software.braceOpen + 1, software.braceClose, 'Valve');
-    if (!valve) throw new Error('localconfig.vdf missing Software/Valve block — refusing to edit.');
+    if (!valve) throw new Error('localconfig.vdf missing Software/Valve block. Refusing to edit.');
     const steam = findChildBlock(text, valve.braceOpen + 1, valve.braceClose, 'Steam');
-    if (!steam) throw new Error('localconfig.vdf missing Software/Valve/Steam block — refusing to edit.');
+    if (!steam) throw new Error('localconfig.vdf missing Software/Valve/Steam block. Refusing to edit.');
     const apps = findChildBlock(text, steam.braceOpen + 1, steam.braceClose, 'apps');
-    if (!apps) throw new Error('localconfig.vdf missing apps block — user may have never launched a Steam game.');
+    if (!apps) throw new Error('localconfig.vdf missing apps block: user may have never launched a Steam game.');
 
     const appBlock = findChildBlock(text, apps.braceOpen + 1, apps.braceClose, appId);
     return { text, sourcePath, appBlock, appsBlock: apps };
+}
+
+/**
+ * What to write into Steam, or null to leave it alone. An empty desired value
+ * only clears Steam's options when the user explicitly saved it (`managed`);
+ * otherwise it is the unset default and Steam's own value wins.
+ */
+export function resolveLaunchOptionsWrite(desired: string, managed: boolean, onDisk: string | null): string | null {
+    if (desired === '' && !managed) return null;
+    if ((onDisk ?? '') === desired) return null;
+    return desired;
 }
 
 /**
@@ -479,7 +490,7 @@ export async function writeLaunchOptions(
 ): Promise<{ configPath: string; accountId: string }> {
     const found = await findLocalConfigPath();
     if (!found) {
-        throw new Error('Could not locate a Steam userdata folder — is Steam installed and have you logged in at least once?');
+        throw new Error('Could not locate a Steam userdata folder. Is Steam installed, and have you logged in at least once?');
     }
     const text = await fs.readFile(found.path, 'utf-8');
     const loc = locateAppBlock(text, found.path, appId);

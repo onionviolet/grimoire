@@ -1,13 +1,19 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { mkdtempSync, mkdirSync, symlinkSync, writeFileSync, rmSync } from 'fs';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import {
     findSteamBottles,
     findBottleForPath,
-    readBottleDriveMap,
+    getSteamRoots,
     resolveBottleWindowsPath,
 } from './steamRoots';
+
+const home = vi.hoisted(() => ({ dir: '' }));
+vi.mock('os', async (importOriginal) => {
+    const os = await importOriginal<typeof import('os')>();
+    return { ...os, homedir: () => home.dir || os.homedir() };
+});
 
 // A fixture that mirrors a real CrossOver bottles directory:
 //
@@ -31,14 +37,6 @@ beforeAll(() => {
         mkdirSync(driveC, { recursive: true });
         if (steamSubPath) mkdirSync(join(driveC, steamSubPath), { recursive: true });
 
-        const dosdevices = join(bottle, 'dosdevices');
-        mkdirSync(dosdevices, { recursive: true });
-        // Wine writes c: as a RELATIVE link, which is the case that breaks a
-        // naive readlink consumer.
-        symlinkSync('../drive_c', join(dosdevices, 'c:'));
-        symlinkSync('/', join(dosdevices, 'z:'));
-        // A non-drive link that must be ignored.
-        symlinkSync('/dev/null', join(dosdevices, 'com1'));
         return bottle;
     };
 
@@ -48,8 +46,6 @@ beforeAll(() => {
     makeBottle('Legacy', join('Program Files', 'Steam'));
     writeFileSync(join(bottlesDir, 'notabottle'), 'stray file');
 
-    // A second Steam library on its own drive letter, living outside drive_c.
-    symlinkSync(hostLibrary, join(bottlesDir, 'Deadlock', 'dosdevices', 'd:'));
 });
 
 afterAll(() => {
@@ -74,21 +70,11 @@ describe('findSteamBottles', () => {
     });
 });
 
-describe('readBottleDriveMap', () => {
-    it('resolves relative drive links against the dosdevices dir', () => {
-        const map = readBottleDriveMap(join(bottlesDir, 'Deadlock'));
-        expect(map['c:']).toBe(join(bottlesDir, 'Deadlock', 'drive_c'));
-    });
-
-    it('keeps absolute drive links as-is and ignores non-drive links', () => {
-        const map = readBottleDriveMap(join(bottlesDir, 'Deadlock'));
-        expect(map['z:']).toBe('/');
-        expect(map).not.toHaveProperty('com1');
-    });
-});
-
 describe('resolveBottleWindowsPath', () => {
-    const map = () => readBottleDriveMap(join(bottlesDir, 'Deadlock'));
+    const map = () => ({
+        'c:': join(bottlesDir, 'Deadlock', 'drive_c'),
+        'd:': hostLibrary,
+    });
 
     it('maps a drive_c Windows path to its host path', () => {
         expect(resolveBottleWindowsPath('C:\\Program Files (x86)\\Steam', map())).toBe(
@@ -124,6 +110,10 @@ describe('resolveBottleWindowsPath', () => {
 });
 
 describe('findBottleForPath', () => {
+    it('matches the bottle root itself', () => {
+        expect(findBottleForPath(join(bottlesDir, 'Deadlock'), bottlesDir)?.name).toBe('Deadlock');
+    });
+
     it('finds the bottle containing a deep game path', () => {
         const gamePath = join(
             bottlesDir,
@@ -145,5 +135,32 @@ describe('findBottleForPath', () => {
 
     it('returns null for a path outside any bottle', () => {
         expect(findBottleForPath(hostLibrary, bottlesDir)).toBeNull();
+    });
+
+    it('does not match an unrelated folder with a bottle-name prefix', () => {
+        expect(findBottleForPath(join(bottlesDir, 'DeadlockBackup', 'drive_c'), bottlesDir)).toBeNull();
+    });
+});
+
+describe('getSteamRoots', () => {
+    it('drops a Linux root that is a symlink to one already listed', () => {
+        const platform = process.platform;
+        home.dir = mkdtempSync(join(tmpdir(), 'grimoire-steam-home-'));
+        try {
+            Object.defineProperty(process, 'platform', { value: 'linux' });
+            const real = join(home.dir, '.local/share/Steam');
+            mkdirSync(real, { recursive: true });
+            mkdirSync(join(home.dir, '.steam'));
+            symlinkSync(real, join(home.dir, '.steam/steam'), 'junction');
+
+            expect(getSteamRoots()).toEqual([
+                join(home.dir, '.steam/steam'),
+                join(home.dir, '.var/app/com.valvesoftware.Steam/.steam/steam'),
+            ]);
+        } finally {
+            Object.defineProperty(process, 'platform', { value: platform });
+            rmSync(home.dir, { recursive: true, force: true });
+            home.dir = '';
+        }
     });
 });

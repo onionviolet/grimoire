@@ -7,7 +7,7 @@
   [![Release](https://img.shields.io/github/v/release/onionviolet/grimoire?label=release)](../../releases/latest)
   [![GitHub downloads](https://img.shields.io/endpoint?url=https%3A%2F%2Fgrimoiremods.com%2Fapi%2Fdownloads-badge.json)](../../releases)
   [![GameBanana downloads](https://img.shields.io/endpoint?url=https%3A%2F%2Fgrimoiremods.com%2Fapi%2Fgamebanana-badge.json)](https://gamebanana.com/tools/22583)
-  [![apt installs](https://img.shields.io/endpoint?url=https%3A%2F%2Fgrimoiremods.com%2Fapi%2Fapt-badge.json)](https://apt.grimoiremods.com)
+  [![apt + dnf installs](https://img.shields.io/endpoint?url=https%3A%2F%2Fgrimoiremods.com%2Fapi%2Fapt-badge.json)](https://apt.grimoiremods.com)
   [![AUR](https://img.shields.io/aur/version/grimoire-bin?label=aur)](https://aur.archlinux.org/packages/grimoire-bin)
   [![CI](https://img.shields.io/github/actions/workflow/status/onionviolet/grimoire/ci.yml?branch=main&label=ci)](../../actions/workflows/ci.yml)
   [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
@@ -36,7 +36,7 @@ history lives in [CHANGELOG.md](CHANGELOG.md).
 [Latest release →](../../releases/latest)
 
 - Windows: `Grimoire-Setup-x.y.z.exe`
-- Linux: `.AppImage` or `.deb`
+- Linux: `.AppImage`, `.deb` or `.rpm`
 - Arch Linux: `yay -S grimoire-bin` ([AUR](https://aur.archlinux.org/packages/grimoire-bin))
 
 ### Debian / Ubuntu (apt)
@@ -51,6 +51,15 @@ sudo apt update && sudo apt install grimoire
 ```
 
 Afterwards `sudo apt upgrade` keeps it current. More detail: [docs/apt-repo.md](docs/apt-repo.md).
+
+### Fedora (dnf)
+
+```bash
+sudo curl -fsSL -o /etc/yum.repos.d/grimoire.repo https://rpm.grimoiremods.com/grimoire.repo
+sudo dnf install grimoire
+```
+
+`sudo dnf upgrade` keeps it current. On Bazzite, Silverblue and other atomic Fedoras, use the AppImage instead (it updates itself). More detail: [docs/rpm-repo.md](docs/rpm-repo.md).
 
 ### Nix / NixOS (flake)
 
@@ -104,7 +113,7 @@ Requires Deadlock installed via Steam.
 - Stats: MMR, match history, and hero stats from deadlock-api.com
 - Crosshair designer with live preview
 
-Offline-first and no telemetry: a fresh install phones home for nothing.
+No telemetry. On its own, Grimoire only talks to GitHub (to check for app updates, which you can turn off) and GameBanana (the mod catalog, plus update checks and thumbnails for mods you installed). Everything the app can send is listed on the [privacy page](https://grimoiremods.com/docs/privacy).
 
 ## Screenshots
 
@@ -120,7 +129,7 @@ Offline-first and no telemetry: a fresh install phones home for nothing.
 Grimoire shares wire-format types with its companion service,
 [grimoire-social](https://github.com/Slush97/grimoire-social), through a
 workspace package resolved from `../grimoire-social`. Clone both side by side,
-or `pnpm install` fails with `ERR_PNPM_WORKSPACE_PKG_NOT_FOUND`. Needs Node 20+
+or `pnpm install` fails with `ERR_PNPM_WORKSPACE_PKG_NOT_FOUND`. Needs Node 24+
 and pnpm 10+.
 
 ```bash
@@ -141,6 +150,9 @@ Package builds: `pnpm package:win` or `pnpm package:linux` (both require
 
 More detail in [CONTRIBUTING.md](CONTRIBUTING.md).
 
+The Locker 3D preview has [architecture documentation](docs/viewer-architecture.md)
+and a [development and validation guide](docs/viewer-development.md).
+
 ## Security
 
 Grimoire is open source. Users are encouraged to read the code, build
@@ -159,6 +171,17 @@ Windows installers are not yet code-signed, so SmartScreen will show an
 "Unknown Publisher" warning on first run: click **More info → Run
 anyway** to proceed. Free Authenticode signing through the SignPath
 Foundation OSS program is being pursued.
+
+## **PENDING** Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/).
+
+- Committers and reviewers: [Slush97](https://github.com/Slush97)
+- Approvers: [Slush97](https://github.com/Slush97)
+
+The full policy, including what gets signed and how, is at
+[grimoiremods.com/code-signing](https://grimoiremods.com/code-signing). Privacy:
+[what Grimoire sends and to whom](https://grimoiremods.com/docs/privacy).
 
 ## License
 

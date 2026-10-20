@@ -68,8 +68,7 @@ Lead the product on the things a browser tool cannot do:
 2. **Offline, free, never stale.** A web catalog is a hosted index that must be re-scanned
    every patch. We build the catalog **locally from the user's own `pak01`**, so it always
    matches the installed game version. No backend, no hosting cost, no version skew, works
-   offline. (Also keeps faith with the workspace "no telemetry / phones home for nothing"
-   pillar.)
+   offline. (Also fits the workspace no-telemetry rule.)
 3. **Create, do not just swap.** Recolor a hero's entire ability VFX to one hue or a rainbow
    prism; apply a reskin preset; put music on an ult; restyle a material to glass or toon.
    None of this exists in any competing tool.

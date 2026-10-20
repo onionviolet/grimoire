@@ -8,7 +8,7 @@
 import { promises as fs } from 'fs';
 import { basename, dirname, join } from 'path';
 import { randomUUID } from 'crypto';
-import { dialog } from 'electron';
+import { showSaveDialog } from './dialogs';
 import type { VpkExportResult } from '../../../src/types/foundry';
 
 /**
@@ -32,7 +32,7 @@ export async function exportVpkViaDialog(
     builtVpkPath: string,
     suggestedName: string
 ): Promise<VpkExportResult> {
-    const { canceled, filePath } = await dialog.showSaveDialog({
+    const { canceled, filePath } = await showSaveDialog({
         title: 'Export mod VPK',
         defaultPath: suggestedName,
         filters: [{ name: 'Valve Pak', extensions: ['vpk'] }],

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { useTranslation } from 'react-i18next';
+import { Trans, useTranslation } from 'react-i18next';
 import { FolderOpen, Wrench, Check, X, ArrowRight, Loader2, Terminal } from 'lucide-react';
-import { Button, Badge } from './common/ui';
+import { Button, Badge, Toggle } from './common/ui';
 import { Modal } from './common/Modal';
 import {
     validateDeadlockPath,
@@ -12,6 +12,8 @@ import {
     setSettings,
 } from '../lib/api';
 import { useAppStore } from '../stores/appStore';
+
+const PRIVACY_PAGE_URL = 'https://github.com/onionviolet/grimoire/blob/main/docs/guide/privacy.md';
 
 interface WelcomeModalProps {
     onComplete: () => void;
@@ -35,6 +37,15 @@ export default function WelcomeModal({ onComplete }: WelcomeModalProps) {
     } | null>(null);
     const [isCreatingAutoexec, setIsCreatingAutoexec] = useState(false);
 
+    // The launch update check waits for this screen, so the choice comes first.
+    const [autoCheckUpdates, setAutoCheckUpdates] = useState(false);
+    const [installSource, setInstallSource] = useState<string | null>(null);
+
+    useEffect(() => {
+        window.electronAPI.updater.getInstallSource().then(setInstallSource).catch(() => {});
+        getSettings().then((settings) => setAutoCheckUpdates(settings.checkUpdatesOnStartup)).catch(() => {});
+    }, []);
+
     // Auto-detect on mount
     useEffect(() => {
         const runAutoDetect = async () => {
@@ -45,8 +56,7 @@ export default function WelcomeModal({ onComplete }: WelcomeModalProps) {
                     setLocalPath(detected);
                     setIsValidPath(true);
                     // Save immediately
-                    const settings = await getSettings();
-                    await setSettings({ ...settings, deadlockPath: detected });
+                    await setSettings({ deadlockPath: detected });
                 } else {
                     setIsValidPath(false);
                     setDetectFailed(true);
@@ -99,8 +109,7 @@ export default function WelcomeModal({ onComplete }: WelcomeModalProps) {
             setIsValidPath(valid);
 
             if (valid) {
-                const settings = await getSettings();
-                await setSettings({ ...settings, deadlockPath: selected });
+                await setSettings({ deadlockPath: selected });
                 setDetectFailed(false);
             } else {
                 setDetectFailed(true);
@@ -134,6 +143,11 @@ export default function WelcomeModal({ onComplete }: WelcomeModalProps) {
         } finally {
             setIsCreatingAutoexec(false);
         }
+    };
+
+    const handleAutoCheckUpdates = async (checked: boolean) => {
+        setAutoCheckUpdates(checked);
+        await setSettings({ checkUpdatesOnStartup: checked });
     };
 
     const canProceed = isValidPath && gameinfoConfigured;
@@ -292,6 +306,33 @@ export default function WelcomeModal({ onComplete }: WelcomeModalProps) {
                                 </div>
                             ) : null}
                         </div>
+                    </div>
+
+                    <div className="space-y-3 border-t border-hl/5 pt-5">
+                        <h3 className="font-medium">{t('welcome.privacy.title')}</h3>
+                        <p className="text-xs text-text-secondary">
+                            <Trans
+                                i18nKey="welcome.privacy.body"
+                                components={{
+                                    privacyLink: (
+                                        <a
+                                            href={PRIVACY_PAGE_URL}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="underline decoration-dotted underline-offset-2 transition-colors hover:text-accent"
+                                        />
+                                    ),
+                                }}
+                            />
+                        </p>
+                        {installSource !== null && installSource !== 'managed' && (
+                            <Toggle
+                                checked={autoCheckUpdates}
+                                onChange={(checked) => void handleAutoCheckUpdates(checked)}
+                                label={t('settings.updates.autoCheck')}
+                                description={t('settings.updates.autoCheckDescription')}
+                            />
+                        )}
                     </div>
                 </div>
 

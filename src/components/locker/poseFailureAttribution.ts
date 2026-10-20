@@ -43,12 +43,7 @@ export async function attributeBrokenSkinSources(
   const broken: string[] = [];
   for (const source of sources) {
     if (isCancelled()) return [];
-    let ok = false;
-    try {
-      ok = await probe(source);
-    } catch {
-      ok = false;
-    }
+    const ok = await probe(source).catch(() => false);
     if (!ok) broken.push(source.metaKey);
   }
   return isCancelled() ? [] : broken;

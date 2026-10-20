@@ -25,16 +25,19 @@
     "",
     "To update a pin deliberately:  pnpm perf:presets --refresh <presetId|all>",
     "then  pnpm perf:presets  to regenerate, and review the diff.",
-    "Never hand-edit electron/main/services/performanceConfigData.ts."
+    "Never hand-edit electron/main/services/performanceConfigData.ts.",
+    "",
+    "A preset added upstream after a source's older releases records null for",
+    "those releases: the file did not exist yet, so there is nothing to bundle."
   ],
   "historyDepth": 3,
   "$historyDepthComment": "How many upstream releases to bundle per source, newest first. --refresh prepends the new release and ages out the oldest. Raising it grows the main-process bundle by roughly 25 KB per preset per release; lowering it shortens how far a user can roll back.",
   "baseline": {
     "$comment": "Stock gameinfo.gi. Every preset is stored as a diff against this, which is what lets Grimoire patch in place instead of replacing the user's file.",
     "repo": "Sqooky/OptimizationLock",
-    "commit": "96ff42d1db29ca9fe44afb3df749fa763bb87b87",
+    "commit": "e2e9925cdd9d564a1a0bb19f28185211fb0dea75",
     "path": "clean gameinfo.gi/gameinfo.gi",
-    "sha256": "0ba6d49dab17a428f210bb2413af8d3b9724064aab091eb52aea124c3902936b"
+    "sha256": "b96954f5607e381b94b3d5ba2214bf1bcee2b65a16bb1a231b5f840586466955"
   },
   "sources": {
     "optimizationlock": {
@@ -45,47 +48,49 @@
       "refKind": "prose",
       "releases": [
         {
-          "ref": "2.9",
-          "commit": "96ff42d1db29ca9fe44afb3df749fa763bb87b87",
-          "date": "2026-08-17"
+          "ref": "3.4",
+          "commit": "e2e9925cdd9d564a1a0bb19f28185211fb0dea75",
+          "date": "2026-10-05"
         },
         {
-          "ref": "2.8.2",
-          "commit": "a7ba9d63dc6bb660208374ba2f18955e77042442",
-          "date": "2026-08-02"
+          "ref": "3.3",
+          "commit": "48c2dc029253b2526abc6ccc02351e4d8cbc699a",
+          "date": "2026-10-02"
         },
         {
-          "ref": "2.7",
-          "commit": "271befb5cf9f8c9431da81e39ea4147895604d3e",
-          "date": "2026-07-25"
+          "ref": "3.2",
+          "commit": "ff247d8dc62c6d79affb570db1cb4df1900e3741",
+          "date": "2026-09-30"
         }
       ],
-      "$comment": "Upstream publishes no git tags or releases; each 'ref' is the version stated in that release's commit message and in the config's own header comment. Pins are the commit SHAs. The newest release is also the baseline pin. If Sqooky starts tagging, switch refKind to 'tag' and pin the tags' resolved SHAs."
+      "$comment": "Upstream publishes no git tags or releases; each 'ref' is the version stated in that release's commit message and in the config's own header comment. Pins are the commit SHAs. Sqooky follows a release with fix-up pushes (3.3 was fixed by \"IWRONG VALUE\" minutes later), so each pin is the last commit of that release's push burst, not the commit titled with the version. The newest release is also the baseline pin. If Sqooky starts tagging, switch refKind to 'tag' and pin the tags' resolved SHAs. 3.4 is pinned past its push burst to e2e9925c (2026-10-05): those later commits only reformatted the bundled files (no key changes) and added Eskay's config, and upstream still states 3.4."
     },
     "optilock": {
       "repo": "dacooderr/OptiLock",
       "url": "https://github.com/dacooderr/OptiLock",
       "license": "GPL-3.0",
       "credit": "OptiLock by dacooder and contributors",
+      "verbatimVideo": true,
+      "$verbatimVideoComment": "dacooder's README says to delete everything under DeviceID in your video.txt and paste his in whole; tested 2026-10-16, the configs only look right that way. So video.exclude (display keys) and video.max (dacooder asked for his mip bias 6/8 as shipped, not capped) do not apply to OptiLock video.txt bodies. exclude.keys/patterns and the opt-in dedupe (r_citadel_outlines follows its gameinfo.gi toggle) still apply. Display keys are restored on Remove from the sidecar's undo record, and a value changed in game afterwards is kept on reapply.",
       "refKind": "tag",
       "releases": [
         {
-          "ref": "v4.6",
-          "commit": "6caab13036711d09ae439b4de4406bdb9972e148",
-          "date": "2026-08-15"
+          "ref": "v5.6",
+          "commit": "95485f6369832ddbe5402375333907ce6f1696e3",
+          "date": "2026-10-14"
         },
         {
-          "ref": "v4.2",
-          "commit": "fdfce93a95db176c539d3dbcb601238e181008b9",
-          "date": "2026-07-15"
+          "ref": "v5.5",
+          "commit": "2ea61cfa773438565591eec25764efb173018c6f",
+          "date": "2026-10-12"
         },
         {
-          "ref": "v4.0d",
-          "commit": "465590a35d8d47d84b78031837fa209f5a2b5ce7",
-          "date": "2026-07-12"
+          "ref": "v5.2",
+          "commit": "353cb7e5eb18e5d8a13a21a9e1b4c25cd7abb5be",
+          "date": "2026-10-10"
         }
       ],
-      "$comment": "ORDER IS BY DATE, NOT NAME: dacooder tagged v4.0d (12 Jul) a day AFTER v4.1 (11 Jul), so rolling back one step from v4.2 lands on v4.0d. Do not 'fix' this ordering to look alphabetical; it would make the rollback order a lie. Tags older than v4.1 are not offered because the preset paths churn (v4.0 and v4.0a-c are each missing one of the two preset files). Tag v4.2 resolved to this commit on 2026-07-29, rechecked 2026-08-03. GitHub tags are mutable, so the SHA is authoritative and the sha256 below is the real gate. KNOWN ISSUE: one day after tagging v4.2, upstream commit 40788927 flipped r_render_portals back to \"true\" in the FPS preset because \"false\" broke Doorman's door. That fix is on main but not in any release, so a tag-pinned refresh cannot pick it up. Rather than pin past the tag (which would make the card claim a release the code is not from), r_render_portals is excluded outright below, so Grimoire never writes either value and the engine default stands. Drop that exclusion once upstream tags a release containing the fix."
+      "$comment": "ORDER IS BY DATE, NOT NAME: dacooder once tagged v4.0d (12 Jul) a day AFTER v4.1 (11 Jul), so tag names do not reliably sort into release order. Do not 'fix' this ordering to look alphabetical; it would make the rollback order a lie. GitHub tags are mutable, so the SHA is authoritative and the sha256 below is the real gate. The v5.2 GitHub release is titled \"OptiLock v5.0\"; the tag is what we pin and show."
     }
   },
   "presets": [
@@ -97,22 +102,46 @@
       "source": "optimizationlock",
       "path": "Sqooky's .gi/gameinfo.gi",
       "sha256": {
-        "2.9": "b31825fea70a48412b304b5f3dd06c24d5c29d9feb98d559d337eaef928457f3",
-        "2.8.2": "6c3753fabda7c724a01c9a9747e4a14c8618fe3815ecddae929623252e60db5c",
-        "2.7": "c34801cc66cdd93e3dc0bfea275c98fa9c2a3cc29ee17a1f0397314a2310aeca"
+        "3.4": "c1e451134cd1d4d57d0f665673f9bbe732d6335c2b48ee6617079c23254222c7",
+        "3.3": "dbb91f6e0ba60e9e9493fa823108036f13f2cf90997766f589296520319fb925",
+        "3.2": "6bcc472f5f4132f9c39efbf88e747f266805952b3d00d8ab96bec5ae87d181f5"
       },
       "author": "Sqooky"
+    },
+    {
+      "id": "eskay",
+      "name": "Eskay's Config",
+      "tier": "light",
+      "source": "optimizationlock",
+      "path": "Eskay's config/gameinfo.gi",
+      "$comment": "Added upstream after 3.3, so older releases are null. A minor fork of Sqooky's default that drops the far-clip and fade-distance culling (r_farz, r_mapextents, sc_fade_distance_scale_override), so no building or player pop-in.",
+      "sha256": {
+        "3.4": "c7a496cd9c4b62de03ae03f4bbfda9cd8228bf97cdd1a0824aafe441809dd3ba",
+        "3.3": null,
+        "3.2": null
+      },
+      "author": "Eskay"
     },
     {
       "id": "sqooky-testing",
       "name": "Sqooky's Testing",
       "tier": "preview",
       "source": "optimizationlock",
-      "path": "test_cfg/gameinfo.gi",
+      "path": "maximumfps or minimum spec config and resources here/gameinfo.gi",
+      "$comment": "3.4 moved the README's Max FPS link from test_cfg to its own folder: same config (only quoting differs) and the same video.txt, but test_cfg is no longer linked and will go stale. pathByRef pins the old location for 3.3 and 3.2.",
+      "pathByRef": {
+        "3.3": "test_cfg/gameinfo.gi",
+        "3.2": "test_cfg/gameinfo.gi"
+      },
       "sha256": {
-        "2.9": "362c7c577c37f821cf9f484f4505c7a21afecc014e3064e77798ede620189d55",
-        "2.8.2": "7cb2c5d0f7100d90e6f4ddd4fa8b067533d2bcd3a520ebe936fec75263c4084b",
-        "2.7": "b8e2e34ae293d9a6d3a5bd115d6f92626d19662684033beb906401f6a7b6f0bf"
+        "3.4": "b6419de8e6aa5fede1e0e70f0ff6fa18c43c7f6ab884f0ec26bf30c418f368c4",
+        "3.3": "b7b2d540fdb74d91ca8544cb50354ca6ef1cc78dd9a24bc59ad0f5180e29abe1",
+        "3.2": "93a375143673eae81e98adb0ddf7f24aeeb428a9bd7c696717d2db6ddaf46808"
+      },
+      "videoSha256": {
+        "3.4": "3eac767a751db000ba2400c07eeb2bd1dd509a60a35f33ceb4f29ff0954f26f3",
+        "3.3": "3eac767a751db000ba2400c07eeb2bd1dd509a60a35f33ceb4f29ff0954f26f3",
+        "3.2": "3eac767a751db000ba2400c07eeb2bd1dd509a60a35f33ceb4f29ff0954f26f3"
       },
       "author": "Sqooky",
       "unstable": true
@@ -124,9 +153,9 @@
       "source": "optimizationlock",
       "path": "boot's maxium fps config/gameinfo.gi",
       "sha256": {
-        "2.9": "6dbc82150afe2ec409646025b2437b093aab18d852a7329b80aded2ffb7cf0e5",
-        "2.8.2": "6dbc82150afe2ec409646025b2437b093aab18d852a7329b80aded2ffb7cf0e5",
-        "2.7": "6dbc82150afe2ec409646025b2437b093aab18d852a7329b80aded2ffb7cf0e5"
+        "3.4": "f09e6cea24a0f01b549d3b0b87277de51a7f0f1802305cfb9e6da63bce2d2a09",
+        "3.3": "f09e6cea24a0f01b549d3b0b87277de51a7f0f1802305cfb9e6da63bce2d2a09",
+        "3.2": "f09e6cea24a0f01b549d3b0b87277de51a7f0f1802305cfb9e6da63bce2d2a09"
       },
       "author": "boot"
     },
@@ -137,9 +166,9 @@
       "source": "optimizationlock",
       "path": "kaizuchanerus minimum spec/gameinfo.gi",
       "sha256": {
-        "2.9": "16e9e739b90941543f2fabeea8161fd15327df5f16d812377fbd2bf4e75a98a4",
-        "2.8.2": "e4be5933e6f24de0c368c77957dd7579ef8e2e8169fe4e9740977c09db08fa68",
-        "2.7": "f27e7d6fd479472f4aa127d4dd5eadb8ec6805e71e3f561e6f02ff879354c1c9"
+        "3.4": "46abb89c15bebdabef6234959cbe597df289176d3e2a19cf826381107e103bc6",
+        "3.3": "e85b31c337752597faaf25a4e628d687f67684fdf5284607141b13e2554c7b74",
+        "3.2": "e1a58a6dc07df47a0e08bdc031fefec90da89070094e5c4a248872bc020cc80d"
       },
       "author": "kaizuchanerus"
     },
@@ -149,7 +178,7 @@
       "tier": "competitive",
       "source": "optilock",
       "path": "OptiLock FPS Config (Recommended)/gameinfo.gi",
-      "$comment": "v4.6 renamed the folder (v4.2 'OptiLock FPS Preset' -> v4.4 'OptiLock Balanced FPS Preset' -> v4.6 'OptiLock FPS Config (Recommended)'); lineage verified by content similarity (0.90 vs 0.80 against the alternatives). pathByRef pins the old location for bundled pre-rename releases.",
+      "$comment": "v4.6 renamed the folder (v4.2 'OptiLock FPS Preset' -> v4.4 'OptiLock Balanced FPS Preset' -> v4.6 'OptiLock FPS Config (Recommended)'); lineage verified by content similarity (0.90 vs 0.80 against the alternatives). pathByRef pins the old location for bundled pre-rename releases. v5.6 (\"Updated Recommended Preset\") turned decals and color correction back on and set citadel_per_weapon_per_surface_impact_effects to true, upstream's fix for Yamato's right click.",
       "pathByRef": {
         "v4.4": "OptiLock Balanced FPS Preset/gameinfo.gi",
         "v4.2": "OptiLock FPS Preset/gameinfo.gi",
@@ -157,9 +186,14 @@
         "v4.0d": "OptiLock FPS Preset/gameinfo.gi"
       },
       "sha256": {
-        "v4.6": "ce1b084d986de7807f1a456c6845b232f08396e545ff0b133fdfc4a135df16c8",
-        "v4.2": "34873789e25b552829cff843b111b7c5f7f3127651a31d6e3f7fd1d67a2e1291",
-        "v4.0d": "a0017f99282415dc027a687fdf01b06de707d6d28c5fbd161339493db4f1f618"
+        "v5.6": "2397d40e611fedd071c0fe2118dc64a92e49d4bbb98aa92f7cd1cde74996ac8d",
+        "v5.5": "ec6c180e3324bd514f20d41c6783b21cce0b93b13faf0c3dad45dc6b208e3b17",
+        "v5.2": "eb536ee8ae87a121d3769e2f516d144fc47d77cd37fc79e568c162e836c98969"
+      },
+      "videoSha256": {
+        "v5.6": "d8530b937e4075900162dccb1fca216f2bc535f569cb9e40295a400bdc3d0593",
+        "v5.5": "d8530b937e4075900162dccb1fca216f2bc535f569cb9e40295a400bdc3d0593",
+        "v5.2": "d8530b937e4075900162dccb1fca216f2bc535f569cb9e40295a400bdc3d0593"
       },
       "author": "dacooder"
     },
@@ -169,22 +203,149 @@
       "tier": "maximum",
       "source": "optilock",
       "path": "OptiLock Potato Config/gameinfo.gi",
-      "$comment": "v4.6 renamed 'OptiLock Max FPS Preset' to 'OptiLock Potato Config' (lineage verified by content similarity, 0.91). Our preset keeps its established id/name/tier: renaming the card every time upstream rebrands would orphan users' saved selections.",
+      "$comment": "v4.6 renamed 'OptiLock Max FPS Preset' to 'OptiLock Potato Config' (lineage verified by content similarity, 0.91). Our preset keeps its established id/name/tier: renaming the card every time upstream rebrands would orphan users' saved selections. v5.2 rewrote this file as a new, more aggressive config (\"Updated New Potato, Retired Old\") and deleted the 'OptiLock Potato Config (Testing)' folder. The new file is not the Testing config: it drops about 150 of its convars and adds draw-distance culling (r_farz 7000, r_propsmaxdist 600). Every release through v5.5 set r_drawtracers 0; v5.6's \"Tracers Fix\" took it out. v5.6 also rebuilt the file on Valve's newer stock gameinfo.gi (PGIVersion 39A735A4), so keys Valve dropped vanish from its diff, and set citadel_per_weapon_per_surface_impact_effects back to true (Yamato's right click).",
       "pathByRef": {
         "v4.2": "OptiLock Max FPS Preset/gameinfo.gi",
         "v4.1": "OptiLock Max FPS Preset/gameinfo.gi",
         "v4.0d": "OptiLock Max FPS Preset/gameinfo.gi"
       },
       "sha256": {
-        "v4.6": "5c3d4956117ffdf7c583042b23f34185ca95f91f346eb77ab86764106722f703",
-        "v4.2": "69032638fda021655d21e5ff8aaf8c53f903c32d55853a576575efd4dfe13326",
-        "v4.0d": "69032638fda021655d21e5ff8aaf8c53f903c32d55853a576575efd4dfe13326"
+        "v5.6": "f1062402dfea81891a0e8444fb9dff6f1728b97f23918dc21f678e59cdf99cde",
+        "v5.5": "53575dca846da5dd743f821f241813c35db30f605ce03605c581ca18cf38a180",
+        "v5.2": "1245876877243994ba181b03b3f93124c5fc1c545d403f8513aef62f8e45f305"
       },
+      "videoSha256": {
+        "v5.6": "3c2a9b5658e02d87f493b2da4c9f79909baaf2b4fe9cbc2ef235bf73e770238a",
+        "v5.5": "3c2a9b5658e02d87f493b2da4c9f79909baaf2b4fe9cbc2ef235bf73e770238a",
+        "v5.2": "3c2a9b5658e02d87f493b2da4c9f79909baaf2b4fe9cbc2ef235bf73e770238a"
+      },
+      "author": "dacooder"
+    },
+    {
+      "id": "optilock-ultra-potato",
+      "name": "OptiLock Ultra Potato",
+      "tier": "ultraPotato",
+      "source": "optilock",
+      "path": "OptiLock Ultra Potato Config/gameinfo.gi",
+      "$comment": "Added upstream in v5.5 as 'OptiLock Ultra Potato Config (No Shadows)' with one video.txt; v5.6 dropped the suffix from the folder and shipped two video.txt files, the original renamed to 'video(No Shadows).txt' plus a 'video(Shadows).txt' that is byte-identical to the Potato Config's video.txt. Its gameinfo.gi is the Potato Config pushed further: tracers off, particle draw distance 5000 (Potato: 150000), impact effects off, character decals at 16px.",
+      "pathByRef": {
+        "v5.5": "OptiLock Ultra Potato Config (No Shadows)/gameinfo.gi"
+      },
+      "sha256": {
+        "v5.6": "74c77d56c04b901ee4aa4c41ccb92dca773156064cf918be43725190dd81db97",
+        "v5.5": "a550289cd34fe388221359c3167fb2d2b65d233b432199943dd3b4a6a4f9d20b",
+        "v5.2": null
+      },
+      "videoVariants": [
+        {
+          "id": "noShadows",
+          "file": "video(No Shadows).txt",
+          "fileByRef": {
+            "v5.5": "video.txt"
+          },
+          "sha256": {
+            "v5.6": "181bc312c6a5de6c87cc368e8d6c6e9498a9d3f0373959a119de38adf5c400b1",
+            "v5.5": "181bc312c6a5de6c87cc368e8d6c6e9498a9d3f0373959a119de38adf5c400b1",
+            "v5.2": null
+          }
+        },
+        {
+          "id": "shadows",
+          "file": "video(Shadows).txt",
+          "sha256": {
+            "v5.6": "3c2a9b5658e02d87f493b2da4c9f79909baaf2b4fe9cbc2ef235bf73e770238a",
+            "v5.5": null,
+            "v5.2": null
+          }
+        }
+      ],
       "author": "dacooder"
     }
   ],
+  "video": {
+    "$comment": [
+      "Some presets ship a video.txt next to their gameinfo.gi, and their authors",
+      "say the config looks wrong without it: the gameinfo.gi values assume these",
+      "render settings. Upstream's instructions are to paste it over everything",
+      "under DeviceID in the user's own game/citadel/cfg/video.txt.",
+      "",
+      "`videoSha256` on a preset pins that sibling file per release, exactly like",
+      "`sha256` pins the gameinfo.gi (null = no video.txt at that release). The",
+      "path is always `video.txt` next to the release's gameinfo.gi, so pathByRef",
+      "covers it too.",
+      "",
+      "A preset that ships more than one video.txt lists them in `videoVariants`",
+      "instead of `videoSha256`: each has an `id`, the `file` name next to the",
+      "gameinfo.gi (with `fileByRef` for older names) and its own per-release",
+      "sha256. The first variant is the default; the user can pick another in the",
+      "card. A non-default variant may only exist at a release that also ships",
+      "the default.",
+      "",
+      "Grimoire writes only `setting.*` entries, never the header (Version,",
+      "VendorID, DeviceID), and records each value it replaced in the applied-state",
+      "sidecar so Remove puts them back. Keys matching `exclude` describe the",
+      "user's screen rather than render cost and are never written, whatever",
+      "upstream ships. Every other key then goes through the same exclude/opt-in",
+      "classification as gameinfo.gi convars: an opt-in convar is left to its",
+      "gameinfo.gi toggle, and an unclassified gameplay-shaped key fails the run."
+    ],
+    "exclude": [
+      {
+        "pattern": "^defaultres",
+        "why": "Resolution. OptiLock ships -1, Sqooky's test_cfg ships the author's own 1920x1080."
+      },
+      {
+        "pattern": "^recommendedheight$",
+        "why": "The engine's resolution recommendation for the user's display."
+      },
+      {
+        "pattern": "^refreshrate_",
+        "why": "The user's monitor refresh rate."
+      },
+      {
+        "pattern": "fullscreen|^nowindowborder$",
+        "why": "Window mode (fullscreen, borderless, minimize on focus loss) is the user's choice."
+      },
+      {
+        "pattern": "^monitor_index$",
+        "why": "Which monitor the game opens on. Upstream ships 0 (primary)."
+      },
+      {
+        "pattern": "^high_dpi$",
+        "why": "Display scaling for the user's monitor."
+      },
+      {
+        "pattern": "^aspectratiomode$",
+        "why": "Stretched versus letterboxed handling of the user's resolution."
+      },
+      {
+        "pattern": "^knowndevice$",
+        "why": "The engine's record of whether it recognised the GPU, not a setting."
+      },
+      {
+        "pattern": "gamma",
+        "why": "Brightness calibration for the user's display."
+      },
+      {
+        "pattern": "^mat_vsync$",
+        "why": "Frame pacing depends on the user's monitor and VRR setup. OptiLock's own README recommends V-Sync with G-Sync while its file turns V-Sync off."
+      },
+      {
+        "pattern": "^fps_max",
+        "why": "Frame cap. Users cap to their refresh rate; upstream ships 0 (uncapped)."
+      }
+    ],
+    "$maxComment": "Ceilings on numeric video.txt values: a higher upstream value is written as `max`. Applies to bundled presets and to releases fetched by track-latest alike.",
+    "max": [
+      {
+        "key": "r_texture_stream_mip_bias",
+        "max": 4,
+        "why": "Past 4 Sinner's lights need OptiLock's Essential Fixes/SinnersLightFix.vpk, which Grimoire does not install. Applies to sources without verbatimVideo; OptiLock itself is exempt because dacooder asked for his 6 (Potato) and 8 (Ultra Potato No Shadows) as shipped (2026-10-16)."
+      }
+    ]
+  },
   "exclude": {
-    "$comment": "Never emitted into a preset, whatever upstream sets.",
+    "$comment": "Never emitted into a preset, whatever upstream sets. MaterialSystem2/RenderModes is a list of seven `game` entries, not key/value pairs: a config written before Valve added ShadowSilhouette diffed to a single `game \"FrontDepth\"` op, and the patcher, which edits every occurrence of a key, collapsed all seven render modes into FrontDepth.",
     "patterns": [
       {
         "pattern": "^(host_)?timescale$",
@@ -213,6 +374,10 @@
       ],
       [
         "SteamAudio"
+      ],
+      [
+        "MaterialSystem2",
+        "RenderModes"
       ]
     ],
     "keys": [
@@ -241,12 +406,12 @@
         "why": "Valve added this key under Engine2 in the stock gameinfo.gi; OptimizationLock 2.8.2 transcribed it into the Localize block by mistake. Diffs are path-scoped, so without this the generator would emit an add against Localize and Grimoire would faithfully write upstream's typo into the user's file. It is engine plumbing, not a performance setting, so never write it from either section."
       },
       {
-        "key": "r_render_portals",
-        "why": "OptiLock v4.2's FPS preset sets this to false, which breaks Doorman's door. Upstream fixed it (v4.6 dropped the key entirely), but v4.2 stays bundled for rollback, so the exclusion must outlive it: remove this only when no bundled release sets the key."
-      },
-      {
         "key": "DistanceField",
         "why": "The current Deadlock build access-violates shortly after loading the hideout when boot's config combines Engine2/RenderingPipeline/DistanceField=0 with its core convar body. A live binary-search launch check reproduced the crash with this section op alone and confirmed the full preset remains running without it. No other bundled preset currently sets this key."
+      },
+      {
+        "key": "r_lightmap_size",
+        "why": "Since Valve's 2026-10-13 update the map renders nearly black when this is tiny: every OptiLock config sets it to 4 (FPS) or 0 (Potato, Ultra Potato). That update also stopped gameinfo.gi from switching off the sun, stationary lights and baked shadows (lb_enable_sunlight and friends are now gameinfo_cannot_override), so those lights now read their shadowing from these starved lightmaps. A live launch bisection on OptiLock Ultra Potato v5.7 cleared the darkness with this key alone back at stock. Sqooky hit the same thing with \"1\" on 2026-10-11 and moved to 2048; excluding the key means stock (65536) for every preset."
       }
     ]
   },
@@ -284,9 +449,14 @@
       "debug_show",
       "hideout",
       "camera_pitch",
-      "citadel_unit_status_"
+      "citadel_unit_status_",
+      "tracer"
     ],
     "allowInBody": [
+      {
+        "key": "aspectratiomode",
+        "why": "A video.txt display setting (the in-game aspect ratio mode), caught by the aspect pattern. Only OptiLock's verbatim video.txt writes it, and every release ships \"0\", the game's automatic mode; it is not r_aspectratio, the FOV-changing convar that pattern exists for. Reclassify if a release ships anything else."
+      },
       {
         "key": "cl_phys_timescale",
         "why": "Caught by the timescale pattern, but every bundled preset sets it to \"1\", which is normal physics speed (upstream's own comment: '1=Normal physics'); the authors keep the knob visible for hand-tuning. Writing the normal value changes nothing the player sees. Reclassify if any release ships a value other than 1."
@@ -301,7 +471,7 @@
       },
       {
         "key": "citadel_unit_status_old_update_rate",
-        "why": "Caught by the citadel_unit_status_ pattern, but it is the one member of that family that is genuinely a frame-rate setting: it caps how often health bars redraw. All six presets set 15 against a stock default of 30. It changes redraw cost, not what the bars show."
+        "why": "Caught by the citadel_unit_status_ pattern, but it is the one member of that family that is genuinely a frame-rate setting: it caps how often health bars redraw. Every bundled preset except kaizuchanerus' sets 15 against a stock default of 30. It changes redraw cost, not what the bars show."
       },
       {
         "key": "citadel_hud_objective_health_debug_show_midboss",
@@ -377,9 +547,29 @@
         "why": "Scales the health bar. The author's own comment says it LOWERS performance and they set it anyway for readability, which makes it the clearest case in the family of a look preference rather than a frame-rate setting."
       },
       {
+        "key": "citadel_unit_status_stamina_low_pips",
+        "group": "visibility",
+        "why": "Keeps the stamina pips on screen whenever stamina is below this many; Sqooky 3.3 raised it from the stock 3 to 7 (their \"stamina command\"). How much of your own HUD stays visible is a readability preference, not render cost."
+      },
+      {
+        "key": "citadel_unit_status_recent_active_damage_time",
+        "group": "visibility",
+        "why": "How long recent damage stays highlighted on a health bar; Sqooky test_cfg 3.2/3.3 set 999, so it never fades. Same class as citadel_unit_status_delta_decay_delay: how long damage can be read off a bar is gameplay information."
+      },
+      {
         "key": "r_particle_timescale",
         "group": "visibility",
-        "why": "Speeds up particle simulation so effects visibly end sooner than they actually last; Sqooky's own comment names the Infernus ult desync and he commented it out of his config in 2.9, while OptiLock still ships 1.1. How long an ult LOOKS active is gameplay information, so it stays an explicit per-user choice. Was riding silently in the OptiLock bodies until the timescale pattern caught it."
+        "why": "Speeds up particle simulation so effects visibly end sooner than they actually last; Sqooky's own comment names the Infernus ult desync and they commented it out of their config in 2.9, while OptiLock still ships 1.1. How long an ult LOOKS active is gameplay information, so it stays an explicit per-user choice. Was riding silently in the OptiLock bodies until the timescale pattern caught it."
+      },
+      {
+        "key": "r_drawtracers",
+        "group": "visibility",
+        "why": "Turns bullet tracers off for every gun, enemies' included, so it hides where shots come from. boot's config, Ultra Potato, and OptiLock FPS and Potato through v5.5 set 0 (riding in their bodies until the tracer pattern caught it); OptiLock's v5.6 'Tracers Fix' took it out of FPS and Potato. What the player can see, not render cost."
+      },
+      {
+        "key": "r_drawtracers_firstperson",
+        "group": "visibility",
+        "why": "The same switch for the player's own tracers. Sqooky's configs set false and Ultra Potato sets 0. Classified with r_drawtracers so the pair is always offered together."
       },
       {
         "key": "cl_glow_brightness",
@@ -442,8 +632,17 @@
         "group": "camera"
       },
       {
+        "key": "citadel_reduce_camera_shake",
+        "group": "camera"
+      },
+      {
         "key": "citadel_camera_pitch_min",
         "group": "camera"
+      },
+      {
+        "key": "citadel_camera_pitch_default",
+        "group": "camera",
+        "why": "The resting camera pitch. Sqooky sets 0 alongside the rest of their camera block. Framing, same class as citadel_camera_pitch_max/min."
       },
       {
         "key": "citadel_hideout_enable_testing_tools",

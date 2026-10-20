@@ -23,8 +23,8 @@ beforeEach(async () => {
 afterEach(async () => { vi.resetAllMocks(); await fs.rm(h.root, { recursive: true, force: true }); });
 describe('ability model source authority', () => {
   it('exports exact known clip from the selected outfit with base dependencies', async () => {
-    expect(await exportHeroAbilityPose('game', 'Holliday', clip, '/cache/ability.glb', [{ metaKey: 'pak01_dir.vpk', priority: 0 }])).toEqual({ skinApplied: true, skinFallback: false });
-    expect(h.run).toHaveBeenCalledWith(['model', 'export', '--vpk', join(h.root, 'addons', 'pak01_dir.vpk'), '--hero', 'astro', '--base', join(h.root, 'game', 'pak01_dir.vpk'), '--clip', clip, '--out', '/cache/ability.glb']);
+    expect(await exportHeroAbilityPose('game', 'Holliday', clip, '/cache/ability.glb', [{ metaKey: 'pak01_dir.vpk', priority: 0 }])).toEqual({ skinApplied: true, skinFallback: false, clipEvents: expect.objectContaining({ status: 'unavailable' }) });
+    expect(h.run).toHaveBeenCalledWith(['model', 'export', '--vpk', join(h.root, 'addons', 'pak01_dir.vpk'), '--entry', 'models/heroes_staging/astro/astro.vmdl_c', '--base', join(h.root, 'game', 'pak01_dir.vpk'), '--clip', clip, '--out', '/cache/ability.glb']);
   });
   it('refuses a missing clip rather than substituting an unrelated idle', async () => {
     h.stdout.mockResolvedValue('[]');
@@ -33,7 +33,7 @@ describe('ability model source authority', () => {
   });
   it('uses only the explicitly selected fallback after a stack export fails', async () => {
     h.run.mockImplementation(async (args: string[]) => { if (args[0] !== 'model') throw new Error('inert failed merge'); });
-    expect(await exportHeroAbilityPose('game', 'Holliday', clip, '/cache/ability.glb', [{ metaKey: 'pak01_dir.vpk', priority: 0 }, { metaKey: 'pak02_dir.vpk', priority: 1 }], 'pak01_dir.vpk')).toEqual({ skinApplied: true, skinFallback: true });
+    expect(await exportHeroAbilityPose('game', 'Holliday', clip, '/cache/ability.glb', [{ metaKey: 'pak01_dir.vpk', priority: 0 }, { metaKey: 'pak02_dir.vpk', priority: 1 }], 'pak01_dir.vpk')).toEqual({ skinApplied: true, skinFallback: true, clipEvents: expect.objectContaining({ status: 'unavailable' }) });
     expect(h.run.mock.calls.at(-1)?.[0]).toContain(join(h.root, 'addons', 'pak01_dir.vpk'));
   });
   it('inspects events only from the exact entry and selected export source', async () => {

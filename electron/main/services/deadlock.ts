@@ -239,18 +239,20 @@ export const MAX_ADDON_FOLDERS = 10;
  */
 export function getAddonFolderPaths(deadlockPath: string): string[] {
     const citadelPath = getCitadelPath(deadlockPath);
-    const folders = [getAddonsPath(deadlockPath)]; // base, created if missing
+    return [getAddonsPath(deadlockPath), ...overflowFolderPaths(citadelPath)]; // base, created if missing
+}
+
+function overflowFolderPaths(citadelPath: string): string[] {
     try {
-        const overflow = readdirSync(citadelPath, { withFileTypes: true })
+        return readdirSync(citadelPath, { withFileTypes: true })
             .filter((e) => e.isDirectory() && OVERFLOW_FOLDER_RE.test(e.name))
             .map((e) => ({ path: join(citadelPath, e.name), num: parseInt(e.name.match(OVERFLOW_FOLDER_RE)![1], 10) }))
             .sort((a, b) => a.num - b.num)
             .map((e) => e.path);
-        folders.push(...overflow);
     } catch {
         // citadel/ unreadable: base-only is the safe fallback.
+        return [];
     }
-    return folders;
 }
 
 /**
@@ -264,6 +266,21 @@ export function getAddonFolderPaths(deadlockPath: string): string[] {
  */
 export function getModScanRootPaths(deadlockPath: string): string[] {
     return [getGrimoirePath(deadlockPath), ...getAddonFolderPaths(deadlockPath)];
+}
+
+/**
+ * The folders getModScanRootPaths and getDisabledPath name, without creating
+ * any of them. For read-only scans: a path that does not resolve must come
+ * back empty, not as a freshly fabricated tree.
+ */
+export function peekModFolders(deadlockPath: string): { addonsPath: string; enabledRoots: string[]; disabledPath: string } {
+    const citadelPath = getCitadelPath(deadlockPath);
+    const addonsPath = join(citadelPath, 'addons');
+    return {
+        addonsPath,
+        enabledRoots: [join(citadelPath, PRIORITY_FOLDER_NAME), addonsPath, ...overflowFolderPaths(citadelPath)],
+        disabledPath: join(addonsPath, '.disabled'),
+    };
 }
 
 /**

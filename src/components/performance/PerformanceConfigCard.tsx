@@ -2,10 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { ChevronDown } from 'lucide-react';
-import { Card, Button, Toggle } from '../common/ui';
+import { Card, Button, SegmentedControl, Toggle } from '../common/ui';
+import { useSegmentedTabs } from '../common/useSegmentedTabs';
 import EditorPickerModal from './EditorPickerModal';
 import VersionPicker from './VersionPicker';
-import VersionHistoryModal from './VersionHistoryModal';
 import GameplayOptIns from './GameplayOptIns';
 import { useAppStore, type BrowseArtistRef } from '../../stores/appStore';
 import { showToast } from '../../stores/toastStore';
@@ -21,9 +21,17 @@ import {
   resetPerformanceConfigOverrides,
   restorePerformanceConfigBackup,
 } from '../../lib/api';
-import { savedOptIns, savedVersion, sortPresetsByTier } from '../../lib/performanceSelection';
+import {
+  savedOptIns,
+  savedVersion,
+  hasPinnedVersion,
+  savedVideoVariant,
+  sortPresetsByTier,
+} from '../../lib/performanceSelection';
 import sqookyAvatar from '../../assets/performance-authors/sqooky.png';
 import dacooderAvatar from '../../assets/performance-authors/dacooder.jpg';
+import eskayAvatar from '../../assets/performance-authors/eskay.png';
+import kaizuchanerusAvatar from '../../assets/performance-authors/kaizuchanerus.jpg';
 import type {
   PerformanceConfigStatus,
   PerformanceLatestInfo,
@@ -49,6 +57,8 @@ const SQOOKY_ARTIST: BrowseArtistRef = {
 const AUTHOR_AVATARS: Record<string, string> = {
   Sqooky: sqookyAvatar,
   dacooder: dacooderAvatar,
+  Eskay: eskayAvatar,
+  kaizuchanerus: kaizuchanerusAvatar,
 };
 
 interface Notice {
@@ -62,6 +72,7 @@ interface Notice {
 // config, version or gameplay setting writes it to gameinfo.gi straight away;
 // the only other actions put it back after something removed it, or forget it.
 export default function PerformanceConfigCard() {
+  const videoVariantTabs = useSegmentedTabs<string>();
   const { t } = useTranslation();
   const [status, setStatus] = useState<PerformanceConfigStatus | null>(null);
   const [presets, setPresets] = useState<PerformancePresetSummary[]>([]);
@@ -69,9 +80,10 @@ export default function PerformanceConfigCard() {
   const [busy, setBusy] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [historyOpen, setHistoryOpen] = useState(false);
   const [openError, setOpenError] = useState<string | null>(null);
-  const { settings, saveSettings, setBrowseUi } = useAppStore();
+  const settings = useAppStore((s) => s.settings);
+  const saveSettings = useAppStore((s) => s.saveSettings);
+  const setBrowseUi = useAppStore((s) => s.setBrowseUi);
   const navigate = useNavigate();
 
   const applied = status?.state === 'applied';
@@ -94,7 +106,6 @@ export default function PerformanceConfigCard() {
     presets[0]?.id ??
     '';
   const selected = presets.find((p) => p.id === selectedId) ?? null;
-  const remotePin = settings?.performanceConfigRemotePins?.[selectedId] ?? null;
   const selectedVersion = useMemo(
     () => (selected ? savedVersion(settings, selected) : ''),
     [settings, selected]
@@ -105,11 +116,18 @@ export default function PerformanceConfigCard() {
     () => (selected ? savedOptIns(settings, selected, selectedVersion) : []),
     [settings, selected, selectedVersion]
   );
+  const selectedVideoVariant = savedVideoVariant(settings, selectedId, selectedRelease);
 
   // Default on: these presets mirror living community configs. A deliberate
   // rollback to an older version still beats tracking.
   const trackLatest = settings?.performanceTrackLatest !== false;
-  const pinnedOlder = !!selected && selectedVersion !== selected.versions[0].version;
+  const pinned = !!selected && hasPinnedVersion(settings, selected);
+  // The upstream release tracking writes, when no bundled release matches it.
+  const trackedRelease =
+    trackLatest && latest?.version && !latest.matchesBundled && latest.ref && latest.date
+      ? { ref: latest.ref, date: latest.date }
+      : null;
+  const videoCount = selectedRelease?.videoSettingCount ?? 0;
 
   const refresh = useCallback(async () => {
     try {
@@ -180,16 +198,36 @@ export default function PerformanceConfigCard() {
 
   // Write a preset, folding in upstream tracking: re-check right before
   // writing so a stale cache never decides what lands in the file. Offline
-  // this falls back to the bundled release.
-  const write = (preset: PerformancePresetSummary, version: string, optIns: string[]) =>
+  // this falls back to the bundled release. The video.txt variant defaults to
+  // the saved pick for that release. A hand-picked release is never swapped for
+  // upstream's. `track` overrides both for a write made in the same tick the
+  // setting or the pick changed.
+  const write = (
+    preset: PerformancePresetSummary,
+    version: string,
+    optIns: string[],
+    {
+      restoreVideo = false,
+      videoVariant,
+      track = trackLatest && !hasPinnedVersion(settings, preset),
+    }: { restoreVideo?: boolean; videoVariant?: string | null; track?: boolean } = {}
+  ) =>
     run(async () => {
       let target = version;
-      if (trackLatest && version === preset.versions[0].version) {
+      if (track && version === preset.versions[0].version) {
         const info = await checkPerformanceLatest(preset.id).catch(() => null);
         if (info) setLatest(info);
         if (info?.version && !info.matchesBundled) target = 'latest';
       }
-      return applyPerformanceConfig(preset.id, optIns, target);
+      const variant =
+        videoVariant !== undefined
+          ? videoVariant
+          : savedVideoVariant(
+              settings,
+              preset.id,
+              preset.versions.find((v) => v.version === version) ?? preset.versions[0]
+            );
+      return applyPerformanceConfig(preset.id, optIns, target, restoreVideo, variant);
     });
 
   const onToggle = async (on: boolean) => {
@@ -217,50 +255,32 @@ export default function PerformanceConfigCard() {
           applyPerformanceConfig(
             previous.appliedPresetId ?? undefined,
             previous.appliedOptIns ?? [],
-            previous.appliedVersion
+            previous.appliedVersion,
+            false,
+            previous.appliedVideoVariant ?? null
           )
         );
       },
     });
   };
 
-  const onSelectVersion = async (version: string) => {
+  // null is the tracked upstream release.
+  const onSelectVersion = async (version: string | null) => {
     if (!settings || !selected) return;
-    // Picking the newest clears the pin, so the preset keeps following
-    // upstream instead of freezing at whatever was newest that day.
+    // Picking the newest clears the pick, so the preset keeps following
+    // upstream instead of freezing at whatever was newest that day. While
+    // upstream is ahead, the newest bundled release is a pick like any other.
+    const newest = selected.versions[0].version;
+    const follow = version === null || (version === newest && !trackedRelease);
+    const target = version ?? newest;
     const versions = { ...(settings.performanceConfigVersions ?? {}) };
-    if (version === selected.versions[0].version) delete versions[selectedId];
-    else versions[selectedId] = version;
-    const pins = { ...(settings.performanceConfigRemotePins ?? {}) };
-    if (pins[selectedId]?.version !== version) delete pins[selectedId];
-    const next = {
-      ...settings,
-      performanceConfigVersions: versions,
-      performanceConfigRemotePins: pins,
-    };
+    if (follow) delete versions[selectedId];
+    else versions[selectedId] = target;
+    const next = { ...settings, performanceConfigVersions: versions };
     await saveSettings(next);
-    if (applied) await write(selected, version, savedOptIns(next, selected, version));
-  };
-
-  // A historical upstream version from the full-history browser rides the same
-  // settings slot as a bundled rollback, plus display metadata for the picker.
-  const onPickRemoteVersion = async (version: string, ref: string, date: string) => {
-    if (!settings || !selected) return;
-    setHistoryOpen(false);
-    if (selected.versions.some((v) => v.version === version)) {
-      await onSelectVersion(version);
-      return;
+    if (applied) {
+      await write(selected, target, savedOptIns(next, selected, target), { track: follow && trackLatest });
     }
-    const next = {
-      ...settings,
-      performanceConfigVersions: { ...(settings.performanceConfigVersions ?? {}), [selectedId]: version },
-      performanceConfigRemotePins: {
-        ...(settings.performanceConfigRemotePins ?? {}),
-        [selectedId]: { version, ref, date },
-      },
-    };
-    await saveSettings(next);
-    if (applied) await write(selected, version, savedOptIns(next, selected, version));
   };
 
   const onChangeOptIns = async (keys: string[]) => {
@@ -272,10 +292,21 @@ export default function PerformanceConfigCard() {
     if (applied) await write(selected, selectedVersion, keys);
   };
 
+  const onSelectVideoVariant = async (variant: string) => {
+    if (!settings || !selected) return;
+    await saveSettings({
+      ...settings,
+      performanceVideoVariants: { ...settings.performanceVideoVariants, [selectedId]: variant },
+    });
+    if (applied) await write(selected, selectedVersion, selectedOptIns, { videoVariant: variant });
+  };
+
   const onToggleTrackLatest = async (on: boolean) => {
     if (!settings || !selected) return;
     await saveSettings({ ...settings, performanceTrackLatest: on });
-    if (on && applied && !pinnedOlder) await write(selected, selectedVersion, selectedOptIns);
+    if (on && applied && !pinned) {
+      await write(selected, selectedVersion, selectedOptIns, { track: true });
+    }
   };
 
   const openFile = async () => {
@@ -319,7 +350,11 @@ export default function PerformanceConfigCard() {
       ? latest.version
       : selected?.versions[0].version;
   const updateAvailable =
-    applied && !pinnedOlder && !!newestVersion && status?.appliedVersion !== newestVersion;
+    applied && !pinned && !!newestVersion && status?.appliedVersion !== newestVersion;
+  // Applied without the video settings the applied release ships: an apply
+  // from before Grimoire wrote video.txt, or one made before the game created it.
+  const videoPending = applied && (status?.videoAvailable ?? 0) > 0 && !status?.video;
+  const videoChanged = applied && status?.video ? status.video.total - status.video.applied : 0;
 
   const notice: Notice | null = !status
     ? null
@@ -353,9 +388,29 @@ export default function PerformanceConfigCard() {
                     run: () => void write(selected, selectedVersion, selectedOptIns),
                   },
                 }
-              : applied && status.handEdited
-                ? { tone: 'neutral', text: t('performance.notice.handEdited') }
-                : null;
+              : applied && status.outdated && selected
+                ? {
+                    tone: 'neutral',
+                    text: t('performance.notice.outdated'),
+                    action: {
+                      label: t('performance.update'),
+                      run: () => void write(selected, selectedVersion, selectedOptIns),
+                    },
+                  }
+                : videoPending && status.videoFileMissing
+                  ? { tone: 'neutral', text: t('performance.notice.videoNoFile') }
+                  : videoPending && selected
+                    ? {
+                        tone: 'neutral',
+                        text: t('performance.notice.videoPending'),
+                        action: {
+                          label: t('performance.video.apply'),
+                          run: () => void write(selected, selectedVersion, selectedOptIns),
+                        },
+                      }
+                    : applied && status.handEdited
+                      ? { tone: 'neutral', text: t('performance.notice.handEdited') }
+                      : null;
 
   const overrideCount = status?.overrideCount ?? 0;
   const sortedPresets = sortPresetsByTier(presets);
@@ -463,6 +518,29 @@ export default function PerformanceConfigCard() {
         })}
       </div>
 
+      {selectedVideoVariant && selectedRelease?.videoVariants && (
+        <div className="border-t border-hl/5 px-5 py-4">
+          <span className="block text-sm font-medium text-text-primary">
+            {t('performance.video.variant.label')}
+          </span>
+          <p className="mt-0.5 mb-2.5 text-xs text-text-secondary">
+            {t('performance.video.variant.description')}
+          </p>
+          <SegmentedControl
+            tabs={videoVariantTabs}
+            label={t('performance.video.variant.label')}
+            value={selectedVideoVariant}
+            onChange={(variant) => void onSelectVideoVariant(variant)}
+            options={selectedRelease.videoVariants.map((variant) => ({
+              value: variant,
+              label: t(`performance.video.variant.${variant}`),
+            }))}
+            disabled={busy}
+            className={busy ? 'opacity-60' : ''}
+          />
+        </div>
+      )}
+
       <div className="border-t border-hl/5">
         <button
           type="button"
@@ -479,23 +557,13 @@ export default function PerformanceConfigCard() {
 
         {advancedOpen && selected && selectedRelease && (
           <div className="space-y-5 px-5 pb-5">
-            <div>
-              <VersionPicker
-                versions={selected.versions}
-                selected={selectedVersion}
-                remotePinned={remotePin}
-                onSelect={(version) => void onSelectVersion(version)}
-                disabled={busy}
-              />
-              <button
-                type="button"
-                onClick={() => setHistoryOpen(true)}
-                disabled={busy}
-                className="mt-2 cursor-pointer text-xs text-accent hover:underline disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {t('performance.history.browse')}
-              </button>
-            </div>
+            <VersionPicker
+              versions={selected.versions}
+              selected={trackedRelease && !pinned ? null : selectedVersion}
+              onSelect={(version) => void onSelectVersion(version)}
+              disabled={busy}
+              tracked={trackedRelease}
+            />
 
             <Toggle
               checked={trackLatest}
@@ -504,6 +572,31 @@ export default function PerformanceConfigCard() {
               description={t('performance.trackLatest.description')}
               disabled={busy}
             />
+
+            {videoCount > 0 && (
+              <div>
+                <p className="text-xs text-text-secondary">
+                  {t('performance.video.description', { count: videoCount })}
+                </p>
+                {videoChanged > 0 && selected && (
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <p className="text-xs text-text-secondary">
+                      {t('performance.video.changed', { count: videoChanged })}
+                    </p>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={busy}
+                      onClick={() =>
+                        void write(selected, selectedVersion, selectedOptIns, { restoreVideo: true })
+                      }
+                    >
+                      {t('performance.video.reapply')}
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
 
             <GameplayOptIns
               controls={selectedRelease.optIn}
@@ -538,7 +631,8 @@ export default function PerformanceConfigCard() {
                           resetPerformanceConfigOverrides(
                             status?.appliedPresetId ?? selectedId,
                             status?.appliedOptIns ?? [],
-                            status?.appliedVersion ?? selectedVersion
+                            status?.appliedVersion ?? selectedVersion,
+                            status?.appliedVideoVariant ?? null
                           )
                         )
                       }
@@ -583,20 +677,6 @@ export default function PerformanceConfigCard() {
         <EditorPickerModal
           onClose={() => setPickerOpen(false)}
           onChoose={(editorPath) => void onChooseEditor(editorPath)}
-        />
-      )}
-      {historyOpen && selected && (
-        <VersionHistoryModal
-          preset={selected}
-          selectedVersion={selectedVersion}
-          onClose={() => setHistoryOpen(false)}
-          onPickBundled={(version) => {
-            setHistoryOpen(false);
-            void onSelectVersion(version);
-          }}
-          onPickRemote={(info) =>
-            void onPickRemoteVersion(info.version ?? '', info.ref ?? info.version ?? '', info.date ?? '')
-          }
         />
       )}
     </Card>

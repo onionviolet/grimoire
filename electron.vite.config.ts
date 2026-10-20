@@ -1,4 +1,4 @@
-import { defineConfig, externalizeDepsPlugin } from 'electron-vite';
+import { defineConfig } from 'electron-vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { resolve } from 'path';
@@ -51,32 +51,6 @@ export default defineConfig(({ mode }) => {
     return {
     main: {
         resolve: { alias: socialTypesAlias },
-        plugins: [
-            externalizeDepsPlugin({
-                // @grimoire/social-types is a workspace package whose entrypoint is a
-                // .ts file shipped from source, so it must be bundled. zod is bundled
-                // alongside it because electron-builder.yml's files allowlist drops
-                // pure-JS node_modules, so any externalized prod dep would be missing
-                // from app.asar at runtime. @xhayper/discord-rpc (and its pure-JS
-                // dependency tree: ws, @discordjs/rest, discord-api-types,
-                // @vladfrangu/async_event_emitter) and @ghostery/adblocker-electron
-                // are bundled for the same reason: they're runtime dependencies of
-                // the main process but live only under pnpm's .pnpm store, so
-                // allowlisting them in electron-builder.yml is unreliable.
-                // Externalizing them shipped launch crashes
-                // (ERR_MODULE_NOT_FOUND from app.asar).
-                exclude: [
-                    'acorn',
-                    'electron-updater',
-                    'electron-log',
-                    '@grimoire/social-types',
-                    'zod',
-                    'yaml',
-                    '@xhayper/discord-rpc',
-                    '@ghostery/adblocker-electron',
-                ],
-            }),
-        ],
         define: {
             'process.env.GRIMOIRE_SOCIAL_BASE_URL': JSON.stringify(SOCIAL_BASE_URL),
             // LOCAL FORK BUILD MARKER. Baked at build time so the packaged app
@@ -89,7 +63,33 @@ export default defineConfig(({ mode }) => {
         },
         build: {
             outDir: 'dist/main',
-            rollupOptions: {
+            externalizeDeps: {
+                // @grimoire/social-types is a workspace package whose entrypoint is a
+                // .ts file shipped from source, so it must be bundled. zod is bundled
+                // alongside it because electron-builder.yml's files allowlist drops
+                // pure-JS node_modules, so any externalized prod dep would be missing
+                // from app.asar at runtime. @xhayper/discord-rpc (and its pure-JS
+                // dependency tree: @discordjs/rest, discord-api-types,
+                // @vladfrangu/async_event_emitter) is bundled for the same reason:
+                // it's a runtime dependency of the main process but lives only under
+                // pnpm's .pnpm store, so allowlisting it in electron-builder.yml is
+                // unreliable. Externalizing it shipped a launch crash in 1.15.1
+                // (ERR_MODULE_NOT_FOUND from app.asar). The fork also bundles yaml and
+                // @ghostery/adblocker-electron (plus its ws dependency) for that reason.
+                exclude: [
+                    'https-proxy-agent',
+                    'socks-proxy-agent',
+                    'acorn',
+                    'electron-updater',
+                    'electron-log',
+                    '@grimoire/social-types',
+                    'zod',
+                    'yaml',
+                    '@xhayper/discord-rpc',
+                    '@ghostery/adblocker-electron',
+                ],
+            },
+            rolldownOptions: {
                 input: {
                     index: resolve(__dirname, 'electron/main/index.ts'),
                     vpkSafetyWorker: resolve(__dirname, 'electron/main/services/vpkSafetyWorker.ts'),
@@ -98,7 +98,6 @@ export default defineConfig(({ mode }) => {
         },
     },
     preload: {
-        plugins: [externalizeDepsPlugin()],
         build: {
             outDir: 'dist/preload',
             lib: {
@@ -106,7 +105,7 @@ export default defineConfig(({ mode }) => {
                 formats: ['cjs'],
                 fileName: () => 'index.js',
             },
-            rollupOptions: {
+            rolldownOptions: {
                 external: ['electron'],
             },
         },
@@ -117,7 +116,7 @@ export default defineConfig(({ mode }) => {
         base: './',
         build: {
             outDir: 'dist/renderer',
-            rollupOptions: {
+            rolldownOptions: {
                 input: {
                     index: resolve(__dirname, 'index.html'),
                 },

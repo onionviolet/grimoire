@@ -118,7 +118,7 @@ async function fetchFromAPI<T>(
         return JSON.parse(text) as T
     } catch (err) {
         console.error('[fetchFromAPI] Failed to parse JSON:', text.slice(0, 200))
-        throw new Error(`Deadlock API returned invalid JSON: ${err}`)
+        throw new Error(`Deadlock API returned invalid JSON: ${err}`, { cause: err })
     }
 }
 
@@ -341,9 +341,12 @@ export async function getPlayerMatchHistory(
         kills: match.player_kills,
         deaths: match.player_deaths,
         assists: match.player_assists,
-        player_damage: 0, // Not provided in list endpoint
-        player_healing: 0,
-        obj_damage: 0,
+        // The list endpoint does not carry damage/healing figures. Leave them
+        // undefined so the UI can omit the column; a literal 0 rendered as a
+        // real "0 damage" reading on every row.
+        player_damage: undefined,
+        player_healing: undefined,
+        obj_damage: undefined,
     }))
 
     return { matches }

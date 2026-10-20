@@ -23,10 +23,10 @@ import { join } from 'path';
 
 const h = vi.hoisted(() => ({ userData: '' }));
 vi.mock('electron', () => ({ app: { getPath: () => h.userData } }));
-vi.mock('./launch', () => ({ isDeadlockRunning: async () => false }));
+vi.mock('./launch', () => ({ isDeadlockRunning: async () => false, readStash: async () => null }));
 vi.mock('./system', () => ({ fixGameinfo: () => ({ configured: true }) }));
 
-import { scanMods, enableMod, disableMod, deleteMod, type Mod } from './mods';
+import { scanMods, enableMod, disableMod, deleteMods, type Mod } from './mods';
 import { getModMetadata } from './metadata';
 
 let deadlockPath: string;
@@ -109,7 +109,7 @@ describe('mod identity across the enable/disable lifecycle', () => {
         installEnabled('pak30_dir.vpk', 'the original mod');
         const original = byFileName(await scanMods(deadlockPath), 'pak30_dir.vpk');
 
-        await deleteMod(deadlockPath, original.id);
+        await deleteMods(deadlockPath, [{ id: original.id, size: original.size, installedAt: original.installedAt }]);
         installEnabled('pak30_dir.vpk', 'an entirely unrelated mod');
 
         const replacement = byFileName(await scanMods(deadlockPath), 'pak30_dir.vpk');

@@ -54,6 +54,7 @@ import { describeSound, primaryClipName } from '../../lib/soundDescribe';
 import { isAnnotated, matchSoundWithAnnotation } from '../../lib/soundAnnotationSearch';
 import { hasPersonalLabel } from '../../lib/soundLabels';
 import { showToast } from '../../stores/toastStore';
+import { SaveAssetButton } from './SaveAssetButton';
 import { useAppStore } from '../../stores/appStore';
 import type { HeroInfo, HeroSound, HeroSoundCategory, VoiceLine, SoundAnnotation, FoundrySoundConflictInspection, SoundConflictResolution } from '../../types/foundry';
 import { serializeSoundStagedEdit, type FoundryStagedSoundEdit } from './soundStagedEdit';
@@ -997,6 +998,7 @@ export function SoundRow({ label, event, clips, duration, state, onToggle, poolI
                         <Tx k="foundry.sound.swap.buttonLabel" fallback="Swap" />
                     </button>
                 )}
+                {targetClip && <SaveAssetButton compact request={{ kind: 'sound', path: targetClip }} />}
             </div>
             {selected && sourcePaths.length > 0 && (
                 <div className="mt-1 rounded-sm border border-border/60 bg-bg-tertiary/40 px-3 py-1.5 text-2xs text-text-secondary" aria-live="polite">
@@ -1287,7 +1289,7 @@ function SwapPanel({
             });
             await useAppStore.getState().loadMods({ silent: true });
             showToast(
-                t('foundry.sound.swap.done', 'Installed "{{name}}" - enable it in the Installed tab', {
+                t('foundry.sound.swap.done', 'Installed and enabled "{{name}}". Find it under Installed.', {
                     name: finalName,
                 }),
                 { tone: 'success', duration: 6000 }

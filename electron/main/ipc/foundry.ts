@@ -35,6 +35,7 @@ import { scanMods } from '../services/mods';
 import { buildHeroEffectVpkForExport } from '../services/heroColors';
 import { discoverRecolorEntries } from '../services/foundryRecolor';
 import { exportVpkViaDialog } from '../services/foundryExport';
+import { exportFoundryAsset } from '../services/foundryAssetExport';
 import { buildFoundryForgeVpk, forgeAndExportFoundryVpk } from '../services/foundryForge';
 import {
     listFoundryPortraitImages,
@@ -140,6 +141,10 @@ ipcMain.handle('foundry:modelPreview', async (_event, entryPath: string) =>
 ipcMain.handle('foundry:exportModel', async (_event, entryPath: string): Promise<FoundryAssetExportResult> => {
     const model = await prepareFoundryModel(requireDeadlockPath(), entryPath);
     return saveFoundryAsset(model.path, basename(entryPath).replace(/\.vmdl_c$/, ''), '.glb', 'Binary glTF');
+});
+
+ipcMain.handle('foundry:exportAsset', async (_e, request: unknown): Promise<VpkExportResult> => {
+    return exportFoundryAsset(requireDeadlockPath(), request);
 });
 
 ipcMain.handle('foundry:heroes', async (): Promise<HeroInfo[]> => {

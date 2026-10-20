@@ -3,11 +3,11 @@ import { Trans, useTranslation } from 'react-i18next';
 import { ConfirmModal } from '../common/PageComponents';
 import { ProgressBar } from '../common/ui';
 import { useAppStore } from '../../stores/appStore';
-import type { DeleteModsProgress } from '../../types/mod';
+import type { DeleteModEntry, DeleteModsProgress } from '../../types/mod';
 
-/** `ids` is a list so one prompt drives single-mod, group and bulk deletes. */
+/** `mods` is a list so one prompt drives single-mod, group and bulk deletes. */
 export interface DeleteModsTarget {
-  ids: string[];
+  mods: DeleteModEntry[];
   name: string;
   isGroup: boolean;
   isBulk?: boolean;
@@ -22,18 +22,38 @@ interface DeleteModsModalProps {
 // Progress lives here rather than in the page so each per-file tick only
 // redraws the dialog, not the whole Installed grid.
 export function DeleteModsModal({ target, onCancel, onDeleted }: DeleteModsModalProps) {
-  const { t } = useTranslation();
   const deleteMods = useAppStore((s) => s.deleteMods);
   const [progress, setProgress] = useState<DeleteModsProgress | null>(null);
 
   const confirm = async () => {
     if (!target || progress) return;
-    setProgress({ done: 0, total: target.ids.length });
-    await deleteMods(target.ids, setProgress);
+    setProgress({ done: 0, total: target.mods.length });
+    await deleteMods(target.mods, setProgress);
     setProgress(null);
     onDeleted(target);
   };
 
+  return (
+    <DeleteModsPrompt
+      target={target ? { ...target, count: target.mods.length } : null}
+      progress={progress}
+      onConfirm={confirm}
+      onCancel={onCancel}
+    />
+  );
+}
+
+interface DeleteModsPromptProps {
+  target: (Omit<DeleteModsTarget, 'mods'> & { count: number }) | null;
+  progress?: DeleteModsProgress | null;
+  busy?: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+
+/** Shared delete confirmation for installed files and saved backups. */
+export function DeleteModsPrompt({ target, progress = null, busy = false, onConfirm, onCancel }: DeleteModsPromptProps) {
+  const { t } = useTranslation();
   const nameTag = { name: <span className="font-medium text-text-primary" /> };
   const progressText = progress ? t('installed.delete.progress', { done: progress.done, total: progress.total }) : '';
 
@@ -44,7 +64,7 @@ export function DeleteModsModal({ target, onCancel, onDeleted }: DeleteModsModal
         target?.isBulk
           ? t('installed.delete.bulkTitle', { name: target.name })
           : target?.isGroup
-            ? t('installed.delete.groupTitle', { count: target.ids.length })
+            ? t('installed.delete.groupTitle', { count: target.count })
             : t('installed.delete.title')
       }
       message={
@@ -53,7 +73,7 @@ export function DeleteModsModal({ target, onCancel, onDeleted }: DeleteModsModal
         ) : target?.isGroup ? (
           <Trans
             i18nKey="installed.delete.groupMessage"
-            values={{ count: target.ids.length, name: target.name }}
+            values={{ count: target.count, name: target.name }}
             components={nameTag}
           />
         ) : (
@@ -64,12 +84,12 @@ export function DeleteModsModal({ target, onCancel, onDeleted }: DeleteModsModal
         target?.isBulk
           ? t('installed.delete.bulkConfirm', { name: target.name })
           : target?.isGroup
-            ? t('installed.delete.groupConfirm', { count: target.ids.length })
+            ? t('installed.delete.groupConfirm', { count: target.count })
             : t('common.actions.delete')
       }
       variant="danger"
-      busy={!!progress}
-      onConfirm={confirm}
+      busy={busy || !!progress}
+      onConfirm={onConfirm}
       onCancel={onCancel}
     >
       {progress && progress.total > 1 && (

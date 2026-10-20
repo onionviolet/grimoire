@@ -106,7 +106,8 @@ async function runCatalogJson<T>(args: string[]): Promise<T> {
         throw new Error(
             `Foundry catalog returned malformed JSON for \`${args.join(' ')}\`: ${
                 err instanceof Error ? err.message : String(err)
-            }`
+            }`,
+            { cause: err }
         );
     }
 }
@@ -413,19 +414,18 @@ function fingerprintKey(fp: BuildFingerprint): string {
 }
 
 /**
- * Read the pak's build fingerprint via `catalog cache` (a single stat under the
- * hood) so thumbnail dirs invalidate on a real game update. Also warms the
- * engine's own index cache as a side effect, which is fine.
+ * Match the engine's size/mtime fingerprint without building its catalog. Asset
+ * previews need only their own entries, so an unavailable voice-line index must
+ * not prevent decoding a texture or extracting a sound. BigInt stats preserve
+ * the nanosecond component used by existing cache directory names.
  */
 async function buildFingerprint(deadlockPath: string): Promise<BuildFingerprint> {
-    const report = await runCatalogJson<CacheReport>([
-        'cache',
-        '--vpk',
-        pak01Path(deadlockPath),
-        '--dir',
-        catalogCacheDir(),
-    ]);
-    return report.fingerprint;
+    const stat = await fs.stat(pak01Path(deadlockPath), { bigint: true });
+    return {
+        vpkLen: Number(stat.size),
+        vpkMtimeSecs: Number(stat.mtimeNs / 1_000_000_000n),
+        vpkMtimeNanos: Number(stat.mtimeNs % 1_000_000_000n),
+    };
 }
 
 /** Public cache key for read-only catalog companions.  Sharing this exact key
@@ -532,9 +532,29 @@ export async function ensureFullImage(
     category: TextureCategory,
     entryPath: string
 ): Promise<string | null> {
+    const image = await ensureImageFile(deadlockPath, category, entryPath, FULL_SIZE);
+    return image ? thumbUrl(image.key, image.category, image.file) : null;
+}
+
+export async function ensureNativeTextureFile(
+    deadlockPath: string,
+    category: TextureCategory,
+    entryPath: string
+): Promise<string | null> {
+    // VTEX dimensions are u16, so this bound preserves every source pixel.
+    const image = await ensureImageFile(deadlockPath, category, entryPath, 65535);
+    return image ? join(thumbsRoot(), image.key, image.category, image.file) : null;
+}
+
+async function ensureImageFile(
+    deadlockPath: string,
+    category: TextureCategory,
+    entryPath: string,
+    maxSize: number
+): Promise<{ key: string; category: string; file: string } | null> {
     const fp = await buildFingerprint(deadlockPath);
     const key = fingerprintKey(fp);
-    const fullCategory = `${category}@full`;
+    const fullCategory = `${category}@${maxSize === FULL_SIZE ? 'full' : 'native'}`;
     const dir = join(thumbsRoot(), key, fullCategory);
     const indexPath = join(dir, 'index.json');
 
@@ -546,7 +566,7 @@ export async function ensureFullImage(
     if (cachedFile) {
         try {
             await fs.access(join(dir, cachedFile));
-            return thumbUrl(key, fullCategory, cachedFile);
+            return { key, category: fullCategory, file: cachedFile };
         } catch {
             delete index[entryPath]; // cache entry lost its PNG; re-decode below
         }
@@ -563,7 +583,7 @@ export async function ensureFullImage(
         '--thumbs',
         dir,
         '--thumb-size',
-        String(FULL_SIZE),
+        String(maxSize),
     ]);
 
     const manifest = (await readManifest(join(dir, 'manifest.json'))) ?? [];
@@ -572,7 +592,7 @@ export async function ensureFullImage(
 
     index[entryPath] = decoded.file;
     await fs.writeFile(indexPath, JSON.stringify(index)).catch(() => {});
-    return thumbUrl(key, fullCategory, decoded.file);
+    return { key, category: fullCategory, file: decoded.file };
 }
 
 function voiceclipsRoot(): string {

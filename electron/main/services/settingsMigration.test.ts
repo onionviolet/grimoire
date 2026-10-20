@@ -13,7 +13,7 @@ import { vi } from 'vitest';
 const h = vi.hoisted(() => ({ userData: '' }));
 vi.mock('electron', () => ({ app: { getPath: () => h.userData } }));
 
-import { loadSettings } from './settings';
+import { loadSettings, saveSettings } from './settings';
 
 function settingsPath(): string {
   return join(h.userData, 'settings.json');
@@ -23,7 +23,37 @@ beforeEach(() => {
   h.userData = mkdtempSync(join(tmpdir(), 'settings-migration-'));
 });
 
+describe('retained mod backups preference', () => {
+  it('keeps retained mod backups off by default and persists an opt-in', () => {
+    expect(loadSettings().keepModBackups).toBe(false);
+    saveSettings({ ...loadSettings(), keepModBackups: true });
+    expect(loadSettings().keepModBackups).toBe(true);
+    saveSettings({ ...loadSettings(), keepModBackups: false });
+    expect(loadSettings().keepModBackups).toBe(false);
+  });
+});
+
+describe('remaining-file update matching preference', () => {
+  it('defaults to enabled for new and existing settings', () => {
+    expect(loadSettings().autoMatchRemainingFiles).toBe(true);
+    writeFileSync(settingsPath(), JSON.stringify({ autoEnableDownloads: false }));
+    expect(loadSettings().autoMatchRemainingFiles).toBe(true);
+  });
+
+  it('preserves an explicit opt-out when settings are saved and loaded', () => {
+    saveSettings({ ...loadSettings(), autoMatchRemainingFiles: false });
+    expect(loadSettings().autoMatchRemainingFiles).toBe(false);
+  });
+});
+
 describe('loadSettings legacy experimentalVpkTagging migration', () => {
+  it('defaults old or invalid update-channel preferences to stable', () => {
+    expect(loadSettings().updateReleaseChannel).toBe('stable');
+    writeFileSync(settingsPath(), JSON.stringify({ updateReleaseChannel: 'beta' }));
+    expect(loadSettings().updateReleaseChannel).toBe('stable');
+    writeFileSync(settingsPath(), JSON.stringify({ updateReleaseChannel: 'preview' }));
+    expect(loadSettings().updateReleaseChannel).toBe('preview');
+  });
   it('migrates a legacy experimentalVpkTagging:true to experimentalVpkImprinting:true', () => {
     writeFileSync(settingsPath(), JSON.stringify({ experimentalVpkTagging: true }));
     expect(loadSettings().experimentalVpkImprinting).toBe(true);

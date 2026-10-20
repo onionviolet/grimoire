@@ -1,18 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
 const harness = vi.hoisted(() => ({
     userData: '',
     identities: new Map<string, string>(),
+    whileHashing: undefined as undefined | ((filePath: string) => void),
 }));
 
 vi.mock('electron', () => ({ app: { getPath: () => harness.userData } }));
 vi.mock('./vpkIdentity', () => ({
-    resolveVpkIdentity: vi.fn(async (filePath: string) => ({
-        sha256: harness.identities.get(filePath) ?? 'f'.repeat(64),
-    })),
+    resolveVpkIdentity: vi.fn(async (filePath: string) => {
+        harness.whileHashing?.(filePath);
+        return { sha256: harness.identities.get(filePath) ?? 'f'.repeat(64) };
+    }),
 }));
 
 import {
@@ -38,6 +40,7 @@ function createDeadlockRoot(): { root: string; addons: string; disabled: string;
 beforeEach(() => {
     harness.userData = mkdtempSync(join(tmpdir(), 'metadata-backfill-user-'));
     harness.identities.clear();
+    harness.whileHashing = undefined;
     saveMetadata({});
     vi.mocked(resolveVpkIdentity).mockClear();
 });
@@ -54,7 +57,7 @@ describe('backfillMissingMetadataHashes', () => {
         });
         harness.identities.set(rawPath, hash('b'));
 
-        const updated = await backfillMissingMetadataHashes(root);
+        const updated = await backfillMissingMetadataHashes(root, (apply) => apply());
 
         expect(updated).toBe(1);
         expect(getModMetadata('pak01_dir.vpk')).toEqual({
@@ -72,7 +75,7 @@ describe('backfillMissingMetadataHashes', () => {
         writeFileSync(imprintedPath, 'post-imprint bytes');
         harness.identities.set(imprintedPath, hash('c'));
 
-        await backfillMissingMetadataHashes(root);
+        await backfillMissingMetadataHashes(root, (apply) => apply());
 
         expect(getModMetadata('local_skin_dir.vpk')).toEqual({ sha256: hash('c') });
         expect(resolveVpkIdentity).toHaveBeenCalledWith(imprintedPath);
@@ -86,13 +89,55 @@ describe('backfillMissingMetadataHashes', () => {
         writeFileSync(globalPath, 'global');
         harness.identities.set(globalPath, hash('e'));
 
-        const updated = await backfillMissingMetadataHashes(root);
+        const updated = await backfillMissingMetadataHashes(root, (apply) => apply());
 
         expect(updated).toBe(1);
         expect(getModMetadata('grimoire/pak05_dir.vpk')).toEqual({ sha256: hash('e') });
         expect(getModMetadata('grimoire/pak01_dir.vpk')).toBeUndefined();
         expect(resolveVpkIdentity).toHaveBeenCalledTimes(1);
         expect(resolveVpkIdentity).toHaveBeenCalledWith(globalPath);
+    });
+
+    it('skips a row whose file changed while it was hashing, and one whose row was written meanwhile', async () => {
+        const { root, addons } = createDeadlockRoot();
+        const changed = join(addons, 'pak01_dir.vpk');
+        const swapped = join(addons, 'pak02_dir.vpk');
+        const rewritten = join(addons, 'pak03_dir.vpk');
+        const stable = join(addons, 'pak04_dir.vpk');
+        for (const path of [changed, swapped, rewritten, stable]) writeFileSync(path, 'original');
+        saveMetadata({ 'pak03_dir.vpk': { modName: 'Needs hash' } });
+        harness.whileHashing = (filePath) => {
+            if (filePath === changed) writeFileSync(changed, 'different length bytes');
+            if (filePath === swapped) {
+                rmSync(swapped);
+                writeFileSync(join(addons, 'swapped_dir.vpk'), 'new');
+            }
+            if (filePath === rewritten) saveMetadata({ 'pak03_dir.vpk': { modName: 'Needs hash', sha256: hash('9') } });
+        };
+
+        const updated = await backfillMissingMetadataHashes(root, (apply) => apply());
+
+        expect(updated).toBe(1);
+        expect(getModMetadata('pak01_dir.vpk')).toBeUndefined();
+        expect(getModMetadata('pak02_dir.vpk')).toBeUndefined();
+        expect(getModMetadata('pak03_dir.vpk')?.sha256).toBe(hash('9'));
+        expect(getModMetadata('pak04_dir.vpk')).toEqual({ sha256: 'f'.repeat(64) });
+    });
+
+    it('hashes outside the locked step: the lock is only taken for the write', async () => {
+        const { root, addons } = createDeadlockRoot();
+        writeFileSync(join(addons, 'pak01_dir.vpk'), 'raw');
+        let locked = false;
+        let hashedWhileLocked = false;
+        harness.whileHashing = () => { hashedWhileLocked ||= locked; };
+
+        await backfillMissingMetadataHashes(root, async (apply) => {
+            locked = true;
+            try { return await apply(); } finally { locked = false; }
+        });
+
+        expect(hashedWhileLocked).toBe(false);
+        expect(getModMetadata('pak01_dir.vpk')).toEqual({ sha256: 'f'.repeat(64) });
     });
 
     it('migrates a minimal hash row with its mod across a metaKey rename', () => {

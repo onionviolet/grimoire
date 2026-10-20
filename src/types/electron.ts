@@ -1,8 +1,11 @@
 import type { ModSafetyPrompt, InstalledModSafety } from './modSafety';
+import type { ChooseModUpdateReplacementArgs, ModUpdateState, StartModUpdatesArgs } from './modUpdates';
 import type {
     Mod,
     AppSettings,
+    DeleteModEntry,
     DeleteModsProgress,
+    DeleteModsResult,
     GlobalModType,
     ModConflict,
     UnknownModDetectionProgress,
@@ -68,8 +71,18 @@ import type {
     DeadworksConnectProgress,
     DeadworksRelayStats,
 } from './deadworks';
-import type { DmmMigrationRequest, DmmMigrationReport } from '../lib/dmmMigration';
 import type { BrowserDestinationKind } from '../lib/browserCatalog';
+import type {
+    InterchangeDocument,
+    InterchangeExportReport,
+    InterchangeExportSelection,
+    InterchangeImportReport,
+    InterchangeImportSelection,
+    InterchangePreview,
+    InterchangeProgress,
+    InterchangeSourceInfo,
+    InterchangeSourceRequest,
+} from '../lib/modInterchange';
 
 export interface BrowseModsArgs {
     page: number;
@@ -106,12 +119,12 @@ export interface DownloadModArgs {
     modName?: string;
     section?: string;
     categoryId?: number;
-    /** The download replaces installed content (an update, a confirmed
-     *  replace, a reinstall, or a merge-source refresh). The caller removes
-     *  what it replaces and restores the enabled and Global state itself, so
-     *  the backend leaves the mod's other files enabled instead of switching
-     *  sibling variants off. */
+    /** Replaces installed content without auto-disabling sibling variants.
+     *  With replacementModIds, main owns cleanup and state restoration.
+     *  Legacy merge/source callers still finalize their own replacement. */
     isReplacement?: boolean;
+    /** Installed sources finalized by main after a successful queued install. */
+    replacementModIds?: string[];
 }
 
 export interface GetCategoriesArgs {
@@ -213,15 +226,18 @@ export interface PerformancePresetVersion {
     /** Whether `ref` is a real git tag or a version stated in prose. */
     refKind: 'tag' | 'prose';
     commit: string;
-    /** Last commit at or before the release pin that touched this preset's
-     *  source file. Prose version history is scoped to that path. */
-    historyCommit: string;
     /** Upstream release date, yyyy-mm-dd. Shown because upstream tag names do
      *  not reliably sort into release order (OptiLock tagged v4.0d after v4.1),
      *  so the name alone cannot tell a user which release is older. */
     date: string;
     /** How many settings this release changes, for a rough intensity signal. */
     settingCount: number;
+    /** How many video.txt settings this release writes; 0 when upstream ships
+     *  no video.txt for it. */
+    videoSettingCount: number;
+    /** The video.txt variants this release ships, default first, when there is
+     *  more than one to pick from (OptiLock Ultra Potato: noShadows, shadows). */
+    videoVariants?: string[];
     /** Creator-authored gameplay convars exposed as individual controls.
      *  Differs between releases, so it is recorded per version. */
     optIn: PerformanceOptIn[];
@@ -238,7 +254,15 @@ export interface PerformancePresetSummary {
     name: string;
     /** Upstream version of the newest bundled release, e.g. '2.8.2' or '4.2'. */
     version: string;
-    tier: 'balanced' | 'preview' | 'aggressive' | 'potato' | 'competitive' | 'maximum';
+    tier:
+        | 'light'
+        | 'balanced'
+        | 'preview'
+        | 'aggressive'
+        | 'potato'
+        | 'ultraPotato'
+        | 'competitive'
+        | 'maximum';
     author: string;
     /** Upstream itself labels this config experimental. */
     unstable: boolean;
@@ -273,6 +297,9 @@ export interface PerformanceConfigStatus {
     bundledVersion: string;
     /** Opt-in convar keys the last apply wrote. */
     appliedOptIns?: string[];
+    /** The video.txt variant the last apply wrote, for a release that ships
+     *  more than one. */
+    appliedVideoVariant?: string;
     /** Current values of the active ConVars lines Grimoire manages in
      *  gameinfo.gi, hand edits included. */
     managedConvarValues?: Record<string, string>;
@@ -281,6 +308,10 @@ export interface PerformanceConfigStatus {
     savedConvarValues?: Record<string, string>;
     /** Applied, but the file no longer matches what Grimoire wrote (hand edits). */
     handEdited?: boolean;
+    /** Applied from another upstream commit of that release, or under older
+     *  Grimoire rules (an exclusion added since), so a reapply writes
+     *  something different. */
+    outdated?: boolean;
     /** Saved user deviations from the preset (hand edits harvested on reapply,
      *  layered onto every apply, surviving game-update wipes). */
     overrideCount?: number;
@@ -289,6 +320,18 @@ export interface PerformanceConfigStatus {
     /** Per-key provenance for every user-facing ConVar (HUD and advanced),
      *  keyed by ConVar name. Absent on states that could not read the file. */
     convarStates?: Record<string, PerformanceConvarState>;
+    /** video.txt settings the last apply changed (`total`) and how many still
+     *  hold Grimoire's value (`applied`): Deadlock rewrites the file whenever
+     *  graphics settings change in game. Absent when the last apply left
+     *  video.txt alone (video off, the preset ships none, or an apply from
+     *  before video.txt support). */
+    video?: { applied: number; total: number };
+    /** Video settings the applied release carries, which can differ from the
+     *  bundled release the card has selected (track-latest, a rolled-back version). */
+    videoAvailable?: number;
+    /** game/citadel/cfg/video.txt does not exist yet (Deadlock writes it on
+     *  first launch), so video settings cannot be applied. */
+    videoFileMissing?: boolean;
     /** gameinfo.gi is empty/corrupt (no ConVars section to patch) AND a
      *  Grimoire backup exists, so the UI can offer a one-click restore. Only
      *  set on the broken-file states (error / wiped). */
@@ -336,32 +379,6 @@ export interface PerformanceLatestInfo {
     matchesBundled: string | null;
     /** Fetch or validation failure. The cached fields above may still be
      *  populated from an earlier successful check. */
-    error: string | null;
-}
-
-/** One version a preset's upstream has published, for the full-history
- *  browser. A row is only a pointer: nothing is fetched until it is picked. */
-export interface PerformanceRemoteVersion {
-    /** The upstream handle: a tag name ('v4.2') or a short commit sha. */
-    ref: string;
-    /** The version identity a pin/apply of this row would use (tag with any
-     *  leading 'v' stripped, or the short sha). */
-    version: string;
-    /** Full commit sha when the listing knows it (commit-versioned sources);
-     *  tag refs resolve at fetch time instead. */
-    commit: string | null;
-    /** yyyy-mm-dd. */
-    date: string;
-    /** Human handle where upstream provides one: the release title, or the
-     *  commit subject line for sources that version in prose. */
-    label: string | null;
-    /** Already fetched, gated, and cached locally (appliable offline). */
-    cached?: boolean;
-}
-
-export interface PerformanceRemoteVersionList {
-    /** Newest first. Empty on error. */
-    versions: PerformanceRemoteVersion[];
     error: string | null;
 }
 
@@ -623,6 +640,7 @@ export interface StopGameResult {
 }
 
 export interface DownloadProgressData {
+    jobId?: string;
     modId: number;
     fileId: number;
     downloaded: number;
@@ -630,11 +648,18 @@ export interface DownloadProgressData {
 }
 
 export interface DownloadServerStatusData {
+    jobId?: string;
     modId: number;
     fileId: number;
     server: string;
     phase: 'selected' | 'switching';
     previousServer?: string;
+}
+
+export interface GameBananaDownloadProxyConfig {
+    enabled: boolean;
+    url: string;
+    hasCredentials: boolean;
 }
 
 export interface GameBananaFileServerDiagnostics {
@@ -655,11 +680,15 @@ export interface GameBananaFileServerDiagnostics {
 }
 
 export interface DownloadEventData {
+    jobId?: string;
     modId: number;
     fileId: number;
+    /** Replaced installed sources, retained until the renderer's fresh scan. */
+    replacementModIds?: string[];
 }
 
 export interface DownloadErrorData {
+    jobId?: string;
     modId: number;
     fileId: number;
     errorCode: 'MISSING_7ZIP' | 'EXTRACTION_FAILED' | 'CANCELLED_BY_USER' | 'UNKNOWN';
@@ -675,6 +704,10 @@ export interface ModsAutoDisabledData {
 }
 
 export interface DownloadQueueItem {
+    /** Assigned by main. Optimistic renderer requests have no job id yet. */
+    jobId?: string;
+    phase?: 'queued' | 'preparing' | 'downloading' | 'paused' | 'installing' | 'finalizing';
+    progress?: { downloaded: number; total: number };
     modId: number;
     fileId: number;
     fileName: string;
@@ -755,9 +788,12 @@ export interface SearchLocalModsOptions {
      *  null), so this is what actually scopes a local category filter. Without
      *  it the id comparison matches no rows at all. */
     categoryName?: string;
-    // Enhanced hero search
+    /** Hero's category and every descendant. Matched against the mod's
+     *  sub-category id, so it is exact. Mod section only. */
+    heroCategoryIds?: number[];
+    /** Hero name, matched as a whole word in the title. For Sound and Wip,
+     *  which have no hero categories. Ignored when `heroCategoryIds` is set. */
     heroName?: string;
-    skinsCategoryId?: number;
     sortBy?: 'relevance' | 'likes' | 'date' | 'date_added' | 'views' | 'name';
     nsfw?: 'all' | 'sfw' | 'nsfw';
     addedWithin?: 'all' | 'today' | 'week' | 'month' | 'custom';
@@ -783,6 +819,9 @@ export interface CachedMod {
     section: string;
     categoryId: number | null;
     categoryName: string | null;
+    /** Deepest category (a hero under Skins). Null until the mod is re-synced
+     *  after the column was added, or when it has no sub-category. */
+    subCategoryId: number | null;
     submitterName: string | null;
     submitterId: number | null;
     likeCount: number;
@@ -968,6 +1007,10 @@ export interface LockerImageEdit {
 }
 
 export interface ElectronAPI {
+    listModBackups: () => Promise<import('./modBackup').ModBackupSummary[]>;
+    restoreModBackup: (backupId: string) => Promise<void>;
+    deleteModBackup: (backupId: string) => Promise<void>;
+    onModBackupsChanged: (callback: () => void) => () => void;
     // Host platform ('win32', 'linux', ...), captured in the preload. The
     // renderer uses it to decide whether to draw the custom Windows title
     // bar strip (the native frame is hidden on Windows only).
@@ -981,13 +1024,24 @@ export interface ElectronAPI {
     detectDeadlock: () => Promise<string | null>;
     validateDeadlockPath: (path: string) => Promise<boolean>;
     createDevDeadlockPath: () => Promise<string>;
+    copyModsToDev: () => Promise<void>;
+    onCopyModsToDevProgress: (callback: (percent: number) => void) => () => void;
     getSettings: () => Promise<AppSettings>;
-    setSettings: (settings: AppSettings) => Promise<void>;
+    setSettings: (patch: Partial<AppSettings>) => Promise<AppSettings>;
 
-    // Deadlock Mod Manager migration (adopt DMM's on-disk VPKs; no cloud)
-    dmmMigrate: {
-        scan: (req: DmmMigrationRequest) => Promise<DmmMigrationReport>;
-        execute: (req: DmmMigrationRequest) => Promise<DmmMigrationReport>;
+    // Mod transfer between mod managers (neutral interchange format; no cloud)
+    interchange: {
+        sources: () => Promise<InterchangeSourceInfo[]>;
+        read: (req: InterchangeSourceRequest) => Promise<InterchangePreview>;
+        import: (req: {
+            document: InterchangeDocument;
+            selection: InterchangeImportSelection;
+        }) => Promise<InterchangeImportReport>;
+        export: (req: {
+            destinationDir: string;
+            selection: InterchangeExportSelection;
+        }) => Promise<InterchangeExportReport>;
+        onProgress: (callback: (progress: InterchangeProgress) => void) => () => void;
     };
 
     chatWheelRead: (vpkPath: string) => Promise<string>;
@@ -1013,19 +1067,27 @@ export interface ElectronAPI {
     };
 
     // Mods
+    getCrashAdvisories: () => Promise<import('./crashAdvisory').CrashAdvisory[]>;
+    dismissCrashAdvisory: (id: string) => Promise<import('./crashAdvisory').CrashAdvisory[]>;
+    onCrashAdvisoriesChanged: (callback: (findings: import('./crashAdvisory').CrashAdvisory[]) => void) => () => void;
     getModSafetyPrompts: () => Promise<ModSafetyPrompt[]>;
     respondModSafety: (id: string, accepted: boolean) => Promise<void>;
     getInstalledModSafety: () => Promise<{ mods: InstalledModSafety[]; running: boolean; failed: boolean }>;
     rescanModSafety: () => Promise<InstalledModSafety[]>;
     reviewModSafety: (id: string, fingerprint: string) => Promise<Mod>;
     onModSafetyChanged: (callback: () => void) => () => void;
+    /** Fires when the background check flags a mod's outdated vdata or stale hero models. */
+    onModVdataChecked: (callback: () => void) => () => void;
+    /** Rewrites the mod's `staleModels` from the game's models. Resolves to how many were healed. */
+    healModAttachments: (modId: string) => Promise<number>;
+    reviewModCompatibility: () => Promise<import('../lib/modCompatibility').CompatibilityReview[]>;
+    repairModCompatibility: (modId: string) => Promise<import('../lib/modCompatibility').CompatibilityRepairResult>;
     getMods: () => Promise<Mod[]>;
     enableMod: (modId: string) => Promise<Mod>;
     disableMod: (modId: string) => Promise<Mod>;
-    deleteMod: (modId: string) => Promise<void>;
-    deleteMods: (modIds: string[]) => Promise<void>;
+    deleteMod: (entry: DeleteModEntry) => Promise<DeleteModsResult>;
+    deleteMods: (entries: DeleteModEntry[]) => Promise<DeleteModsResult>;
     onDeleteModsProgress: (callback: (progress: DeleteModsProgress) => void) => () => void;
-    assertReplacementSafety: (modIds: string[]) => Promise<void>;
     revealModInFolder: (modId: string) => Promise<void>;
     /** Rescan every installed file for non-VPK impostors. Reporting only. */
     reconcileVpkImpostors: () => Promise<VpkImpostorReport[]>;
@@ -1049,9 +1111,6 @@ export interface ElectronAPI {
         modIds: string[],
         target: LocalVariantGroupTarget
     ) => Promise<SetLocalVariantGroupResult>;
-    restoreLocalVariantGroupReplacement: (
-        args: RestoreLocalVariantGroupReplacementArgs
-    ) => Promise<void>;
     setVariantLabel: (modId: string, label: string) => Promise<Mod>;
     setModLockerHero: (modId: string, heroName: string | null) => Promise<Mod>;
     getHeroPortraits: (heroName: string) => Promise<HeroPortrait[]>;
@@ -1100,13 +1159,15 @@ export interface ElectronAPI {
         heroName: string,
         skinSources?: HeroPoseSkinSource[]
     ) => Promise<unknown>;
-    getHeroEffectInfo: (heroName: string) => Promise<HeroEffectInfo>;
     getHeroAbilityPreviews: (heroName: string) => Promise<import('./abilityPreview').HeroAbilityPreview[]>;
     prepareHeroAbilityPreview: (heroName: string, slot: import('./mod').AbilitySlot, options?: import('./abilityPreview').HeroAbilityPreviewOptions) => Promise<import('./abilityPreview').HeroAbilityPlayback>;
-    exportHeroEffect: (heroName: string) => Promise<HeroEffectInfo>;
+    getHeroEffectInfo: (heroName: string, skinSources?: HeroPoseSkinSource[]) => Promise<HeroEffectInfo>;
+    exportHeroEffect: (heroName: string, skinSources?: HeroPoseSkinSource[]) => Promise<HeroEffectInfo>;
     getPreviewCacheSize: () => Promise<{ bytes: number }>;
     clearPreviewCache: () => Promise<{ bytesFreed: number }>;
     getGameBananaFileServerDiagnostics: () => Promise<GameBananaFileServerDiagnostics>;
+    getGameBananaDownloadProxy: () => Promise<GameBananaDownloadProxyConfig>;
+    setGameBananaDownloadProxy: (config: Pick<GameBananaDownloadProxyConfig, 'enabled' | 'url'>) => Promise<GameBananaDownloadProxyConfig>;
     refreshGameBananaFileServerCache: () => Promise<GameBananaFileServerDiagnostics>;
     testGameBananaFileServers: () => Promise<GameBananaFileServerDiagnostics>;
     applyHeroSound: (
@@ -1315,6 +1376,11 @@ export interface ElectronAPI {
     getModUpdates: (args: GetModUpdatesArgs) => Promise<GameBananaModUpdatesResponse>;
     getSubmitterLinks: (memberId: number) => Promise<GameBananaArtistLink[]>;
     downloadMod: (args: DownloadModArgs) => Promise<void>;
+    startModUpdates: (args: StartModUpdatesArgs) => Promise<void>;
+    getModUpdateState: () => Promise<ModUpdateState>;
+    onModUpdateStateUpdated: (callback: (state: ModUpdateState) => void) => () => void;
+    chooseModUpdateReplacement: (args: ChooseModUpdateReplacementArgs) => Promise<void>;
+    removeModUpdateRequest: (requestId: string) => Promise<void>;
     getGameBananaSections: () => Promise<GameBananaSection[]>;
     getGameBananaCategories: (args: GetCategoriesArgs) => Promise<GameBananaCategoryNode[]>;
     getCollection: (args: { collectionId: number }) => Promise<GameBananaCollection>;
@@ -1335,7 +1401,9 @@ export interface ElectronAPI {
     applyPerformanceConfig: (
         presetId?: string,
         optIns?: string[],
-        version?: string | null
+        version?: string | null,
+        restoreVideo?: boolean,
+        videoVariant?: string | null
     ) => Promise<PerformanceConfigStatus>;
     setPerformanceHudConvars: (values: Record<string, boolean>) => Promise<PerformanceConfigStatus>;
     setPerformanceAdvancedConvars: (values: Record<string, number>) => Promise<PerformanceConfigStatus>;
@@ -1346,18 +1414,13 @@ export interface ElectronAPI {
     resetPerformanceConfigOverrides: (
         presetId?: string,
         optIns?: string[],
-        version?: string | null
+        version?: string | null,
+        videoVariant?: string | null
     ) => Promise<PerformanceConfigStatus>;
     reapplyWipedPerformanceConfig: () => Promise<PerformanceConfigStatus>;
     restorePerformanceConfigBackup: () => Promise<PerformanceConfigStatus>;
     getPerformanceLatestInfo: (presetId: string) => Promise<PerformanceLatestInfo>;
     checkPerformanceLatest: (presetId: string, force?: boolean) => Promise<PerformanceLatestInfo>;
-    listPerformanceRemoteVersions: (presetId: string) => Promise<PerformanceRemoteVersionList>;
-    fetchPerformanceRemoteVersion: (
-        presetId: string,
-        ref: string,
-        commit?: string | null
-    ) => Promise<PerformanceLatestInfo>;
     openPerformanceConfigFile: () => Promise<void>;
     listEditorCandidates: () => Promise<EditorCandidate[]>;
     openModsFolder: () => Promise<void>;
@@ -1390,10 +1453,13 @@ export interface ElectronAPI {
     getDownloadQueue: () => Promise<DownloadQueueItem[]>;
     getDownloadJobs: () => Promise<import('./downloadJobs').DownloadJob[]>;
     retryDownloadJob: (id: string) => Promise<void>;
+    moveQueuedDownload: (jobId: string, beforeJobId: string | null) => Promise<boolean>;
+    prioritizeQueuedDownload: (jobId: string) => Promise<boolean>;
     getCurrentDownload: () => Promise<DownloadQueueItem | null>;
     removeFromQueue: (modId: number, fileId?: number) => Promise<boolean>;
     cancelActiveDownload: () => Promise<boolean>;
-    cancelDownloadTarget: (modId: number, fileId: number) => Promise<boolean>;
+    cancelDownloadTarget: (modId: number, fileId: number, jobId?: string) => Promise<boolean>;
+    cancelQueuedDownloads: (pendingTargets?: Pick<DownloadQueueItem, 'modId' | 'fileId'>[]) => Promise<void>;
     onDownloadQueueUpdated: (callback: (data: DownloadQueueData) => void) => () => void;
 
     // GameBanana 1-Click protocol handler
@@ -1447,7 +1513,7 @@ export interface ElectronAPI {
     listProfileRecoveryPoints: () => Promise<import('./profileRecovery').ProfileRecoverySummary[]>;
     getInterruptedProfileRecovery: () => Promise<import('./profileRecovery').InterruptedRecovery | null>;
     recoverInterruptedProfileRecovery: (reviewToken: string) => Promise<void>;
-    reviewModCompatibility: () => Promise<import('./recovery').CompatibilityReview>;
+    reviewSetupCompatibility: () => Promise<import('./recovery').CompatibilityReview>;
     getModIsolationSession: () => Promise<import('./recovery').ModIsolationSession | null>;
     startModIsolation: () => Promise<import('./recovery').ModIsolationSession>;
     applyModIsolationTrial: (reviewToken: string) => Promise<import('./recovery').ModIsolationSession>;
@@ -1576,7 +1642,11 @@ export interface ElectronAPI {
 
     // Diagnostics
     diagnostics: {
-        buildReport: (description: string, options?: { includeFullLog?: boolean }) => Promise<string>;
+        buildReport: (description: string, options?: { includeFullLog?: boolean; crashReportIds?: string[] }) => Promise<string>;
+        listCrashes: (offset?: number) => Promise<import('./crashHistory').CrashHistoryPage>;
+        crashDetail: (id: string) => Promise<import('./crashHistory').CrashReportDetail>;
+        revealCrash: (id: string) => Promise<void>;
+        saveCrashDump: (id: string) => Promise<boolean>;
     };
 
     // Grimoire Social
@@ -1683,6 +1753,7 @@ export interface ElectronAPI {
          *  null when it is gone, too large, or not decodable. Never returns a
          *  filesystem path. */
         sourceThumbnail: (sourcePath: string) => Promise<string | null>;
+        exportAsset: (request: import('./foundry').FoundryAssetExportRequest) => Promise<import('./foundry').VpkExportResult>;
         warmCache: () => Promise<void>;
         engineInfo: () => Promise<import('./foundry').EngineInfo>;
         catalogDiagnostics: () => Promise<import('./foundry').CatalogDiagnostics>;
@@ -1858,6 +1929,7 @@ export interface ProfileMod {
      *  GameBanana ids. */
     fileName: string;
     enabled: boolean;
+    /** Position in the complete saved load order, across all addon folders. */
     priority: number;
     /** Stable identity pair. Populated from metadata at save time so apply
      *  can find the mod even if its fileName has changed since. */

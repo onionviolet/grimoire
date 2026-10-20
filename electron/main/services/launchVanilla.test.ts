@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
@@ -116,7 +116,7 @@ describe('Vanilla user-mod stash', () => {
         expect(getModMetadata(pack)).toEqual({ modName: 'Unreadable pack' });
         expect(getModMetadata('grimoire/pak05_dir.vpk')).toBeUndefined();
         expect(getModMetadata('pak03_dir.vpk')).toBeUndefined();
-        expect(lock).toHaveBeenCalledTimes(2);
+        expect(lock).toHaveBeenCalledOnce();
     });
 
     it('launches modded after restoring a stash whose mod predates its approval', async () => {
@@ -156,8 +156,31 @@ describe('Vanilla user-mod stash', () => {
         expect(await restoreFromStash(root, stash)).toEqual({ restored: 1, skipped: 0, failed: [] });
         expect(existsSync(join(addons, 'pak02_dir.vpk'))).toBe(true);
         expect(parkedFiles(disabled)).toEqual([]);
-        expect(lock).not.toHaveBeenCalled();
+        expect(lock).toHaveBeenCalledOnce();
         expect(await readStash()).toBeNull();
+    });
+
+    it('parks a stashed file whose origin slot was taken in the disabled library, with its metadata row', async () => {
+        const { root, grimoire, addons, disabled } = gameDirs();
+        writeFileSync(join(grimoire, 'pak05_dir.vpk'), 'global mod');
+        writeFileSync(join(grimoire, 'pak05_000.vpk'), 'global chunk');
+        writeFileSync(join(addons, 'pak02_dir.vpk'), 'base mod');
+        setModMetadata('grimoire/pak05_dir.vpk', { modName: 'Top Bar HUD', gameBananaId: 703330 });
+        const stash = await stashEnabledMods(root);
+        writeFileSync(join(grimoire, 'pak05_dir.vpk'), 'someone else');
+
+        const result = await restoreFromStash(root, stash);
+
+        expect(result).toEqual({ restored: 1, skipped: 2, failed: [] });
+        expect(await readStash()).toBeNull();
+        expect(readFileSync(join(grimoire, 'pak05_dir.vpk'), 'utf-8')).toBe('someone else');
+        expect(existsSync(join(addons, 'pak02_dir.vpk'))).toBe(true);
+        expect(readdirSync(join(disabled, 'grimoire'))).toEqual([]);
+        const parked = parkedFiles(disabled);
+        expect(parked).toHaveLength(2);
+        const dir = parked.find((name) => name.endsWith('_pak05_dir.vpk'))!;
+        expect(parked).toContain(dir.replace(/_dir\.vpk$/, '_000.vpk'));
+        expect(getModMetadata(dir)).toEqual({ modName: 'Top Bar HUD', gameBananaId: 703330 });
     });
 });
 // These tests use inert file placeholders; scanner behavior has its own fixtures.

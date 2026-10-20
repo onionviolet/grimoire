@@ -172,8 +172,9 @@ describe('migrateDmmInstall: VPK identity gate', () => {
     expect(existsSync(zipImpostorPath)).toBe(true);
     expect(existsSync(sevenZipImpostorPath)).toBe(true);
     const meta = JSON.parse(readFileSync(join(dirs.userData, 'mod-metadata.json'), 'utf-8'));
-    expect(meta['pak51_dir.vpk']).toBeUndefined();
-    expect(meta['seven_zip_thing_dir.vpk']).toBeUndefined();
+    // Scanning mints a sidecar modUid; what must be absent is any mod identity.
+    expect(meta['pak51_dir.vpk']?.gameBananaId).toBeUndefined();
+    expect(meta['seven_zip_thing_dir.vpk']?.gameBananaId).toBeUndefined();
   });
 
   it('reports the gate at report level', () => {

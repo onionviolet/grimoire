@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button, Card } from '../common/ui';
 import { ConfirmModal } from '../common/PageComponents';
-import { getInterruptedProfileRecovery, recoverInterruptedProfileRecovery, reviewModCompatibility, getModIsolationSession, startModIsolation,
+import { getInterruptedProfileRecovery, recoverInterruptedProfileRecovery, reviewSetupCompatibility, getModIsolationSession, startModIsolation,
   applyModIsolationTrial, recordModIsolationResult, finishModIsolation } from '../../lib/api';
 import type { InterruptedRecovery } from '../../types/profileRecovery';
 import type { CompatibilityReview, ModIsolationSession } from '../../types/recovery';
@@ -45,7 +45,7 @@ export default function RecoveryTools() {
       </div>
     </Card>}
     <Card title={t('recovery.tools.compatibilityTitle')} description={t('recovery.tools.compatibilityDescription')} accentEdge="none"
-      action={<Button variant="ghost" disabled={busy} onClick={() => void run(async () => setCompatibility(await reviewModCompatibility()))}>{t('recovery.tools.reviewCompatibility')}</Button>}>
+      action={<Button variant="ghost" disabled={busy} onClick={() => void run(async () => setCompatibility(await reviewSetupCompatibility()))}>{t('recovery.tools.reviewCompatibility')}</Button>}>
       <div className="space-y-3">
         <p className="text-sm text-text-secondary">{t('recovery.tools.compatibilityScope')}</p>
         {compatibility && <>

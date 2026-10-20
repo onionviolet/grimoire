@@ -15,33 +15,42 @@ import { OrbitControls as DreiOrbitControls } from '@react-three/drei';
 import { Leva, folder, useControls } from 'leva';
 import * as THREE from 'three';
 import { AlertTriangle, Loader2, RotateCw } from 'lucide-react';
+import { FULL_EFFECTS_PREVIEW_DEFAULTS, heroPresentationStorageKey, initialHeroPreviewFlags } from './heroViewerDefaults';
+import { heroPreviewBounds } from '../../lib/heroPreviewBounds';
 import {
   getHeroPoseInfo,
   exportHeroPose,
   getRiggedHeroPose,
   exportRiggedHeroPose,
-  getHeroClothModel,
   getHeroEffectInfo,
   exportHeroEffect,
   previewTrippySprite,
   getActiveHeroColor,
 } from '../../lib/api';
-import { loadGltfPreview } from '../../lib/loadGltfPreview';
+import { disposeTexture, loadGltfPreview, materialTextures } from '../../lib/loadGltfPreview';
+import { loadRiggedHeroPreview } from '../../lib/loadRiggedHeroPreview';
 import { ParticleEffect } from './ParticleEffect';
 import AbilityPreview from './AbilityPreview';
 import { useAppStore } from '../../stores/appStore';
 import type { ActiveHeroColor } from '../../types/mod';
-import { unsupportedParticleClasses, type FxDescriptor } from './fxDescriptor';
+import { fxPreviewIssues, type FxDescriptor } from './fxDescriptor';
+import { particleAttachmentIssues } from './particleAttachment';
 import { useClothSim } from '../../lib/useClothSim';
 import type { ClothModel } from '../../lib/feModel';
 import { BloomEffect } from './BloomEffect';
+import { HeroViewerToolbar, type HeroViewerScene } from './HeroViewerToolbar';
+import { heroAnimationRecipe, preferredHeroAnimationName } from '../../lib/heroAnimationCatalog';
+import { ViewerBackdrop, ViewerBackdropControls } from './ViewerBackdrop';
+import { useViewerBackdrop } from '../../lib/useViewerBackdrop';
+import { useViewerGif } from '../../lib/useViewerGif';
+import { clampAnimationTime, clampPlaybackSpeed, type HeroPlaybackProgress, type HeroPlaybackSeek } from '../../lib/heroViewerPlayback';
 import {
   HERO_PREVIEW_CAMERA,
-  HERO_PREVIEW_GL,
   enableHeroPreviewVertexColors,
+  getHeroPreviewNormalization,
   normalizeHeroPreview,
 } from './heroPreviewSceneSetup';
-import { HeroPreviewLighting, HeroPreviewAppearance } from './HeroPreviewScene';
+import { HeroPreviewAppearance, HeroViewerStage } from './HeroPreviewScene';
 import {
   summarizeNprScene,
   getMorphic,
@@ -60,62 +69,36 @@ import { attributeBrokenSkinSources } from './poseFailureAttribution';
 /**
  * Live 3D preview of a hero's menu pose for the Locker's per-hero view.
  *
- * The GLB is a static posed still produced on demand by the bundled
- * `vpkmerge model export --pose` (exportHeroPose) and served from the user's
- * library via the privileged `grimoire-hero:` scheme. It carries no skeleton,
- * skin, or clips and has the toon-outline / glow halo shells stripped, so it
- * loads as plain meshes (no SkinnedMesh, no skin-strip needed here).
+ * Starts with animation and supported effects enabled. Physics loads an animated rig and
+ * its matching cloth sidecar. Both are exported on demand by vpkmerge and
+ * served from the user's cache through the `grimoire-hero:` scheme.
  *
  * Interactive: drag to orbit, scroll to zoom. Loading stays on the custom
  * GLTFLoader helper because Source 2 morphic texture resolution needs the live
- * gltf.parser and ImageBitmap suppression window.
+ * gltf.parser.
  */
 
 const HERO_POSE_SCHEME = 'grimoire-hero';
 
-const USE_CLOTH: boolean = false;
-
-// Bloom postprocessing gives self-illum glows their bright-core + colored-halo look.
-const USE_BLOOM: boolean = true;
 // UnrealBloomPass starting params. Threshold is in LINEAR space, so it mainly catches
 // the capped self-illum (peak ~ selfIllumCap) and the brightest speculars, not the
 // whole hero. All three are calibration knobs - tune against a glowing hero.
 const BLOOM_INTENSITY = 1;
 const BLOOM_RADIUS = 0.5;
+// Authored sprite cards can saturate before blending. A threshold above one
+// excludes those effects and subdued emissive eyes from selective bloom.
 const BLOOM_THRESHOLD = 0.85;
 
-// Unified single build pass (deadlockMaterial.buildDeadlockMaterial): the one
-// material-styling path. Collapses the Source 2 hints + NPR cel/rim/tint into one
-// pass on an owned clone of each material, so the GLTF base is never mutated. Off
-// shows the raw GLB.
-const USE_UNIFIED_MATERIAL: boolean = true;
-
-// Phase 5 shader experiment: quantize accumulated direct diffuse at
-// lights_fragment_end, leaving IBL unbanded.
-const USE_CEL_V2: boolean = true;
-
-// Ambient particle FX overlay stays off. It is separate from shader/material work.
-const USE_EFFECT_PREVIEW: boolean = false;
-
-const RELEASE_RENDER_FLAGS = {
-  unified: USE_UNIFIED_MATERIAL,
-  celV2: USE_CEL_V2,
-  cloth: USE_CLOTH,
-  // Rigged is its own switch so the animated path can be measured without the
-  // WIP cloth sim riding along. Measured on Seven (gigawatt_prisoner), the
-  // worst case on every axis: RP-03 in docs/ingame-verification-record.md
-  // recorded a 0.00 ms wall-clock median delta (both runs pinned to the
-  // 120 Hz vsync ceiling) and a +0.12 ms GPU timer delta, both well inside
-  // the "within about 1 ms of static" ship band. Recommendation: ship. See
-  // docs/rigged-preview-spike.md section 9 for the full history.
-  rigged: true,
-  bloom: USE_BLOOM,
-  nprDebug: false,
-  matDebug: false,
-};
+// Full preview effects start enabled; explicit saved switches take precedence.
+// Rigged playback ships by default (measured within the frame-time ship band on
+// the worst-case hero, see docs/rigged-preview-spike.md section 9): the
+// `animated` switch is the viewer's name for it, and the render-feature
+// resolver treats `rigged` and `animated` as the same gate.
+const RELEASE_RENDER_FLAGS = FULL_EFFECTS_PREVIEW_DEFAULTS;
 
 type DevPreviewFlags = typeof RELEASE_RENDER_FLAGS & {
   effects: boolean;
+  animated: boolean;
 };
 
 type BloomParams = {
@@ -151,16 +134,15 @@ const COMPACT_LEVA_THEME = {
   },
 };
 
-function previewFlag(name: string, fallback: boolean): boolean {
-  if (typeof window === 'undefined') return fallback;
-  const raw = window.localStorage.getItem(name);
-  if (raw === null) return fallback;
-  return ['1', 'true', 'yes', 'on'].includes(raw.toLowerCase());
-}
 
 function writePreviewFlag(name: string, value: boolean): void {
-  if (typeof window !== 'undefined') window.localStorage.setItem(name, value ? '1' : '0');
+  if (typeof window !== 'undefined') {
+    const key = name.replace('grimoire.preview.', '');
+    const presentation = ['animated', 'cloth', 'effects', 'bloom', 'autoRotate'].includes(key);
+    window.localStorage.setItem(presentation ? heroPresentationStorageKey(key) : name, value ? '1' : '0');
+  }
 }
+
 
 function effectDescriptorUrl(key: string): string {
   return `${HERO_POSE_SCHEME}://m/${encodeURIComponent(key)}/effect.json`;
@@ -203,10 +185,6 @@ function meshUrlFor(key: string, mtimeMs: number | null): string {
   return `${HERO_POSE_SCHEME}://m/${encodeURIComponent(key)}/model.glb?v=${mtimeMs ?? 0}`;
 }
 
-function riggedMeshUrlFor(key: string, mtimeMs: number | null): string {
-  return `${HERO_POSE_SCHEME}://m/${encodeURIComponent(key)}/model-rigged.glb?v=${mtimeMs ?? 0}`;
-}
-
 /** Free a loaded scene's GPU resources (geometry, materials, textures,
  *  skeletons). */
 function disposeScene(root: THREE.Object3D): void {
@@ -214,13 +192,10 @@ function disposeScene(root: THREE.Object3D): void {
   const disposeMaterial = (m: THREE.Material | null | undefined): void => {
     if (!m || disposedMaterials.has(m)) return;
     disposedMaterials.add(m);
-    const sm = m as THREE.MeshStandardMaterial;
-    [sm.map, sm.normalMap, sm.roughnessMap, sm.metalnessMap, sm.emissiveMap, sm.aoMap].forEach(
-      (t) => t?.dispose()
-    );
+    materialTextures(m).forEach(disposeTexture);
     const resolved = getMorphic(m)?.resolvedTextures;
     if (resolved) {
-      Object.values(resolved).forEach((t) => t.dispose());
+      Object.values(resolved).forEach(disposeTexture);
     }
     const csmBase = (m as { __csm?: { baseMaterial?: THREE.Material } }).__csm?.baseMaterial;
     if (csmBase && csmBase !== m) disposeMaterial(csmBase);
@@ -243,10 +218,11 @@ function disposeScene(root: THREE.Object3D): void {
   });
 }
 
-/** Pick the rigged clip to play. The backend should ship exactly one animated
- *  clip; null means reject this rigged GLB and use the static pose path. */
-function pickIdleClip(clips: THREE.AnimationClip[]): THREE.AnimationClip | null {
-  return clips.find((c) => c.duration > 0.001) ?? null;
+/** Prefer an idle loop from the exported animation menu. */
+function pickIdleClip(clips: THREE.AnimationClip[], heroName?: string): THREE.AnimationClip | null {
+  const valid = clips.filter((c) => Number.isFinite(c.duration) && c.duration > 0.001);
+  const name = preferredHeroAnimationName(valid.map((c) => c.name), heroName);
+  return valid.find((c) => c.name === name) ?? null;
 }
 
 /** Shared pointer-interaction state between OrbitControls and the model group:
@@ -321,8 +297,10 @@ export function HeroPoseLoadingState({
  *  (orbits) the model with the mouse. */
 function useTurntable(
   groupRef: RefObject<THREE.Group | null>,
-  interaction: RefObject<TurntableInteraction>
+  interaction: RefObject<TurntableInteraction>,
+  reset = 0,
 ): void {
+  useEffect(() => { groupRef.current?.rotation.set(0, 0, 0); }, [groupRef, reset]);
   useFrame((_, delta) => {
     const g = groupRef.current;
     if (!g || interaction.current.dragging || interaction.current.paused) return;
@@ -336,10 +314,12 @@ export function PosedModel({
   scene,
   interaction,
   effect,
+  reset = 0,
 }: {
   scene: THREE.Object3D;
   interaction: RefObject<TurntableInteraction>;
   effect?: EffectMount | null;
+  reset?: number;
 }) {
   const groupRef = useRef<THREE.Group>(null);
 
@@ -353,7 +333,7 @@ export function PosedModel({
     enableHeroPreviewVertexColors(scene);
   }, [scene]);
 
-  useTurntable(groupRef, interaction);
+  useTurntable(groupRef, interaction, reset);
 
   return (
     <group ref={groupRef} scale={norm.scale}>
@@ -379,14 +359,26 @@ interface EffectMount {
  *  rendered AS-IS under wrapper groups so the SkinnedMesh's bone references stay
  *  valid (no reparenting, no clone). The normalize box is computed ONCE from the
  *  bind pose so the model does not breathe/drift as the clip plays. */
-function RiggedModel({
+export function RiggedModel({
+  heroName,
   scene,
   clips,
   interaction,
   clothModel,
   clothEnabled,
   effect,
+  clipName,
+  playback,
+  seek,
+  progressRef,
+  reset,
 }: {
+  heroName?: string;
+  clipName: string;
+  playback: { paused: boolean; speed: number };
+  seek?: HeroPlaybackSeek;
+  progressRef?: RefObject<HeroPlaybackProgress>;
+  reset: number;
   scene: THREE.Object3D;
   clips: THREE.AnimationClip[];
   interaction: RefObject<TurntableInteraction>;
@@ -396,6 +388,7 @@ function RiggedModel({
 }) {
   const groupRef = useRef<THREE.Group>(null);
   const mixerRef = useRef<THREE.AnimationMixer | null>(null);
+  const selectedClip = useMemo(() => clips.find((c) => c.name === clipName) ?? pickIdleClip(clips, heroName), [clips, clipName, heroName]);
 
   // Normalize from the BIND/rest pose, once. Force the skeleton to bind pose and
   // flush world matrices first so the AABB is the true rest extent and does not
@@ -406,17 +399,39 @@ function RiggedModel({
     enableHeroPreviewVertexColors(scene);
   }, [scene]);
 
-  // Build the mixer + play the idle clip once per scene. Kept in a ref so React
-  // re-renders never restart playback.
+  // Cleanup runs before setup on a motion change. Reset after the old cloth
+  // and mixer release their channels, then calibrate physics from bind pose.
   useEffect(() => {
-    const clip = pickIdleClip(clips);
-    if (!clip) return;
+    scene.traverse((obj) => {
+      const mesh = obj as THREE.SkinnedMesh;
+      if (mesh.isSkinnedMesh && mesh.skeleton) mesh.skeleton.pose();
+    });
+    scene.updateWorldMatrix(true, true);
+  }, [scene, clipName, seek]);
+
+  const clothResetKey = JSON.stringify([clipName, seek?.revision ?? 0]);
+  const clothStep = useClothSim(scene, clothEnabled ? clothModel : null, clothResetKey);
+
+  // Register after cloth captures bind transforms. Applying time zero makes a
+  // selected motion visible immediately, including while playback is paused.
+  useEffect(() => {
+    const clip = selectedClip;
+    if (!clip) {
+      if (progressRef) progressRef.current = { time: 0, duration: 0 };
+      return;
+    }
     const mixer = new THREE.AnimationMixer(scene);
     mixerRef.current = mixer;
     const action = mixer.clipAction(clip);
-    action.setLoop(THREE.LoopRepeat, Infinity);
-    action.clampWhenFinished = false;
+    const hold = heroAnimationRecipe(clip.name, heroName)?.playback === 'hold';
+    action.setLoop(hold ? THREE.LoopOnce : THREE.LoopRepeat, hold ? 1 : Infinity);
+    action.clampWhenFinished = hold;
     action.reset().play();
+    const time = clampAnimationTime(seek?.time ?? 0, clip.duration);
+    // Repeat actions wrap at duration. Sample just inside the end so dragging
+    // the timeline to its last position shows the final pose, not time zero.
+    mixer.setTime(hold ? time : Math.min(time, Math.max(0, clip.duration - 1e-7)));
+    if (progressRef) progressRef.current = { time, duration: clip.duration };
     return () => {
       action.stop();
       mixer.stopAllAction();
@@ -424,25 +439,28 @@ function RiggedModel({
       mixer.uncacheRoot(scene);
       mixerRef.current = null;
     };
-  }, [scene, clips]);
+  }, [scene, selectedClip, seek, progressRef, heroName]);
 
-  // Cloth bones swing under gravity + turntable inertia, AFTER the mixer poses
-  // the skeleton, and collide with the body capsules/spheres from the FeModel
-  // sidecar (null on a model with no cloth -> the sim no-ops).
-  const clothStep = useClothSim(scene, clothEnabled ? clothModel : null);
+  // The cloth driver restores the clean pose before advancing animation. With
+  // physics disabled it advances the mixer directly at the render frame rate.
   useFrame((_, delta) => {
-    mixerRef.current?.update(delta);
-    clothStep(delta);
+    if (!playback.paused) clothStep(delta * clampPlaybackSpeed(playback.speed), (dt) => { mixerRef.current?.update(dt); });
+    const mixer = mixerRef.current;
+    const clip = selectedClip;
+    if (progressRef && mixer && clip && !playback.paused) {
+      progressRef.current.time = clampAnimationTime(mixer.existingAction(clip)?.time ?? 0, clip.duration);
+      progressRef.current.duration = clip.duration;
+    }
   });
 
-  useTurntable(groupRef, interaction);
+  useTurntable(groupRef, interaction, reset);
 
   return (
     <group ref={groupRef} scale={norm.scale}>
       <group position={[-norm.center.x, -norm.center.y, -norm.center.z]}>
         <primitive object={scene} />
         {effect && (
-          <ParticleEffect descriptor={effect.descriptor} textureBaseUrl={effect.baseUrl} model={scene} recolor={effect.recolor} />
+          <ParticleEffect key={`${clipName}:${seek?.revision ?? 0}`} descriptor={effect.descriptor} textureBaseUrl={effect.baseUrl} model={scene} playback={playback} recolor={effect.recolor} />
         )}
       </group>
     </group>
@@ -451,9 +469,78 @@ function RiggedModel({
 
 /** Mouse orbit + zoom, damped. Auto-rotation lives on the model group so the
  *  controls don't fight it; dragging just reorients the camera. */
-function Controls({ interaction }: { interaction: RefObject<TurntableInteraction> }) {
-  const { camera, gl } = useThree();
+export function Controls({ interaction, reset, label, model, fitKey }: { interaction: RefObject<TurntableInteraction>; reset: number; label: string; model: THREE.Object3D; fitKey: string }) {
+  const { camera, gl, size: viewportSize } = useThree();
   const controlsRef = useRef<ComponentRef<typeof DreiOrbitControls> | null>(null);
+  const pendingFit = useRef(true);
+  useEffect(() => {
+    pendingFit.current = true;
+  }, [camera, model, fitKey, reset, viewportSize.width, viewportSize.height]);
+  // Fit after the mounted figure has updated its pose and wrapper transforms.
+  // OrbitControls can mount after this component's effects, so retry until its
+  // ref is ready and keep the fitted target under imperative control.
+  useFrame(() => {
+    const controls = controlsRef.current;
+    if (!pendingFit.current || !controls || viewportSize.width <= 0 || viewportSize.height <= 0) return;
+    model.updateWorldMatrix(true, false);
+    // SkinnedMesh refreshes its attached bind inverse in updateMatrixWorld,
+    // not updateWorldMatrix. Without this pass the first bounds include the
+    // normalization wrapper twice; later rendered frames hide the mistake.
+    model.updateMatrixWorld(true);
+    const bounds = heroPreviewBounds(model, getHeroPreviewNormalization(model)?.bounds);
+    if (bounds.isEmpty()) return;
+    const center = bounds.getCenter(new THREE.Vector3());
+    const size = bounds.getSize(new THREE.Vector3());
+    const perspective = camera as THREE.PerspectiveCamera;
+    const tangent = Math.tan(THREE.MathUtils.degToRad(perspective.fov ?? 40) / 2);
+    const distance = Math.max(1.6, Math.max(size.y / 2 / tangent,
+      size.x / 2 / tangent / Math.max(0.001, perspective.aspect ?? 1)) * 1.2 + size.z / 2);
+    camera.position.copy(center).add(new THREE.Vector3(0, 0, distance));
+    controls.target.copy(center);
+    controls.maxDistance = Math.max(6, distance * 2);
+    Object.assign(camera.userData, { previewHome: { position: camera.position.toArray(), target: center.toArray() } });
+    controls.update();
+    pendingFit.current = false;
+  });
+  useEffect(() => {
+    const canvas = gl.domElement;
+    canvas.setAttribute('tabindex', '0');
+    canvas.setAttribute('aria-label', label);
+    const focus = () => canvas.focus({ preventScroll: true });
+    const keydown = (event: KeyboardEvent) => {
+      const controls = controlsRef.current;
+      if (!controls || event.ctrlKey || event.altKey || event.metaKey) return;
+      const key = event.key.toLowerCase();
+      if (!['w', 'a', 's', 'd', 'q', 'e', 'r', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) return;
+      event.preventDefault();
+      const offset = camera.position.clone().sub(controls.target);
+      if (key === 'r') {
+        const home = camera.userData.previewHome as { position: number[]; target: number[] } | undefined;
+        controls.target.fromArray(home?.target ?? [0, 0, 0]);
+        camera.position.fromArray(home?.position ?? [0, 0, 3.2]);
+      } else if (key === 'q' || key === 'e') {
+        camera.position.copy(controls.target).add(offset.setLength(THREE.MathUtils.clamp(offset.length() * (key === 'q' ? 1 / 1.1 : 1.1), controls.minDistance, controls.maxDistance)));
+      } else {
+        const horizontal = ['a', 'd', 'arrowleft', 'arrowright'].includes(key);
+        const sign = ['a', 'w', 'arrowleft', 'arrowup'].includes(key) ? 1 : -1;
+        if (event.shiftKey) {
+          const direction = new THREE.Vector3(horizontal ? sign * 0.06 : 0, horizontal ? 0 : sign * 0.06, 0).applyQuaternion(camera.quaternion);
+          controls.target.add(direction);
+          camera.position.add(direction);
+        } else {
+          const spherical = new THREE.Spherical().setFromVector3(offset);
+          if (horizontal) spherical.theta += sign * 0.08;
+          else spherical.phi -= sign * 0.08;
+          spherical.makeSafe();
+          camera.position.copy(controls.target).add(new THREE.Vector3().setFromSpherical(spherical));
+        }
+      }
+      controls.update();
+    };
+    canvas.addEventListener('pointerdown', focus);
+    canvas.addEventListener('keydown', keydown);
+    return () => { canvas.removeEventListener('pointerdown', focus); canvas.removeEventListener('keydown', keydown); };
+  }, [camera, gl, label]);
   useEffect(() => {
     // Dolly toward/away from the target in any state, clamped to min/max distance.
     const onWheel = (e: WheelEvent) => {
@@ -482,7 +569,6 @@ function Controls({ interaction }: { interaction: RefObject<TurntableInteraction
       enableZoom={false}
       minDistance={1.6}
       maxDistance={6}
-      target={[0, 0, 0]}
       onStart={() => {
         // eslint-disable-next-line react-hooks/immutability -- ref.current mutation is the sanctioned React pattern; `interaction` is a RefObject, not immutable hook state
         interaction.current.dragging = true;
@@ -636,26 +722,36 @@ export default function HeroPoseViewer({
   const [rigged, setRigged] = useState(false);
   const [clothModel, setClothModel] = useState<ClothModel | null>(null);
   const [generating, setGenerating] = useState(false);
-  // Start paused if that is how the user left it, or if they have asked the OS
-  // for reduced motion and have never said otherwise here.
+  // Spin state: the user's last explicit choice wins. Otherwise follow the
+  // viewer default (paused unless the presentation switch turned auto-rotate
+  // on), and always start paused when the OS asks for reduced motion.
   const prefersReducedMotion = usePrefersReducedMotion();
-  const [spinPaused, setSpinPaused] = useState(() => readSpinPaused() ?? prefersReducedMotion);
+  const [spinPaused, setSpinPaused] = useState(
+    () => readSpinPaused() ?? (prefersReducedMotion || !initialHeroPreviewFlags().autoRotate)
+  );
   const interaction = useRef<TurntableInteraction>({ dragging: false, paused: spinPaused });
   const [failure, setFailure] = useState<HeroPoseFailureKind | null>(null);
   const [retryNonce, setRetryNonce] = useState(0);
+  const [playback, setPlayback] = useState({ paused: false, speed: 1 });
+  const [clipName, setClipName] = useState('');
+  const [seek, setSeek] = useState<HeroPlaybackSeek>({ time: 0, revision: 0 });
+  const playbackProgressRef = useRef<HeroPlaybackProgress>({ time: 0, duration: 0 });
+  const [viewerScene, setViewerScene] = useState<HeroViewerScene>('midtown');
+  const [resetView, setResetView] = useState(0);
+  const [viewerError, setViewerError] = useState<string | null>(null);
+  const backdrop = useViewerBackdrop();
+  const backdropError = backdrop.errorKey === 'locker.pose.backgroundTooLarge'
+    ? t('locker.pose.backgroundTooLarge') : backdrop.errorKey ? t('locker.pose.backgroundFailed') : null;
+  const viewerRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [effect, setEffect] = useState<EffectMount | null>(null);
+  const [effectUnavailable, setEffectUnavailable] = useState(false);
+  const partialEffect = useMemo(() => effect ? fxPreviewIssues(effect.descriptor).length > 0
+    || (scene ? particleAttachmentIssues(effect.descriptor, scene).length > 0 : false) : false, [effect, scene]);
   const sourceKey = skinSources.map((source) => `${source.priority}:${source.metaKey}`).join('|');
-  const [devFlags, setDevFlags] = useState<DevPreviewFlags>(() => ({
-    ...RELEASE_RENDER_FLAGS,
-    unified: previewFlag('grimoire.preview.unifiedMaterial', USE_UNIFIED_MATERIAL),
-    celV2: previewFlag('grimoire.preview.celV2', USE_CEL_V2),
-    cloth: previewFlag('grimoire.preview.cloth', USE_CLOTH),
-    rigged: previewFlag('grimoire.preview.rigged', false),
-    bloom: previewFlag('grimoire.preview.bloom', USE_BLOOM),
-    effects: previewFlag('grimoire.preview.effects', USE_EFFECT_PREVIEW),
-    nprDebug: previewFlag('grimoire.preview.nprDebug', false),
-    matDebug: previewFlag('grimoire.preview.matDebug', false),
-  }));
+  const gifError = useCallback(() => setViewerError(t('locker.pose.gifFailed')), [t]);
+  const gif = useViewerGif(canvasRef, `${heroName}:${sourceKey}:${scene?.uuid ?? ''}`, heroName, gifError);
+  const [devFlags, setDevFlags] = useState<DevPreviewFlags>(initialHeroPreviewFlags);
   const [bloomParams, setBloomParams] = useState<BloomParams>(() => ({
     intensity: BLOOM_INTENSITY,
     radius: BLOOM_RADIUS,
@@ -663,13 +759,17 @@ export default function HeroPoseViewer({
   }));
   const setDevFlag = useCallback((key: keyof DevPreviewFlags, storageKey: string, value: boolean) => {
     writePreviewFlag(storageKey, value);
-    setDevFlags((current) => ({ ...current, [key]: value }));
+    if ((key === 'effects' || key === 'cloth') && value) writePreviewFlag('grimoire.preview.animated', true);
+    setDevFlags((current) => ({ ...current, [key]: value, ...((key === 'effects' || key === 'cloth') && value ? { animated: true } : {}) }));
   }, []);
-  const activeRenderFlags = import.meta.env.DEV ? devFlags : RELEASE_RENDER_FLAGS;
+  const activeRenderFlags = {
+    ...(import.meta.env.DEV ? devFlags : RELEASE_RENDER_FLAGS),
+    cloth: devFlags.cloth,
+    animated: devFlags.animated,
+    bloom: devFlags.bloom,
+  };
   const experimentalAbilityPreview = useAppStore(state => state.settings?.experimentalAbilityPreview ?? false);
-  const [ambientEnabled, setAmbientEnabled] = useState(false);
-  const [effectError, setEffectError] = useState<string | null>(null);
-  const effectPreviewEnabled = experimentalAbilityPreview && ambientEnabled || (import.meta.env.DEV ? devFlags.effects : USE_EFFECT_PREVIEW);
+  const effectPreviewEnabled = devFlags.effects;
 
   // The pose GLB has no weapon mesh, so a weapons-only paint has nothing to show
   // here, and intensity 0 is "no paint". Otherwise fetch the pattern as an
@@ -715,11 +815,12 @@ export default function HeroPoseViewer({
     // The caller remounts this component (via a hero+skin `key`) when the
     // selection changes, so initial state is already fresh here.
     let cancelled = false;
-    let loaded: THREE.Object3D | null = null;
     setFailure(null);
     onFailureChangeRef.current?.(null);
     setScene(null);
     setClips([]);
+    setSeek((s) => ({ time: 0, revision: s.revision + 1 }));
+    playbackProgressRef.current = { time: 0, duration: 0 };
     setRigged(false);
     setClothModel(null);
 
@@ -728,8 +829,8 @@ export default function HeroPoseViewer({
         // --- Attempt 1: rigged (animated, skinned) glb. Shipped by default as
         //     of RP-03 (docs/ingame-verification-record.md): the measured
         //     frame-time delta on Seven, the worst case on every axis, landed
-        //     within the ship band. Falls through to the static --pose menu
-        //     pose (Attempt 2) on any export, load, or clip failure. ---
+        //     within the ship band. Missing clips or a failed export fall
+        //     through to the static --pose menu pose (Attempt 2). ---
         if (features.riggedPreviewEnabled) {
           try {
             let rig = await getRiggedHeroPose(heroName, skinSources);
@@ -741,30 +842,22 @@ export default function HeroPoseViewer({
               setGenerating(false);
             }
             if (rig.hasModel) {
-              const url = riggedMeshUrlFor(rig.key, rig.mtimeMs);
-              const gltf = await loadGltfPreview(url);
+              const { gltf, clothModel } = await loadRiggedHeroPreview(rig, features.clothPreviewEnabled);
               if (cancelled) {
                 disposeScene(gltf.scene);
                 return;
               }
-              const clip = pickIdleClip(gltf.animations ?? []);
+              const clip = pickIdleClip(gltf.animations ?? [], heroName);
               if (!clip) {
                 disposeScene(gltf.scene);
                 throw new Error('Rigged preview GLB has no animated clip.');
               }
-              loaded = gltf.scene;
-              setClips([clip]);
+              setClips((gltf.animations ?? []).filter((c) => Number.isFinite(c.duration) && c.duration > 0.001));
+              setClipName((current) => gltf.animations.some((candidate) => candidate.name === current
+                && Number.isFinite(candidate.duration) && candidate.duration > 0.001) ? current : clip.name);
               setRigged(true);
+              setClothModel(clothModel);
               setScene(gltf.scene);
-              // Cloth-sim sidecar (colliders) for the rigged path. Best-effort:
-              // a model with no cloth returns null and the sim simply no-ops.
-              if (features.clothPreviewEnabled) {
-                getHeroClothModel(heroName, skinSources).then((fe) => {
-                  if (!cancelled) setClothModel(fe);
-                });
-              } else {
-                setClothModel(null);
-              }
               return; // rigged path won.
             }
           } catch {
@@ -840,12 +933,11 @@ export default function HeroPoseViewer({
           clearBroken(skinSources.map((source) => source.metaKey));
         }
         const url = meshUrlFor(info.key, info.mtimeMs);
-        const gltf = await loadGltfPreview(url);
+        const gltf = await loadGltfPreview(url, { imageBitmaps: true });
         if (cancelled) {
           disposeScene(gltf.scene);
           return;
         }
-        loaded = gltf.scene;
         setRigged(false);
         setClips([]);
         setClothModel(null); // static path has no skeleton; nothing to simulate.
@@ -861,7 +953,6 @@ export default function HeroPoseViewer({
 
     return () => {
       cancelled = true;
-      if (loaded) disposeScene(loaded);
     };
     // `skinSources` is deliberately not a dependency: `sourceKey` already
     // encodes its contents, and the array reference changes on every parent
@@ -877,12 +968,20 @@ export default function HeroPoseViewer({
     features.clothPreviewEnabled,
   ]);
 
+  // Dispose in the commit that drops the scene from the Canvas. Disposing in the
+  // loader cleanup left a frame where the still-mounted Canvas re-uploaded
+  // textures whose ImageBitmaps were already closed.
+  useEffect(() => {
+    if (!scene) return;
+    return () => disposeScene(scene);
+  }, [scene]);
+
   useEffect(() => {
     if (!scene || !features.nprDebugEnabled) return;
     console.info('[HeroPoseViewer] NPR material summary', heroName, summarizeNprScene(scene));
   }, [scene, heroName, features.nprDebugEnabled]);
 
-  // Ambient FX overlay (skin-independent): only the curated heroes have one, so
+  // Ambient FX overlay: curated base graphs use the selected skin's texture stack.
   // getHeroEffectInfo cheaply returns hasEffect=false for everyone else. The
   // bundle is built on demand, then the descriptor JSON is fetched over the
   // grimoire-hero: scheme and handed to the renderer.
@@ -890,35 +989,35 @@ export default function HeroPoseViewer({
     if (!effectPreviewEnabled) { setEffect(null); return; }
     let cancelled = false;
     setEffect(null);
-    setEffectError(null);
+    setEffectUnavailable(false);
     (async () => {
       try {
-        let info = await getHeroEffectInfo(heroName);
+        let info = await getHeroEffectInfo(heroName, skinSources);
         if (cancelled) return;
-        if (!info.entry) { setEffectError(t('locker.abilityPreview.noAmbient')); return; }
+        if (!info.entry) { setEffectUnavailable(true); return; }
         if (!info.hasEffect) {
-          info = await exportHeroEffect(heroName);
-          if (cancelled || !info.hasEffect) return;
+          info = await exportHeroEffect(heroName, skinSources);
+          if (cancelled) return;
+          if (!info.hasEffect) { setEffectUnavailable(true); return; }
         }
         const res = await fetch(effectDescriptorUrl(info.key));
-        if (!res.ok) return;
+        if (!res.ok) { if (!cancelled) setEffectUnavailable(true); return; }
         const descriptor = (await res.json()) as FxDescriptor;
         if (cancelled) return;
-        const recolor = await getActiveHeroColor(heroName);
-        if (!cancelled) {
-          setEffect({ descriptor, baseUrl: effectTextureBaseUrl(info.key), recolor });
-          const unsupported = unsupportedParticleClasses(descriptor);
-          if (unsupported.length) setEffectError(t('foundry.assets.unsupportedClasses', { classes: unsupported.join(', ') }));
-        }
-      } catch (error) {
-        if (!cancelled) setEffectError(String(error));
+        const recolor = await getActiveHeroColor(heroName).catch(() => null);
+        if (cancelled) return;
+        setEffect({ descriptor, baseUrl: effectTextureBaseUrl(info.key), recolor });
+      } catch {
+        if (!cancelled) setEffectUnavailable(true);
         // Effects are a non-essential overlay; a failure leaves the plain pose.
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [heroName, effectPreviewEnabled, t]);
+    // sourceKey covers the stack; parent renders may allocate an equivalent array.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [heroName, sourceKey, effectPreviewEnabled]);
 
   // The preference can be turned on while the app is open. Honor it live, but
   // never override an explicit choice the user made here.
@@ -928,23 +1027,80 @@ export default function HeroPoseViewer({
     setSpinPaused(true);
   }, [prefersReducedMotion]);
 
-  if (failure === 'unsupported' || failure === 'export') {
-    return <HeroPoseFailureState kind={failure} t={t} onRetry={() => setRetryNonce((n) => n + 1)} />;
-  }
-
-  if (!scene) {
-    return (
-      <HeroPoseLoadingState
-        generating={generating}
-        heroName={heroName}
-        skinSourceCount={skinSources.length}
-        t={t}
-      />
-    );
-  }
+  const toolbar = (
+    <HeroViewerToolbar
+      heroName={heroName}
+      animated={features.riggedPreviewEnabled} clips={clips.map((c) => c.name)} clip={clipName}
+      paused={playback.paused} speed={playback.speed} spinPaused={spinPaused}
+      progressRef={playbackProgressRef} onSeek={(time) => {
+        setPlayback((p) => ({ ...p, paused: true }));
+        setSeek((s) => ({ time, revision: s.revision + 1 }));
+      }}
+      cloth={devFlags.cloth} bloom={devFlags.bloom} particles={devFlags.effects} scene={viewerScene}
+      backdropControls={<ViewerBackdropControls hasImage={!!backdrop.texture} loading={backdrop.loading}
+        preset={backdrop.preset} onPreset={(value) => {
+          if (value !== 'none' && viewerScene === 'transparent') setViewerScene('studio');
+          backdrop.choosePreset(value);
+        }}
+        onFile={(file) => {
+          if (viewerScene === 'transparent') setViewerScene('studio');
+          void backdrop.choose(file);
+        }} onClear={backdrop.clear} />}
+      status={viewerError ?? backdropError}
+      onAnimated={(v) => {
+        writePreviewFlag('grimoire.preview.animated', v);
+        if (!v) {
+          writePreviewFlag('grimoire.preview.cloth', false);
+          writePreviewFlag('grimoire.preview.effects', false);
+        }
+        setDevFlags((f) => ({ ...f, animated: v, cloth: v ? f.cloth : false, effects: v ? f.effects : false }));
+      }}
+      onClip={(name) => {
+        setClipName(name);
+        setSeek((s) => ({ time: 0, revision: s.revision + 1 }));
+        playbackProgressRef.current = { time: 0, duration: clips.find((c) => c.name === name)?.duration ?? 0 };
+      }} onPaused={(paused) => setPlayback((p) => ({ ...p, paused }))}
+      onSpeed={(speed) => setPlayback((p) => ({ ...p, speed }))}
+      onSpinPaused={(paused) => {
+        writePreviewFlag('grimoire.preview.autoRotate', !paused);
+        writeSpinPaused(paused);
+        interaction.current.paused = paused;
+        setSpinPaused(paused);
+      }}
+      onCloth={(v) => setDevFlag('cloth', 'grimoire.preview.cloth', v)}
+      onBloom={(v) => setDevFlag('bloom', 'grimoire.preview.bloom', v)}
+      onParticles={(v) => setDevFlag('effects', 'grimoire.preview.effects', v)}
+      onScene={setViewerScene} onReset={() => setResetView((v) => v + 1)}
+      onScreenshot={() => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        try {
+          const link = document.createElement('a');
+          link.download = `${heroName.replace(/[^a-z0-9_-]/gi, '_')}-preview.png`;
+          link.href = canvas.toDataURL('image/png');
+          link.click();
+          setViewerError(null);
+        } catch { setViewerError(t('locker.pose.screenshotFailed')); }
+      }}
+      onFullscreen={() => {
+        const request = document.fullscreenElement ? document.exitFullscreen() : viewerRef.current?.requestFullscreen();
+        request?.catch(() => setViewerError(t('locker.pose.fullscreenFailed')));
+      }}
+      gifAvailable={!!scene} gif={gif} onGif={() => { setViewerError(null); void gif.toggle(); }}
+    />
+  );
 
   return (
-    <div className="absolute inset-0">
+    <div ref={viewerRef}
+      data-particle-availability={effectUnavailable ? 'unavailable' : partialEffect ? 'partial' : effect ? 'ready' : 'pending'}
+      data-animation-availability={scene ? rigged ? 'ready' : 'unavailable' : 'pending'}
+      data-cloth-availability={scene ? clothModel ? 'ready' : 'unavailable' : 'pending'}
+      className={`absolute inset-0 ${viewerScene === 'transparent' ? '' : 'bg-bg-secondary'}`}>
+      {failure === 'unsupported' || failure === 'export' ? (
+        <HeroPoseFailureState kind={failure} t={t} onRetry={() => setRetryNonce((n) => n + 1)} />
+      ) : !scene ? (
+        <HeroPoseLoadingState generating={generating} heroName={heroName} skinSourceCount={skinSources.length} t={t} />
+      ) : <>
       {failure === 'skin' && (
         <div className="absolute inset-x-3 top-3 z-10 flex items-start gap-2 rounded-md border border-state-warning/35 bg-black/70 px-2.5 py-2 text-xs text-state-warning shadow-lg">
           <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" aria-hidden />
@@ -952,57 +1108,57 @@ export default function HeroPoseViewer({
         </div>
       )}
       <Canvas
+        shadows={{ type: THREE.PCFShadowMap }}
+        onCreated={({ gl }) => { canvasRef.current = gl.domElement; }}
         camera={HERO_PREVIEW_CAMERA}
         dpr={[1, 2]}
-        gl={HERO_PREVIEW_GL}
+        gl={{
+          alpha: true,
+          toneMapping: THREE.NoToneMapping,
+          preserveDrawingBuffer: true,
+        }}
       >
+        <ViewerBackdrop texture={viewerScene === 'transparent' ? null : backdrop.texture} />
         {/* The IBL probe supplies ambient + reflections, so the bare ambientLight
             is gone and the directionals are softened to a warm key + cool fill
             that just shapes the form on top of the environment. */}
-        <HeroPreviewLighting />
+        <HeroViewerStage scene={viewerScene} />
         {rigged ? (
           <RiggedModel
+            heroName={heroName}
+            reset={resetView}
+            clipName={clipName}
+            playback={playback}
+            seek={seek}
+            progressRef={playbackProgressRef}
             scene={scene}
             clips={clips}
             interaction={interaction}
             clothModel={clothModel}
             clothEnabled={features.clothPreviewEnabled}
-            effect={effect}
+            effect={effectPreviewEnabled ? effect : null}
           />
         ) : (
-          <PosedModel scene={scene} interaction={interaction} effect={effect} />
+          <PosedModel reset={resetView} scene={scene} interaction={interaction} />
         )}
         {scene && <HeroPreviewAppearance scene={scene} features={features} />}
         {trippySprite && <TrippyPaint scene={scene} sprite={trippySprite} />}
-        {features.bloomEnabled && (
+        {scene && (
           <BloomEffect
-            intensity={import.meta.env.DEV ? bloomParams.intensity : BLOOM_INTENSITY}
+            deadlockExposure={viewerScene === 'midtown' ? 1.6 : 1.3}
+            intensity={features.bloomEnabled ? bloomParams.intensity : 0}
             radius={import.meta.env.DEV ? bloomParams.radius : BLOOM_RADIUS}
             threshold={import.meta.env.DEV ? bloomParams.threshold : BLOOM_THRESHOLD}
           />
         )}
-        <Controls interaction={interaction} />
+        <Controls interaction={interaction} reset={resetView} label={t('locker.pose.cameraHint')} model={scene} fitKey={clipName} />
       </Canvas>
-      <button
-        type="button"
-        onClick={() => {
-          const next = !interaction.current.paused;
-          interaction.current.paused = next;
-          setSpinPaused(next);
-          writeSpinPaused(next);
-        }}
-        className="absolute bottom-3 left-3 z-10 cursor-pointer rounded-full border border-border/70 bg-bg-secondary/80 px-3 py-1.5 text-xs font-semibold text-text-secondary backdrop-blur transition-colors hover:text-text-primary"
-      >
-        {spinPaused ? t('locker.pose.resumeSpin') : t('locker.pose.pauseSpin')}
-      </button>
+      </>}
+      {toolbar}
       {experimentalAbilityPreview && <div className="absolute bottom-3 right-3 z-10 max-w-72 space-y-2 rounded-sm bg-bg-secondary/90 p-2">
         <AbilityPreview heroName={heroName} skinSources={skinSources} fallbackSkinMetaKey={fallbackSkinMetaKey} />
-        <button type="button" className="block cursor-pointer text-xs text-text-secondary hover:text-text-primary" onClick={() => setAmbientEnabled(value => !value)}>
-          {ambientEnabled ? t('locker.abilityPreview.hideAmbient') : t('locker.abilityPreview.showAmbient')}
-        </button>
-        {ambientEnabled && <p className="break-words text-xs text-text-secondary">{effectError ?? t('locker.abilityPreview.ambientHint')}</p>}
       </div>}
-      {import.meta.env.DEV && (
+      {import.meta.env.DEV && new URLSearchParams(window.location.search).has('viewer-debug') && (
         <DevViewerControls
           devFlags={devFlags}
           setDevFlag={setDevFlag}
@@ -1010,7 +1166,7 @@ export default function HeroPoseViewer({
           setBloomParams={setBloomParams}
         />
       )}
-      {import.meta.env.DEV && devFlags.matDebug && <MaterialDebugPanel scene={scene} />}
+      {scene && import.meta.env.DEV && devFlags.matDebug && <MaterialDebugPanel scene={scene} />}
     </div>
   );
 }
@@ -1086,16 +1242,6 @@ function DevViewerControls({
             value: devFlags.matDebug,
             onChange: (value: boolean) =>
               setDevFlag('matDebug', 'grimoire.preview.matDebug', value),
-          },
-          Cloth: {
-            value: devFlags.cloth,
-            onChange: (value: boolean) => setDevFlag('cloth', 'grimoire.preview.cloth', value),
-          },
-          // Listed after Cloth but independent of it: Cloth forces the rigged
-          // path on regardless, so this switch is what isolates rigged alone.
-          Rigged: {
-            value: devFlags.rigged,
-            onChange: (value: boolean) => setDevFlag('rigged', 'grimoire.preview.rigged', value),
           },
         },
         { collapsed: true }

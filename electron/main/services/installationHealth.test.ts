@@ -106,7 +106,7 @@ describe('read-only installation health scan', () => {
 
   it('reports missing gameinfo and low disk capacity as separate findings', async () => {
     rmSync(join(citadel, 'gameinfo.gi'));
-    vi.spyOn(fs, 'statfs').mockResolvedValue({ bsize: 4096, bavail: 1, blocks: 100, bfree: 1, files: 1, ffree: 1, type: 1 });
+    vi.spyOn(fs, 'statfs').mockResolvedValue({ bsize: 4096, frsize: 4096, bavail: 1, blocks: 100, bfree: 1, files: 1, ffree: 1, type: 1 });
     const report = await scanInstallationHealth(game);
     expect(report.issues).toContainEqual(expect.objectContaining({ code: 'gameinfo-missing', severity: 'blocking' }));
     expect(report.issues).toContainEqual(expect.objectContaining({ code: 'disk-low', severity: 'warning' }));

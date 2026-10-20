@@ -1,156 +1,165 @@
 import {
-DndContext,
-DragOverlay,
-KeyboardSensor,
-PointerSensor,
-closestCenter,
-useSensor,
-useSensors,
-type DragEndEvent,
-type DragStartEvent,
+  DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent,
 } from '@dnd-kit/core';
 import {
-SortableContext,
-arrayMove,
-rectSortingStrategy,
-sortableKeyboardCoordinates,
-useSortable,
-verticalListSortingStrategy,
+  SortableContext,
+  arrayMove,
+  rectSortingStrategy,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import {
-AlertTriangle,
-ArrowDownAZ,
-ArrowDownUp,
-Beaker,
-Check,
-CheckSquare,
-ClipboardList,
-Download,
-FilePlus,
-Files,
-Fingerprint,
-FolderOpen,
-Grid3x3,
-GripVertical,
-HelpCircle,
-Layers,
-LayoutGrid,
-List,
-Loader2,
-Package,
-Search,
-Settings,
-SlidersHorizontal,
-Tag as TagIcon,
-Trash2,
-Wand2,
-Wrench,
-X,
+  AlertTriangle,
+  ArrowDownAZ,
+  ArrowDownUp,
+  Beaker,
+  Camera,
+  Check,
+  CheckSquare,
+  ClipboardList,
+  Download,
+  FilePlus,
+  Files,
+  FileWarning,
+  Fingerprint,
+  FolderOpen,
+  Grid3x3,
+  GripVertical,
+  HelpCircle,
+  Layers,
+  LayoutGrid,
+  List,
+  Loader2,
+  Package,
+  Search,
+  Settings,
+  SlidersHorizontal,
+  Tag as TagIcon,
+  Trash2,
+  Wand2,
+  Wrench,
+  X,
 } from 'lucide-react';
-import { memo,startTransition,useCallback,useEffect,useLayoutEffect,useMemo,useRef,useState,type CSSProperties } from 'react';
+import { memo, startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
-import { Trans,useTranslation } from 'react-i18next';
-import { useNavigate,useSearchParams } from 'react-router-dom';
+import { Trans, useTranslation } from 'react-i18next';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { useShallow } from 'zustand/react/shallow';
 import { confirmChatWheelUnbind } from '../components/chatwheel/unbindWarning';
 import { useConfirm } from '../components/common/confirmContext';
 import { HeroSelect } from '../components/common/HeroSelect';
-import { ConfirmModal,EmptyState,ViewModeToggle,type ViewMode } from '../components/common/PageComponents';
+import { ConfirmModal, EmptyState, ViewModeToggle, type ViewMode } from '../components/common/PageComponents';
 import SearchInput from '../components/common/SearchInput';
-import { Button,IconButton } from '../components/common/ui';
+import { Button, IconButton } from '../components/common/ui';
 import { useBackdropDismiss } from '../components/common/useBackdropDismiss';
 import { useDismissable } from '../components/common/useDismissable';
 import { useEscapeKey } from '../components/common/useEscapeKey';
 import ImportCustomModsModal from '../components/ImportCustomModsModal';
 import { HeroTagLabel } from '../components/installed/chips';
-import { DeleteModsModal,type DeleteModsTarget } from '../components/installed/DeleteModsModal';
+import { CompatibilityRepairsModal } from '../components/installed/CompatibilityRepairsModal';
+import { DeleteModsModal, type DeleteModsTarget } from '../components/installed/DeleteModsModal';
 import { EditLocalModModal } from '../components/installed/EditLocalModModal';
 import { EMPTY_LIST_IDS } from '../components/installed/emptyIds';
 import { FilterCheckList } from '../components/installed/FilterCheckList';
 import { ImprintDetailsModal } from '../components/installed/imprint/ImprintDetailsModal';
-import { ImprintModal,type ImprintModalState } from '../components/installed/imprint/ImprintModal';
+import { ImprintModal, type ImprintModalState } from '../components/installed/imprint/ImprintModal';
 import { InstalledProfilesMenu } from '../components/installed/InstalledProfilesMenu';
 import { InstalledSection } from '../components/installed/InstalledSection';
 import { InstalledSkeleton } from '../components/installed/InstalledSkeleton';
 import { MakeCustomModModal } from '../components/installed/MakeCustomModModal';
 import { ManageModListsModal } from '../components/installed/ManageModListsModal';
+import { ModBackupDeletePrompt } from '../components/installed/ModBackupsSubmenu';
 import { ModCard } from '../components/installed/ModCard';
 import { CreateModListModal } from '../components/installed/ModListMenu';
+import ModUpdatesModal from '../components/installed/ModUpdatesModal';
+import { OutdatedVdataModal } from '../components/installed/OutdatedVdataModal';
+import { sameEntryCardProps } from '../components/installed/sameEntryCardProps';
+import { entrySelectionIds, visibleSelectionEntries } from '../components/installed/selection';
+import { StaleModelsModal } from '../components/installed/StaleModelsModal';
+import { StatusIssues, type StatusIssue } from '../components/installed/StatusIssues';
 import type { FoundUnknownMatch } from '../components/installed/unknown/foundMatch';
-import { BulkUnknownFixModal,UnknownFilterGuessModal } from '../components/installed/unknown/UnknownFixModals';
+import { BulkUnknownFixModal, UnknownFilterGuessModal } from '../components/installed/unknown/UnknownFixModals';
 import { useInstalledSelection } from '../components/installed/useInstalledSelection';
+import { useShiftKey } from '../components/installed/useShiftKey';
+import ExportModal from '../components/interchange/ExportModal';
+import ImportSourceMenu from '../components/interchange/ImportSourceMenu';
 import { LockerOverridesModal } from '../components/LockerOverridesModal';
 import MergedContentsModal from '../components/MergedContentsModal';
 import MergeModsModal from '../components/MergeModsModal';
 import ModDetailsModal from '../components/ModDetailsModal';
 import VariantPickerModal from '../components/VariantPickerModal';
-import type { ImportCustomModArgs,ImportCustomModResult,ModConflict,UnmergeModResult } from '../lib/api';
-import { addMergeSources,reorderMods as apiReorderMods,applyModelCompatibilityFix,applyUnknownCustomMod,applyUnknownModMatch,assertReplacementSafety,associateUnknownMod,cancelUnknownModDetection,createSnapshot,deleteMod as deleteModApi,detectUnknownModCacheBulk,detectUnknownModFilters,dmmMigrateExecute,dmmMigrateScan,downloadMod,extractMergeSource,getConflicts,getLockerOverview,getModDetails,getModFileList,getModelCompatibilityReport,imprintAllInstalled,imprintPreflight,launchModded,mergeMods,onImprintAllInstalledProgress,onUnknownModDetectionProgress,openModsFolder,replaceMergeSources,restoreLocalVariantGroupReplacement,setModIgnoreUpdates,unmergeMod } from '../lib/api';
-import { getActiveDeadlockPath,shouldBlurNsfw } from '../lib/appSettings';
+import type { ImportCustomModArgs, ImportCustomModResult, ModConflict, UnmergeModResult } from '../lib/api';
+import { addMergeSources, reorderMods as apiReorderMods, applyModelCompatibilityFix, applyUnknownCustomMod, applyUnknownModMatch, associateUnknownMod, cancelUnknownModDetection, createSnapshot, detectUnknownModCacheBulk, detectUnknownModFilters, downloadMod, extractMergeSource, getConflicts, getLockerOverview, getModDetails, getModelCompatibilityReport, imprintAllInstalled, imprintPreflight, launchModded, mergeMods, onImprintAllInstalledProgress, onUnknownModDetectionProgress, openModsFolder, replaceMergeSources, setModIgnoreUpdates, unmergeMod } from '../lib/api';
+import { getActiveDeadlockPath, shouldBlurNsfw } from '../lib/appSettings';
 import { captureBulkSnapshot } from '../lib/bulkUndo';
-import { buildCachedModDetails,canUseCachedModDetails } from '../lib/cachedModDetails';
+import { buildCachedModDetails, canUseCachedModDetails } from '../lib/cachedModDetails';
 import { isChatWheelAddon } from '../lib/chatWheelAddon';
 import { deriveModNameFromPath } from '../lib/customModImport';
 import {
-createDisabledEntryComparator,
-readStoredDisabledFavorites,
-readStoredDisabledOrder,
-toggleFavoriteKey,
-writeStoredDisabledFavorites,
-writeStoredDisabledOrder,
+  createDisabledEntryComparator,
+  readStoredDisabledFavorites,
+  readStoredDisabledOrder,
+  toggleFavoriteKey,
+  writeStoredDisabledFavorites,
+  writeStoredDisabledOrder,
 } from '../lib/disabledModPrefs';
-import { isDownloadRequestPending,releaseDownloadRequest,requestDownload } from '../lib/downloadActivity';
+import { isDownloadRequestPending, releaseDownloadRequest, requestDownload, usePendingDownloadCompletions } from '../lib/downloadActivity';
 import { isImprintPending } from '../lib/imprintPending';
 import {
-canJoinLocalVariantGroup,
-localVariantSelectionEligibility,
+  canJoinLocalVariantGroup,
+  localVariantSelectionEligibility,
 } from '../lib/localVariantEligibility';
-import { planLocalVariantUpdateRestore } from '../lib/localVariantUpdateRestore';
-import { GLOBAL_MOD_TYPE_LABELS,GLOBAL_MOD_TYPE_ORDER,HERO_NAMES_SORTED,modLoadOrder } from '../lib/lockerUtils';
+import { GLOBAL_MOD_TYPE_ORDER, HERO_NAMES_SORTED, globalModTypeLabel, modLoadOrder } from '../lib/lockerUtils';
 import {
-mergeSourceModIds,
-planMergeSourceUpdates,
-type MergeSourceUpdateOutcome,
-type MergeSourceUpdateSkip,
+  mergeSourceModIds,
+  planMergeSourceUpdates,
+  type MergeSourceUpdateOutcome,
+  type MergeSourceUpdateSkip,
 } from '../lib/mergeSourceUpdate';
-import { OTHER_TAG_KEY,buildCompactPriorityOrder,buildModEntries,entryDetailsAnchor,entryDisabledPreferenceKey,entryHeroNames,entryInstalledAt,entryIsLocal,entryName,entryPrimaryMod,entryRepresentativeId,entrySearchText,entrySortPriority,entryTagKeys,flattenEntries,isEntryEnabled,tagKeyLabel,type ModEntry } from '../lib/modEntries';
+import { OTHER_TAG_KEY, buildCompactPriorityOrder, buildModEntries, entryDetailsAnchor, entryDisabledPreferenceKey, entryHeroNames, entryInstalledAt, entryIsLocal, entryName, entryPrimaryMod, entryRepresentativeId, entrySearchText, entrySortPriority, entryTagKeys, flattenEntries, isEntryEnabled, tagKeyLabel, type ModEntry } from '../lib/modEntries';
 import {
-addListMembership,
-buildListMembershipIndex,
-countLiveMembers,
-createList,
-deleteList,
-readStoredModLists,
-renameList,
-toggleListMembership,
-writeStoredModLists,
-type ModList,
+  addListMembership,
+  buildListMembershipIndex,
+  countLiveMembers,
+  createList,
+  deleteList,
+  readStoredModLists,
+  renameList,
+  toggleListMembership,
+  writeStoredModLists,
+  type ModList,
 } from '../lib/modLists';
-import { findReplacementTargetIdsAfterInstall } from '../lib/replacementCleanup';
 import { modRestoreKey } from '../lib/soloRestore';
 import {
-STABLE_KEY_PREFERENCES_MIGRATED_EVENT,
-type StableKeyPreferencesMigratedDetail,
+  STABLE_KEY_PREFERENCES_MIGRATED_EVENT,
+  type StableKeyPreferencesMigratedDetail,
 } from '../lib/stableKeyMigration';
-import { CARD_SIZE_MAX as CARD_SIZE_MULTIPLIER_CEILING,CARD_SIZE_MIN as CARD_SIZE_MULTIPLIER_FLOOR,readPref,writePref } from '../lib/uiPrefs';
-import { decideFileDownload,replaceableFilesFor,resolveUpdateRun,sameFileModIds,summarizeUpdateScope } from '../lib/updateActions';
-import { computeUpdateFlags,mergeSourceFileIds,updateCheckCache } from '../lib/updateCheck';
+import { CARD_SIZE_MAX as CARD_SIZE_MULTIPLIER_CEILING, CARD_SIZE_MIN as CARD_SIZE_MULTIPLIER_FLOOR, readPref, writePref } from '../lib/uiPrefs';
+import { decideFileDownload, groupModUpdates, modUpdateGroup, replaceableFilesFor, summarizeUpdateScope } from '../lib/updateActions';
+import { mergeSourceFileIds } from '../lib/updateCheck';
+import { updateCheckCache } from '../lib/updateCheckCache';
 import { classifyModFiles } from '../lib/updateFileMatch';
 import { useBulkUndoOffer } from '../lib/useBulkUndoOffer';
+import { useElasticOverscroll } from '../lib/useElasticOverscroll';
 import { useScrollRestore } from '../lib/useScrollRestore';
 import { useStableCallback } from '../lib/useStableCallback';
 import { visibleInstalledMods } from '../lib/visibleMods';
-import {
-createEnabledVpkRestoreSnapshot,
-createGlobalVpkRestoreSnapshot,
-restoreReplacementVpkState,
-type EnabledVpkRestoreSnapshot,
-type GlobalVpkRestoreSnapshot,
-} from '../lib/vpkRestore';
-import { useAppStore,type BrowseArtistRef } from '../stores/appStore';
+import { useAppStore, type BrowseArtistRef } from '../stores/appStore';
+import { useModUpdateCheckStore } from '../stores/modUpdateCheckStore';
+import { useModUpdatesStore } from '../stores/modUpdatesStore';
 import { showToast } from '../stores/toastStore';
-import type { GameBananaFile,GameBananaItemRef,GameBananaModDetails } from '../types/gamebanana';
-import type { AssociateUnknownModArgs,GlobalModType,MergeSourceReplacement,MergedModSource,Mod,ModelCompatibilityReport,UnknownModDetectionProgress,UnknownModFilterGuess } from '../types/mod';
+import type { GameBananaFile, GameBananaItemRef, GameBananaModDetails } from '../types/gamebanana';
+import type { AssociateUnknownModArgs, GlobalModType, MergeSourceReplacement, MergedModSource, Mod, ModelCompatibilityReport, UnknownModDetectionProgress, UnknownModFilterGuess } from '../types/mod';
 
 const UNKNOWN_FIND_QUEUE_CONCURRENCY = 1;
 const UNKNOWN_FIND_QUEUE_PAUSE_MS = 35;
@@ -242,6 +251,7 @@ const SortableEntryCard = memo(function SortableEntryCard({
   return (
     <div
       ref={setNodeRef}
+      data-installed-entry-key={cardProps.entry.key}
       // content-visibility:auto skips layout + paint for offscreen cards (most of
       // the cost of mounting a large library) but implies contain:paint, which
       // clips whatever the card paints outside its box AND traps it in its own
@@ -259,13 +269,13 @@ const SortableEntryCard = memo(function SortableEntryCard({
       // moves on a reorder, so the view stays put through pin / unpin / delete.
       className={`flex flex-col has-[[data-card-menu-open]]:z-20 [overflow-anchor:none] [content-visibility:auto] ${isList ? '' : 'hover:[content-visibility:visible] hover:z-10'} ${sortableDisabled ? '' : 'cursor-grab active:cursor-grabbing'}`}
       style={style}
-      {...attributes}
-      {...listeners}
+      {...(sortableDisabled ? {} : attributes)}
+      {...(sortableDisabled ? {} : listeners)}
     >
       <InstalledEntryCard {...cardProps} />
     </div>
   );
-});
+}, sameEntryCardProps);
 
 // Stable fallback for cards with no conflicts; a fresh [] per render would
 // defeat InstalledEntryCard's memo on every page-level state change.
@@ -286,6 +296,7 @@ interface InstalledEntryCardProps {
   loadPosition: number | undefined;
   loadCount: number;
   selectMode: boolean;
+  shiftHeld: boolean;
   selected: boolean;
   soloBusy: boolean;
   favorite: boolean;
@@ -293,7 +304,7 @@ interface InstalledEntryCardProps {
   onViewAuthor: (mod: Mod) => void;
   /** Opens the variant picker for a group, by its shared grouping key. */
   onOpenPicker: (groupKey: string) => void;
-  onToggle: (entry: ModEntry) => void;
+  onToggle: (entry: ModEntry) => Promise<boolean>;
   onSoloLaunch: (entry: ModEntry) => void;
   onDelete: (entry: ModEntry) => void;
   onEditLocal: (mod: Mod) => void;
@@ -346,6 +357,7 @@ const InstalledEntryCard = memo(function InstalledEntryCard({
   loadPosition,
   loadCount,
   selectMode,
+  shiftHeld,
   selected,
   soloBusy,
   favorite,
@@ -422,6 +434,7 @@ const InstalledEntryCard = memo(function InstalledEntryCard({
         onUnmerge={mod.merged ? () => onUnmerge(mod) : undefined}
         onCopyShareCode={mod.merged ? () => onCopyShareCode(mod) : undefined}
         selectMode={selectMode}
+        shiftHeld={shiftHeld}
         selected={selected}
         onSelectToggle={(event) => onSelectToggle(entry, event.shiftKey)}
         favorite={favorite}
@@ -442,11 +455,16 @@ const InstalledEntryCard = memo(function InstalledEntryCard({
   const safetyTarget = entry.variants.find(v => v.safety?.report.verdict === 'blocked' || v.safety?.report.verdict === 'incomplete')
     ?? entry.variants.find(v => v.safety?.report.verdict === 'requires-trust' && !v.safety.trusted)
     ?? entry.variants.find(v => v.safety?.report.verdict === 'requires-trust');
+  const outdatedVariant = entry.enabledVariants.find(v => v.outdatedVdata) ?? entry.variants.find(v => v.outdatedVdata);
   return (
     <ModCard
       mod={{
         ...entry.primary,
         safetyTarget,
+        crashModIds: entry.variants.map(variant => variant.id),
+        outdatedVdata: outdatedVariant?.outdatedVdata,
+        outdatedVdataEnabled: !!outdatedVariant?.enabled,
+        staleModels: entry.variants.flatMap(v => v.staleModels ?? []),
         // Group's overall enable state is "one or more files enabled", not
         // the primary's individual flag (matches sort + section choice).
         enabled: entry.enabledVariants.length > 0,
@@ -492,6 +510,7 @@ const InstalledEntryCard = memo(function InstalledEntryCard({
       loadCount={loadCount}
       onCommitPriority={(p) => onCommitPriority(entry.primary.id, p)}
       selectMode={selectMode}
+      shiftHeld={shiftHeld}
       selected={selected}
       onSelectToggle={(event) => onSelectToggle(entry, event.shiftKey)}
       favorite={favorite}
@@ -516,7 +535,26 @@ const InstalledEntryCard = memo(function InstalledEntryCard({
       }}
     />
   );
-});
+}, sameEntryCardProps);
+
+function previewEntriesForDrag(
+  entries: ModEntry[],
+  section: DragSection,
+  draft: { section: DragSection; keys: string[] } | null
+): ModEntry[] {
+  if (draft?.section !== section) return entries;
+  return orderEntriesByKeys(entries, draft.keys);
+}
+
+function orderEntriesByKeys(entries: ModEntry[], keys: string[]): ModEntry[] {
+  const byKey = new Map(entries.map((entry) => [entry.key, entry]));
+  const ordered = keys
+    .map((key) => byKey.get(key))
+    .filter((entry): entry is ModEntry => !!entry);
+  const seen = new Set(ordered.map((entry) => entry.key));
+  const missing = entries.filter((entry) => !seen.has(entry.key));
+  return [...ordered, ...missing];
+}
 
 
 const CARD_SIZE_MIN = 220;
@@ -567,6 +605,7 @@ export default function Installed() {
   const { t } = useTranslation();
   const confirm = useConfirm();
   const navigate = useNavigate();
+  const location = useLocation();
   const {
     settings,
     mods,
@@ -593,7 +632,33 @@ export default function Installed() {
     soundVolume,
     setInstalledScrollTop,
     setBrowseUi,
-  } = useAppStore();
+  } = useAppStore(useShallow((state) => ({
+    settings: state.settings,
+    mods: state.mods,
+    modsLoading: state.modsLoading,
+    modsError: state.modsError,
+    modsNotice: state.modsNotice,
+    clearModsNotice: state.clearModsNotice,
+    soloRestore: state.soloRestore,
+    soloMod: state.soloMod,
+    restoreSoloMods: state.restoreSoloMods,
+    clearSoloRestore: state.clearSoloRestore,
+    loadSettings: state.loadSettings,
+    loadMods: state.loadMods,
+    toggleMod: state.toggleMod,
+    deleteMod: state.deleteMod,
+    reorderMods: state.reorderMods,
+    editLocalMod: state.editLocalMod,
+    setLocalVariantGroup: state.setLocalVariantGroup,
+    setModLockerHero: state.setModLockerHero,
+    setModGlobalType: state.setModGlobalType,
+    setModPriorityFolder: state.setModPriorityFolder,
+    setVariantLabel: state.setVariantLabel,
+    importCustomMods: state.importCustomMods,
+    soundVolume: state.soundVolume,
+    setInstalledScrollTop: state.setInstalledScrollTop,
+    setBrowseUi: state.setBrowseUi,
+  })));
   const activeDeadlockPath = getActiveDeadlockPath(settings);
   const [disabledFavorites, setDisabledFavorites] = useState(readStoredDisabledFavorites);
   const [disabledOrder, setDisabledOrder] = useState(readStoredDisabledOrder);
@@ -762,6 +827,18 @@ export default function Installed() {
   // category keys) so the two AND together: "in my Ivy list AND tagged Skins"
   // is the useful reading, where folding lists into tagFilter would OR them.
   const [listFilter, setListFilter] = useState<string[]>([]);
+  useEffect(() => {
+    const id = (location.state as { crashSuspectId?: string } | null)?.crashSuspectId;
+    const suspect = id && mods.find(mod => mod.id === id);
+    if (!suspect) return;
+    setSearch(suspect.name);
+    setSourceSel(['gamebanana', 'local']);
+    setStatusSel(['enabled', 'disabled']);
+    setHeroFilter('all');
+    setTagFilter([]);
+    setListFilter([]);
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location, mods, navigate]);
   const installedHideNsfwPreviews = shouldBlurNsfw(settings);
   // Disabled-section sort, deliberately separate from the top-bar sort above.
   // That one spans both sections and turns the whole page read-only (a sorted
@@ -844,14 +921,11 @@ export default function Installed() {
   // selected group expand to every variant id) so bulk handlers can iterate
   // directly without re-deriving from entries.
   const [selectMode, setSelectMode] = useState(false);
+  const shiftHeld = useShiftKey();
   const [enabledCollapsed, setEnabledCollapsed] = useState(false);
   const [disabledCollapsed, setDisabledCollapsed] = useState(false);
-  const { selectedIds, setSelectedIds, toggleSelection } = useInstalledSelection(() =>
-    [...(enabledCollapsed ? [] : visibleEnabled), ...(disabledCollapsed ? [] : visibleDisabled)]
-      .map((entry) => ({
-        key: entry.key,
-        ids: entry.kind === 'single' ? [entry.mod.id] : entry.variants.map((variant) => variant.id),
-      }))
+  const { selectedIds, setSelectedIds, toggleSelection } = useInstalledSelection(mods, () =>
+    visibleSelectionEntries(visibleEnabled, visibleDisabled, enabledCollapsed, disabledCollapsed)
   );
   // Per-item progress for the in-flight bulk enable/disable. While set, the
   // action bar swaps its buttons for a "Enabling 2/5…" line so users see
@@ -997,20 +1071,9 @@ export default function Installed() {
     cancelled?: boolean;
   } | null>(null);
   const [unknownFixMode, setUnknownFixMode] = useState<'single' | 'bulk' | null>(null);
-  // Synchronous re-entry guard for the DMM auto-import step (one click only,
-  // even if the button is mashed before the first run resolves). A ref, not
-  // state, so two clicks in the same tick can't both read a stale `false`.
-  const dmmAutoImportInFlightRef = useRef(false);
-  const [dmmAutoImporting, setDmmAutoImporting] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const soloBusyRef = useRef(false);
   const [soloBusy, setSoloBusy] = useState(false);
-  // Pending DMM-import consent dialog. Holds the promise resolver so
-  // autoImportDmmMods can await the user's answer; null = no dialog.
-  const [dmmConfirm, setDmmConfirm] = useState<{
-    count: number;
-    profileName: string;
-    resolve: (ok: boolean) => void;
-  } | null>(null);
   const [unknownFilterCache, setUnknownFilterCache] = useState<Record<string, UnknownModFilterGuess>>({});
   const [unknownFilterPendingIds, setUnknownFilterPendingIds] = useState<Set<string>>(new Set());
   const [unknownFilterErrors, setUnknownFilterErrors] = useState<Record<string, string>>({});
@@ -1126,7 +1189,7 @@ export default function Installed() {
   // True when the overlay is showing cached-catalog data because the live
   // GameBanana fetch failed; drives the offline banner in the modal.
   const [detailsOffline, setDetailsOffline] = useState(false);
-  const [detailsIgnoreUpdates, setDetailsIgnoreUpdates] = useState(false);
+  const [detailsIgnoreUpdatesPending, setDetailsIgnoreUpdatesPending] = useState(false);
   // GameBanana id the overlay is showing. Every installed-state value below is
   // derived live from the store off this id rather than snapshotted when the
   // overlay opens: a snapshot went stale the moment the user installed a
@@ -1139,74 +1202,76 @@ export default function Installed() {
   const [detailsSourceModId, setDetailsSourceModId] = useState<string | null>(null);
   // Monotonic guard so a slower linked-item fetch can't clobber a newer one.
   const detailsRequestIdRef = useRef(0);
-  // Map of mod id → true if a newer version exists on GameBanana.
-  const [updatesAvailable, setUpdatesAvailable] = useState<Set<string>>(new Set());
-  // Merged mod id -> fileNames of its absorbed sources whose GameBanana file is
-  // gone. Kept apart from `updatesAvailable` because runUpdate has nothing to
-  // re-download for a merged VPK; this is surfaced as information only.
-  const [mergedSourceUpdates, setMergedSourceUpdates] = useState<Map<string, Set<string>>>(
-    new Map(),
+  const updatesAvailable = useModUpdateCheckStore(state => state.updatesAvailable);
+  const mergedSourceUpdates = useModUpdateCheckStore(state => state.staleMergeSources);
+  const updatingModIds = useModUpdatesStore(state => state.state.updatingModIds);
+  const submittingModIds = useModUpdatesStore(state => state.submittingModIds);
+  const finishing = usePendingDownloadCompletions();
+  const unavailableUpdateIds = useMemo(() => new Set([
+    ...updatingModIds, ...submittingModIds,
+    ...finishing.flatMap(item => item.replacementModIds ?? []),
+  ]), [updatingModIds, submittingModIds, finishing]);
+  const menuUpdateIds = useMemo(
+    () => new Set([...updatesAvailable].filter(id => !unavailableUpdateIds.has(id))),
+    [updatesAvailable, unavailableUpdateIds],
+  );
+  const updateModCount = useMemo(
+    () => groupModUpdates(visibleMods, menuUpdateIds).length,
+    [visibleMods, menuUpdateIds],
   );
 
+  const detailsInstalledMods = useMemo(
+    () => modUpdateGroup(visibleMods, detailsGameBananaId, detailsSection),
+    [visibleMods, detailsGameBananaId, detailsSection],
+  );
+  // A mixed state can remain after an interrupted save or a previous per-file
+  // toggle. Resume detection for the whole submission when any variant is ignored.
+  const detailsIgnoreUpdates = detailsInstalledMods.some(mod => mod.ignoreUpdates);
+
   // Installed/enabled GameBanana fileIds for the mod the details overlay is
-  // showing, aggregated across every sibling that shares the GB id (not just
-  // the clicked file) so multi-variant groups flag every owned row. Derived
+  // showing, aggregated across every sibling in the same submission and section
+  // so multi-variant groups flag every owned row. Derived
   // from the visible mods so an install, delete or toggle performed while the
   // overlay is open updates it on the spot, the way Browse feeds the same
   // modal, and a file held only inside a merge does not read as installed.
   const { detailsInstalledFileIds, detailsActiveFileIds } = useMemo(() => {
     const installedFileIds = new Set<number>();
     const activeFileIds = new Set<number>();
-    if (detailsGameBananaId !== null) {
-      for (const candidate of visibleMods) {
-        if (candidate.gameBananaId !== detailsGameBananaId) continue;
-        if (typeof candidate.gameBananaFileId !== 'number') continue;
-        installedFileIds.add(candidate.gameBananaFileId);
-        if (candidate.enabled) activeFileIds.add(candidate.gameBananaFileId);
-      }
+    for (const candidate of detailsInstalledMods) {
+      if (typeof candidate.gameBananaFileId !== 'number') continue;
+      installedFileIds.add(candidate.gameBananaFileId);
+      if (candidate.enabled) activeFileIds.add(candidate.gameBananaFileId);
     }
     return { detailsInstalledFileIds: installedFileIds, detailsActiveFileIds: activeFileIds };
-  }, [visibleMods, detailsGameBananaId]);
+  }, [detailsInstalledMods]);
   // Files the user has inside a merge are never proposed as successors.
   const mergedFileIds = useMemo(() => mergeSourceFileIds(visibleMods), [visibleMods]);
+  const autoMatchRemainingFiles = settings?.autoMatchRemainingFiles ?? true;
 
-  // Update state for the overlay, classified from the file list it just
-  // fetched with the same rules as the cards. Scoped to the entry that opened
-  // it: a sibling having an update must not relabel this file's rows, or the
-  // download handler would replace an install the user did not open.
+  // The mod page shows every installed file's update or manual replacement.
+  // Each download still replaces only its matched or explicitly chosen file.
   const detailsUpdate = useMemo(() => {
     const files = detailsMod?.files ?? [];
-    const classification = classifyModFiles(detailsMod?.id ?? -1, files, visibleMods, mergedFileIds);
+    const classification = classifyModFiles(detailsMod?.id ?? -1, files, detailsInstalledMods, mergedFileIds, autoMatchRemainingFiles);
     const source = detailsSourceModId ? mods.find((mod) => mod.id === detailsSourceModId) : undefined;
-    const scope = new Set<number>(
-      source && !source.ignoreUpdates && typeof source.gameBananaFileId === 'number'
-        ? [source.gameBananaFileId]
-        : [],
-    );
-    const summary = summarizeUpdateScope(classification, scope);
+    const summary = summarizeUpdateScope(classification);
     // The offline fallback has no file rows; keep the card's verdict for the badge.
     const offlineFlag = files.length === 0 && !!source && updatesAvailable.has(source.id);
     return {
       classification,
-      scope,
       flagged: summary.flagged || offlineFlag,
       archived: summary.archived,
       updateFileIds: new Set(summary.targets.keys()),
-      replaceableFiles: replaceableFilesFor(summary.needsPick, source ? [source] : []),
+      replaceableFiles: replaceableFilesFor(summary.needsPick, detailsInstalledMods),
     };
-  }, [detailsMod, detailsSourceModId, mods, visibleMods, mergedFileIds, updatesAvailable]);
+  }, [detailsMod, detailsSourceModId, mods, detailsInstalledMods, mergedFileIds, updatesAvailable, autoMatchRemainingFiles]);
 
-  // "Update all" confirm + progress. Progress is null when idle, otherwise
-  // { done, total } so the button can render "Updating 2/5…" and stay disabled
-  // for the duration of the run.
   const [updateAllConfirmOpen, setUpdateAllConfirmOpen] = useState(false);
-  const [updateAllProgress, setUpdateAllProgress] = useState<{ done: number; total: number } | null>(null);
-  const [updateAllError, setUpdateAllError] = useState<string | null>(null);
-  // Mods whose file the author deleted with no confident successor, found
-  // during an update run. The installs are kept untouched; a toast offers a
-  // manual pick via the details modal, whose explicit Replace action handles
-  // the delete + re-enable flow.
-  const [updatePickQueue, setUpdatePickQueue] = useState<{ id: string; name: string }[]>([]);
+  const [updateMenuTargetId, setUpdateMenuTargetId] = useState<string | null>(null);
+  const [compatibilityOpen, setCompatibilityOpen] = useState(false);
+  const [outdatedVdataOpen, setOutdatedVdataOpen] = useState(false);
+  const [staleModelsOpen, setStaleModelsOpen] = useState(false);
+  const startUpdates = useModUpdatesStore((state) => state.start);
 
   // Two-phase grid mount. The route transition's commit used to create all
   // card subtrees at once: content-visibility skips their layout/paint, but
@@ -1233,6 +1298,7 @@ export default function Installed() {
       onLeave: setInstalledScrollTop,
     }
   );
+  useElasticOverscroll(installedScrollRef);
 
   const openModDetails = async (m: typeof mods[number]) => {
     if (!m.gameBananaId) return;
@@ -1249,7 +1315,6 @@ export default function Installed() {
     // Installed/active file sets and the update pulse are derived from this id
     // against the live mod list, so nothing to snapshot here.
     setDetailsGameBananaId(m.gameBananaId);
-    setDetailsIgnoreUpdates(!!m.ignoreUpdates);
     setDetailsDates(null);
     setDetailsOffline(false);
     const cachedPromise = window.electronAPI.getCachedMod(m.gameBananaId).catch(() => null);
@@ -1305,7 +1370,6 @@ export default function Installed() {
     setDetailsMod(null);
     setDetailsError(null);
     setDetailsOffline(false);
-    setDetailsIgnoreUpdates(false);
     setDetailsSourceModId(null);
     setDetailsGameBananaId(null);
     setDetailsDates(null);
@@ -1341,7 +1405,7 @@ export default function Installed() {
     // A linked item has no clicked entry, so choose an installed sibling as
     // its anchor. The file sets and update pulse follow from that anchor plus
     // the live mod list.
-    const linkedCandidates = mods.filter((candidate) => candidate.gameBananaId === item.id);
+    const linkedCandidates = modUpdateGroup(visibleMods, item.id, item.section);
     // Prefer the sibling that actually carries the update pulse. Choosing the
     // first installed sibling could anchor on a current variant and suppress
     // both the badge and the stale variant's replacement plan.
@@ -1350,7 +1414,6 @@ export default function Installed() {
       ?? null;
     setDetailsGameBananaId(item.id);
     setDetailsSourceModId(source?.id ?? null);
-    setDetailsIgnoreUpdates(!!source?.ignoreUpdates);
     setDetailsDates(null);
 
     const cachedPromise = window.electronAPI.getCachedMod(item.id).catch(() => null);
@@ -1390,24 +1453,22 @@ export default function Installed() {
 
   const getUnknownCache = (mod: Mod) => unknownFilterCache[unknownModCacheKey(mod)];
 
-  // Flip the ignoreUpdates flag for the currently-open installed file (every
-  // VPK extracted from it, since update state is per GameBanana file) and
-  // refresh the mods store so the next updatesAvailable recompute (driven by
-  // the [mods] useEffect) picks the new flag up. Optimistically toggle the
-  // local state first so the pill flips immediately even if the IPC + scan
-  // round-trip is slow.
+  // Match the update menu: ignore/resume every installed variant, then rescan
+  // after the writes so an older in-flight scan cannot retain stale flags.
   const handleToggleIgnoreUpdates = useStableCallback(async () => {
-    if (!detailsSourceModId) return;
+    if (detailsIgnoreUpdatesPending || detailsInstalledMods.length === 0) return;
     const next = !detailsIgnoreUpdates;
-    setDetailsIgnoreUpdates(next);
+    setDetailsIgnoreUpdatesPending(true);
     try {
-      for (const id of sameFileModIds(visibleMods, detailsSourceModId)) {
-        await setModIgnoreUpdates(id, next);
+      for (const mod of detailsInstalledMods) {
+        if (!!mod.ignoreUpdates !== next) await setModIgnoreUpdates(mod.id, next);
       }
-      await loadMods({ silent: true });
     } catch (err) {
       console.error('[Installed] toggle ignoreUpdates failed:', err);
-      setDetailsIgnoreUpdates(!next);
+      showToast(toastErrorMessage(err), { tone: 'error' });
+    } finally {
+      await loadMods({ silent: true, force: true });
+      setDetailsIgnoreUpdatesPending(false);
     }
   });
 
@@ -1595,95 +1656,12 @@ export default function Installed() {
     );
   };
 
-  // Adopt any Deadlock Mod Manager install as the first step of the unknown-fix
-  // flow. DMM detection is purely local (reads DMM's on-disk data, no
-  // GameBanana, no rate limit), so it runs regardless of the auto-match toggle.
-  // Importing tags the matching unknown VPKs with GameBanana metadata, so they
-  // drop out of the unknown set before the manual modal opens. Returns the
-  // unknown mods that remain afterward (the input list unchanged when there's
-  // no DMM install or nothing new to adopt).
-  const autoImportDmmMods = async (currentUnknowns: Mod[]): Promise<Mod[]> => {
-    if (currentUnknowns.length === 0) return currentUnknowns;
-
-    // Probe for a DMM install. Scan throws when there's no DMM data on this
-    // machine (the common case): handled silently so the manual flow proceeds.
-    let scan;
-    try {
-      scan = await dmmMigrateScan({});
-    } catch {
-      return currentUnknowns;
-    }
-
-    // Only act on DMM mods Grimoire isn't already managing. Without this gate a
-    // user with DMM installed would see "detected, importing" on every Fix
-    // Unknown click, even after everything had already been adopted.
-    const managedGbIds = new Set(
-      useAppStore
-        .getState()
-        .mods.map((m) => m.gameBananaId)
-        .filter((id): id is number => !!id)
-    );
-    const freshEntries = scan.preview.filter((p) => !managedGbIds.has(p.submissionId));
-    if (freshEntries.length === 0) return currentUnknowns;
-
-    // Consent gate: importing writes mod identities in batch, so it never
-    // runs on a toast alone. The dialog says what was found; declining goes
-    // straight to manual identification.
-    const consent = await new Promise<boolean>((resolve) =>
-      setDmmConfirm({ count: freshEntries.length, profileName: scan.profileName, resolve })
-    );
-    if (!consent) return currentUnknowns;
-
-    showToast(t('installed.unknown.dmmDetected'), { tone: 'info', duration: 4000 });
-
-    let report;
-    try {
-      report = await dmmMigrateExecute({});
-    } catch (err) {
-      showToast(
-        t('installed.unknown.dmmImportFailed') + ': ' + (err instanceof Error ? err.message : String(err)),
-        { tone: 'error', duration: 8000, dismissable: true }
-      );
-      return currentUnknowns;
-    }
-
-    await loadMods();
-    const remaining = useAppStore
-      .getState()
-      .mods.filter((m) => m.isUnknown)
-      .sort((a, b) => a.priority - b.priority);
-
-    if (report.adopted.length > 0) {
-      showToast(t('installed.unknown.dmmImported', { count: report.adopted.length }), {
-        tone: 'success',
-        duration: 5000,
-      });
-    }
-    return remaining;
-  };
-
-  const openBulkUnknownFix = async (unknowns: Mod[]) => {
-    // Ignore re-entrant clicks while a DMM auto-import is mid-flight: the import
-    // mutates files + reloads mods, so a second concurrent run would race the
-    // first (main-process serialization keeps it safe, but it's wasted work and
-    // a double toast). The button also shows a loading state via dmmAutoImporting.
-    if (dmmAutoImportInFlightRef.current) return;
-    dmmAutoImportInFlightRef.current = true;
-    setDmmAutoImporting(true);
-    let remaining: Mod[];
-    try {
-      // First adopt any Deadlock Mod Manager mods automatically, then open the
-      // manual modal on whatever unknowns are left.
-      remaining = await autoImportDmmMods(unknowns);
-    } finally {
-      dmmAutoImportInFlightRef.current = false;
-      setDmmAutoImporting(false);
-    }
-    const first = remaining[0];
+  const openBulkUnknownFix = (unknowns: Mod[]) => {
+    const first = unknowns[0];
     if (!first) return;
     openUnknownModFix(first, 'bulk');
-    // The heavy auto-detect sweep is no longer kicked on open. The bulk modal
-    // lists the unknowns so the user can search/link each one manually; the
+    // The heavy auto-detect sweep is not kicked on open. The bulk modal lists
+    // the unknowns so the user can search/link each one manually; the
     // "Auto-detect all" button (behind a rate-limit confirm) still runs the
     // CRC matcher across the batch when explicitly requested.
   };
@@ -1882,157 +1860,31 @@ export default function Installed() {
       const decision = decideFileDownload(
         fileId,
         detailsUpdate.classification,
-        visibleMods.filter((mod) => mod.gameBananaId === detailsMod.id),
-        { scopeFileIds: detailsUpdate.scope, replaceFileId },
+        detailsInstalledMods,
+        { replaceFileId },
       );
-      const replacedIds = new Set(decision.replacedModIds);
-      const replacementTargets = mods.filter((mod) => replacedIds.has(mod.id));
-      const restoreEnabled = createEnabledVpkRestoreSnapshot(replacementTargets);
-      const restoreGlobal = createGlobalVpkRestoreSnapshot(replacementTargets);
-      if (restoreGlobal.ambiguous) {
-        throw new Error(t('installed.updateAll.ambiguousGlobalState'));
-      }
-
-      if (replacementTargets.length > 0) {
-        // Snapshot before the destructive delete so the user can roll back,
-        // matching runUpdate's pre-update snapshot. Non-fatal on failure: a
-        // missing snapshot must not block the update the user just asked for.
-        try {
-          await createSnapshot('pre-update');
-        } catch (err) {
-          console.warn('[Update] failed to capture pre-update snapshot:', err);
-        }
-      }
-
-      const installedReplacementIds = visibleMods
-        .filter(
-          (mod) =>
-            mod.gameBananaId === detailsMod.id &&
-            mod.gameBananaFileId === fileId &&
-            !replacedIds.has(mod.id),
-        )
-        .map((mod) => mod.id);
       if (!isDownloadRequestPending(detailsMod.id, fileId)) return;
-      let installedBeforeCleanup: typeof mods;
-      let targetIds: string[];
-      if (installedReplacementIds.length === 0) {
-        await downloadMod(
-          detailsMod.id,
-          fileId,
-          fileName,
-          detailsSection,
-          detailsCategoryId,
-          detailsMod.name,
-          decision.replacedModIds.length > 0,
-        );
-        await loadMods();
-        installedBeforeCleanup = useAppStore.getState().mods;
-        targetIds = findReplacementTargetIdsAfterInstall(
-          installedBeforeCleanup,
-          replacementTargets,
-          fileId,
-        );
-      } else {
-        await assertReplacementSafety(installedReplacementIds);
-        installedBeforeCleanup = useAppStore.getState().mods;
-        targetIds = replacementTargets.map((mod) => mod.id);
-      }
-
-      // A GameBanana update is normally forbidden from entering a local
-      // variant group. The narrow restore IPC proves this is a replacement for
-      // a still-installed adopted member, then copies that group's established
-      // identity before the source is deleted. If the mapping is ambiguous,
-      // keep the old source rather than split the card and orphan preferences.
-      const groupedReplacement = replacementTargets.some((target) => !!target.localGroupId);
-      let localGroupRestore = planLocalVariantUpdateRestore(
-        replacementTargets,
-        installedBeforeCleanup,
-        targetIds,
+      await downloadMod(
         detailsMod.id,
         fileId,
+        fileName,
+        detailsSection,
+        detailsCategoryId,
+        detailsMod.name,
+        decision.replacedModIds.length > 0,
+        decision.replacedModIds,
       );
-      if (groupedReplacement && !localGroupRestore) {
-        throw new Error(t('installed.variants.updateRestoreFailed'));
-      }
-      // A Global local group must stay wholly in the priority folder. Move the
-      // fresh files first (the existing restore operation owns filesystem
-      // placement), then recompute because that move changes local mod ids.
-      // Main refuses to stamp group metadata until placement matches, so a
-      // failed move leaves the still-installed source and its preferences safe.
-      if (localGroupRestore && restoreGlobal.allGlobal) {
-        const replacementIds = new Set(localGroupRestore.replacementModIds);
-        for (const replacement of installedBeforeCleanup) {
-          if (replacementIds.has(replacement.id) && !replacement.priorityMod) {
-            await setModPriorityFolder(replacement.id, true);
-          }
-        }
-        await loadMods({ force: true });
-        installedBeforeCleanup = useAppStore.getState().mods;
-        localGroupRestore = planLocalVariantUpdateRestore(
-          replacementTargets,
-          installedBeforeCleanup,
-          targetIds,
-          detailsMod.id,
-          fileId,
-        );
-        if (!localGroupRestore) {
-          throw new Error(t('installed.variants.updateRestoreGlobalFailed'));
-        }
-      }
-      if (localGroupRestore) await restoreLocalVariantGroupReplacement(localGroupRestore);
-      for (const targetId of targetIds) await deleteModApi(targetId);
-
       await loadMods({ force: true });
-
-      // Replacement downloads land disabled with fresh metadata. Restore both
-      // enabled state and the user's Global priority-root placement after
-      // reloading. Match by GB ids because local ids change on reinstall.
-      let restoreFailureMessage: string | null = null;
-      if (restoreEnabled.hadEnabled || restoreGlobal.hadGlobal) {
-        const newMods = useAppStore
-          .getState()
-          .mods.filter((m) => m.gameBananaId === detailsMod.id && m.gameBananaFileId === fileId);
-        const restoreFailures = await restoreReplacementVpkState(
-          newMods,
-          restoreEnabled,
-          restoreGlobal,
-          {
-            setGlobal: (modId) => setModPriorityFolder(modId, true),
-            enable: async (modId) => {
-              if (!await toggleMod(modId)) throw new Error('Failed to enable replacement mod');
-            },
-          },
-        );
-        if (restoreFailures.length > 0) {
-          const summary = restoreFailures
-            .map((failure) => `${failure.action}: ${String(failure.error)}`)
-            .join('; ');
-          restoreFailureMessage = t('installed.updateAll.restoreStateFailed', { details: summary });
-        }
-      }
-
-      // Always reconcile the store with what actually landed on disk, even when
-      // the state restore below failed.
-      await loadMods({ force: true });
-
-      // A restore failure is NOT an update failure: the new file is installed
-      // and only its enabled/Global state is off. Throwing here would report a
-      // succeeded update as a failed one, so surface it in the overlay instead.
-      if (restoreFailureMessage) {
-        showToast(restoreFailureMessage, { tone: 'warning', duration: 7000 });
-      }
+      updateCheckCache.invalidate([detailsMod.id]);
 
       // Keep the overlay open on the freshly installed file so the row flips to
       // Installed/Active and the button to "Reinstall" in place. Re-anchor the
-      // source entry first: an update or reinstall deletes the old local id, and
-      // leaving it dangling would break the ignore-updates toggle and make a
-      // follow-up pick look like a variant add rather than a replacement.
-      const installed = useAppStore
-        .getState()
-        .mods.find((m) => m.gameBananaId === detailsMod.id && m.gameBananaFileId === fileId);
+      // source entry first: an update or reinstall deletes the old local id,
+      // which navigation and the offline update badge still use.
+      const installed = modUpdateGroup(useAppStore.getState().mods, detailsMod.id, detailsSection)
+        .find(mod => mod.gameBananaFileId === fileId);
       if (installed) {
         setDetailsSourceModId(installed.id);
-        setDetailsIgnoreUpdates(!!installed.ignoreUpdates);
       }
     } catch (err) {
       // The error dialog below only renders when no mod is loaded, and the
@@ -2044,331 +1896,29 @@ export default function Installed() {
     }
   });
 
-  /**
-   * Re-download each target mod and restore its pre-update enabled state.
-   * Downloads always go to the disabled folder by default, so without the
-   * restore step the user would have to manually re-enable every updated mod.
-   * Failures are caught per-item so one bad mod doesn't halt the rest.
-   * Drives the same `updateAllProgress` state regardless of caller, so the
-   * Update-all button reflects per-group updates too.
-   */
-  const runUpdate = async (targets: typeof mods) => {
-    setUpdatePickQueue([]);
-    const snapshots = targets
-      .filter((m) => m.gameBananaId && typeof m.gameBananaFileId === 'number')
-      .map((m) => ({
-        oldId: m.id,
-        modName: m.name,
-        gameBananaId: m.gameBananaId!,
-        gameBananaFileId: m.gameBananaFileId!,
-        fileName: m.fileName,
-        vpkIndex: m.vpkIndex,
-        sha256: m.sha256,
-        section: m.sourceSection ?? 'Mod',
-        categoryId: m.categoryId ?? 0,
-        wasEnabled: m.enabled,
-        wasGlobal: !!m.priorityMod,
-        localGroupId: m.localGroupId,
-      }));
-    if (snapshots.length === 0) return;
-
-    // Group by GameBanana mod id so we fetch fresh file metadata once per
-    // mod. Reusing each row's stored fileId would 404 whenever an author
-    // replaced their upload (new file id) : the most common cause of
-    // "update failed" reports.
-    const groups = new Map<number, typeof snapshots>();
-    for (const s of snapshots) {
-      const arr = groups.get(s.gameBananaId) ?? [];
-      arr.push(s);
-      groups.set(s.gameBananaId, arr);
-    }
-
-    setUpdateAllProgress({ done: 0, total: snapshots.length });
-    const failures: string[] = [];
-    // Rows needing a manual file pick. Their installs are left untouched, so
-    // they stay flagged and the details modal's update path can finish the job.
-    const needsPick: { id: string; name: string }[] = [];
-    // Track the (gameBananaId, fileId) actually downloaded so re-enable can
-    // still find the new install even when we redirected a stale snapshot.
-    const completed: {
-      gameBananaId: number;
-      gameBananaFileId: number;
-      restoreEnabled: EnabledVpkRestoreSnapshot;
-      restoreGlobal: GlobalVpkRestoreSnapshot;
-      fileName: string;
-    }[] = [];
-    let progress = 0;
-    // Guard so a multi-group update writes exactly one recovery snapshot, not
-    // one per group.
-    let snapshotTaken = false;
-
-    for (const [, group] of groups) {
-      let details: GameBananaModDetails;
-      try {
-        details = await getModDetails(group[0].gameBananaId, group[0].section);
-      } catch (err) {
-        for (const s of group) {
-          failures.push(`${s.fileName}: failed to fetch mod details (${String(err)})`);
-          progress += 1;
-          setUpdateAllProgress({ done: progress, total: snapshots.length });
-        }
-        continue;
-      }
-
-      // Classify with the same rules as the cards and the details popups, so
-      // Update-all cannot disagree with the row labelled Update. Everything is
-      // resolved before any delete/download runs: only a confident successor
-      // is applied, a deleted file with none keeps its install and goes to the
-      // manual-pick queue, and an archived one is not an update at all.
-      const steps = resolveUpdateRun(
-        classifyModFiles(group[0].gameBananaId, details.files ?? [], visibleMods, mergedFileIds),
-        group.map((snapshot) => ({ id: snapshot.oldId, gameBananaFileId: snapshot.gameBananaFileId })),
-      );
-      const resolutions = group.map((snapshot, index) => {
-        const step = steps[index];
-        const file = step.kind === 'update'
-          ? details.files?.find((candidate) => candidate.id === step.fileId)
-          : undefined;
-        return { snapshot, step, file };
-      });
-
-      // Capture a recovery snapshot before any delete runs in this group.
-      // We only snapshot once per runUpdate invocation (guarded by the
-      // `snapshotTaken` flag below), so a 50-mod update writes one file, not
-      // one per mod. Failure is non-fatal: a missing snapshot must not block
-      // the update the user just clicked.
-      if (!snapshotTaken && resolutions.some((r) => r.file)) {
-        snapshotTaken = true;
-        try {
-          await createSnapshot('pre-update');
-        } catch (err) {
-          console.warn('[Update] failed to capture pre-update snapshot:', err);
-        }
-      }
-
-      const okBatches = new Map<
-        string,
-        {
-          gameBananaId: number;
-          fileId: number;
-          fileName: string;
-          section: string;
-          categoryId: number;
-          promote: boolean;
-          snapshots: Array<(typeof snapshots)[number]>;
-        }
-      >();
-
-      for (const { snapshot, step, file } of resolutions) {
-        if (file) {
-          const batchKey = `${snapshot.gameBananaId}:${file.id}`;
-          const batch =
-            okBatches.get(batchKey) ??
-            {
-              gameBananaId: snapshot.gameBananaId,
-              fileId: file.id,
-              fileName: file.fileName,
-              section: snapshot.section,
-              categoryId: snapshot.categoryId,
-              promote: step.kind === 'update' && step.promote,
-              snapshots: [],
-            };
-          batch.snapshots.push(snapshot);
-          okBatches.set(batchKey, batch);
-          continue;
-        }
-        if (step.kind === 'needs-pick') {
-          needsPick.push({ id: snapshot.oldId, name: snapshot.modName });
-          console.warn(`[Update] ${snapshot.fileName}: deleted on GameBanana and no clear replacement match exists`);
-        }
-        progress += 1;
-        setUpdateAllProgress({ done: progress, total: snapshots.length });
-      }
-
-      for (const batch of okBatches.values()) {
-        try {
-          const restoreEnabled = createEnabledVpkRestoreSnapshot(
-            batch.snapshots.map((snapshot) => ({
-              enabled: snapshot.wasEnabled,
-              vpkIndex: snapshot.vpkIndex,
-            })),
-          );
-          const restoreGlobal = createGlobalVpkRestoreSnapshot(
-            batch.snapshots.map((snapshot) => ({
-              priorityMod: snapshot.wasGlobal,
-              vpkIndex: snapshot.vpkIndex,
-            })),
-          );
-          if (restoreGlobal.ambiguous) {
-            throw new Error(t('installed.updateAll.ambiguousGlobalState'));
-          }
-          // The successor may already be installed (for example the user got V5
-          // from Browse while V4 stayed). Then the update is a promotion, not
-          // another download: delete the stale install and restore its state
-          // onto the existing file. That file never passed this update's
-          // download gate (it may be one the user kept disabled), so it is
-          // checked before the stale install is deleted.
-          if (batch.promote) {
-            await assertReplacementSafety(
-              visibleMods
-                .filter((mod) => mod.gameBananaId === batch.gameBananaId && mod.gameBananaFileId === batch.fileId)
-                .map((mod) => mod.id),
-            );
-          } else {
-            await downloadMod(
-              batch.gameBananaId,
-              batch.fileId,
-              batch.fileName,
-              batch.section,
-              batch.categoryId,
-              batch.snapshots[0].modName,
-              true,
-            );
-          }
-          await loadMods();
-          const installedAfterDownload = useAppStore.getState().mods;
-          const cleanupTargets = batch.snapshots.map((snapshot) => ({
-            id: snapshot.oldId,
-            gameBananaId: snapshot.gameBananaId,
-            gameBananaFileId: snapshot.gameBananaFileId,
-            vpkIndex: snapshot.vpkIndex,
-            sha256: snapshot.sha256,
-          }));
-          const targetIds = findReplacementTargetIdsAfterInstall(
-            installedAfterDownload,
-            cleanupTargets,
-            batch.fileId,
-          );
-          const groupedReplacement = batch.snapshots.some((snapshot) => !!snapshot.localGroupId);
-          let localGroupRestore = planLocalVariantUpdateRestore(
-            batch.snapshots,
-            installedAfterDownload,
-            targetIds,
-            batch.gameBananaId,
-            batch.fileId,
-          );
-          if (groupedReplacement && !localGroupRestore) {
-            throw new Error(t('installed.variants.updateRestoreFailed'));
-          }
-          if (localGroupRestore && restoreGlobal.allGlobal) {
-            const replacementIds = new Set(localGroupRestore.replacementModIds);
-            for (const replacement of installedAfterDownload) {
-              if (replacementIds.has(replacement.id) && !replacement.priorityMod) {
-                await setModPriorityFolder(replacement.id, true);
-              }
-            }
-            await loadMods({ force: true });
-            const installedAfterPriorityRestore = useAppStore.getState().mods;
-            localGroupRestore = planLocalVariantUpdateRestore(
-              batch.snapshots,
-              installedAfterPriorityRestore,
-              targetIds,
-              batch.gameBananaId,
-              batch.fileId,
-            );
-            if (!localGroupRestore) {
-              throw new Error(t('installed.variants.updateRestoreGlobalFailed'));
-            }
-          }
-          if (localGroupRestore) await restoreLocalVariantGroupReplacement(localGroupRestore);
-          for (const targetId of targetIds) await deleteModApi(targetId);
-          completed.push({
-            gameBananaId: batch.gameBananaId,
-            gameBananaFileId: batch.fileId,
-            restoreEnabled,
-            restoreGlobal,
-            fileName: batch.fileName,
-          });
-        } catch (err) {
-          for (const snapshot of batch.snapshots) {
-            failures.push(`${snapshot.fileName}: ${String(err)}`);
-          }
-        } finally {
-          progress += batch.snapshots.length;
-          setUpdateAllProgress({ done: progress, total: snapshots.length });
-        }
-      }
-    }
-
-    // Drop touched gbIds from the update-check cache before we re-derive
-    // the updatesAvailable set. The cache is module-scoped and never expires
-    // otherwise, so the post-update useEffect would otherwise reuse the same
-    // file rows that flagged the mod in the first place and the "update
-    // available" pulse would stick around on the freshly installed file.
-    for (const gbId of groups.keys()) {
-      updateCheckCache.delete(gbId);
-    }
-
-    // Refresh once so the new installs are in the store with their new ids,
-    // then restore Global placement and enabled state. Match by GB ids; the
-    // local mod id changes on reinstall.
-    await loadMods({ force: true });
-    const refreshed = useAppStore.getState().mods;
-    for (const c of completed) {
-      if (!c.restoreEnabled.hadEnabled && !c.restoreGlobal.hadGlobal) continue;
-      const newMods = refreshed.filter(
-        (m) => m.gameBananaId === c.gameBananaId && m.gameBananaFileId === c.gameBananaFileId,
-      );
-      const restoreFailures = await restoreReplacementVpkState(
-        newMods,
-        c.restoreEnabled,
-        c.restoreGlobal,
-        {
-          setGlobal: (modId) => setModPriorityFolder(modId, true),
-          enable: async (modId) => {
-            if (!await toggleMod(modId)) throw new Error('Failed to enable replacement mod');
-          },
-        },
-      );
-      for (const failure of restoreFailures) {
-        failures.push(`restore ${failure.action} ${c.fileName}: ${String(failure.error)}`);
-      }
-    }
-    setUpdateAllProgress(null);
-    if (needsPick.length > 0) {
-      setUpdatePickQueue(needsPick);
-    }
-    if (failures.length > 0) {
-      setUpdateAllError(`${failures.length} mod${failures.length === 1 ? '' : 's'} failed to update. See console for details.`);
-      console.warn('[Update] failures:', failures);
-    }
-  };
-
-  /**
-   * Walk the manual-pick queue: open the details modal for the next mod that
-   * still exists so the user can choose the replacement file. The modal's
-   * update path (handleDetailsDownload) handles delete + re-enable.
-   */
-  const openNextUpdatePick = () => {
-    const queue = [...updatePickQueue];
-    while (queue.length > 0) {
-      const next = queue.shift()!;
-      const mod = mods.find((m) => m.id === next.id);
-      if (mod) {
-        setUpdatePickQueue(queue);
-        void openModDetails(mod);
-        return;
-      }
-    }
-    setUpdatePickQueue([]);
-  };
-
-  const handleUpdateAll = async () => {
-    setUpdateAllConfirmOpen(false);
-    setUpdateAllError(null);
-    await runUpdate(mods.filter((m) => updatesAvailable.has(m.id)));
-  };
-
-  /**
-   * Update every flagged variant within one grouped mod. Invoked from the
-   * variant picker so the user doesn't have to bounce out to the mod page.
-   */
   const handleUpdateGroup = async (variantIds: readonly string[]) => {
-    const groupIds = new Set(variantIds);
-    setUpdateAllError(null);
-    await runUpdate(
-      mods.filter((m) => groupIds.has(m.id) && updatesAvailable.has(m.id)),
-    );
+    try {
+      await startUpdates(variantIds.filter(id => menuUpdateIds.has(id)));
+    } catch (error) {
+      showToast(toastErrorMessage(error), { tone: 'error' });
+    }
+  };
+
+  const handleIgnoreUpdateGroup = async (modIds: string[]) => {
+    const ignored = new Set<string>();
+    try {
+      for (const id of modIds) {
+        await setModIgnoreUpdates(id, true);
+        ignored.add(id);
+      }
+    } finally {
+      if (ignored.size > 0) {
+        useModUpdateCheckStore.setState(state => ({
+          updatesAvailable: new Set([...state.updatesAvailable].filter(id => !ignored.has(id))),
+        }));
+        await loadMods({ silent: true, force: true });
+      }
+    }
   };
 
   const exitSelectMode = () => {
@@ -2621,7 +2171,7 @@ export default function Installed() {
     // A chat wheel add-on in the selection needs its unbind warning first.
     if (!(await confirmChatWheelUnbind(confirm, t, selectedMods))) return;
     setModToDelete({
-      ids: selectedMods.map((m) => m.id),
+      mods: selectedMods,
       name: `${selectedMods.length} mod${selectedMods.length === 1 ? '' : 's'}`,
       isGroup: false,
       isBulk: true,
@@ -2762,15 +2312,15 @@ export default function Installed() {
       }
     }
 
-    // Don't re-download a file the user already has installed standalone.
-    const claimed = new Set<number>();
+    // Don't re-download a file already installed standalone or inside a merge.
+    const claimed = mergeSourceFileIds(visibleMods);
     for (const mod of mods) {
       if (typeof mod.gameBananaFileId !== 'number') continue;
       if (!filesByModId.has(mod.gameBananaId ?? -1)) continue;
       claimed.add(mod.gameBananaFileId);
     }
 
-    const plan = planMergeSourceUpdates(stale, filesByModId, claimed);
+    const plan = planMergeSourceUpdates(stale, filesByModId, claimed, autoMatchRemainingFiles);
     const skipped: MergeSourceUpdateSkip[] = plan.unresolved.map((entry) => ({
       modName: entry.source.modName,
       reason: entry.reason,
@@ -2846,7 +2396,7 @@ export default function Installed() {
    * action is single-mod.
    */
   const toggleVariant = async (target: Mod) => {
-    await toggleMod(target.id);
+    return toggleMod(target.id);
   };
 
   const setGroupEnabled = async (group: Extract<ModEntry, { kind: 'group' }>, enabled: boolean): Promise<boolean> => {
@@ -2864,9 +2414,10 @@ export default function Installed() {
    *  whole group; otherwise open the picker so the user can choose the files. */
   const handleGroupToggle = async (group: Extract<ModEntry, { kind: 'group' }>) => {
     if (group.enabledVariants.length > 0) {
-      await setGroupEnabled(group, false);
+      return setGroupEnabled(group, false);
     } else {
       setPickerGroupId(group.groupKey);
+      return true;
     }
   };
 
@@ -2943,12 +2494,6 @@ export default function Installed() {
     loadSettings();
   }, [loadSettings]);
 
-  useEffect(() => {
-    if (activeDeadlockPath) {
-      loadMods({ silent: useAppStore.getState().modsLoaded });
-    }
-  }, [activeDeadlockPath, loadMods]);
-
   // Ctrl/Cmd+A: enter select mode (if not already) and select every visible
   // mod after search filtering. Must live above the early returns below so
   // the hook order is stable across renders. The handler reads the latest
@@ -3009,89 +2554,6 @@ export default function Installed() {
     if (mods.length > 0) {
       loadConflictData();
     }
-  }, [mods]);
-
-  // Flag an installed file when it is no longer current on GameBanana AND
-  // either a confident successor exists or the row was deleted (see
-  // classifyModFiles). An archived file with no successor is a retired addon
-  // or a legacy alternate, not an update, so it is never flagged.
-  useEffect(() => {
-    let cancelled = false;
-    const checkUpdates = async () => {
-      // Absorbed merge sources never enter `targets`: runUpdate would rewrite
-      // the source VPK on disk and leave the merged VPK stale, so they can't be
-      // updated in place. They are still checked separately below and reported
-      // as information on the merged mod (see `mergedTargets`).
-      // Mods with `ignoreUpdates` set are excluded too: the user pinned the
-      // installed version on purpose (e.g. the author replaced the file with
-      // one they don't want) and shouldn't see the pulse.
-      const targets = visibleMods.filter(
-        (m) =>
-          !!m.gameBananaId &&
-          typeof m.gameBananaFileId === 'number' &&
-          m.gameBananaFileId > 0 &&
-          !m.ignoreUpdates,
-      );
-      // Merged mods carry their sources' provenance in the manifest, so the
-      // same file-list check answers "did any ingredient go stale?".
-      const mergedTargets = visibleMods.filter((m) => !!m.merged && !m.ignoreUpdates);
-      if (targets.length === 0 && mergedTargets.length === 0) {
-        setUpdatesAvailable(new Set());
-        setMergedSourceUpdates(new Map());
-        return;
-      }
-
-      // One fetch per GB mod id; variants and merge sources share the result.
-      const uniqueIds = new Map<number, string>();
-      for (const m of targets) {
-        if (!uniqueIds.has(m.gameBananaId!)) {
-          uniqueIds.set(m.gameBananaId!, m.sourceSection ?? 'Mod');
-        }
-      }
-      for (const m of mergedTargets) {
-        for (const source of m.merged!.sources) {
-          if (typeof source.gameBananaId !== 'number') continue;
-          if (!uniqueIds.has(source.gameBananaId)) {
-            uniqueIds.set(source.gameBananaId, source.section ?? 'Mod');
-          }
-        }
-      }
-
-      // Cap concurrency. An unbounded Promise.all here bursts N parallel
-      // requests through the rate limiter and pins ~N JSON payloads in
-      // renderer memory; with 70+ installed mods that visibly stalls the
-      // page on mount. The slim getModFileList only pulls _idRow + _aFiles.
-      const queue = Array.from(uniqueIds.entries()).filter(
-        ([gbId]) => !updateCheckCache.has(gbId),
-      );
-      let cursor = 0;
-      const worker = async () => {
-        while (!cancelled) {
-          const idx = cursor++;
-          if (idx >= queue.length) return;
-          const [gbId, section] = queue[idx];
-          try {
-            updateCheckCache.set(gbId, (await getModFileList(gbId, section)).files);
-          } catch {
-            // Network or API failure: leave uncached so a later mount retries.
-          }
-        }
-      };
-      const concurrency = Math.min(5, queue.length);
-      await Promise.all(Array.from({ length: concurrency }, worker));
-
-      if (cancelled) return;
-      const flags = computeUpdateFlags(visibleMods, updateCheckCache);
-      setUpdatesAvailable(flags.updatesAvailable);
-      setMergedSourceUpdates(flags.staleMergeSources);
-    };
-    checkUpdates();
-    return () => {
-      cancelled = true;
-    };
-    // `visibleMods` is derived from `mods` and changes only when `mods`
-    // does; listing it directly would re-fire on every render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mods]);
 
   // Group variants sharing a GB mod id under a single card. Singletons and
@@ -3235,8 +2697,7 @@ export default function Installed() {
     }
   });
   const toggleEntry = useStableCallback((entry: ModEntry) => {
-    if (entry.kind === 'group') void handleGroupToggle(entry);
-    else void toggleMod(entry.mod.id);
+    return entry.kind === 'group' ? handleGroupToggle(entry) : toggleMod(entry.mod.id);
   });
   // Persist outside the setState updater: StrictMode double-invokes an updater,
   // and a write is a side effect even when it happens to be idempotent.
@@ -3355,17 +2816,17 @@ export default function Installed() {
     // crash; the unbind warning is the confirmation for that case.
     const targets = entry.kind === 'group' ? entry.variants : [entry.mod];
     if (targets.some(isChatWheelAddon)) {
-      if (await confirmChatWheelUnbind(confirm, t, targets)) for (const target of targets) await deleteMod(target.id);
+      if (await confirmChatWheelUnbind(confirm, t, targets)) for (const target of targets) await deleteMod(target);
       return;
     }
     if (entry.kind === 'group') {
       setModToDelete({
-        ids: entry.variants.map((v) => v.id),
+        mods: entry.variants,
         name: entry.primary.name,
         isGroup: true,
       });
     } else {
-      setModToDelete({ ids: [entry.mod.id], name: entry.mod.name, isGroup: false });
+      setModToDelete({ mods: [entry.mod], name: entry.mod.name, isGroup: false });
     }
   });
   const editLocalEntry = useStableCallback((mod: Mod) => setLocalEditMod(mod));
@@ -3502,8 +2963,8 @@ export default function Installed() {
     }
   });
   const fixUnknownEntry = useStableCallback((mod: Mod) => openUnknownModFix(mod, 'single'));
-  // commitLoadPosition is declared after the early returns (it reads the
-  // compact order built there); bridge it through the same synchronous-ref
+  // commitLoadPosition is declared later (it reads the compact order built
+  // below); bridge it through the same synchronous-ref
   // pattern as selectAllVisibleRef so a stable callback can live up here.
   const commitLoadPositionRef = useRef<(modId: string, newPosition: number) => Promise<void>>(
     () => Promise.resolve()
@@ -3513,49 +2974,19 @@ export default function Installed() {
   );
   const unmergeEntry = useStableCallback((mod: Mod) => setUnmergeTarget(mod));
   const copyEntryShareCode = useStableCallback((mod: Mod) => void handleCopyShareCode(mod));
-  const selectToggleEntry = useStableCallback((entry: ModEntry, shiftKey: boolean) =>
-    toggleSelection({
-      key: entry.key,
-      ids: entry.kind === 'single' ? [entry.mod.id] : entry.variants.map((variant) => variant.id),
-    }, shiftKey)
-  );
-
-  if (!activeDeadlockPath) {
-    return (
-      <EmptyState
-        icon={Package}
-        title={t('installed.empty.noGamePathTitle')}
-        description={t('installed.empty.noGamePath')}
-        action={
-          <Button onClick={() => navigate('/settings')} icon={Settings}>
-            {t('sidebar.openSettings')}
-          </Button>
-        }
-      />
-    );
-  }
-
-  if (modsLoading) {
-    return <InstalledSkeleton viewMode={viewMode} gridStyle={cardSizeGridStyle} />;
-  }
-
-  if (modsError) {
-    return (
-      <EmptyState
-        icon={Package}
-        title={t('installed.empty.errorTitle')}
-        description={modsError ?? undefined}
-        variant="error"
-        action={<Button onClick={() => loadMods()}>{t('common.actions.retry')}</Button>}
-      />
-    );
-  }
+  const selectToggleEntry = useStableCallback((entry: ModEntry, shiftKey: boolean) => {
+    setSelectMode(true);
+    toggleSelection({ key: entry.key, ids: entrySelectionIds(entry) }, shiftKey);
+  });
 
   const compactOrder = buildCompactPriorityOrder(allEntries);
   const conflictCount = conflictPairCount;
   const unknownMods = mods
     .filter((mod) => mod.isUnknown)
     .sort((a, b) => a.priority - b.priority);
+  const outdatedVdataMods = mods.filter((mod) => mod.enabled && mod.outdatedVdata?.length);
+  // Disabled ones too: fixing is safe, and they break the camera once enabled.
+  const staleModelMods = visibleMods.filter((mod) => mod.staleModels?.length);
   const unknownFilterCacheById: Record<string, UnknownModFilterGuess> = {};
   for (const mod of unknownMods) {
     const cached = getUnknownCache(mod);
@@ -3657,36 +3088,6 @@ export default function Installed() {
   // displayed order no longer maps to load-order priority; the canonical
   // priority order lives on enabledEntries/compactOrder and is untouched.
   const searchNeedle = search.trim().toLowerCase();
-  const matchesSearchEntry = (entry: ModEntry) =>
-    !searchNeedle || entrySearchText(entry).toLowerCase().includes(searchNeedle);
-  const matchesSourceEntry = (entry: ModEntry) =>
-    entryIsLocal(entry) ? sourceSel.includes('local') : sourceSel.includes('gamebanana');
-  const matchesHeroEntry = (entry: ModEntry) =>
-    heroFilter === 'all' || heroNamesOf(entry).includes(heroFilter);
-  const matchesTagEntry = (entry: ModEntry) =>
-    tagFilter.length === 0 || tagKeysOf(entry).some((key) => tagFilter.includes(key));
-  // Selecting several lists unions them (same as tags), but the list axis as a
-  // whole ANDs with the others.
-  const matchesListEntry = (entry: ModEntry) =>
-    listFilter.length === 0 ||
-    (entryListIds.get(entry.key) ?? EMPTY_LIST_IDS).some((id) => listFilter.includes(id));
-  const matchesAllFilters = (entry: ModEntry) =>
-    matchesSearchEntry(entry) &&
-    matchesSourceEntry(entry) &&
-    matchesHeroEntry(entry) &&
-    matchesTagEntry(entry) &&
-    matchesListEntry(entry);
-  const sortEntries = (entries: ModEntry[]): ModEntry[] => {
-    if (sortMode === 'name') {
-      return [...entries].sort((a, b) =>
-        entryName(a).localeCompare(entryName(b), undefined, { sensitivity: 'base' })
-      );
-    }
-    if (sortMode === 'recent') {
-      return [...entries].sort((a, b) => entryInstalledAt(b).localeCompare(entryInstalledAt(a)));
-    }
-    return entries; // 'priority' (already in load order).
-  };
   // Both toggles on (length 2) = no filtering on that axis.
   const sourceActive = sourceSel.length !== 2;
   const statusActive = statusSel.length !== 2;
@@ -3702,29 +3103,62 @@ export default function Installed() {
     tagFilter.length +
     listFilter.length +
     (sortActive ? 1 : 0);
-  const visibleEnabled = statusSel.includes('enabled')
-    ? sortEntries(enabledEntries.filter(matchesAllFilters))
-    : [];
-  const defaultSortedDisabled = sortEntries(disabledEntries.filter(matchesAllFilters));
-  const disabledDefaultIndex = new Map(
-    defaultSortedDisabled.map((entry, index) => [entry.key, index])
-  );
-  // A-Z drops the saved drag order (that's the point of asking for it) but
-  // keeps the pinned band: the star's promise is "pins it to the top", so
-  // favorites sort A-Z among themselves, then everything else does.
   const disabledAlphabetical = disabledSortMode === 'name';
-  const visibleDisabled = statusSel.includes('disabled')
-    ? [...defaultSortedDisabled].sort(createDisabledEntryComparator({
-        favorites: disabledFavorites,
-        manualOrder: disabledAlphabetical ? [] : disabledOrder,
-        keyOf: entryDisabledPreferenceKey,
-        fallback: disabledAlphabetical
-          ? (left, right) =>
-              entryName(left).localeCompare(entryName(right), undefined, { sensitivity: 'base' })
-          : (left, right) =>
-              (disabledDefaultIndex.get(left.key) ?? 0) - (disabledDefaultIndex.get(right.key) ?? 0),
-      }))
-    : [];
+  const { visibleEnabled, visibleDisabled } = useMemo(() => {
+    const matchesSearchEntry = (entry: ModEntry) =>
+      !searchNeedle || entrySearchText(entry).toLowerCase().includes(searchNeedle);
+    const matchesSourceEntry = (entry: ModEntry) =>
+      entryIsLocal(entry) ? sourceSel.includes('local') : sourceSel.includes('gamebanana');
+    const matchesHeroEntry = (entry: ModEntry) =>
+      heroFilter === 'all' || (entryFacetMeta.get(entry.key)?.heroNames ?? entryHeroNames(entry)).includes(heroFilter);
+    const matchesTagEntry = (entry: ModEntry) =>
+      tagFilter.length === 0 || (entryFacetMeta.get(entry.key)?.tagKeys ?? entryTagKeys(entry)).some((key) => tagFilter.includes(key));
+    // Selecting several lists unions them (same as tags), but the list axis as a
+    // whole ANDs with the others.
+    const matchesListEntry = (entry: ModEntry) =>
+      listFilter.length === 0 ||
+      (entryListIds.get(entry.key) ?? EMPTY_LIST_IDS).some((id) => listFilter.includes(id));
+    const matchesAllFilters = (entry: ModEntry) =>
+      matchesSearchEntry(entry) &&
+      matchesSourceEntry(entry) &&
+      matchesHeroEntry(entry) &&
+      matchesTagEntry(entry) &&
+      matchesListEntry(entry);
+    const sortEntries = (entries: ModEntry[]): ModEntry[] => {
+      if (sortMode === 'name') {
+        return [...entries].sort((a, b) =>
+          entryName(a).localeCompare(entryName(b), undefined, { sensitivity: 'base' })
+        );
+      }
+      if (sortMode === 'recent') {
+        return [...entries].sort((a, b) => entryInstalledAt(b).localeCompare(entryInstalledAt(a)));
+      }
+      return entries; // 'priority' (already in load order).
+    };
+    const visibleEnabled = statusSel.includes('enabled')
+      ? sortEntries(enabledEntries.filter(matchesAllFilters))
+      : [];
+    const defaultSortedDisabled = sortEntries(disabledEntries.filter(matchesAllFilters));
+    const disabledDefaultIndex = new Map(
+      defaultSortedDisabled.map((entry, index) => [entry.key, index])
+    );
+    // A-Z drops the saved drag order (that's the point of asking for it) but
+    // keeps the pinned band: the star's promise is "pins it to the top", so
+    // favorites sort A-Z among themselves, then everything else does.
+    const visibleDisabled = statusSel.includes('disabled')
+      ? [...defaultSortedDisabled].sort(createDisabledEntryComparator({
+          favorites: disabledFavorites,
+          manualOrder: disabledAlphabetical ? [] : disabledOrder,
+          keyOf: entryDisabledPreferenceKey,
+          fallback: disabledAlphabetical
+            ? (left, right) =>
+                entryName(left).localeCompare(entryName(right), undefined, { sensitivity: 'base' })
+            : (left, right) =>
+                (disabledDefaultIndex.get(left.key) ?? 0) - (disabledDefaultIndex.get(right.key) ?? 0),
+        }))
+      : [];
+    return { visibleEnabled, visibleDisabled };
+  }, [searchNeedle, sourceSel, heroFilter, tagFilter, listFilter, entryFacetMeta, entryListIds, sortMode, statusSel, enabledEntries, disabledEntries, disabledAlphabetical, disabledOrder, disabledFavorites]);
   const totalMatches = visibleEnabled.length + visibleDisabled.length;
   const detailsNavigationEntries = [...visibleEnabled, ...visibleDisabled].filter(
     (entry) => typeof entryPrimaryMod(entry).gameBananaId === 'number'
@@ -3747,17 +3181,14 @@ export default function Installed() {
   };
 
   const selectAllVisible = () => {
-    const ids = new Set<string>();
-    for (const entry of [...visibleEnabled, ...visibleDisabled]) {
-      if (entry.kind === 'single') ids.add(entry.mod.id);
-      else entry.variants.forEach((v) => ids.add(v.id));
-    }
-    setSelectedIds(ids);
+    setSelectedIds(new Set(
+      visibleSelectionEntries(visibleEnabled, visibleDisabled, enabledCollapsed, disabledCollapsed)
+        .flatMap((entry) => entry.ids)
+    ));
   };
 
   // Keep the Ctrl/Cmd+A handler (installed above) pointed at the latest
-  // closures. Synchronous assignment (not useEffect) so the hook count stays
-  // stable across the early returns higher up.
+  // closures. Synchronous assignment keeps them current for keyboard events.
   selectAllVisibleRef.current = selectAllVisible;
   selectModeRef.current = selectMode;
 
@@ -3777,36 +3208,66 @@ export default function Installed() {
     });
 
   /** Locate the entry that holds a given mod id within a section's entries. */
-  const findEntryForModId = (entries: ModEntry[], id: string): ModEntry | undefined => {
+  const findEntryForModId = useCallback((entries: ModEntry[], id: string): ModEntry | undefined => {
     return entries.find((e) =>
       e.kind === 'single' ? e.mod.id === id : e.variants.some((v) => v.id === id)
     );
-  };
+  }, []);
 
-  const orderEntriesByKeys = (entries: ModEntry[], keys: string[]): ModEntry[] => {
-    const byKey = new Map(entries.map((entry) => [entry.key, entry]));
-    const ordered = keys
-      .map((key) => byKey.get(key))
-      .filter((entry): entry is ModEntry => !!entry);
-    const seen = new Set(ordered.map((entry) => entry.key));
-    const missing = entries.filter((entry) => !seen.has(entry.key));
-    return [...ordered, ...missing];
-  };
-
-  const previewEntriesForDrag = (
-    entries: ModEntry[],
-    section: DragSection
-  ): ModEntry[] => {
-    if (dragDraftOrder?.section !== section) {
-      return entries;
+  const openUpdateMenuMod = (modId: string) => {
+    const entry = findEntryForModId(allEntries, modId);
+    if (!entry) return;
+    if (![...visibleEnabled, ...visibleDisabled].some(candidate => candidate.key === entry.key)) {
+      setSearch('');
+      setSourceSel(['gamebanana', 'local']);
+      setStatusSel(['enabled', 'disabled']);
+      setHeroFilter('all');
+      setTagFilter([]);
+      setListFilter([]);
     }
-    return orderEntriesByKeys(entries, dragDraftOrder.keys);
+    if (isEntryEnabled(entry)) setEnabledCollapsed(false);
+    else setDisabledCollapsed(false);
+    setGridWarm(true);
+    setUpdateMenuTargetId(modId);
   };
 
-  const previewEnabled = previewEntriesForDrag(visibleEnabled, 'enabled');
-  const previewDisabled = previewEntriesForDrag(visibleDisabled, 'disabled');
+  // Reveal the card after filters and section expansion have committed, then
+  // open exactly the view its normal click uses. Re-align after skipped layout.
+  useLayoutEffect(() => {
+    if (!updateMenuTargetId) return;
+    const entry = findEntryForModId(allEntries, updateMenuTargetId);
+    if (!entry) {
+      setUpdateMenuTargetId(null);
+      return;
+    }
+    const card = installedScrollRef.current?.querySelector<HTMLElement>(
+      `[data-installed-entry-key="${window.CSS.escape(entry.key)}"]`
+    );
+    if (!card) return;
+    card.scrollIntoView({ block: 'center' });
+    const frame = window.requestAnimationFrame(() => {
+      card.scrollIntoView({ block: 'center' });
+      if (entry.kind === 'group') openEntryPicker(entry.groupKey);
+      else openEntryDetails(entry.mod);
+      setUpdateMenuTargetId(null);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [updateMenuTargetId, allEntries, visibleEnabled, visibleDisabled, enabledCollapsed, disabledCollapsed, gridWarm, findEntryForModId, openEntryPicker, openEntryDetails]);
 
-  const sortableEnabled = viewIsReorderable && !selectMode;
+  const previewEnabled = useMemo(
+    () => previewEntriesForDrag(visibleEnabled, 'enabled', dragDraftOrder),
+    [visibleEnabled, dragDraftOrder]
+  );
+  const previewDisabled = useMemo(
+    () => previewEntriesForDrag(visibleDisabled, 'disabled', dragDraftOrder),
+    [visibleDisabled, dragDraftOrder]
+  );
+  // dnd-kit broadcasts context changes whenever this array identity changes,
+  // even if every key is identical. Keep unrelated page state out of it.
+  const enabledSortableKeys = useMemo(() => previewEnabled.map((entry) => entry.key), [previewEnabled]);
+  const disabledSortableKeys = useMemo(() => previewDisabled.map((entry) => entry.key), [previewDisabled]);
+
+  const sortableEnabled = viewIsReorderable && !selectMode && !shiftHeld;
 
   const visibleEntriesForSection = (section: DragSection): ModEntry[] =>
     section === 'enabled' ? visibleEnabled : visibleDisabled;
@@ -3969,8 +3430,9 @@ export default function Installed() {
       entry.kind === 'single' ? (mergedSourceUpdates.get(entry.mod.id)?.size ?? 0) : 0,
     fixingUnknown: entry.kind === 'single' && unknownFilterPendingIds.has(entry.mod.id),
     loadPosition: loadPositionById.get(entryRepresentativeId(entry)),
-    loadCount: enabledModCount,
+    loadCount: isEntryEnabled(entry) ? enabledModCount : 0,
     selectMode,
+    shiftHeld,
     selected: isEntrySelected(entry),
     soloBusy,
     favorite: disabledFavorites.has(entryDisabledPreferenceKey(entry)),
@@ -4029,7 +3491,7 @@ export default function Installed() {
         onDragCancel={resetDragState}
       >
         <SortableContext
-          items={entries.map((entry) => entry.key)}
+          items={section === 'enabled' ? enabledSortableKeys : disabledSortableKeys}
           strategy={layout === 'list' ? verticalListSortingStrategy : rectSortingStrategy}
         >
           <div className={gridClasses} style={gridStyle}>
@@ -4042,16 +3504,50 @@ export default function Installed() {
             ))}
           </div>
         </SortableContext>
-        <DragOverlay>
-          {activeEntry ? (
-            <div className="pointer-events-none opacity-95 shadow-2xl">
-              {renderEntryCard(activeEntry)}
-            </div>
-          ) : null}
-        </DragOverlay>
+        {createPortal(
+          <DragOverlay zIndex={40} className="pointer-events-none">
+            {activeEntry ? (
+              <div className="opacity-95 shadow-2xl">
+                {renderEntryCard(activeEntry)}
+              </div>
+            ) : null}
+          </DragOverlay>,
+          document.body,
+        )}
       </DndContext>
     );
   };
+
+  if (!activeDeadlockPath) {
+    return (
+      <EmptyState
+        icon={Package}
+        title={t('installed.empty.noGamePathTitle')}
+        description={t('installed.empty.noGamePath')}
+        action={
+          <Button onClick={() => navigate('/settings')} icon={Settings}>
+            {t('sidebar.openSettings')}
+          </Button>
+        }
+      />
+    );
+  }
+
+  if (modsLoading) {
+    return <InstalledSkeleton viewMode={viewMode} gridStyle={cardSizeGridStyle} />;
+  }
+
+  if (modsError) {
+    return (
+      <EmptyState
+        icon={Package}
+        title={t('installed.empty.errorTitle')}
+        description={modsError ?? undefined}
+        variant="error"
+        action={<Button onClick={() => loadMods()}>{t('common.actions.retry')}</Button>}
+      />
+    );
+  }
 
   // No mods at all
   if (mods.length === 0) {
@@ -4069,6 +3565,7 @@ export default function Installed() {
               <Button variant="secondary" onClick={() => openBatchImport()} icon={FilePlus}>
                 {t('installed.actions.importCustomMod')}
               </Button>
+              <ImportSourceMenu onImported={() => void loadMods()} />
             </div>
           }
         />
@@ -4076,80 +3573,99 @@ export default function Installed() {
     );
   }
 
-  // Conflicts, update-all, and fix-unknown buttons. Rendered once, in the top
-  // action bar's right cluster (next to Fix Order). The right cluster wraps when
-  // cramped, so there's no need to relocate them to a section header.
-  const hasStatusButtons =
-    conflictCount > 0 || updatesAvailable.size > 0 || !!updateAllProgress || unknownMods.length > 0;
+  // Issue buttons (outdated data, camera fix, conflicts, fix unknown) plus
+  // update-all. Rendered once, in the top action bar's right cluster (next to
+  // Fix Order). Two or more issues collapse into one dropdown.
+  const statusIssues: StatusIssue[] = [];
+  if (outdatedVdataMods.length > 0) {
+    statusIssues.push({
+      key: 'outdatedVdata',
+      variant: 'danger',
+      icon: FileWarning,
+      label: t('installed.outdatedData.button', { count: outdatedVdataMods.length }),
+      title: t('installed.outdatedData.buttonHint'),
+      count: outdatedVdataMods.length,
+      onOpen: () => setOutdatedVdataOpen(true),
+    });
+  }
+  if (staleModelMods.length > 0) {
+    statusIssues.push({
+      key: 'staleModels',
+      variant: 'warning',
+      icon: Camera,
+      label: t('installed.staleModels.button', { count: staleModelMods.length }),
+      title: t('installed.staleModels.buttonHint'),
+      count: staleModelMods.length,
+      onOpen: () => setStaleModelsOpen(true),
+    });
+  }
+  if (conflictCount > 0) {
+    statusIssues.push({
+      key: 'conflicts',
+      variant: 'warning',
+      icon: AlertTriangle,
+      label: t('installed.status.conflictCount', { count: conflictPairCount }),
+      count: conflictPairCount,
+      onOpen: () => navigate('/conflicts'),
+    });
+  }
+  if (unknownMods.length > 0 && !fixUnknownHidden) {
+    statusIssues.push({
+      key: 'unknown',
+      variant: 'primary',
+      icon: HelpCircle,
+      label: t('installed.unknown.fixButton', { count: unknownMods.length }),
+      title: t('installed.unknown.fixButtonHint'),
+      count: unknownMods.length,
+      onOpen: () => openBulkUnknownFix(unknownMods),
+      onContextMenu: (e) => {
+        e.preventDefault();
+        setFixUnknownHidden(true);
+      },
+    });
+  }
+  const showUpdateButton = updateModCount > 0;
+  const hasStatusButtons = statusIssues.length > 0 || showUpdateButton || unknownMods.length > 0;
   const statusButtons = hasStatusButtons ? (
     <div className="flex flex-wrap items-center gap-2">
-      {conflictCount > 0 && (
-        <Button
-          variant="warning"
-          size="sm"
-          onClick={() => navigate('/conflicts')}
-          icon={AlertTriangle}
-        >
-          {t('installed.status.conflictCount', { count: conflictPairCount })}
-        </Button>
-      )}
-      {(updatesAvailable.size > 0 || updateAllProgress) && (
+      <StatusIssues issues={statusIssues} />
+      {showUpdateButton && (
         <Button
           variant="primary"
-          size="sm"
           onClick={() => setUpdateAllConfirmOpen(true)}
           icon={Download}
-          isLoading={!!updateAllProgress}
           aria-live="polite"
-          title={
-            updateAllProgress
-              ? 'Update in progress. Please wait until all mods finish before starting another.'
-              : "Re-download every mod with a newer version on GameBanana and restore each one's enabled state"
-          }
+          title={t('installed.updateAll.hint')}
         >
-          {updateAllProgress
-            ? `Updating ${updateAllProgress.done}/${updateAllProgress.total}…`
-            : `Update all (${updatesAvailable.size})`}
+          {t('installed.updateAll.updateCount', { count: updateModCount })}
         </Button>
       )}
-      {unknownMods.length > 0 &&
-        (fixUnknownHidden ? (
-          <button
-            type="button"
-            onContextMenu={(e) => {
-              e.preventDefault();
-              setFixUnknownHidden(false);
-            }}
-            aria-label={`Restore the Fix unknown button (${unknownMods.length} unknown)`}
-            title={t('installed.unknown.fixHiddenHint')}
-            className="inline-flex h-6 w-6 items-center justify-center rounded-sm text-text-secondary/40 transition-colors hover:text-text-secondary cursor-pointer"
-          >
-            <HelpCircle className="h-3.5 w-3.5" />
-          </button>
-        ) : (
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={() => openBulkUnknownFix(unknownMods)}
-            onContextMenu={(e) => {
-              e.preventDefault();
-              setFixUnknownHidden(true);
-            }}
-            icon={HelpCircle}
-            isLoading={dmmAutoImporting}
-            disabled={dmmAutoImporting}
-            title={t('installed.unknown.fixButtonHint')}
-          >
-            {t('installed.unknown.fixButton', { count: unknownMods.length })}
-          </Button>
-        ))}
+      {unknownMods.length > 0 && fixUnknownHidden && (
+        <button
+          type="button"
+          onContextMenu={(e) => {
+            e.preventDefault();
+            setFixUnknownHidden(false);
+          }}
+          aria-label={`Restore the Fix unknown button (${unknownMods.length} unknown)`}
+          title={t('installed.unknown.fixHiddenHint')}
+          className="inline-flex h-6 w-6 items-center justify-center rounded-sm text-text-secondary/40 transition-colors hover:text-text-secondary cursor-pointer"
+        >
+          <HelpCircle className="h-3.5 w-3.5" />
+        </button>
+      )}
     </div>
   ) : null;
   const topStatusActions =
     hasStatusButtons || viewIsReorderable || enabledModCount > 0 ? (
       <div className="flex flex-wrap items-center gap-2">
         {statusButtons}
-        {/* After Fix Unknown (last status button): copy enabled names in load order. */}
+        {enabledModCount > 0 && (
+          <Button variant="secondary" onClick={() => setCompatibilityOpen(true)}>
+            {t('installed.repairs.button')}
+          </Button>
+        )}
+        {/* After the status buttons: copy enabled names in load order. */}
         {enabledModCount > 0 && (
           <Button
             variant="secondary"
@@ -4459,6 +3975,7 @@ export default function Installed() {
               aria-label={t('installed.actions.addCustomMod')}
               title={t('installed.actions.addCustomModHint')}
             />
+            <ImportSourceMenu compact onImported={() => void loadMods()} onExport={() => setExportOpen(true)} />
             <Button
               variant="secondary"
               onClick={() => openModsFolder().catch(() => {})}
@@ -4695,98 +4212,36 @@ export default function Installed() {
         </InstalledSection>
       )}
 
-      <ConfirmModal
-        isOpen={updateAllConfirmOpen}
-        title={`Update all (${updatesAvailable.size})?`}
-        message={
-          <>
-            <p className="mb-3">
-              {t('installed.updateAll.description')}
-            </p>
-            {(() => {
-              const pending = mods.filter((m) => updatesAvailable.has(m.id));
-              if (pending.length === 0) return null;
-              return (
-                <div className="update-stripes border border-accent/20 bg-bg-tertiary/40 rounded-md px-3 py-2 max-h-48 overflow-y-auto">
-                  <div className="text-[10px] uppercase tracking-wider text-accent mb-1.5 font-semibold">
-                    {t('installed.updateAll.receivingUpdates', { count: pending.length })}
-                  </div>
-                  <ul className="space-y-1 text-sm text-text-primary">
-                    {pending.map((m) => (
-                      <li key={m.id} className="flex items-center gap-2 min-w-0">
-                        <Download className="w-3.5 h-3.5 text-accent flex-shrink-0" />
-                        <span className="truncate" title={m.name}>{m.name}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              );
-            })()}
-          </>
-        }
-        confirmLabel={`Update ${updatesAvailable.size}`}
-        variant="primary"
-        onConfirm={handleUpdateAll}
-        onCancel={() => setUpdateAllConfirmOpen(false)}
+      {updateAllConfirmOpen && (
+        <ModUpdatesModal
+          mods={visibleMods}
+          updateIds={menuUpdateIds}
+          onUpdate={handleUpdateGroup}
+          onIgnore={handleIgnoreUpdateGroup}
+          onOpen={openUpdateMenuMod}
+          onClose={() => setUpdateAllConfirmOpen(false)}
+        />
+      )}
+
+      <CompatibilityRepairsModal open={compatibilityOpen} onClose={() => setCompatibilityOpen(false)} mods={mods} />
+      <OutdatedVdataModal
+        mods={outdatedVdataMods}
+        open={outdatedVdataOpen}
+        onClose={() => setOutdatedVdataOpen(false)}
       />
 
-      {(updateAllError || updatePickQueue.length > 0) && (
-        <div className="fixed bottom-4 right-4 z-50 flex flex-col items-end gap-2">
-          {updateAllError && (
-            <div
-              role="alert"
-              aria-live="polite"
-              className="max-w-md bg-state-danger/10 border border-state-danger/40 text-state-danger rounded-sm px-4 py-3 shadow-lg flex items-start gap-3 animate-fade-in"
-            >
-              <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-              <div className="flex-1 text-sm text-text-primary">{updateAllError}</div>
-              <button
-                type="button"
-                onClick={() => setUpdateAllError(null)}
-                className="text-state-danger hover:text-text-primary p-1 -m-1 cursor-pointer rounded-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-state-danger"
-                aria-label={t('installed.updateAll.dismissError')}
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          )}
-          {updatePickQueue.length > 0 && (
-            <div
-              role="alert"
-              aria-live="polite"
-              className="max-w-md bg-bg-secondary border border-accent/40 rounded-sm px-4 py-3 shadow-lg flex items-start gap-3 animate-fade-in"
-            >
-              <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0 text-accent" />
-              <div className="flex-1 text-sm text-text-primary">
-                <p>
-                  {updatePickQueue.length === 1
-                    ? `${updatePickQueue[0].name} needs a manual file pick: the author replaced their files and no clear match exists. The installed version was kept.`
-                    : `${updatePickQueue.length} mods need a manual file pick: the authors replaced their files and no clear match exists. The installed versions were kept.`}
-                </p>
-                <Button size="sm" variant="primary" className="mt-2" onClick={openNextUpdatePick}>
-                  {updatePickQueue.length === 1
-                    ? t('installed.updateAll.pickReplacement', { count: 1 })
-                    : t('installed.updateAll.pickReplacement', { count: updatePickQueue.length })}
-                </Button>
-              </div>
-              <button
-                type="button"
-                onClick={() => setUpdatePickQueue([])}
-                className="text-text-muted hover:text-text-primary p-1 -m-1 cursor-pointer rounded-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-                aria-label={t('installed.updateAll.dismissPickNotice')}
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          )}
-        </div>
-      )}
+      <StaleModelsModal
+        mods={staleModelMods}
+        open={staleModelsOpen}
+        onClose={() => setStaleModelsOpen(false)}
+      />
 
       <DeleteModsModal
         target={modToDelete}
         onCancel={() => setModToDelete(null)}
         onDeleted={handleDeleted}
       />
+      <ModBackupDeletePrompt />
 
       {localEditMod && (
         <EditLocalModModal
@@ -4882,7 +4337,7 @@ export default function Installed() {
             onReorderVariantTo={(source, neighbor, position) =>
               reorderVariantTo(source, neighbor, position)
             }
-            onDeleteVariant={(variant) => deleteMod(variant.id)}
+            onDeleteVariant={deleteMod}
             onRenameVariant={(variant, label) => setVariantLabel(variant.id, label)}
             onOpenModDetails={
               liveEntry.primary.gameBananaId
@@ -4912,8 +4367,7 @@ export default function Installed() {
                 ? () => handleUpdateGroup(liveEntry.variants.map((variant) => variant.id))
                 : undefined
             }
-            isUpdating={!!updateAllProgress}
-            updateProgress={updateAllProgress}
+            isUpdating={liveEntry.variants.some(variant => unavailableUpdateIds.has(variant.id))}
             onClose={() => setPickerGroupId(null)}
           />
         );
@@ -4971,8 +4425,9 @@ export default function Installed() {
           replaceableFiles={detailsUpdate.replaceableFiles}
           onReplace={handleDetailsDownload}
           ignoreUpdates={detailsIgnoreUpdates}
+          ignoreUpdatesPending={detailsIgnoreUpdatesPending}
           onToggleIgnoreUpdates={
-            detailsSourceModId ? handleToggleIgnoreUpdates : undefined
+            detailsInstalledMods.length > 0 ? handleToggleIgnoreUpdates : undefined
           }
           onClose={closeModDetails}
           onViewArtist={openArtistPage}
@@ -5024,25 +4479,7 @@ export default function Installed() {
         />
       )}
 
-      {/* Consent gate for the DMM auto-import step of Fix Unknown Mods. */}
-      <ConfirmModal
-        isOpen={dmmConfirm !== null}
-        title={t('installed.unknown.dmmConfirmTitle')}
-        message={t('installed.unknown.dmmConfirmMessage', {
-          count: dmmConfirm?.count ?? 0,
-          profile: dmmConfirm?.profileName ?? '',
-        })}
-        confirmLabel={t('installed.unknown.dmmConfirmImport')}
-        cancelLabel={t('installed.unknown.dmmConfirmSkip')}
-        onConfirm={() => {
-          dmmConfirm?.resolve(true);
-          setDmmConfirm(null);
-        }}
-        onCancel={() => {
-          dmmConfirm?.resolve(false);
-          setDmmConfirm(null);
-        }}
-      />
+      {exportOpen && <ExportModal onClose={() => setExportOpen(false)} />}
 
       {customUnknownMod && (
         <MakeCustomModModal
@@ -5238,9 +4675,11 @@ export default function Installed() {
         />
       )}
 
-      {selectMode && (
-        // Floats at top-center. z-40 keeps this bar above the page + sticky
-        // header (z-30) but below modal overlays (z-50), so an open modal's
+      {selectMode && createPortal(
+        // Floats at top-center. Portaled to body because the page's outlet
+        // wrapper is its own stacking context, which trapped this bar under the
+        // sidebar when dragged over it. At root, z-40 keeps it above the whole
+        // app shell but below modal overlays (z-50), so an open modal's
         // backdrop dims it like the rest of the page instead of the bar
         // painting over the modal (e.g. the variant picker overlapping it in a
         // short window).
@@ -5391,7 +4830,7 @@ export default function Installed() {
                         onClick={() => handleBulkTagGlobal(type)}
                         className="w-full text-left text-xs px-2 py-1.5 rounded hover:bg-bg-tertiary text-text-primary cursor-pointer"
                       >
-                        {GLOBAL_MOD_TYPE_LABELS[type]}
+                        {globalModTypeLabel(type, t)}
                       </button>
                     ))}
                     <div className="my-1 h-px bg-border" />
@@ -5429,7 +4868,8 @@ export default function Installed() {
               />
             </>
           )}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

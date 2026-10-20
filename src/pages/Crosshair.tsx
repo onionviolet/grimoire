@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useTranslation } from 'react-i18next';
 import { Copy, Check, RotateCcw, Pin, Download, ZoomIn, ZoomOut } from 'lucide-react';
 import { useCrosshairStore } from '../stores/crosshairStore';
@@ -57,7 +58,20 @@ export default function Crosshair() {
         applyPreset,
         loadSettingsFromPreset,
         clearAutoexec,
-    } = useCrosshairStore();
+    } = useCrosshairStore(useShallow((s) => ({
+        reset: s.reset,
+        generateCommands: s.generateCommands,
+        getSettings: s.getSettings,
+        importFromGame: s.importFromGame,
+        presets: s.presets,
+        activePresetId: s.activePresetId,
+        loadPresets: s.loadPresets,
+        savePreset: s.savePreset,
+        deletePreset: s.deletePreset,
+        applyPreset: s.applyPreset,
+        loadSettingsFromPreset: s.loadSettingsFromPreset,
+        clearAutoexec: s.clearAutoexec,
+    })));
 
     // Load presets and game path on mount
     useEffect(() => {
@@ -121,8 +135,10 @@ export default function Crosshair() {
     };
 
     const handleDeletePreset = async (presetId: string) => {
-        if (!confirm(t('crosshair.confirm.deletePreset'))) return;
         const wasActive = presetId === activePresetId;
+        // Deleting the active preset also strips the crosshair block from
+        // autoexec.cfg, so warn about that rather than only about the preset.
+        if (!confirm(t(wasActive ? 'crosshair.confirm.deleteActivePreset' : 'crosshair.confirm.deletePreset'))) return;
         if (wasActive && gamePath) {
             try {
                 await clearAutoexec(gamePath);

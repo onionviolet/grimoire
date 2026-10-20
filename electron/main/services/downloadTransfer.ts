@@ -2,8 +2,10 @@ import { promises as fs, createReadStream } from 'fs';
 import { createHash } from 'crypto';
 import { writeRecoveryJson, assertRecoveryPath } from './recoveryBackup';
 import type { FileHandle } from 'fs/promises';
-import http, { type IncomingHttpHeaders, type IncomingMessage } from 'http';
+import http, { type Agent, type IncomingHttpHeaders, type IncomingMessage } from 'http';
 import https from 'https';
+import { finished } from 'stream/promises';
+import { describeNetworkError } from './networkErrors';
 import { isAllowedGameBananaDownloadHostname } from './security';
 
 export type DownloadServerStatus =
@@ -16,19 +18,29 @@ export interface DownloadTransferOptions {
     onProgress: (downloaded: number, total: number) => void;
     onResponseFilename?: (filename: string) => void;
     connectionTimeoutMs?: number;
+    mirrorConnectionTimeoutMs?: number;
     stallTimeoutMs?: number;
     signal?: AbortSignal;
+    pauseSignal?: AbortSignal;
+    checkpoint?: DownloadTransferCheckpoint;
+    resolveRedirectCandidates?: (redirectUrl: string, signal?: AbortSignal) => Promise<readonly string[] | undefined>;
     onServerStatus?: (status: DownloadServerStatus) => void;
-    /** Opt-in disk checkpoints; callers without this keep the existing cleanup contract. */
+    agent?: Agent;
+    /**
+     * Opt-in durable checkpoint on disk: the partial survives a restart and is
+     * resumed only when its prefix hash and server validator still match.
+     * Callers without this keep the in-memory-only contract.
+     */
     resumeMetadataPath?: string;
     resumeIdentity?: string;
+    /** Extra passes over the candidate list (max 3), with a short backoff. */
     retryCount?: number;
     onRetry?: (attempt: number) => void;
-    checkpoint?: (bytes: number, sha256: string) => Promise<void>;
 }
 
+const DEFAULT_MIRROR_CONNECTION_TIMEOUT_MS = 10_000;
+
 type Validator = { header: 'ETag' | 'Last-Modified'; value: string };
-type TransferState = { total?: number; validator?: Validator; bytes?: number; sha256?: string; urls?: string[]; identity?: string };
 
 async function prefixHash(path: string, bytes: number) {
     const hash = createHash('sha256');
@@ -36,9 +48,47 @@ async function prefixHash(path: string, bytes: number) {
     return hash;
 }
 
+/** Retained only by one queued job, alongside its partial archive. */
+export interface DownloadTransferCheckpoint {
+    total?: number;
+    validator?: Validator;
+    candidateUrl?: string;
+    candidateUrls?: readonly string[];
+    destinationPath?: string;
+}
+
+/** The in-memory checkpoint plus the fields persisted to `resumeMetadataPath`. */
+type TransferState = DownloadTransferCheckpoint & {
+    bytes?: number;
+    sha256?: string;
+    urls?: string[];
+    identity?: string;
+};
+
+type PersistProgress = (bytes: number, sha256: string) => Promise<void>;
+
+export class DownloadSuspendedError extends Error {
+    constructor() {
+        super('DOWNLOAD_SUSPENDED');
+        this.name = 'DownloadSuspendedError';
+    }
+}
+
+export function isDownloadSuspended(error: unknown): error is DownloadSuspendedError {
+    return error instanceof DownloadSuspendedError;
+}
+
 class RetryableTransferError extends Error { }
 class RestartTransferError extends RetryableTransferError { }
 class PermanentTransferError extends Error { }
+class RedirectCandidates extends Error {
+    readonly urls: readonly string[];
+
+    constructor(urls: readonly string[]) {
+        super('Download route selected');
+        this.urls = urls;
+    }
+}
 class FatalDiskError extends Error {
     constructor(error: unknown) {
         super(error instanceof Error ? error.message : String(error), { cause: error });
@@ -118,6 +168,7 @@ async function singleResponse(
     headers: Record<string, string>,
     connectionTimeoutMs: number,
     signal?: AbortSignal,
+    agent?: Agent,
 ): Promise<IncomingMessage> {
     return new Promise((resolve, reject) => {
         if (signal?.aborted) {
@@ -133,7 +184,7 @@ async function singleResponse(
         }
 
         let settled = false;
-        const request = protocol.get(parsed, { headers }, (response) => finish(undefined, response));
+        const request = protocol.get(parsed, { headers, agent }, (response) => finish(undefined, response));
         const abort = () => {
             const error = cancellationError();
             request.destroy(error);
@@ -144,8 +195,15 @@ async function singleResponse(
             settled = true;
             clearTimeout(timeout);
             signal?.removeEventListener('abort', abort);
-            if (error) reject(error);
-            else resolve(response!);
+            if (error) {
+                // A suspended job must not release the FIFO while its socket is
+                // still open, including requests waiting for response headers.
+                if (request.closed) reject(error);
+                else {
+                    request.once('close', () => reject(error));
+                    request.destroy();
+                }
+            } else resolve(response!);
         };
         const timeout = setTimeout(() => {
             const error = new RetryableTransferError(
@@ -155,7 +213,7 @@ async function singleResponse(
             finish(error);
         }, connectionTimeoutMs);
         request.on('error', (error) => {
-            finish(signal?.aborted ? cancellationError() : new RetryableTransferError(error.message));
+            finish(signal?.aborted ? cancellationError() : new RetryableTransferError(describeNetworkError(error)));
         });
         signal?.addEventListener('abort', abort, { once: true });
     });
@@ -166,13 +224,16 @@ async function requestResponse(
     headers: Record<string, string>,
     connectionTimeoutMs: number,
     signal?: AbortSignal,
+    resolveRedirectCandidates?: DownloadTransferOptions['resolveRedirectCandidates'],
+    agent?: Agent,
 ): Promise<IncomingMessage> {
     let url = initialUrl;
     for (let redirects = 0; redirects <= 5; redirects += 1) {
-        const response = await singleResponse(url, headers, connectionTimeoutMs, signal);
+        const response = await singleResponse(url, headers, connectionTimeoutMs, signal, agent);
         if (![301, 302, 303, 307, 308].includes(response.statusCode ?? 0)) return response;
         const location = response.headers.location;
-        response.resume();
+        response.destroy();
+        await finished(response, { cleanup: true }).catch(() => undefined);
         if (!location) throw new RetryableTransferError('Download redirect did not include a location');
         if (redirects === 5) throw new RetryableTransferError('Too many download redirects');
         const redirected = new URL(location, url);
@@ -186,6 +247,19 @@ async function requestResponse(
             throw new RetryableTransferError(
                 `Download redirect was rejected: ${redirected.protocol}//${redirected.hostname}`,
             );
+        }
+        const candidates = await resolveRedirectCandidates?.(redirected.toString(), signal);
+        if (candidates?.length) {
+            for (const candidate of candidates) {
+                const parsed = new URL(candidate);
+                const localCandidate = localTestRedirect && parsed.hostname === previous.hostname &&
+                    ['http:', 'https:'].includes(parsed.protocol);
+                if (!localCandidate && !(parsed.protocol === 'https:' &&
+                    isAllowedGameBananaDownloadHostname(parsed.hostname))) {
+                    throw new RetryableTransferError('Download route returned an untrusted server');
+                }
+            }
+            throw new RedirectCandidates(candidates);
         }
         url = redirected.toString();
     }
@@ -224,19 +298,20 @@ async function consumeResponse(
     stallTimeoutMs: number,
     onProgress: (downloaded: number, total: number) => void,
     signal?: AbortSignal,
-    checkpoint?: (bytes: number, sha256: string) => Promise<void>,
+    persistProgress?: PersistProgress,
 ): Promise<void> {
     let file: FileHandle;
     try {
         file = await fs.open(destinationPath, mode);
     } catch (error) {
         response.destroy();
+        await finished(response, { cleanup: true }).catch(() => undefined);
         throw new FatalDiskError(error);
     }
 
     let received = 0;
     let hash: ReturnType<typeof createHash> | undefined;
-    try { hash = checkpoint ? await prefixHash(destinationPath, startingOffset) : undefined; }
+    try { hash = persistProgress ? await prefixHash(destinationPath, startingOffset) : undefined; }
     catch (error) { response.destroy(); await file.close(); throw new FatalDiskError(error); }
     let checkpointBytes = startingOffset, checkpointTime = Date.now();
     let stallTimer: NodeJS.Timeout | undefined;
@@ -256,6 +331,7 @@ async function consumeResponse(
     };
 
     signal?.addEventListener('abort', abort, { once: true });
+    if (signal?.aborted) abort();
     armStallTimer();
     let transferError: Error | undefined;
     let closeError: unknown;
@@ -267,13 +343,14 @@ async function consumeResponse(
             await writeAll(file, chunk);
             hash?.update(chunk);
             received += chunk.length;
-            if (checkpoint && hash && (received + startingOffset - checkpointBytes >= 4 * 1024 * 1024 || Date.now() - checkpointTime >= 1000)) {
+            if (persistProgress && hash && (received + startingOffset - checkpointBytes >= 4 * 1024 * 1024 || Date.now() - checkpointTime >= 1000)) {
                 await file.sync();
-                await checkpoint(startingOffset + received, hash.copy().digest('hex'));
+                await persistProgress(startingOffset + received, hash.copy().digest('hex'));
                 checkpointBytes = startingOffset + received; checkpointTime = Date.now();
             }
             onProgress(startingOffset + received, total ?? 0);
         }
+        if (signal?.aborted) throw cancellationError();
         if (!response.complete) {
             throw new RetryableTransferError('Download response ended before the full body was received');
         }
@@ -290,10 +367,12 @@ async function consumeResponse(
     } finally {
         if (stallTimer) clearTimeout(stallTimer);
         signal?.removeEventListener('abort', abort);
+        response.destroy();
+        await finished(response, { cleanup: true }).catch(() => undefined);
         try {
-            if (checkpoint && hash && received > 0) {
+            if (persistProgress && hash && received > 0) {
                 await file.sync();
-                await checkpoint(startingOffset + received, hash.copy().digest('hex'));
+                await persistProgress(startingOffset + received, hash.copy().digest('hex'));
             }
         } catch (error) { closeError = error; }
         finally { try { await file.close(); } catch (error) { closeError ??= error; } }
@@ -305,9 +384,10 @@ async function consumeResponse(
 async function attemptCandidate(
     url: string,
     destinationPath: string,
-    state: TransferState,
+    state: DownloadTransferCheckpoint,
     options: Pick<DownloadTransferOptions,
-        'onProgress' | 'onResponseFilename' | 'connectionTimeoutMs' | 'stallTimeoutMs' | 'signal' | 'checkpoint'>,
+        'onProgress' | 'onResponseFilename' | 'connectionTimeoutMs' | 'stallTimeoutMs' | 'signal' |
+        'resolveRedirectCandidates' | 'agent'> & { persistProgress?: PersistProgress },
     onAccepted?: () => void,
 ): Promise<void> {
     const offset = await fileSize(destinationPath);
@@ -320,7 +400,9 @@ async function attemptCandidate(
         headers.Range = `bytes=${offset}-`;
         headers['If-Range'] = state.validator!.value;
     }
-    const response = await requestResponse(url, headers, options.connectionTimeoutMs!, options.signal);
+    const response = await requestResponse(
+        url, headers, options.connectionTimeoutMs!, options.signal, options.resolveRedirectCandidates, options.agent,
+    );
     const disposition = response.headers['content-disposition'];
     if (typeof disposition === 'string') {
         const filename = parseContentDispositionFilename(disposition);
@@ -329,7 +411,8 @@ async function attemptCandidate(
 
     if (offset > 0 && response.statusCode === 416) {
         const total = parseUnsatisfiedRange(response.headers['content-range']);
-        response.resume();
+        response.destroy();
+        await finished(response, { cleanup: true }).catch(() => undefined);
         if (total === offset && total === state.total && sameValidator(state.validator!, response.headers)) return;
         throw new RestartTransferError('Download server rejected the resume offset');
     }
@@ -345,7 +428,8 @@ async function attemptCandidate(
             (state.total !== undefined && range.total !== state.total) ||
             !sameValidator(state.validator!, response.headers) ||
             (contentLength !== undefined && contentLength !== range.end - range.start + 1)) {
-            response.resume();
+            response.destroy();
+            await finished(response, { cleanup: true }).catch(() => undefined);
             throw new RestartTransferError('Download server returned an incompatible resume response');
         }
         mode = 'a';
@@ -360,9 +444,14 @@ async function attemptCandidate(
         expectedResponseBytes = parseLength(response.headers['content-length']);
         total = expectedResponseBytes;
         state.validator = responseValidator(response.headers);
+        if (offset > 0) options.onProgress(0, total ?? 0);
     } else {
-        response.resume();
-        if ((response.statusCode ?? 0) >= 400 && (response.statusCode ?? 0) < 500 && ![408, 429].includes(response.statusCode ?? 0)) throw new PermanentTransferError(`Download failed with status ${response.statusCode}`);
+        response.destroy();
+        await finished(response, { cleanup: true }).catch(() => undefined);
+        const status = response.statusCode ?? 0;
+        if (status >= 400 && status < 500 && ![408, 429].includes(status)) {
+            throw new PermanentTransferError(`Download failed with status ${status}`);
+        }
         throw new RetryableTransferError(`Download failed with status ${response.statusCode}`);
     }
 
@@ -379,7 +468,7 @@ async function attemptCandidate(
         options.stallTimeoutMs!,
         options.onProgress,
         options.signal,
-        options.checkpoint,
+        options.persistProgress,
     );
 
     const completedSize = await fileSize(destinationPath);
@@ -401,102 +490,173 @@ export async function downloadTransfer(options: DownloadTransferOptions): Promis
         candidateUrls,
         destinationPath,
         signal,
+        pauseSignal,
+        checkpoint,
         onServerStatus,
         connectionTimeoutMs = 30_000,
+        mirrorConnectionTimeoutMs = DEFAULT_MIRROR_CONNECTION_TIMEOUT_MS,
         stallTimeoutMs = 60_000,
     } = options;
     if (candidateUrls.length === 0) throw new Error('No download servers available');
 
-    // A previous invocation's file has no in-memory validator, so it cannot be
-    // resumed safely. Partials are intentionally durable only within this call.
-    let state: TransferState = {};
-    if (options.resumeMetadataPath) {
-        await assertRecoveryPath(destinationPath); await assertRecoveryPath(options.resumeMetadataPath);
-        try {
-            const saved = JSON.parse(await fs.readFile(options.resumeMetadataPath, 'utf8')) as TransferState;
-            const size = await fileSize(destinationPath);
-            if (!Number.isSafeInteger(saved.bytes) || saved.bytes! < 0 || saved.bytes! > size || !/^[0-9a-f]{64}$/.test(saved.sha256 ?? '')
-                || !saved.validator || !['ETag', 'Last-Modified'].includes(saved.validator.header) || typeof saved.validator.value !== 'string' || /[\r\n]/.test(saved.validator.value)
-                || (options.resumeIdentity ? saved.identity !== options.resumeIdentity : JSON.stringify(saved.urls) !== JSON.stringify(candidateUrls)) || (saved.total !== undefined && (!Number.isSafeInteger(saved.total) || saved.total < saved.bytes!))
-                || (await prefixHash(destinationPath, saved.bytes!)).digest('hex') !== saved.sha256) throw new Error('Invalid download checkpoint');
-            await fs.truncate(destinationPath, saved.bytes!); state = saved;
-        } catch (error) {
-            if ((error as NodeJS.ErrnoException).code && !['ENOENT'].includes((error as NodeJS.ErrnoException).code!)) throw error;
-            await removePartial(destinationPath);
+    const state: TransferState = checkpoint ?? {};
+    if (state.destinationPath !== undefined && state.destinationPath !== destinationPath) {
+        throw new Error('Download checkpoint belongs to a different destination');
+    }
+    if (state.destinationPath === undefined) {
+        // No in-memory checkpoint: the partial has no trusted identity unless a
+        // verified disk checkpoint (opt-in via resumeMetadataPath) vouches for it.
+        if (options.resumeMetadataPath) {
+            await assertRecoveryPath(destinationPath); await assertRecoveryPath(options.resumeMetadataPath);
+            try {
+                const saved = JSON.parse(await fs.readFile(options.resumeMetadataPath, 'utf8')) as TransferState;
+                const size = await fileSize(destinationPath);
+                if (!Number.isSafeInteger(saved.bytes) || saved.bytes! < 0 || saved.bytes! > size || !/^[0-9a-f]{64}$/.test(saved.sha256 ?? '')
+                    || !saved.validator || !['ETag', 'Last-Modified'].includes(saved.validator.header) || typeof saved.validator.value !== 'string' || /[\r\n]/.test(saved.validator.value)
+                    || (options.resumeIdentity ? saved.identity !== options.resumeIdentity : JSON.stringify(saved.urls) !== JSON.stringify(candidateUrls)) || (saved.total !== undefined && (!Number.isSafeInteger(saved.total) || saved.total < saved.bytes!))
+                    || (await prefixHash(destinationPath, saved.bytes!)).digest('hex') !== saved.sha256) throw new Error('Invalid download checkpoint');
+                await fs.truncate(destinationPath, saved.bytes!);
+                Object.assign(state, {
+                    total: saved.total, validator: saved.validator, bytes: saved.bytes, sha256: saved.sha256,
+                    urls: saved.urls, identity: saved.identity,
+                });
+            } catch (error) {
+                if ((error as NodeJS.ErrnoException).code && !['ENOENT'].includes((error as NodeJS.ErrnoException).code!)) throw error;
+                await removePartial(destinationPath);
+            }
+        } else await removePartial(destinationPath);
+        state.destinationPath = destinationPath;
+    }
+    const persistProgress: PersistProgress | undefined = options.resumeMetadataPath
+        ? async (bytes, sha256) => {
+            state.bytes = bytes; state.sha256 = sha256; state.urls = [...candidateUrls];
+            state.identity = options.resumeIdentity;
+            // Only the durable fields are written; route/destination bookkeeping is per-run.
+            await writeRecoveryJson(options.resumeMetadataPath!, {
+                total: state.total, validator: state.validator, bytes, sha256,
+                urls: state.urls, identity: state.identity,
+            });
         }
-    } else await removePartial(destinationPath);
-    const checkpoint = options.resumeMetadataPath ? async (bytes: number, sha256: string) => {
-        state.bytes = bytes; state.sha256 = sha256; state.urls = [...candidateUrls];
-        state.identity = options.resumeIdentity;
-        await writeRecoveryJson(options.resumeMetadataPath!, state);
-    } : undefined;
+        : undefined;
+    const durable = options.resumeMetadataPath !== undefined;
+    const interruptedSignal = signal && pauseSignal
+        ? AbortSignal.any([signal, pauseSignal])
+        : signal ?? pauseSignal;
+    const resetState = () => {
+        state.total = undefined;
+        state.validator = undefined;
+        state.bytes = undefined;
+        state.sha256 = undefined;
+    };
+    const checkInterruption = async () => {
+        if (signal?.aborted) {
+            // A durable partial outlives a cancelled attempt; the caller decides its fate.
+            if (!durable) {
+                await removePartial(destinationPath).catch(() => undefined);
+                resetState();
+            }
+            throw cancellationError();
+        }
+        if (pauseSignal?.aborted) throw new DownloadSuspendedError();
+    };
     let lastError: Error | undefined;
     let previousServer: string | undefined;
 
-    const urls = [...new Set(candidateUrls)];
+    const urls = [...new Set(state.candidateUrls ?? candidateUrls)];
     const retries = Math.min(3, Math.max(0, options.retryCount ?? 0));
-    for (const [index, url] of Array.from({ length: retries + 1 }, () => urls).flat().entries()) {
-        if (index > 0 && index % urls.length === 0) {
-            const attempt = index / urls.length;
-            options.onRetry?.(attempt);
-            await new Promise<void>((resolve, reject) => {
-                const abort = () => { clearTimeout(timer); signal?.removeEventListener('abort', abort); reject(cancellationError()); };
-                const timer = setTimeout(() => { signal?.removeEventListener('abort', abort); resolve(); }, Math.min(4000, 500 * 2 ** (attempt - 1)));
-                if (signal?.aborted) abort(); else signal?.addEventListener('abort', abort, { once: true });
+    let routeChanges = 0;
+    rounds: for (let round = 0; round <= retries; round += 1) {
+        if (round > 0) {
+            options.onRetry?.(round);
+            await new Promise<void>((resolve) => {
+                const done = () => { clearTimeout(timer); interruptedSignal?.removeEventListener('abort', done); resolve(); };
+                const timer = setTimeout(done, Math.min(4000, 500 * 2 ** (round - 1)));
+                if (interruptedSignal?.aborted) done(); else interruptedSignal?.addEventListener('abort', done, { once: true });
             });
+            await checkInterruption();
         }
-        if (signal?.aborted) {
-            if (!options.resumeMetadataPath) await removePartial(destinationPath).catch(() => undefined);
-            throw cancellationError();
-        }
-        const server = displayServerName(url);
-        if (index === 0) onServerStatus?.({ phase: 'selected', server });
-        else onServerStatus?.({ phase: 'switching', server, previousServer: previousServer! });
+        let transient = false;
+        const firstIndex = round === 0 && state.candidateUrl ? Math.max(0, urls.indexOf(state.candidateUrl)) : 0;
+        for (let index = firstIndex; index < urls.length; index += 1) {
+            await checkInterruption();
+            const url = urls[index];
+            state.candidateUrl = url;
+            const server = displayServerName(url);
+            // Only the last candidate is a route GameBanana itself vouched for. The
+            // rest are speculative mirrors, so a dead one must not eat the full budget.
+            const candidateConnectionTimeoutMs = index === urls.length - 1
+                ? connectionTimeoutMs
+                : Math.min(connectionTimeoutMs, mirrorConnectionTimeoutMs);
+            if (previousServer === undefined) onServerStatus?.({ phase: 'selected', server });
+            else onServerStatus?.({ phase: 'switching', server, previousServer });
 
-        try {
-            // One bounded retry lets a candidate that cannot safely resume use
-            // a clean full request instead of being skipped outright.
-            for (let safeRestarts = 0; ; safeRestarts += 1) {
-                try {
-                    await attemptCandidate(url, destinationPath, state, {
-                        ...options,
-                        connectionTimeoutMs,
-                        stallTimeoutMs, checkpoint,
-                    }, index === 0 ? undefined : () => {
-                        onServerStatus?.({ phase: 'selected', server });
-                    });
-                    return;
-                } catch (error) {
-                    if (!(error instanceof RestartTransferError) || safeRestarts > 0) throw error;
+            try {
+                // One bounded retry lets a candidate that cannot safely resume use
+                // a clean full request instead of being skipped outright.
+                for (let safeRestarts = 0; ; safeRestarts += 1) {
+                    try {
+                        await attemptCandidate(url, destinationPath, state, {
+                            ...options,
+                            signal: interruptedSignal,
+                            connectionTimeoutMs: candidateConnectionTimeoutMs,
+                            stallTimeoutMs,
+                            persistProgress,
+                        }, previousServer === undefined ? undefined : () => {
+                            onServerStatus?.({ phase: 'selected', server });
+                        });
+                        return;
+                    } catch (error) {
+                        if (!(error instanceof RestartTransferError) || safeRestarts > 0) throw error;
+                        await removePartial(destinationPath).catch((cleanupError) => {
+                            throw new FatalDiskError(cleanupError);
+                        });
+                        resetState();
+                        options.onProgress(0, 0);
+                    }
+                }
+            } catch (error) {
+                await checkInterruption();
+                if (error instanceof RedirectCandidates) {
+                    if (++routeChanges > 10) {
+                        lastError = new Error('Too many download route changes');
+                        break rounds;
+                    }
+                    const routes = [...new Set([...error.urls, ...urls.slice(index + 1)])];
+                    urls.splice(index, urls.length - index, ...routes);
+                    state.candidateUrls = [...urls];
+                    index -= 1;
+                    continue;
+                }
+                if (isCancellation(error, signal)) {
+                    if (!durable) {
+                        await removePartial(destinationPath).catch(() => undefined);
+                        resetState();
+                    }
+                    throw cancellationError();
+                }
+                if (error instanceof FatalDiskError) {
+                    await removePartial(destinationPath).catch(() => undefined);
+                    throw error.cause instanceof Error ? error.cause : error;
+                }
+                if (error instanceof RestartTransferError) {
                     await removePartial(destinationPath).catch((cleanupError) => {
                         throw new FatalDiskError(cleanupError);
                     });
-                    state.total = undefined;
-                    state.validator = undefined;
+                    resetState();
+                    options.onProgress(0, 0);
                 }
+                lastError = error instanceof Error ? error : new Error(String(error));
+                // A definitive 4xx answer is worth trying on the next server but never worth another round.
+                if (!(error instanceof PermanentTransferError)) transient = true;
+                console.warn(`[download] ${server} failed: ${lastError.message}`);
+                previousServer = server;
             }
-        } catch (error) {
-            if (error instanceof PermanentTransferError) throw error;
-            if (isCancellation(error, signal)) {
-                if (!options.resumeMetadataPath) await removePartial(destinationPath).catch(() => undefined);
-                throw cancellationError();
-            }
-            if (error instanceof FatalDiskError) {
-                await removePartial(destinationPath).catch(() => undefined);
-                throw error.cause instanceof Error ? error.cause : error;
-            }
-            if (error instanceof RestartTransferError) {
-                await removePartial(destinationPath).catch((cleanupError) => {
-                    throw new FatalDiskError(cleanupError);
-                });
-                state.total = undefined;
-                state.validator = undefined;
-            }
-            lastError = error instanceof Error ? error : new Error(String(error));
-            previousServer = server;
         }
+        if (!transient) break;
     }
-
-    if (!options.resumeMetadataPath) await removePartial(destinationPath).catch(() => undefined);
+    if (!durable) {
+        await removePartial(destinationPath).catch(() => undefined);
+        resetState();
+    }
     throw lastError ?? new Error('Download failed');
 }

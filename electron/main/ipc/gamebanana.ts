@@ -20,17 +20,42 @@ import {
     type GameBananaCollection,
     type GameBananaCollectionItemsResponse,
 } from '../services/gamebanana';
-import { downloadMod, getDownloadQueue, getCurrentDownload, removeFromQueue, cancelActiveDownload, cancelDownloadTarget, resolveSuspiciousFileDecision, resolveMultiVpkPick, type DownloadModArgs } from '../services/download';
+import {
+    downloadMod,
+    getDownloadQueue,
+    getCurrentDownload,
+    moveQueuedDownload,
+    prioritizeQueuedDownload,
+    removeFromQueue,
+    cancelActiveDownload,
+    cancelDownloadTarget,
+    cancelQueuedDownloads,
+    resolveSuspiciousFileDecision,
+    resolveMultiVpkPick,
+    type DownloadModArgs,
+} from '../services/download';
 import { getMainWindow } from '../index';
 import { getDownloadJobs, retryDownloadJob } from '../services/download';
+import { getGameBananaDownloadProxyConfig, saveGameBananaDownloadProxyConfig } from '../services/gamebananaDownloadProxy';
+import { gameBananaFileServerSelector } from '../services/gamebananaFileServers';
 import type {
     BrowseModsArgs,
     GetModDetailsArgs,
     GetModCommentsArgs,
     GetModUpdatesArgs,
     GetCategoriesArgs,
+    DownloadQueueItem,
 } from '../../../src/types/electron';
 import { getSavedMods, updateSavedModCheck, updateModNsfw } from '../services/modDatabase';
+import { modUpdates } from '../services/modUpdates';
+
+ipcMain.handle('gamebanana-download-proxy:get', () => getGameBananaDownloadProxyConfig());
+ipcMain.handle('gamebanana-download-proxy:set', async (_, config: unknown) => {
+    if (getCurrentDownload()) throw new Error('Wait for the current download to finish before changing its proxy.');
+    const saved = await saveGameBananaDownloadProxyConfig(config);
+    gameBananaFileServerSelector.resetRouting();
+    return saved;
+});
 
 // browse-mods
 ipcMain.handle(
@@ -102,7 +127,8 @@ ipcMain.handle('download-mod', async (_, args: DownloadModArgs): Promise<void> =
         throw new Error('No Deadlock path configured');
     }
     const mainWindow = getMainWindow();
-    await downloadMod(deadlockPath, args, mainWindow);
+    if (args.replacementModIds?.length) await modUpdates.replace(args);
+    else await downloadMod(deadlockPath, args, mainWindow);
 });
 
 // get-download-queue
@@ -115,6 +141,15 @@ ipcMain.handle('retry-download-job', async (_event, id: string) => {
 });
 ipcMain.handle('get-download-queue', () => {
     return getDownloadQueue();
+});
+
+ipcMain.handle('move-queued-download', (_, jobId: string, beforeJobId: string | null): boolean => {
+    if (typeof jobId !== 'string' || (beforeJobId !== null && typeof beforeJobId !== 'string')) return false;
+    return moveQueuedDownload(jobId, beforeJobId);
+});
+
+ipcMain.handle('prioritize-queued-download', (_, jobId: string): boolean => {
+    return typeof jobId === 'string' && prioritizeQueuedDownload(jobId);
 });
 
 // get-current-download
@@ -133,8 +168,22 @@ ipcMain.handle('cancel-active-download', (): boolean => {
 });
 
 // cancel-download-target (exact optimistic/queued/active target)
-ipcMain.handle('cancel-download-target', (_, modId: number, fileId: number): boolean => {
-    return cancelDownloadTarget(modId, fileId);
+ipcMain.handle('cancel-download-target', (_, modId: number, fileId: number, jobId?: string): boolean => {
+    if (jobId !== undefined && typeof jobId !== 'string') return false;
+    return cancelDownloadTarget(modId, fileId, jobId)
+        || (jobId === undefined && modUpdates.cancelPendingChoiceTarget(modId, fileId));
+});
+
+ipcMain.handle('cancel-queued-downloads', (_, pendingTargets: Pick<DownloadQueueItem, 'modId' | 'fileId'>[] = []): void => {
+    if (!Array.isArray(pendingTargets) || pendingTargets.some(target =>
+        !target || !Number.isInteger(target.modId) || !Number.isInteger(target.fileId))) return;
+    const current = getCurrentDownload();
+    cancelQueuedDownloads();
+    for (const { modId, fileId } of pendingTargets) {
+        if (current?.modId === modId && current.fileId === fileId) continue;
+        modUpdates.cancelPendingChoiceTarget(modId, fileId);
+    }
+    for (const request of modUpdates.getState().manualRequests) modUpdates.remove(request.id);
 });
 
 // one-click-suspicious-response (renderer relays user's modal decision)

@@ -93,7 +93,7 @@ export function auditInstalledSafety(deadlockPath: string): Promise<InstalledMod
         status = results;
         notifyModSafetyChanged();
         return results;
-    }).catch(err => { failed = true; throw err; })
+    }, { healPath: deadlockPath }).catch(err => { failed = true; throw err; })
         .finally(() => { auditing = null; notifyModSafetyChanged(); });
     notifyModSafetyChanged();
     return auditing;

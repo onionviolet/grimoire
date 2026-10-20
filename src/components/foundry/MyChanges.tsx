@@ -454,7 +454,7 @@ export default function MyChanges({ onAddNew, heroName }: MyChangesProps) {
                             confirmLabel: t('common.actions.delete'),
                             variant: 'danger',
                           });
-                          if (ok) await deleteMod(entry.mod.id);
+                          if (ok) await deleteMod({ id: entry.mod.id, size: entry.mod.size, installedAt: entry.mod.installedAt });
                         })();
                       }}
                       title={t('foundry.myChanges.delete')}

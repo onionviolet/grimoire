@@ -112,7 +112,10 @@ const HEROES: readonly HeroIdentity[] = [
     { displayName: 'Vindicta', panoramaCodenames: ['hornet'], soundCodename: 'hornet' },
     { displayName: 'Violet', panoramaCodenames: ['artist'], soundCodename: 'artist' },
     { displayName: 'Viscous', panoramaCodenames: ['viscous'], soundCodename: 'viscous', modelEntry: 'models/heroes_staging/viscous/viscous.vmdl_c' },
-    { displayName: 'Vyper', panoramaCodenames: ['viper'], soundCodename: 'viper' },
+    // Vyper's hero definition still references `kali_*` card art (see
+    // docs/vyper-hero-cards.md), so `kali` is a legacy panorama folder for her.
+    // The unreleased Kali row below keeps `kali` in the SOUND namespace only.
+    { displayName: 'Vyper', panoramaCodenames: ['viper', 'kali'], soundCodename: 'viper' },
     { displayName: 'Warden', panoramaCodenames: ['warden'], soundCodename: 'warden' },
     { displayName: 'Wraith', panoramaCodenames: ['wraith'], soundCodename: 'wraith', modelEntry: 'models/heroes_wip/wraith/wraith.vmdl_c' },
     { displayName: 'Yamato', panoramaCodenames: ['yamato'], soundCodename: 'yamato' },
@@ -277,8 +280,12 @@ export function classifyHeroCodename(codename: string | null | undefined): HeroC
 export function heroCodenameScope(identity: string | null | undefined): Set<string> {
     const scope = new Set<string>();
     if (!identity) return scope;
-    scope.add(key(identity));
     const hero = resolveHeroByName(identity) ?? heroForPanoramaCodename(identity);
+    // The identity itself joins the scope unless it is a panorama folder some
+    // OTHER hero owns. `Kali` (unreleased, no art) shares its name with the
+    // legacy folder Vyper's cards still use, and must not claim it.
+    const owner = heroForPanoramaCodename(identity);
+    if (!owner || !hero || owner === hero) scope.add(key(identity));
     if (hero) {
         for (const code of [...(hero.rosterCodenames ?? []), ...hero.panoramaCodenames]) {
             scope.add(key(code));

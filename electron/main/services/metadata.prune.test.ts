@@ -18,7 +18,7 @@
  *    VPK open.
  */
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
@@ -29,7 +29,7 @@ vi.mock('./vpkIdentity', () => ({
     resolveVpkIdentity: vi.fn(async () => ({ sha256: 'f'.repeat(64) })),
 }));
 
-import { loadMetadata, pruneOrphanMetadata, saveMetadata } from './metadata';
+import { loadMetadata, pruneOrphanMetadata, recoverPrunedIdentities, saveMetadata } from './metadata';
 
 const POPULATED = {
     'pak01_dir.vpk': { modName: 'Bikinidicta', gameBananaId: 554012 },
@@ -134,6 +134,22 @@ describe('pruneOrphanMetadata', () => {
         expect(after).toEqual(POPULATED);
     });
 
+    it('keeps Global and overflow rows whose files Launch Vanilla has parked in .disabled', () => {
+        const game = install();
+        const citadel = join(game, 'game', 'citadel');
+        rmSync(join(citadel, 'grimoire', 'pak05_dir.vpk'));
+        rmSync(join(citadel, 'addons1', 'pak03_dir.vpk'));
+        mkdirSync(join(citadel, 'addons', '.disabled', 'grimoire'), { recursive: true });
+        mkdirSync(join(citadel, 'addons', '.disabled', 'addons1'), { recursive: true });
+        writeFileSync(join(citadel, 'addons', '.disabled', 'grimoire', 'pak05_dir.vpk'), 'vpk');
+        writeFileSync(join(citadel, 'addons', '.disabled', 'addons1', 'pak03_dir.vpk'), 'vpk');
+        saveMetadata({ ...POPULATED });
+
+        pruneOrphanMetadata(new Set(['pak01_dir.vpk']), game);
+
+        expect(loadMetadata()).toEqual(POPULATED);
+    });
+
     it('never treats a Locker selection set as an orphan', () => {
         // locker:* rows key the Locker-managed VPKs in citadel/grimoire, which
         // are not scanned filenames, so they can never appear in validKeys.
@@ -149,5 +165,115 @@ describe('pruneOrphanMetadata', () => {
         pruneOrphanMetadata(new Set(), install());
 
         expect(loadMetadata()).toEqual({});
+    });
+});
+
+describe('recoverPrunedIdentities', () => {
+    const SHA_A = 'a'.repeat(64);
+    const SHA_B = 'b'.repeat(64);
+    const SHA_C = 'c'.repeat(64);
+
+    function writeBackup(stamp: string, rows: Record<string, unknown>, tag = 'pre-prune'): void {
+        const dir = join(harness.userData, 'mod-metadata.backups');
+        mkdirSync(dir, { recursive: true });
+        writeFileSync(join(dir, `${stamp}_${tag}.json`), JSON.stringify(rows));
+    }
+
+    it('restores identity only on a sha256 match, whatever the key or slot says', () => {
+        writeBackup('2026-10-01T00-00-00-000Z', {
+            'grimoire/pak05_dir.vpk': { sha256: SHA_A, modName: 'Top Bar HUD', gameBananaId: 703330, lastPriority: 5 },
+            'pak02_dir.vpk': { sha256: SHA_B, modName: 'Slot Reused' },
+        });
+        saveMetadata({
+            'grimoire/pak05_dir.vpk': { sha256: SHA_C, globalType: null },
+            'pak07_dir.vpk': { sha256: SHA_A.toUpperCase(), globalType: null },
+            'pak02_dir.vpk': { sha256: SHA_C },
+        });
+
+        expect(recoverPrunedIdentities()).toBe(1);
+
+        const after = loadMetadata();
+        expect(after['pak07_dir.vpk']).toEqual({
+            sha256: SHA_A.toUpperCase(),
+            globalType: null,
+            modName: 'Top Bar HUD',
+            gameBananaId: 703330,
+        });
+        expect(after['grimoire/pak05_dir.vpk']).toEqual({ sha256: SHA_C, globalType: null });
+        expect(after['pak02_dir.vpk']).toEqual({ sha256: SHA_C });
+    });
+
+    it('prefers the newest backup and ignores backup rows without identity', () => {
+        writeBackup('2026-09-01T00-00-00-000Z', { 'pak01_dir.vpk': { sha256: SHA_A, modName: 'Old Name' } });
+        writeBackup('2026-10-01T00-00-00-000Z', { 'pak01_dir.vpk': { sha256: SHA_A, modName: 'New Name' } });
+        writeBackup('2026-10-05T00-00-00-000Z', { 'pak01_dir.vpk': { sha256: SHA_A, globalType: null } });
+        saveMetadata({ 'pak09_dir.vpk': { sha256: SHA_A } });
+
+        expect(recoverPrunedIdentities()).toBe(1);
+
+        expect(loadMetadata()['pak09_dir.vpk']).toEqual({ sha256: SHA_A, modName: 'New Name' });
+    });
+
+    it('never overwrites a field the current row already has, and skips rows that already have identity', () => {
+        writeBackup('2026-10-01T00-00-00-000Z', {
+            'pak01_dir.vpk': { sha256: SHA_A, modName: 'Backup Name', thumbnailUrl: 'https://img/old.png' },
+        });
+        saveMetadata({
+            'pak03_dir.vpk': { sha256: SHA_A, thumbnailUrl: 'https://img/new.png' },
+            'pak04_dir.vpk': { sha256: SHA_A, modName: 'Chosen Name' },
+        });
+
+        expect(recoverPrunedIdentities()).toBe(1);
+
+        const after = loadMetadata();
+        expect(after['pak03_dir.vpk']).toEqual({ sha256: SHA_A, thumbnailUrl: 'https://img/new.png', modName: 'Backup Name' });
+        expect(after['pak04_dir.vpk']).toEqual({ sha256: SHA_A, modName: 'Chosen Name' });
+    });
+
+    it('recovers a Global row the folder heal already stamped with priorityMod', () => {
+        writeBackup('2026-10-01T00-00-00-000Z', {
+            'grimoire/pak05_dir.vpk': { sha256: SHA_A, modName: 'Top Bar HUD', gameBananaId: 703330, priorityMod: true, lastPriority: 5 },
+        });
+        writeBackup('2026-10-05T00-00-00-000Z', { 'grimoire/pak05_dir.vpk': { sha256: SHA_A, priorityMod: true } });
+        saveMetadata({ 'grimoire/pak05_dir.vpk': { sha256: SHA_A, priorityMod: true } });
+
+        expect(recoverPrunedIdentities()).toBe(1);
+
+        expect(loadMetadata()['grimoire/pak05_dir.vpk']).toEqual({
+            sha256: SHA_A,
+            priorityMod: true,
+            modName: 'Top Bar HUD',
+            gameBananaId: 703330,
+        });
+    });
+
+    it('only reads pre-prune backups', () => {
+        writeBackup('2026-10-01T00-00-00-000Z', { 'pak01_dir.vpk': { sha256: SHA_A, modName: 'From DMM' } }, 'dmm-import');
+        saveMetadata({ 'pak09_dir.vpk': { sha256: SHA_A } });
+
+        expect(recoverPrunedIdentities()).toBe(0);
+
+        expect(loadMetadata()['pak09_dir.vpk']).toEqual({ sha256: SHA_A });
+    });
+
+    it('is a no-op without backups or without anything to recover, and writes nothing', () => {
+        saveMetadata({ 'pak09_dir.vpk': { sha256: SHA_A }, 'pak01_dir.vpk': { modName: 'Named', sha256: SHA_B } });
+        expect(recoverPrunedIdentities()).toBe(0);
+
+        writeBackup('2026-10-01T00-00-00-000Z', { 'pak01_dir.vpk': { sha256: SHA_C, modName: 'Other' } });
+        expect(recoverPrunedIdentities()).toBe(0);
+        expect(loadMetadata()['pak09_dir.vpk']).toEqual({ sha256: SHA_A });
+        expect(readdirSync(join(harness.userData, 'mod-metadata.backups'))).toHaveLength(1);
+    });
+
+    it('survives a corrupt backup', () => {
+        writeBackup('2026-10-05T00-00-00-000Z', {});
+        writeFileSync(join(harness.userData, 'mod-metadata.backups', '2026-10-09T00-00-00-000Z_pre-prune.json'), '{nope');
+        writeBackup('2026-10-01T00-00-00-000Z', { 'pak01_dir.vpk': { sha256: SHA_A, modName: 'Survivor' } });
+        saveMetadata({ 'pak09_dir.vpk': { sha256: SHA_A } });
+
+        expect(recoverPrunedIdentities()).toBe(1);
+
+        expect(loadMetadata()['pak09_dir.vpk']).toEqual({ sha256: SHA_A, modName: 'Survivor' });
     });
 });

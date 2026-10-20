@@ -2,12 +2,12 @@ import { useCallback, useEffect, useId, useState } from 'react';
 import { useTranslation, Trans } from 'react-i18next';
 import { ArrowDownCircle, Download, RefreshCw, Sparkles } from 'lucide-react';
 import DOMPurify from 'dompurify';
-import { Badge, Button, Card, ModalHeader } from '../../common/ui';
+import { Badge, Button, Card, ModalHeader, Toggle } from '../../common/ui';
 import { Modal, ModalBody, ModalFooter } from '../../common/Modal';
 import Tx from '../../translation/Tx';
 import { Select } from '../../common/forms';
-import { Toggle } from '../../common/ui';
 import { useAppStore } from '../../../stores/appStore';
+import type { UpdateStatus } from '../../../types/electron';
 
 // GitHub Releases is the source of truth for changelogs. When we have local
 // release notes (an update is pending) we show them in-app; otherwise we link
@@ -36,22 +36,10 @@ function ReleaseVersionLink({ version, className = '' }: { version?: string | nu
 
 export default function UpdatesSection() {
   const { t } = useTranslation();
-  const { settings, saveSettings } = useAppStore();
+  const settings = useAppStore(state => state.settings);
+  const saveSettings = useAppStore(state => state.saveSettings);
   const [appVersion, setAppVersion] = useState<string>('');
-  const [updateStatus, setUpdateStatus] = useState<{
-    checked?: boolean;
-    checking: boolean;
-    available: boolean;
-    downloading: boolean;
-    downloaded: boolean;
-    error: string | null;
-    progress: number;
-    updateInfo: {
-      version: string;
-      releaseDate?: string;
-      releaseNotes?: string | { version: string; note: string | null }[] | null;
-    } | null;
-  } | null>(null);
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
   const [showChangelog, setShowChangelog] = useState(false);
   const changelogTitleId = useId();
   const closeChangelog = useCallback(() => setShowChangelog(false), []);
@@ -217,6 +205,7 @@ export default function UpdatesSection() {
                   components={{
                     arch: <code className="font-mono text-text-primary" />,
                     apt: <code className="font-mono text-text-primary" />,
+                    dnf: <code className="font-mono text-text-primary" />,
                   }}
                 />
               </p>
@@ -225,6 +214,7 @@ export default function UpdatesSection() {
                   i18nKey="settings.updates.installedDeb"
                   components={{
                     deb: <code className="font-mono text-text-primary" />,
+                    rpm: <code className="font-mono text-text-primary" />,
                     url: <code className="font-mono text-text-primary" />,
                   }}
                 />

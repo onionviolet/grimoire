@@ -1,9 +1,11 @@
 import { useEffect, useId, useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
-import { Download, ArrowDownCircle, RefreshCw, Sparkles, AlertTriangle, Package, Github } from 'lucide-react';
+import { Download, ArrowDownCircle, RefreshCw, Sparkles, AlertTriangle, Package } from 'lucide-react';
+import { GithubIcon } from './common/BrandIcons';
 import DOMPurify from 'dompurify';
 import { Button, ModalHeader } from './common/ui';
 import { Modal, ModalBody, ModalFooter } from './common/Modal';
+import type { UpdateStatus } from '../types/electron';
 
 type InstallSource = 'managed' | 'appimage' | 'standard' | 'fork' | 'manual';
 
@@ -13,23 +15,7 @@ type InstallSource = 'managed' | 'appimage' | 'standard' | 'fork' | 'manual';
 // larger change than this decision warrants. See docs/fork-maintenance.md.
 const FORK_ISSUES = 'https://github.com/onionviolet/grimoire/issues';
 
-const RELEASES_URL = 'https://github.com/Slush97/grimoire/releases/latest';
-
-interface UpdateInfo {
-    version: string;
-    releaseDate?: string;
-    releaseNotes?: string | { version: string; note: string | null }[] | null;
-}
-
-interface UpdateStatus {
-    checking: boolean;
-    available: boolean;
-    downloading: boolean;
-    downloaded: boolean;
-    error: string | null;
-    progress: number;
-    updateInfo: UpdateInfo | null;
-}
+const RELEASES_URL = 'https://github.com/Slush97/grimoire/releases';
 
 interface Props {
     onClose: () => void;
@@ -109,6 +95,22 @@ export default function UpdateModal({ onClose }: Props) {
                     closeLabel={t('common.actions.close')}
                 />
 
+                {/* Outside the scrolling body so it stays in view over long release notes. */}
+                {status?.downloading && (
+                    <div className="flex-shrink-0 px-5 pt-4">
+                        <div className="flex justify-between text-xs text-text-secondary mb-1">
+                            <span>{t('updateModal.downloadingUpdate')}</span>
+                            <span className="tabular-nums">{Math.round(status.progress)}%</span>
+                        </div>
+                        <div className="w-full bg-bg-tertiary rounded-full h-1.5 overflow-hidden">
+                            <div
+                                className="bg-accent h-full rounded-full transition-all duration-300 ease-out"
+                                style={{ width: `${status.progress}%` }}
+                            />
+                        </div>
+                    </div>
+                )}
+
                 <ModalBody>
                     {installSource === 'fork' && (
                         <div className="flex items-start gap-3 p-4 rounded-lg bg-bg-tertiary border border-hl/10 mb-4">
@@ -137,6 +139,7 @@ export default function UpdateModal({ onClose }: Props) {
                                         components={{
                                             arch: <code className="font-mono text-text-primary" />,
                                             apt: <code className="font-mono text-text-primary" />,
+                                            dnf: <code className="font-mono text-text-primary" />,
                                         }}
                                     />
                                 </p>
@@ -145,6 +148,7 @@ export default function UpdateModal({ onClose }: Props) {
                                         i18nKey="updateModal.managedAptRepo"
                                         components={{
                                             deb: <code className="font-mono text-text-primary" />,
+                                            rpm: <code className="font-mono text-text-primary" />,
                                             url: <code className="font-mono text-text-primary" />,
                                         }}
                                     />
@@ -160,7 +164,7 @@ export default function UpdateModal({ onClose }: Props) {
                                 <p className="text-text-primary font-medium">{t('updateModal.manualDownloadRequired')}</p>
                                 <p>{t('updateModal.manualUnsignedExplanation')}</p>
                                 <a
-                                    href={RELEASES_URL}
+                                    href={status?.updateInfo ? `${RELEASES_URL}/tag/v${status.updateInfo.version}` : `${RELEASES_URL}/latest`}
                                     target="_blank"
                                     rel="noreferrer noopener"
                                     className="inline-block font-mono text-text-primary underline underline-offset-2 hover:text-accent transition-colors"
@@ -175,21 +179,6 @@ export default function UpdateModal({ onClose }: Props) {
                         <div className="flex items-start gap-2 p-3 rounded-lg bg-state-danger/10 border border-state-danger/30 text-state-danger text-sm mb-4">
                             <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
                             <span>{status.error === 'UPDATE_CHANNEL_CHANGED' ? t('settings.updates.channelChanged') : status.error}</span>
-                        </div>
-                    )}
-
-                    {status?.downloading && (
-                        <div className="mb-4">
-                            <div className="flex justify-between text-xs text-text-secondary mb-1">
-                                <span>{t('updateModal.downloadingUpdate')}</span>
-                                <span className="tabular-nums">{Math.round(status.progress)}%</span>
-                            </div>
-                            <div className="w-full bg-bg-tertiary rounded-full h-1.5 overflow-hidden">
-                                <div
-                                    className="bg-accent h-full rounded-full transition-all duration-300 ease-out"
-                                    style={{ width: `${status.progress}%` }}
-                                />
-                            </div>
                         </div>
                     )}
 
@@ -255,7 +244,7 @@ export default function UpdateModal({ onClose }: Props) {
                         title={t('settings.support.githubIssuesTitle')}
                         className="inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium border border-border bg-bg-tertiary/40 text-text-primary hover:bg-bg-tertiary/70 hover:border-text-secondary/60 transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-text-secondary/60 whitespace-nowrap"
                     >
-                        <Github className="w-4 h-4" aria-hidden="true" />
+                        <GithubIcon className="w-4 h-4" aria-hidden="true" />
                         {t('settings.support.githubIssues')}
                     </a>
                     <div className="flex items-center gap-2">

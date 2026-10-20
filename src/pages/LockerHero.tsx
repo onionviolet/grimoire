@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useMemo, useState, type ComponentProps } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Star,
@@ -18,6 +18,7 @@ import { IconButton, SegmentedControl } from '../components/common/ui';
 import { useSegmentedTabs } from '../components/common/useSegmentedTabs';
 import HeroSkinsPanel, { SkinLoadOrderStrip } from '../components/locker/HeroSkinsPanel';
 import HeroSkinOverlapPanel from '../components/locker/HeroSkinOverlapPanel';
+import { HeroNavigation } from '../components/locker/HeroNavigation';
 import { LockerModImagePicker } from '../components/locker/LockerModImagePicker';
 import HeroCardPicker from '../components/locker/HeroCardPicker';
 import HeroSoundShelf from '../components/locker/HeroSoundShelf';
@@ -25,6 +26,7 @@ import HeroEffectsPanel from '../components/locker/HeroEffectsPanel';
 import FloatingModelPanel from '../components/locker/FloatingModelPanel';
 import { useModelPanelOpen } from '../components/locker/useModelPanelOpen';
 import { useHeroStageMode, type HeroStageMode } from '../components/locker/heroStageMode';
+import { ErrorBoundary } from '../components/common/ErrorBoundary';
 // three.js viewer is heavy; only pull the chunk when the user flips to 3D.
 const HeroPoseViewer = lazy(() => import('../components/locker/HeroPoseViewer'));
 import type { HeroPoseFailureKind } from '../components/locker/HeroPoseViewer';
@@ -34,6 +36,7 @@ import type { Mod } from '../types/mod';
 import type { HeroPoseSkinSource } from '../types/portrait';
 import {
   activeLockerSkin,
+  getHeroNamePath,
   countLockerSkins,
   getLockerSkinKey,
   type HeroCategory,
@@ -43,6 +46,7 @@ import type { VariantChoice } from '../lib/lockerRandomizer';
 
 interface LockerHeroViewProps {
   hero: HeroCategory;
+  navigation: Omit<ComponentProps<typeof HeroNavigation>, 'children'>;
   skinList: Mod[];
   /** Sound-section mods mapped to this hero. Optional because the gallery
    *  view in `Locker.tsx` keeps the same prop surface and may not split sounds
@@ -55,8 +59,8 @@ interface LockerHeroViewProps {
    *  Foundry simply do not show the entry point. */
   onEditInFoundry?: () => void;
   onToggleFavorite: () => void;
-  onSelect: (modId: string) => void | Promise<void>;
-  onToggleVariant: (modId: string) => void | Promise<void>;
+  onSelect: (modId: string) => Promise<boolean> | void;
+  onToggleVariant: (modId: string) => Promise<boolean> | void;
   /** Reorder the load order of this hero's enabled skins. `orderedModIds` is
    *  the new desired order of enabled skin VPK ids (lower index = loads first). */
   onReorderSkins?: (orderedModIds: string[]) => void | Promise<void>;
@@ -92,6 +96,7 @@ function poseSkinSelectionKey(mod: Mod): string {
 
 export function LockerHeroView({
   hero,
+  navigation,
   skinList,
   soundList = [],
   skinCount,
@@ -129,6 +134,7 @@ export function LockerHeroView({
   // name (only meaningful when a custom backdrop is in play).
   const hideHeroName = activeSkinKey ? Boolean(lockerBgHideHeroName[activeSkinKey]) : false;
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [nameFailed, setNameFailed] = useState(false);
   // Remembered across visits: see useModelPanelOpen. This is the floating
   // panel's open state, which under the stage design means "popped out".
   const [modelPanelOpen, setModelPanelOpen] = useModelPanelOpen('locker');
@@ -247,14 +253,14 @@ export function LockerHeroView({
     });
   };
 
-  const handleSelect = async (modId: string) => {
+  const handleSelect = (modId: string) => {
     rememberPoseSkinSelection(modId);
-    await onSelect(modId);
+    return onSelect(modId);
   };
 
-  const handleToggleVariant = async (modId: string) => {
+  const handleToggleVariant = (modId: string) => {
     rememberPoseSkinSelection(modId);
-    await onToggleVariant(modId);
+    return onToggleVariant(modId);
   };
 
   // Content-pane heading, Global-view style (section title + count). The Cards
@@ -302,13 +308,14 @@ export function LockerHeroView({
 
 
   return (
+    <div data-locker-hero-view className="contents">
     <HeroDetailFrame
       surface="locker"
       heroName={hero.name}
       backdropImage={backdropImage}
       heroIconUrl={hero.iconUrl}
-      // Issue #208: the active skin's backdrop may already show the hero name.
-      hideHeroName={hideHeroName && Boolean(backdropImage)}
+      // The name art is drawn in railTop, inside the previous/next navigation.
+      hideHeroName
       backLabel={t('locker.hero.back')}
       onBack={onBack}
       navLabel={t('locker.hero.lockerSections')}
@@ -330,23 +337,41 @@ export function LockerHeroView({
         </button>
       }
       railTop={
-        /* The other half of the Foundry link: the Locker is where you manage
-           what you have, Foundry is where you make more of it. */
-        <div className="space-y-2">
-          <p className="text-2xs font-semibold uppercase tracking-wide text-text-secondary">
-            {t('locker.hero.manageInstalled', 'Manage installed')}
-          </p>
-          {onEditInFoundry ? (
-            <button
-              type="button"
-              onClick={onEditInFoundry}
-              className="flex w-full items-center gap-2 rounded-lg border border-border/70 px-3 py-2 text-sm text-text-secondary transition-colors hover:border-accent/60 hover:text-text-primary"
-            >
-              <Hammer className="w-4 h-4" />
-              {t('locker.hero.editInFoundry', 'Edit in Foundry')}
-            </button>
-          ) : null}
-        </div>
+        <>
+          /* The other half of the Foundry link: the Locker is where you manage
+             what you have, Foundry is where you make more of it. */
+          <div className="space-y-2">
+            <p className="text-2xs font-semibold uppercase tracking-wide text-text-secondary">
+              {t('locker.hero.manageInstalled', 'Manage installed')}
+            </p>
+            {onEditInFoundry ? (
+              <button
+                type="button"
+                onClick={onEditInFoundry}
+                className="flex w-full items-center gap-2 rounded-lg border border-border/70 px-3 py-2 text-sm text-text-secondary transition-colors hover:border-accent/60 hover:text-text-primary"
+              >
+                <Hammer className="w-4 h-4" />
+                {t('locker.hero.editInFoundry', 'Edit in Foundry')}
+              </button>
+            ) : null}
+          </div>
+          {/* Issue #208: the active skin's backdrop may already show the hero
+              name, in which case only the navigation buttons remain. */}
+          <HeroNavigation {...navigation}>
+            {hideHeroName && Boolean(backdropImage) ? null : nameFailed ? (
+              <h2 className="truncate text-2xl font-bold text-white drop-shadow-[0_2px_12px_rgba(0,0,0,0.6)]">
+                {hero.name}
+              </h2>
+            ) : (
+              <img
+                src={getHeroNamePath(hero.name)}
+                alt={hero.name}
+                className="h-8 w-auto max-w-full object-contain"
+                onError={() => setNameFailed(true)}
+              />
+            )}
+          </HeroNavigation>
+        </>
       }
       railExtra={
         /* Load order for stacked skins. Lives in the sidebar (not over the
@@ -399,22 +424,25 @@ export function LockerHeroView({
       platePreview={
         displayedMode === 'model' && !modelPanelOpen ? (
           <div className={heroPlateComposition({ kind: 'model' }).className}>
-            <Suspense
-              fallback={
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <Loader2 className="h-6 w-6 animate-spin text-white/80" />
-                </div>
-              }
-            >
-              <HeroPoseViewer
-                key={`${hero.name}:${activeSkinSourceKey}:${fallbackPoseSkinMetaKey ?? ''}:${retryNonce}`}
-                heroName={hero.name}
-                skinSources={activeSkinSources}
-                fallbackSkinMetaKey={fallbackPoseSkinMetaKey}
-                trippyPreview={matchedTrippyPreview}
-                onFailureChange={handlePoseFailureChange}
-              />
-            </Suspense>
+            {/* Without hardware WebGL the canvas throws; keep that inside the panel. */}
+            <ErrorBoundary>
+              <Suspense
+                fallback={
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <Loader2 className="h-6 w-6 animate-spin text-white/80" />
+                  </div>
+                }
+              >
+                <HeroPoseViewer
+                  key={`${hero.name}:${activeSkinSourceKey}:${fallbackPoseSkinMetaKey ?? ''}:${retryNonce}`}
+                  heroName={hero.name}
+                  skinSources={activeSkinSources}
+                  fallbackSkinMetaKey={fallbackPoseSkinMetaKey}
+                  trippyPreview={matchedTrippyPreview}
+                  onFailureChange={handlePoseFailureChange}
+                />
+              </Suspense>
+            </ErrorBoundary>
           </div>
         ) : undefined
       }
@@ -441,22 +469,25 @@ export function LockerHeroView({
               }
               onClose={() => setModelPanelOpen(false)}
             >
-              <Suspense
-                fallback={
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <Loader2 className="h-6 w-6 animate-spin text-white/80" />
-                  </div>
-                }
-              >
-                <HeroPoseViewer
-                  key={`${hero.name}:${activeSkinSourceKey}:${fallbackPoseSkinMetaKey ?? ''}:${retryNonce}`}
-                  heroName={hero.name}
-                  skinSources={activeSkinSources}
-                  fallbackSkinMetaKey={fallbackPoseSkinMetaKey}
-                  trippyPreview={matchedTrippyPreview}
-                  onFailureChange={handlePoseFailureChange}
-                />
-              </Suspense>
+              {/* Without hardware WebGL the canvas throws; keep that inside the panel. */}
+              <ErrorBoundary>
+                <Suspense
+                  fallback={
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <Loader2 className="h-6 w-6 animate-spin text-white/80" />
+                    </div>
+                  }
+                >
+                  <HeroPoseViewer
+                    key={`${hero.name}:${activeSkinSourceKey}:${fallbackPoseSkinMetaKey ?? ''}:${retryNonce}`}
+                    heroName={hero.name}
+                    skinSources={activeSkinSources}
+                    fallbackSkinMetaKey={fallbackPoseSkinMetaKey}
+                    trippyPreview={matchedTrippyPreview}
+                    onFailureChange={handlePoseFailureChange}
+                  />
+                </Suspense>
+              </ErrorBoundary>
             </FloatingModelPanel>
           )}
 
@@ -510,5 +541,6 @@ export function LockerHeroView({
       )}
       {selectionPanel}
     </HeroDetailFrame>
+    </div>
   );
 }

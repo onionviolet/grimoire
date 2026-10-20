@@ -6,7 +6,11 @@ import { detectDeadlockPath, looksLikeDeadlockPath } from '../services/deadlock'
 import { ensureDevDeadlockPath } from '../services/dev';
 import { configureFilter, filterStats, reloadBrowserFilter, checkBrowserFilterUpdate, applyBrowserFilterUpdate } from '../services/browserContentFilter';
 import type { BrowserFilterStats } from '../../../src/types/foundry';
+import { copyModsToDev } from '../services/devMods';
 import { syncForgeBridgeWithSettings } from '../services/forgeBridge';
+import { hydrateOnBoot as hydrateSocialSession } from '../services/socialAuth';
+import { runExclusiveModMutation } from '../services/mods';
+import { assertModUpdateSettingsChange, assertNoModUpdates } from '../services/modUpdates';
 
 // detect-deadlock
 ipcMain.handle('detect-deadlock', (): string | null => {
@@ -25,22 +29,41 @@ ipcMain.handle('create-dev-deadlock-path', (): string => {
     return ensureDevDeadlockPath();
 });
 
+ipcMain.handle('copy-mods-to-dev', (event) => {
+    assertNoModUpdates();
+    return copyModsToDev((percent) => {
+        if (!event.sender.isDestroyed()) event.sender.send('copy-mods-to-dev-progress', percent);
+    });
+});
+
 // get-settings
 ipcMain.handle('get-settings', (): AppSettings => {
     return loadSettings();
 });
 
 // set-settings
-ipcMain.handle('set-settings', (_, settings: AppSettings): void => {
-    const safetyWasOn = loadSettings().experimentalModSafety;
-    saveSettings(settings);
-    // Rebuild the browser blocklist in the same breath as the save, so a list
-    // path or toggle change takes effect without restarting the app. Cheap: a
-    // file read and a Set rebuild, and it no-ops when the filter is off.
+ipcMain.handle('set-settings', async (_, patch: Partial<AppSettings>): Promise<AppSettings> => {
+    const current = loadSettings();
+    const settings = { ...current, ...patch };
+    assertModUpdateSettingsChange(current, settings);
+    const persist = () => {
+        const previous = loadSettings();
+        // A path switch can wait behind mod writes while other preferences save.
+        const saved = { ...previous, ...patch, lastDialogDirectory: previous.lastDialogDirectory };
+        assertModUpdateSettingsChange(previous, saved);
+        saveSettings(saved);
+        return { previous, saved };
+    };
+    // Finish in-flight mod writes before changing their metadata destination.
+    const changesInstallation = settings.devMode !== current.devMode ||
+        settings.devDeadlockPath !== current.devDeadlockPath || settings.deadlockPath !== current.deadlockPath;
+    const { previous, saved } = changesInstallation
+        ? await runExclusiveModMutation(async () => persist())
+        : persist();
     configureFilter({
-        enabled: settings.browserBlockTrackers !== false,
-        userListPath: settings.browserBlockListPath,
-            exceptions: settings.browserFilterExceptions,
+        enabled: saved.browserBlockTrackers !== false,
+        userListPath: saved.browserBlockListPath,
+        exceptions: saved.browserFilterExceptions,
     });
     syncWindowBackgroundWithSettings();
     // Bring the DeadlockForge bridge up or down to match. Toggling it off must
@@ -49,9 +72,13 @@ ipcMain.handle('set-settings', (_, settings: AppSettings): void => {
     // Startup skips the installed-mod check while the review is off, so turning
     // it on checks the library now instead of at the next launch.
     const deadlockPath = getActiveDeadlockPath();
-    if (settings.experimentalModSafety && !safetyWasOn && deadlockPath) {
+    if (saved.experimentalModSafety && !previous.experimentalModSafety && deadlockPath) {
         auditInstalledSafety(deadlockPath).catch(err => console.error('[mod-safety] Inspection failed:', err));
     }
+    // Launch skips the saved-session check while Social is off, so turning it
+    // on restores the session now instead of at the next launch.
+    if (saved.experimentalSocial && !previous.experimentalSocial) void hydrateSocialSession();
+    return saved;
 });
 
 // browser:filterStats

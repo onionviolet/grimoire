@@ -12,8 +12,8 @@
 // as a first-class Steam root. The native location is still probed (harmless,
 // and correct the day Valve ships a macOS build).
 
-import { existsSync, readdirSync, readlinkSync, statSync } from 'fs';
-import { join, resolve, isAbsolute } from 'path';
+import { existsSync, readdirSync, readlinkSync, realpathSync, statSync } from 'fs';
+import { join, resolve, isAbsolute, sep } from 'path';
 import { homedir } from 'os';
 import { execFileSync } from 'child_process';
 
@@ -144,7 +144,7 @@ export function findBottleForPath(
     const normalized = resolve(hostPath);
     for (const bottle of findSteamBottles(bottlesDir)) {
         const root = resolve(bottle.bottlePath);
-        if (normalized === root || normalized.startsWith(root + '/')) return bottle;
+        if (normalized === root || normalized.startsWith(root + sep)) return bottle;
     }
     return null;
 }
@@ -172,14 +172,24 @@ function queryWindowsRegistry(key: string, value: string): string | null {
 export function getSteamRoots(bottlesDir: string = defaultBottlesDir()): string[] {
     const home = homedir();
     const roots: string[] = [];
+    const seen = new Set<string>();
     const push = (p: string | null) => {
         if (!p) return;
         const norm = process.platform === 'win32'
             ? p.replace(/\//g, '\\').replace(/\\+$/, '')
             : p.replace(/\/+$/, '');
-        if (!roots.some((existing) => existing.toLowerCase() === norm.toLowerCase())) {
-            roots.push(norm);
+        // ~/.steam/steam is normally a symlink to ~/.local/share/Steam. Without
+        // resolving it every caller scans the same install twice.
+        let key = norm;
+        try {
+            key = realpathSync.native(norm);
+        } catch {
+            // Missing roots still dedupe by name.
         }
+        key = key.toLowerCase();
+        if (seen.has(key)) return;
+        seen.add(key);
+        roots.push(norm);
     };
 
     if (process.platform === 'linux') {

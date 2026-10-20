@@ -76,3 +76,9 @@ export function findReplacementTargetIdsAfterInstall(
 
   return [...ids];
 }
+
+/** The installed mods behind the ids, taken now so a delete can prove they are unchanged later. */
+export function modsByIds<T extends { id: string }>(ids: readonly string[], installed: readonly T[]): T[] {
+  const wanted = new Set(ids);
+  return installed.filter((mod) => wanted.has(mod.id));
+}

@@ -447,9 +447,13 @@ export function saveMatches(accountId: number, matches: PlayerMatch[]): void {
                 last_hits: match.last_hits,
                 denies: match.denies,
                 net_worth: match.net_worth,
-                player_damage: match.player_damage,
-                player_healing: match.player_healing,
-                obj_damage: match.obj_damage,
+                // The list endpoint omits these, so they arrive undefined.
+                // better-sqlite3 rejects undefined for a named param; store NULL
+                // ("unknown") rather than 0, which the UI would render as a real
+                // reading of zero damage.
+                player_damage: match.player_damage ?? null,
+                player_healing: match.player_healing ?? null,
+                obj_damage: match.obj_damage ?? null,
                 items: '[]', // Will be populated from full match data if needed
             })
         }
@@ -651,8 +655,6 @@ export function updateAggregatedStats(accountId: number): void {
         )
         .all(accountId) as Array<{ match_outcome: string }>
 
-    let currentWinStreak = 0
-    let currentLossStreak = 0
     let bestWinStreak = 0
     let worstLossStreak = 0
     let tempWinStreak = 0
@@ -664,18 +666,16 @@ export function updateAggregatedStats(accountId: number): void {
             tempWinStreak++
             tempLossStreak = 0
             if (tempWinStreak > bestWinStreak) bestWinStreak = tempWinStreak
-            if (i === 0) currentWinStreak = tempWinStreak
         } else {
             tempLossStreak++
             tempWinStreak = 0
             if (tempLossStreak > worstLossStreak) worstLossStreak = tempLossStreak
-            if (i === 0) currentLossStreak = tempLossStreak
         }
     }
 
     // Current streak: count consecutive from start
-    currentWinStreak = 0
-    currentLossStreak = 0
+    let currentWinStreak = 0
+    let currentLossStreak = 0
     for (const match of matches) {
         if (match.match_outcome === 'Win') {
             if (currentLossStreak === 0) currentWinStreak++

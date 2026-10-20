@@ -14,6 +14,9 @@ export interface GameBananaMod {
   submitter?: GameBananaSubmitter;
   previewMedia?: GameBananaPreviewMedia;
   rootCategory?: GameBananaCategory;
+  /** Deepest category the mod is filed under (a hero, under Skins). Absent when
+   *  it sits directly in a root category. */
+  subCategory?: GameBananaCategory;
 }
 
 export interface GameBananaSection {
@@ -275,7 +278,7 @@ export function parseGameBananaItemUrl(input: string): GameBananaItemRef | null 
   }
 }
 
-export function getModThumbnail(mod: GameBananaMod): string | undefined {
+export function getModThumbnail(mod: Pick<GameBananaMod, 'previewMedia'>): string | undefined {
   const images = mod.previewMedia?.images;
   if (!images || images.length === 0) return undefined;
 

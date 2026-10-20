@@ -30,7 +30,7 @@ vi.mock('./launch', () => ({
   readStash: async () => null,
 }));
 
-import { scanMods, setModPriorityFolder, disableMod, enableMod } from './mods';
+import { healModFolders, scanMods, setModPriorityFolder, disableMod, enableMod } from './mods';
 import { getModMetadata } from './metadata';
 
 /** A VPK header the scanner accepts, padded so the file has a plausible size. */
@@ -151,16 +151,19 @@ describe('setModPriorityFolder', () => {
     expect(back.metaKey).not.toContain('grimoire/');
   });
 
-  // scanMods self-heal: an enabled non-reserved VPK found in the priority root
+  // healModFolders self-heal: an enabled non-reserved VPK found in the priority root
   // without the flag (stranded by the pre-guard-fix remove path, or hand-placed)
   // gets priorityMod stamped so the Global surfaces see it and the next
   // disable/enable round trip cannot demote it.
-  it('heals a flagless resident of the priority root on scan', async () => {
+  it('heals a flagless resident of the priority root in healModFolders', async () => {
     writeVpk(join(dl, ...GRIMOIRE, 'pak06_dir.vpk'));
     expect(getModMetadata('grimoire/pak06_dir.vpk')?.priorityMod).toBeUndefined();
 
     const mods = await scanMods(dl);
     expect(mods.some((m) => m.metaKey === 'grimoire/pak06_dir.vpk')).toBe(true);
+    expect(getModMetadata('grimoire/pak06_dir.vpk')?.priorityMod).toBeUndefined();
+
+    await healModFolders(dl);
     expect(getModMetadata('grimoire/pak06_dir.vpk')?.priorityMod).toBe(true);
   });
 });

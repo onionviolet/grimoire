@@ -3,7 +3,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const h = vi.hoisted(() => ({ interrupted: vi.fn(), recover: vi.fn(), compatibility: vi.fn(), session: vi.fn(), start: vi.fn(), trial: vi.fn(), result: vi.fn(), finish: vi.fn() }));
-vi.mock('../../lib/api', () => ({ getInterruptedProfileRecovery: h.interrupted, recoverInterruptedProfileRecovery: h.recover, reviewModCompatibility: h.compatibility,
+vi.mock('../../lib/api', () => ({ getInterruptedProfileRecovery: h.interrupted, recoverInterruptedProfileRecovery: h.recover, reviewSetupCompatibility: h.compatibility,
   getModIsolationSession: h.session, startModIsolation: h.start, applyModIsolationTrial: h.trial, recordModIsolationResult: h.result, finishModIsolation: h.finish }));
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 import RecoveryTools from './RecoveryTools';

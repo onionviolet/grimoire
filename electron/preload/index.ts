@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
+import type { ChooseModUpdateReplacementArgs, ModUpdateState, StartModUpdatesArgs } from '../../src/types/modUpdates';
 import type {
     PortableProfile,
     PortableResolvedMod,
@@ -24,6 +25,7 @@ import type {
     ApplyUnknownCustomModArgs,
     ApplyUnknownModMatchArgs,
     AssociateUnknownModArgs,
+    DeleteModEntry,
     DeleteModsProgress,
     GlobalModType,
     EditLocalModArgs,
@@ -55,7 +57,6 @@ import type {
     ImportCustomModsBatchArgs,
     ImportCustomModsProgress,
     LocalVariantGroupTarget,
-    RestoreLocalVariantGroupReplacementArgs,
     ImportSoulContainerGlbArgs,
     PreviewSoulContainerGlbArgs,
     ImportSpiritUrnGlbArgs,
@@ -72,6 +73,7 @@ import type {
     DownloadErrorData,
     ModsAutoDisabledData,
     DownloadQueueData,
+    DownloadQueueItem,
     OneClickInstallData,
     OneClickSuspiciousFilesData,
     MultiVpkPickData,
@@ -86,8 +88,14 @@ import type {
 } from '../../src/types/electron';
 import type { AppearanceSurface } from '../../src/types/mod';
 import type { DeadworksConnectProgress } from '../../src/types/deadworks';
-import type { DmmMigrationRequest } from '../../src/lib/dmmMigration';
 import type { BrowserDestinationKind } from '../../src/lib/browserCatalog';
+import type {
+    InterchangeDocument,
+    InterchangeExportSelection,
+    InterchangeImportSelection,
+    InterchangeProgress,
+    InterchangeSourceRequest,
+} from '../../src/lib/modInterchange';
 import type {
     ProfileSort,
     PublishRequest,
@@ -112,13 +120,28 @@ contextBridge.exposeInMainWorld('electronAPI', {
     detectDeadlock: () => ipcRenderer.invoke('detect-deadlock'),
     validateDeadlockPath: (path: string) => ipcRenderer.invoke('validate-deadlock-path', path),
     createDevDeadlockPath: () => ipcRenderer.invoke('create-dev-deadlock-path'),
+    copyModsToDev: () => ipcRenderer.invoke('copy-mods-to-dev'),
+    onCopyModsToDevProgress: (callback: (percent: number) => void) => {
+        const listener = (_: unknown, percent: number) => callback(percent);
+        ipcRenderer.on('copy-mods-to-dev-progress', listener);
+        return () => ipcRenderer.removeListener('copy-mods-to-dev-progress', listener);
+    },
     getSettings: () => ipcRenderer.invoke('get-settings'),
-    setSettings: (settings: AppSettings) => ipcRenderer.invoke('set-settings', settings),
+    setSettings: (patch: Partial<AppSettings>) => ipcRenderer.invoke('set-settings', patch),
 
-    // Deadlock Mod Manager migration (adopt DMM's on-disk VPKs; no cloud)
-    dmmMigrate: {
-        scan: (req: DmmMigrationRequest) => ipcRenderer.invoke('dmm-migrate:scan', req),
-        execute: (req: DmmMigrationRequest) => ipcRenderer.invoke('dmm-migrate:execute', req),
+    // Mod transfer between mod managers (neutral interchange format; no cloud)
+    interchange: {
+        sources: () => ipcRenderer.invoke('interchange:sources'),
+        read: (req: InterchangeSourceRequest) => ipcRenderer.invoke('interchange:read', req),
+        import: (req: { document: InterchangeDocument; selection: InterchangeImportSelection }) =>
+            ipcRenderer.invoke('interchange:import', req),
+        export: (req: { destinationDir: string; selection: InterchangeExportSelection }) =>
+            ipcRenderer.invoke('interchange:export', req),
+        onProgress: (callback: (progress: InterchangeProgress) => void) => {
+            const listener = (_: unknown, progress: InterchangeProgress) => callback(progress);
+            ipcRenderer.on('interchange:progress', listener);
+            return () => ipcRenderer.removeListener('interchange:progress', listener);
+        },
     },
 
     chatWheelRead: (vpkPath: string) => ipcRenderer.invoke('chat-wheel:read', vpkPath),
@@ -142,6 +165,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
 
     // Mods
+    listModBackups: () => ipcRenderer.invoke('list-mod-backups'),
+    restoreModBackup: (backupId: string) => ipcRenderer.invoke('restore-mod-backup', backupId),
+    deleteModBackup: (backupId: string) => ipcRenderer.invoke('delete-mod-backup', backupId),
+    onModBackupsChanged: (callback: () => void) => {
+        const listener = () => callback();
+        ipcRenderer.on('mod-backups-changed', listener);
+        return () => ipcRenderer.removeListener('mod-backups-changed', listener);
+    },
+    getCrashAdvisories: () => ipcRenderer.invoke('get-crash-advisories'),
+    dismissCrashAdvisory: (id: string) => ipcRenderer.invoke('dismiss-crash-advisory', id),
+    onCrashAdvisoriesChanged: (callback: (findings: import('../../src/types/crashAdvisory').CrashAdvisory[]) => void) => {
+        const listener = (_event: Electron.IpcRendererEvent, findings: import('../../src/types/crashAdvisory').CrashAdvisory[]) => callback(findings);
+        ipcRenderer.on('crash-advisories-changed', listener);
+        return () => ipcRenderer.removeListener('crash-advisories-changed', listener);
+    },
     getModSafetyPrompts: () => ipcRenderer.invoke('get-mod-safety-prompts'),
     respondModSafety: (id: string, accepted: boolean) => ipcRenderer.invoke('respond-mod-safety', id, accepted),
     getInstalledModSafety: () => ipcRenderer.invoke('get-installed-mod-safety'),
@@ -152,17 +190,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
         ipcRenderer.on('mod-safety-changed', listener);
         return () => ipcRenderer.removeListener('mod-safety-changed', listener);
     },
+    onModVdataChecked: (callback: () => void) => {
+        const listener = () => callback();
+        ipcRenderer.on('mod-vdata-checked', listener);
+        return () => ipcRenderer.removeListener('mod-vdata-checked', listener);
+    },
     getMods: () => ipcRenderer.invoke('get-mods'),
     enableMod: (modId: string) => ipcRenderer.invoke('enable-mod', modId),
     disableMod: (modId: string) => ipcRenderer.invoke('disable-mod', modId),
-    deleteMod: (modId: string) => ipcRenderer.invoke('delete-mod', modId),
-    deleteMods: (modIds: string[]) => ipcRenderer.invoke('delete-mods', modIds),
+    deleteMod: (entry: DeleteModEntry) => ipcRenderer.invoke('delete-mod', entry),
+    deleteMods: (entries: DeleteModEntry[]) => ipcRenderer.invoke('delete-mods', entries),
     onDeleteModsProgress: (callback: (progress: DeleteModsProgress) => void) => {
         const handler = (_event: Electron.IpcRendererEvent, progress: DeleteModsProgress) => callback(progress);
         ipcRenderer.on('delete-mods-progress', handler);
         return () => ipcRenderer.removeListener('delete-mods-progress', handler);
     },
-    assertReplacementSafety: (modIds: string[]) => ipcRenderer.invoke('assert-replacement-safety', modIds),
     revealModInFolder: (modId: string) => ipcRenderer.invoke('reveal-mod-in-folder', modId),
     // Installed files that are not actually VPKs (archives renamed to *_dir.vpk).
     // Reporting only: nothing is deleted, and repair is an explicit user action.
@@ -174,6 +216,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
         ipcRenderer.on('vpk-impostors-found', listener);
         return () => ipcRenderer.removeListener('vpk-impostors-found', listener);
     },
+    healModAttachments: (modId: string) => ipcRenderer.invoke('heal-mod-attachments', modId),
+    reviewModCompatibility: () => ipcRenderer.invoke('review-mod-compatibility'),
+    repairModCompatibility: (modId: string) => ipcRenderer.invoke('repair-mod-compatibility', modId),
     detectUnknownModFilters: (modId: string, requestId?: string) =>
         ipcRenderer.invoke('detect-unknown-mod-filters', modId, requestId),
     detectUnknownModCacheBulk: (requests: Array<{ modId: string; requestId?: string }>) =>
@@ -197,8 +242,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
         ipcRenderer.invoke('edit-local-mod', modId, args),
     setLocalVariantGroup: (modIds: string[], target: LocalVariantGroupTarget) =>
         ipcRenderer.invoke('set-local-variant-group', modIds, target),
-    restoreLocalVariantGroupReplacement: (args: RestoreLocalVariantGroupReplacementArgs) =>
-        ipcRenderer.invoke('restore-local-variant-group-replacement', args),
     setVariantLabel: (modId: string, label: string) =>
         ipcRenderer.invoke('set-variant-label', modId, label),
     setModLockerHero: (modId: string, heroName: string | null) =>
@@ -238,18 +281,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
         ipcRenderer.invoke('export-rigged-hero-pose', heroName, skinSources, fallbackSkinMetaKey),
     getHeroClothModel: (heroName: string, skinSources?: unknown[]) =>
         ipcRenderer.invoke('get-hero-cloth-model', heroName, skinSources),
-    getHeroEffectInfo: (heroName: string) =>
-        ipcRenderer.invoke('get-hero-effect-info', heroName),
     getHeroAbilityPreviews: (heroName: string) => ipcRenderer.invoke('ability-preview:list', heroName),
     prepareHeroAbilityPreview: (heroName: string, slot, options) => ipcRenderer.invoke('ability-preview:prepare', heroName, slot, options),
-    exportHeroEffect: (heroName: string) =>
-        ipcRenderer.invoke('export-hero-effect', heroName),
+    getHeroEffectInfo: (heroName: string, skinSources?: unknown[]) =>
+        ipcRenderer.invoke('get-hero-effect-info', heroName, skinSources),
+    exportHeroEffect: (heroName: string, skinSources?: unknown[]) =>
+        ipcRenderer.invoke('export-hero-effect', heroName, skinSources),
     getPreviewCacheSize: () =>
         ipcRenderer.invoke('get-preview-cache-size'),
     clearPreviewCache: () =>
         ipcRenderer.invoke('clear-preview-cache'),
     getGameBananaFileServerDiagnostics: () =>
         ipcRenderer.invoke('gamebanana-fileservers:getDiagnostics'),
+    getGameBananaDownloadProxy: () => ipcRenderer.invoke('gamebanana-download-proxy:get'),
+    setGameBananaDownloadProxy: (config) => ipcRenderer.invoke('gamebanana-download-proxy:set', config),
     refreshGameBananaFileServerCache: () =>
         ipcRenderer.invoke('gamebanana-fileservers:refreshCache'),
     testGameBananaFileServers: () =>
@@ -452,6 +497,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getModUpdates: (args: GetModUpdatesArgs) => ipcRenderer.invoke('get-mod-updates', args),
     getSubmitterLinks: (memberId: number) => ipcRenderer.invoke('get-submitter-links', memberId),
     downloadMod: (args: DownloadModArgs) => ipcRenderer.invoke('download-mod', args),
+    startModUpdates: (args: StartModUpdatesArgs) => ipcRenderer.invoke('start-mod-updates', args),
+    getModUpdateState: () => ipcRenderer.invoke('get-mod-update-state'),
+    onModUpdateStateUpdated: (callback: (state: ModUpdateState) => void) => {
+        const listener = (_: unknown, state: ModUpdateState) => callback(state);
+        ipcRenderer.on('mod-update-state-updated', listener);
+        return () => ipcRenderer.removeListener('mod-update-state-updated', listener);
+    },
+    chooseModUpdateReplacement: (args: ChooseModUpdateReplacementArgs) => ipcRenderer.invoke('choose-mod-update-replacement', args),
+    removeModUpdateRequest: (requestId: string) => ipcRenderer.invoke('remove-mod-update-request', requestId),
     getGameBananaSections: () => ipcRenderer.invoke('get-gamebanana-sections'),
     getGameBananaCategories: (args: GetCategoriesArgs) =>
         ipcRenderer.invoke('get-gamebanana-categories', args),
@@ -473,8 +527,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     parseConfigBundle: (text: string) => ipcRenderer.invoke('config-workspace:parse-bundle', text),
     exportConfigBundle: () => ipcRenderer.invoke('config-workspace:export-bundle'),
     listPerformancePresets: () => ipcRenderer.invoke('list-performance-presets'),
-    applyPerformanceConfig: (presetId?: string, optIns?: string[], version?: string | null) =>
-        ipcRenderer.invoke('apply-performance-config', presetId, optIns, version),
+    applyPerformanceConfig: (
+        presetId?: string,
+        optIns?: string[],
+        version?: string | null,
+        restoreVideo?: boolean,
+        videoVariant?: string | null
+    ) =>
+        ipcRenderer.invoke('apply-performance-config', presetId, optIns, version, restoreVideo, videoVariant),
     setPerformanceHudConvars: (values: Record<string, boolean>) => ipcRenderer.invoke('set-performance-hud-convars', values),
     setPerformanceAdvancedConvars: (values: Record<string, number>) => ipcRenderer.invoke('set-performance-advanced-convars', values),
     clearPerformanceConvars: (keys: string[]) => ipcRenderer.invoke('clear-performance-convars', keys),
@@ -482,18 +542,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     resetPerformanceConfigOverrides: (
         presetId?: string,
         optIns?: string[],
-        version?: string | null
-    ) => ipcRenderer.invoke('reset-performance-config-overrides', presetId, optIns, version),
+        version?: string | null,
+        videoVariant?: string | null
+    ) => ipcRenderer.invoke('reset-performance-config-overrides', presetId, optIns, version, videoVariant),
     reapplyWipedPerformanceConfig: () => ipcRenderer.invoke('reapply-wiped-performance-config'),
     restorePerformanceConfigBackup: () => ipcRenderer.invoke('restore-performance-config-backup'),
     getPerformanceLatestInfo: (presetId: string) =>
         ipcRenderer.invoke('get-performance-latest-info', presetId),
     checkPerformanceLatest: (presetId: string, force?: boolean) =>
         ipcRenderer.invoke('check-performance-latest', presetId, force),
-    listPerformanceRemoteVersions: (presetId: string) =>
-        ipcRenderer.invoke('list-performance-remote-versions', presetId),
-    fetchPerformanceRemoteVersion: (presetId: string, ref: string, commit?: string | null) =>
-        ipcRenderer.invoke('fetch-performance-remote-version', presetId, ref, commit),
     openPerformanceConfigFile: () => ipcRenderer.invoke('open-performance-config-file'),
     listEditorCandidates: () => ipcRenderer.invoke('list-editor-candidates'),
     openModsFolder: () => ipcRenderer.invoke('open-mods-folder'),
@@ -556,12 +613,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getDownloadQueue: () => ipcRenderer.invoke('get-download-queue'),
     getDownloadJobs: () => ipcRenderer.invoke('get-download-jobs'),
     retryDownloadJob: (id: string) => ipcRenderer.invoke('retry-download-job', id),
+    moveQueuedDownload: (jobId: string, beforeJobId: string | null) =>
+        ipcRenderer.invoke('move-queued-download', jobId, beforeJobId),
+    prioritizeQueuedDownload: (jobId: string) => ipcRenderer.invoke('prioritize-queued-download', jobId),
     getCurrentDownload: () => ipcRenderer.invoke('get-current-download'),
     removeFromQueue: (modId: number, fileId?: number) =>
         ipcRenderer.invoke('remove-from-queue', modId, fileId),
     cancelActiveDownload: () => ipcRenderer.invoke('cancel-active-download'),
-    cancelDownloadTarget: (modId: number, fileId: number) =>
-        ipcRenderer.invoke('cancel-download-target', modId, fileId),
+    cancelDownloadTarget: (modId: number, fileId: number, jobId?: string) =>
+        ipcRenderer.invoke('cancel-download-target', modId, fileId, jobId),
+    cancelQueuedDownloads: (pendingTargets: Pick<DownloadQueueItem, 'modId' | 'fileId'>[] = []) =>
+        ipcRenderer.invoke('cancel-queued-downloads', pendingTargets),
     onDownloadQueueUpdated: (callback: (data: DownloadQueueData) => void) => {
         const handler = (_event: Electron.IpcRendererEvent, data: DownloadQueueData) => callback(data);
         ipcRenderer.on('download-queue-updated', handler);
@@ -650,7 +712,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     listProfileRecoveryPoints: () => ipcRenderer.invoke('list-profile-recovery-points'),
     getInterruptedProfileRecovery: () => ipcRenderer.invoke('recovery:interrupted'),
     recoverInterruptedProfileRecovery: (reviewToken: string) => ipcRenderer.invoke('recovery:recover-interrupted', reviewToken),
-    reviewModCompatibility: () => ipcRenderer.invoke('recovery:compatibility'),
+    reviewSetupCompatibility: () => ipcRenderer.invoke('recovery:compatibility'),
     getModIsolationSession: () => ipcRenderer.invoke('recovery:isolation-session'),
     startModIsolation: () => ipcRenderer.invoke('recovery:isolation-start'),
     applyModIsolationTrial: (reviewToken: string) => ipcRenderer.invoke('recovery:isolation-apply', reviewToken),
@@ -776,6 +838,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     diagnostics: {
         buildReport: (description: string, options?: { includeFullLog?: boolean }) =>
             ipcRenderer.invoke('diagnostics:buildReport', description, options),
+        listCrashes: (offset) => ipcRenderer.invoke('diagnostics:listCrashes', offset),
+        crashDetail: (id) => ipcRenderer.invoke('diagnostics:crashDetail', id),
+        revealCrash: (id) => ipcRenderer.invoke('diagnostics:revealCrash', id),
+        saveCrashDump: (id) => ipcRenderer.invoke('diagnostics:saveCrashDump', id),
     },
 
     // Grimoire Social
@@ -850,6 +916,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
         portraitImageNames: () => ipcRenderer.invoke('foundry:portraitImageNames'),
         sourceThumbnail: (sourcePath: string): Promise<string | null> =>
             ipcRenderer.invoke('foundry:sourceThumbnail', sourcePath),
+        exportAsset: (request: import('../../src/types/foundry').FoundryAssetExportRequest) =>
+            ipcRenderer.invoke('foundry:exportAsset', request),
         warmCache: () => ipcRenderer.invoke('foundry:warmCache'),
         engineInfo: () => ipcRenderer.invoke('foundry:engineInfo'),
         catalogDiagnostics: () => ipcRenderer.invoke('foundry:catalogDiagnostics'),

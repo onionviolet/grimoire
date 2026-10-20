@@ -1,8 +1,10 @@
 import { devSlotSeeding } from './devUserData';
 import { app, BrowserWindow, shell, session, protocol, nativeTheme, screen } from 'electron';
+import { cleanupExpiredModBackups } from './services/modBackups';
 import { windowBackgroundColor } from '../../src/lib/oledMode';
 import { join, resolve } from 'path';
 import { pathToFileURL } from 'url';
+import { setDefaultAutoSelectFamilyAttemptTimeout } from 'net';
 import { electronApp, optimizer, is } from '@electron-toolkit/utils';
 import { devSlotConfig } from './devSlot';
 import { SOUL_MODEL_SCHEME, registerSoulModelProtocol } from './services/soulContainerModels';
@@ -16,11 +18,11 @@ import { FOUNDRY_THUMB_SCHEME, registerFoundryThumbnailProtocol } from './servic
 protocol.registerSchemesAsPrivileged([
     {
         scheme: SOUL_MODEL_SCHEME,
-        privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true },
+        privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true },
     },
     {
         scheme: HERO_POSE_SCHEME,
-        privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true },
+        privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true },
     },
     {
         // Serves Foundry's cached texture/icon thumbnails (PNG) to the browse grid.
@@ -102,16 +104,32 @@ if (process.env.GRIMOIRE_DEV_NO_BACKGROUNDING === '1') {
     app.commandLine.appendSwitch('disable-background-timer-throttling');
 }
 
+// Chromium 137 dropped the automatic SwiftShader fallback, so machines without
+// hardware WebGL (VMs, blocklisted GPUs) lost every 3D preview. The "unsafe" is
+// about untrusted web pages; our renderer only runs app shaders on local models.
+app.commandLine.appendSwitch('enable-unsafe-swiftshader');
+
+// Node cancels every connect attempt except the one on the last address after
+// this long (a few hundred ms by default), which is under the round trip from
+// Australia to GameBanana's file servers. With a dead IPv6 or IPv4 address last
+// in the list the connect then fails with AggregateError ETIMEDOUT even though
+// the host is reachable. Applies to fetch and https alike.
+setDefaultAutoSelectFamilyAttemptTimeout(2000);
+
 // Import IPC handlers
 import './ipc/settings';
 import './ipc/mods';
 import './ipc/chatWheel';
+import './ipc/crashAdvisories';
+import { startCrashAdvisories } from './services/crashAdvisories';
 import './ipc/gamebanana';
+import './ipc/modUpdates';
 import './ipc/gamebananaFileServers';
 import './ipc/system';
 import './ipc/conflicts';
 import './ipc/profiles';
 import './ipc/snapshots';
+import './ipc/modBackups';
 import './ipc/modDatabase';
 import './ipc/crosshairPresets';
 import './ipc/cursorPacks';
@@ -139,8 +157,8 @@ import './ipc/performanceConfig';
 import './ipc/configWorkspace';
 import { registerAssetInspectionHandlers } from './ipc/assetInspection';
 registerAssetInspectionHandlers();
-import './ipc/dmmMigrate';
 import './ipc/forge';
+import './ipc/modInterchange';
 
 import { initUpdater, checkForUpdates, getInstallSource } from './services/updater';
 import { runStartupRecovery } from './ipc/launch';
@@ -157,7 +175,8 @@ import {
     type ForgeInstallRequest,
 } from './services/forgeBridge';
 import { installForgeVpk } from './services/download';
-import { backfillMissingMetadataHashes } from './services/metadata';
+import { healModFolders, runExclusiveModMutation } from './services/mods';
+import { backfillMissingMetadataHashes, recoverPrunedIdentities } from './services/metadata';
 import { backfillImprintedFlags } from './services/imprintMods';
 import { destroyDiscordRpc } from './services/discordRpc';
 import { releaseAllPreviewVpks } from './services/previewVpkRegistry';
@@ -222,17 +241,34 @@ async function handleForgeInstall(request: ForgeInstallRequest): Promise<void> {
     );
 }
 
-async function backfillStartupMetadataHashes(): Promise<void> {
+async function runStartupMetadataMaintenance(): Promise<void> {
     const deadlockPath = getConfiguredDeadlockPath();
     if (!deadlockPath) return;
+    const devMode = loadSettings().devMode;
+    const stillActive = () => getConfiguredDeadlockPath() === deadlockPath && loadSettings().devMode === devMode;
 
     try {
-        const updated = await backfillMissingMetadataHashes(deadlockPath);
+        await runExclusiveModMutation(async () => {
+            if (stillActive()) await healModFolders(deadlockPath);
+        });
+    } catch (error) {
+        console.warn('[mods] Startup heal failed:', error);
+    }
+    if (!stillActive()) return;
+
+    try {
+        const updated = await backfillMissingMetadataHashes(deadlockPath, (apply) => runExclusiveModMutation(apply));
         if (updated > 0) {
             console.log(`[Metadata] Backfilled SHA-256 for ${updated} mod metadata entr${updated === 1 ? 'y' : 'ies'}`);
         }
     } catch (error) {
         console.warn('[Metadata] Startup SHA-256 backfill failed:', error);
+    }
+    if (!stillActive()) return;
+
+    const recovered = recoverPrunedIdentities();
+    if (recovered > 0) {
+        console.log(`[Metadata] Recovered identity for ${recovered} mod${recovered === 1 ? '' : 's'} from pre-prune backups`);
     }
 
     try {
@@ -571,6 +607,12 @@ if (!gotTheLock) {
         // Set app user model id for windows
         electronApp.setAppUserModelId('com.grimoire.modmanager');
 
+        // On Windows and Linux, Chromium downloads Hunspell dictionaries from
+        // Google's CDN. Only an empty language list stops it: on Electron 35,
+        // setSpellCheckerEnabled(false) and webPreferences.spellcheck=false
+        // both still download. A no-op on macOS, which uses the OS checker.
+        session.defaultSession.setSpellCheckerLanguages([]);
+
         // Serve per-mod soul-container GLBs from the user's library.
         registerSoulModelProtocol();
 
@@ -604,12 +646,12 @@ if (!gotTheLock) {
                         'Content-Security-Policy': [
                             "default-src 'self'; " +
                             "script-src 'self'; " +
-                            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
-                            "font-src 'self' https://fonts.gstatic.com; " +
+                            "style-src 'self' 'unsafe-inline'; " +
+                            "font-src 'self'; " +
                             // `grimoire-foundry:` serves Foundry's cached texture
                             // thumbnails, rendered as <img>, so they must be allowed
                             // here or the browse grid is blank under the prod CSP.
-                            "img-src 'self' data: https: blob: grimoire-foundry:; " +
+                            "img-src 'self' data: https: blob: grimoire-foundry: grimoire-hero:; " +
                             // Foundry voice-line auditions are served as `data:audio/mpeg`
                             // URLs into an <audio> element (the clip MP3 is sliced out of
                             // the `.vsnd_c` in the main process), so `data:` must be allowed
@@ -639,6 +681,8 @@ if (!gotTheLock) {
         }
 
         createWindow();
+        startCrashAdvisories();
+        void cleanupExpiredModBackups().catch((error) => console.warn('[ModBackups] Startup cleanup failed:', error));
 
         // Start the DeadlockForge local install bridge. No-op unless the user
         // has switched it on in Settings, so the listening socket does not
@@ -671,8 +715,9 @@ if (!gotTheLock) {
         }
 
         // Restore a previously-persisted social session (no-op if none, or if
-        // we're on Linux without a real secret store — ADR-011).
-        void hydrateSocialSession();
+        // we're on Linux without a real secret store: ADR-011). Its check
+        // calls the Social server, so it waits until Social is turned on.
+        if (loadSettings().experimentalSocial) void hydrateSocialSession();
 
         // Resume the opt-in match-salt contributor across restarts.
         if (loadSettings().contributeMatchSalts) {
@@ -683,14 +728,17 @@ if (!gotTheLock) {
         // or grimoire crashed while the user was playing vanilla), then fill in
         // SHA-256 metadata for older entries that were written before hashing.
         void runStartupRecovery().finally(() => {
-            void backfillStartupMetadataHashes();
+            void runStartupMetadataMaintenance();
         });
 
         // Initialize auto-updater (production only). Skip the background check
-        // for apt/AUR/snap installs since the package manager owns updates.
+        // for apt/AUR/snap installs since the package manager owns updates, and
+        // on a fresh install, where the renderer checks once the welcome screen
+        // (which offers the off switch) is done.
         if (!is.dev && mainWindow) {
             initUpdater(mainWindow);
-            if (getInstallSource() !== 'managed' && loadSettings().checkUpdatesOnStartup) {
+            const settings = loadSettings();
+            if (getInstallSource() !== 'managed' && settings.checkUpdatesOnStartup && settings.hasCompletedSetup) {
                 setTimeout(() => {
                     checkForUpdates().catch((err) => {
                         console.log('[Updater] Auto-check failed:', err.message);

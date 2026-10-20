@@ -79,6 +79,10 @@ autoUpdater.autoInstallOnAppQuit = true;
 // releaseNotes comes back as `{ version, note }[]`; UpdateModal already
 // renders that shape per-version.
 autoUpdater.fullChangelog = true;
+// electron-updater sends a random per-install id (userData/.updaterId) as
+// x-user-staging-id on every check, for staged rollouts we don't use. It merges
+// requestHeaders over its own, so blanking the header keeps the id on disk.
+autoUpdater.requestHeaders = { 'x-user-staging-id': '' };
 
 let mainWindow: BrowserWindow | null = null;
 

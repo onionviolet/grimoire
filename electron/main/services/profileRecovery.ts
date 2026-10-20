@@ -286,7 +286,7 @@ async function moveSets(moves: Array<{ from: string; to: string }>, journal: Rec
         try { await fs.rename(step.temp, step.from); } catch (rollback) { failures.push(String(rollback)); }
       }
     }
-    throw new Error(`${String(error)}${failures.length ? `; file rollback incomplete: ${failures.join('; ')}` : ''}`);
+    throw new Error(`${String(error)}${failures.length ? `; file rollback incomplete: ${failures.join('; ')}` : ''}`, { cause: error });
   }
   const safetyMoves = moves.map(move => ({ ...move, temp: `${move.from}.${randomUUID()}.recovery` }));
   for (const move of safetyMoves) moveSafetySnapshot(move.from, move.temp);
@@ -387,8 +387,12 @@ export async function restoreProfileRecovery(deadlockPath: string, id: string, r
     try { await applyPointUnlocked(point, deadlockPath, journal, reviewToken); await clearRecoveryJournal(); }
     catch (error) {
       try { await recoverInterruptedUnlocked(deadlockPath); }
-      catch (failure) { throw new Error(`Restore failed: ${String(error)}; rollback incomplete: ${String(failure)}`); }
-      throw new Error(`Restore failed and previous state was restored: ${String(error)}`);
+      catch (failure) {
+        throw new Error(`Restore failed: ${String(error)}; rollback incomplete: ${String(failure)}`, {
+          cause: failure,
+        });
+      }
+      throw new Error(`Restore failed and previous state was restored: ${String(error)}`, { cause: error });
     }
   });
 }

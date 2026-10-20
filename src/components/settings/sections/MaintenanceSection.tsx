@@ -9,6 +9,7 @@ import { Badge, Button, Card } from '../../common/ui';
 import { ConfirmModal } from '../../common/PageComponents';
 import Tx from '../../translation/Tx';
 import DownloadServersCard from '../DownloadServersCard';
+import DownloadProxyCard from '../DownloadProxyCard';
 
 /** Human-readable byte size (MB below a GB, GB above). */
 function formatBytes(bytes: number): string {
@@ -21,11 +22,13 @@ function formatBytes(bytes: number): string {
 // Housekeeping: leftover archives, the setup wizard, and the two on-disk caches.
 export default function MaintenanceSection() {
   const { t } = useTranslation();
-  const { settings, saveSettings } = useAppStore();
+  const settings = useAppStore((s) => s.settings);
+  const saveSettings = useAppStore((s) => s.saveSettings);
   const activeDeadlockPath = getActiveDeadlockPath(settings);
 
   const [cleanupResult, setCleanupResult] = useState<string | null>(null);
   const [isCleaning, setIsCleaning] = useState(false);
+  const [downloadRouteVersion, setDownloadRouteVersion] = useState(0);
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
   const [resetResult, setResetResult] = useState<string | null>(null);
   // Read once on mount: nothing else on this page changes a view preference,
@@ -175,7 +178,7 @@ export default function MaintenanceSection() {
               <p className="text-xs text-text-secondary mt-1">
                 <Tx
                   k="settings.maintenance.cleanupDescription"
-                  fallback="Remove leftover archive downloads (zip, 7z)."
+                  fallback="Remove leftover archive downloads (zip, 7z, rar)."
                 />
               </p>
               {cleanupResult && (
@@ -260,7 +263,8 @@ export default function MaintenanceSection() {
         </div>
       </Card>
 
-      <DownloadServersCard />
+      <DownloadServersCard key={downloadRouteVersion} />
+      <DownloadProxyCard onSaved={() => setDownloadRouteVersion((version) => version + 1)} />
 
       <Card title={<Tx k="settings.sections.modDatabaseCache" fallback="Mod Database Cache" />} icon={Database}>
         <div className="flex flex-col sm:flex-row items-center justify-between gap-6">

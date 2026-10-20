@@ -31,7 +31,7 @@ export default function RemoveWheelButton({ wheel, disabled, onRemoved, onError 
     if (!wheel || !(await confirmChatWheelUnbind(confirm, t, [wheel]))) return;
     setRemoving(true);
     try {
-      await deleteMod(wheel.id);
+      await deleteMod({ id: wheel.id, size: wheel.size, installedAt: wheel.installedAt });
       await onRemoved();
     } catch (err) {
       onError(err instanceof Error ? err.message : String(err));

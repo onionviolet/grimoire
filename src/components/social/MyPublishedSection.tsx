@@ -220,7 +220,7 @@ export default function MyPublishedSection({
                         {t('social.published.featured')}
                       </Badge>
                     )}
-                    {p.has_nsfw && <Badge variant="warning">NSFW</Badge>}
+                    {p.has_nsfw && <Badge variant="warning">{t('discover.card.nsfw')}</Badge>}
                     <span className="text-text-tertiary">
                       {formatRelativeDate(isoFromUnix(p.updated_at ?? p.created_at))}
                     </span>

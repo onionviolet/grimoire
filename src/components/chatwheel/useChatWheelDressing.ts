@@ -46,12 +46,7 @@ export function useChatWheelDressing(settings: DressingSettings): ChatWheelDress
         if (!enabled) return;
         let cancelled = false;
         void (async () => {
-            let result: ChatWheelDressing | null = null;
-            try {
-                result = (await getChatWheelDressing()) ?? null;
-            } catch {
-                result = null;
-            }
+            const result = await getChatWheelDressing().catch(() => null);
             if (!cancelled) setDressing(result);
         })();
         return () => {

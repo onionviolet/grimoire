@@ -76,7 +76,7 @@ export function Badge({ children, variant = 'neutral', className = '' }: BadgePr
 // soft web-style pills.
 // ============================================================================
 
-type TagTone = 'accent' | 'warning' | 'danger' | 'success' | 'accepted' | 'info' | 'neutral';
+type TagTone = 'accent' | 'update' | 'warning' | 'danger' | 'success' | 'accepted' | 'info' | 'neutral';
 
 interface TagProps {
     children: ReactNode;
@@ -103,6 +103,7 @@ export function Tag({
 }: TagProps) {
     const tones: Record<TagTone, { text: string; border: string; fill: string; overlayBorder: string }> = {
         accent:  { text: 'text-accent',          border: 'border-accent/40',         fill: 'bg-accent/10',          overlayBorder: 'border-accent/70' },
+        update:  { text: 'text-state-update',    border: 'border-state-update/40',   fill: 'bg-state-update/10',    overlayBorder: 'border-state-update/70' },
         warning: { text: 'text-state-warning',   border: 'border-state-warning/40',  fill: 'bg-state-warning/10',   overlayBorder: 'border-state-warning/70' },
         danger:  { text: 'text-state-danger',    border: 'border-state-danger/40',   fill: 'bg-state-danger/10',    overlayBorder: 'border-state-danger/70' },
         success: { text: 'text-state-success',   border: 'border-state-success/40',  fill: 'bg-state-success/10',   overlayBorder: 'border-state-success/70' },
@@ -276,24 +277,30 @@ interface ProgressBarProps {
     max: number;
     /** Accessible name; pass the visible progress text. */
     label?: string;
+    /** Work with no measurable progress: a pulsing segment instead of a fill. */
+    indeterminate?: boolean;
     className?: string;
 }
 
-export function ProgressBar({ value, max, label, className = '' }: ProgressBarProps) {
+export function ProgressBar({ value, max, label, indeterminate = false, className = '' }: ProgressBarProps) {
     const percentage = max > 0 ? Math.min(100, Math.max(0, (value / max) * 100)) : 0;
     return (
         <div
             role="progressbar"
             aria-valuemin={0}
             aria-valuemax={max}
-            aria-valuenow={value}
+            aria-valuenow={indeterminate ? undefined : value}
             aria-label={label}
             className={`h-1.5 w-full overflow-hidden rounded-sm bg-bg-tertiary ${className}`}
         >
-            <div
-                className="h-full rounded-sm bg-accent transition-[width] duration-200 ease-out"
-                style={{ width: `${percentage}%` }}
-            />
+            {indeterminate ? (
+                <div className="h-full w-1/3 animate-pulse rounded-sm bg-accent/70" />
+            ) : (
+                <div
+                    className="h-full rounded-sm bg-accent transition-[width] duration-200 ease-out"
+                    style={{ width: `${percentage}%` }}
+                />
+            )}
         </div>
     );
 }
@@ -360,7 +367,7 @@ export function Toggle({ checked, onChange, label, description, className = '', 
 }
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-    variant?: 'primary' | 'secondary' | 'danger' | 'ghost' | 'success' | 'warning';
+    variant?: 'primary' | 'secondary' | 'danger' | 'ghost' | 'success' | 'warning' | 'update';
     size?: 'sm' | 'md';
     icon?: LucideIcon;
     isLoading?: boolean;
@@ -380,6 +387,7 @@ export function Button({
 
     const variants = {
         primary: 'border-accent/40 bg-accent/10 hover:bg-accent/20 hover:border-accent/60 text-text-primary focus-visible:ring-accent',
+        update: 'border-state-update/40 bg-state-update/10 hover:bg-state-update/20 hover:border-state-update/60 text-text-primary focus-visible:ring-state-update',
         secondary: 'border-hl/5 bg-bg-tertiary hover:bg-hl/10 text-text-primary focus-visible:ring-hl/60',
         danger: 'border-state-danger/30 bg-state-danger/10 hover:bg-state-danger/20 hover:border-state-danger/50 text-state-danger focus-visible:ring-state-danger',
         success: 'border-state-success/30 bg-state-success/10 hover:bg-state-success/20 hover:border-state-success/50 text-state-success focus-visible:ring-state-success',
@@ -433,7 +441,7 @@ interface IconButtonProps extends Omit<React.ButtonHTMLAttributes<HTMLButtonElem
     tone?: 'default' | 'danger';
 }
 
-export function IconButton({ icon: Icon, label, size = 'md', tone = 'default', className = '', ...props }: IconButtonProps) {
+export function IconButton({ icon: Icon, label, size = 'md', tone = 'default', className = '', children, ...props }: IconButtonProps) {
     const sizes = {
         sm: 'h-7 w-7',
         md: 'h-8 w-8',
@@ -452,6 +460,7 @@ export function IconButton({ icon: Icon, label, size = 'md', tone = 'default', c
             {...props}
         >
             <Icon className={iconSize} aria-hidden />
+            {children}
         </button>
     );
 }

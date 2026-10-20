@@ -14,6 +14,7 @@ const groups = (): GlobalModGroups => ({
   'spirit-urn': [],
   hideout: [],
   icons: [],
+  effects: [],
   hud: [],
   announcer: [],
   'killstreak-music': [],

@@ -22,6 +22,7 @@ import {
 import AssetSourcesPanel from '../foundry/AssetSourcesPanel';
 import { pickConsequence, type PickConsequence } from './soundPickConsequence';
 import { useAppStore } from '../../stores/appStore';
+import { shakeElement } from '../../lib/shakeElement';
 import AudioPreviewPlayer from '../AudioPreviewPlayer';
 import type { Mod, HeroAbilitySlot, AbilitySlot, AbilitySoundParams } from '../../types/mod';
 
@@ -31,7 +32,7 @@ interface HeroSoundPickerProps {
   soundList: Mod[];
   /** Toggle a whole mod's enabled state. Used only for the "Other" bucket (VO
    *  / unclassified sounds) that can't be sliced to a single ability. */
-  onSelect: (modId: string) => void;
+  onSelect: (modId: string) => Promise<boolean> | void;
   /** Lets the Sound Locker embed the picker as a secondary, named panel while
    * preserving the existing full-section presentation in the Looks detail. */
   panelTitle?: string;
@@ -354,7 +355,7 @@ function SoundToggleRow({
   mod: Mod;
   heroName: string;
   soundVolume: number;
-  onSelect: (modId: string) => void;
+  onSelect: HeroSoundPickerProps['onSelect'];
 }) {
   const { t } = useTranslation();
   const otherSlots = slotsForMod(mod, heroName);
@@ -368,7 +369,11 @@ function SoundToggleRow({
     >
       <button
         type="button"
-        onClick={() => onSelect(mod.id)}
+        onClick={async (e) => {
+          const row = e.currentTarget.parentElement;
+          const toggled = await onSelect(mod.id);
+          if (mod.enabled && toggled === false) shakeElement(row);
+        }}
         title={mod.fileName}
         className={`flex w-full items-center justify-between gap-2 px-2.5 py-1.5 text-left text-xs cursor-pointer ${
           mod.enabled ? 'text-text-primary' : 'text-text-secondary hover:text-text-primary'

@@ -84,6 +84,7 @@ interface ModWithThumbnail {
   variantLabel?: string;
   fileDescription?: string;
   sourceFileName?: string;
+  priorityMod?: boolean;
 }
 
 function getVariantLabel(mod: ModWithThumbnail): string | null {
@@ -204,7 +205,7 @@ export default function Conflicts() {
   // Tracks which pair the user is currently toggling so we can disable just
   // that row's buttons during the round-trip without freezing the whole page.
   const [pendingPair, setPendingPair] = useState<string | null>(null);
-  const { loadMods } = useAppStore();
+  const loadMods = useAppStore((s) => s.loadMods);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(search), 200);
@@ -264,6 +265,7 @@ export default function Conflicts() {
           variantLabel: mod.variantLabel,
           fileDescription: mod.fileDescription,
           sourceFileName: mod.sourceFileName,
+          priorityMod: mod.priorityMod,
         };
         map.set(mod.id, info);
         map.set(info.identity, info);
@@ -693,7 +695,7 @@ export default function Conflicts() {
                 ]}
               />
             )}
-            {conflicts.length > 0 && (
+            {conflicts.length > 0 && !search.trim() && (
               <Button
                 variant="secondary"
                 onClick={() => setIgnoreAllConfirmOpen(true)}
@@ -772,7 +774,7 @@ export default function Conflicts() {
         />
       ) : viewMode === 'list' ? (
         <div className="space-y-3">
-          {filteredConflictResults.map(({ conflict, matchingPaths }, i) => {
+          {filteredConflictResults.map(({ conflict, matchingPaths }) => {
             const modA = getModInfo(conflict.modA, conflict.modAName);
             const modB = getModInfo(conflict.modB, conflict.modBName);
             const variantA = getVariantLabel(modA);
@@ -836,7 +838,7 @@ export default function Conflicts() {
 
             return (
               <div
-                key={`${conflict.modA}-${conflict.modB}-${i}`}
+                key={conflictPairKey(conflict.modA, conflict.modB)}
                 className="overflow-hidden rounded-xl border border-yellow-500/30 bg-bg-secondary"
               >
                 <div className="flex items-center gap-2 border-b border-yellow-500/20 bg-yellow-500/10 px-4 py-2">
@@ -879,8 +881,8 @@ export default function Conflicts() {
                 )}
                 <ConflictReorderActions
                   conflict={conflict}
-                  modA={{ id: modA.id, name: modA.name }}
-                  modB={{ id: modB.id, name: modB.name }}
+                  modA={{ id: modA.id, name: modA.name, global: modA.priorityMod }}
+                  modB={{ id: modB.id, name: modB.name, global: modB.priorityMod }}
                   orderedEnabledIds={orderedEnabledIds}
                   busy={pendingPair === getConflictIgnoreKey(conflict)}
                   onSetWinner={(winnerId, loserId) => handleSetWinner(conflict, winnerId, loserId)}
@@ -891,7 +893,7 @@ export default function Conflicts() {
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {filteredConflictResults.map(({ conflict, matchingPaths }, i) => {
+          {filteredConflictResults.map(({ conflict, matchingPaths }) => {
             const modA = getModInfo(conflict.modA, conflict.modAName);
             const modB = getModInfo(conflict.modB, conflict.modBName);
             const variantA = getVariantLabel(modA);
@@ -900,7 +902,7 @@ export default function Conflicts() {
 
             return (
               <div
-                key={`${conflict.modA}-${conflict.modB}-${i}`}
+                key={conflictPairKey(conflict.modA, conflict.modB)}
                 className="bg-bg-secondary border border-yellow-500/30 rounded-xl overflow-hidden"
               >
                 {/* Header */}
@@ -1042,8 +1044,8 @@ export default function Conflicts() {
 
                 <ConflictReorderActions
                   conflict={conflict}
-                  modA={{ id: modA.id, name: modA.name }}
-                  modB={{ id: modB.id, name: modB.name }}
+                  modA={{ id: modA.id, name: modA.name, global: modA.priorityMod }}
+                  modB={{ id: modB.id, name: modB.name, global: modB.priorityMod }}
                   orderedEnabledIds={orderedEnabledIds}
                   busy={pendingPair === getConflictIgnoreKey(conflict)}
                   onSetWinner={(winnerId, loserId) => handleSetWinner(conflict, winnerId, loserId)}

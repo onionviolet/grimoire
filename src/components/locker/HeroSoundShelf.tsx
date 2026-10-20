@@ -52,7 +52,7 @@ interface HeroSoundShelfProps {
   heroName: string;
   /** This hero's installed sound mods, as the hero page already resolved them. */
   soundList: Mod[];
-  onSelect: (modId: string) => void | Promise<void>;
+  onSelect: (modId: string) => Promise<boolean> | void;
 }
 
 export default function HeroSoundShelf({ heroName, soundList, onSelect }: HeroSoundShelfProps) {

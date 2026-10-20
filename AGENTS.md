@@ -72,7 +72,7 @@ This workspace is the fork `onionviolet/grimoire`.
 
 # Grimoire
 
-Desktop mod manager for Deadlock (Valve). Electron 35 + React 19 + TypeScript 5.9 + Tailwind 4, pnpm. Ships for Windows, Linux (AppImage, deb, AUR, Flatpak) and macOS (Apple Silicon only, ad-hoc signed, no auto-update: see `docs/macos.md`).
+Desktop mod manager for Deadlock (Valve). Electron 44 + React 19 + TypeScript 5.9 + Tailwind 4, pnpm. Ships for Windows, Linux (AppImage, deb, AUR, Flatpak) and macOS (Apple Silicon only, ad-hoc signed, no auto-update: see `docs/macos.md`).
 
 Single maintainer. Part of the `grimoire-workspace` monorepo-ish root; sibling repos (`../grimoire-social`, `../vpkmerge`, ...) have their own `AGENTS.md`/`CLAUDE.md`.
 
@@ -102,14 +102,14 @@ Electron multi-process with context isolation on and `nodeIntegration` off.
 
 **Adding an IPC method:** declare it once in the `ElectronAPI` interface in `src/types/electron.ts`, add the one-line bridge in `electron/preload/index.ts` (checked with `satisfies ElectronAPI`), then the handler in `electron/main/ipc/*`. **Adding a setting:** field in `AppSettings` (`src/types/mod.ts`) plus its default in `electron/main/services/settings.ts`.
 
-Runtime data lives in the Electron `userData` dir: `mods-cache.db` (GameBanana catalog mirror + FTS5), `stats.db` (player stats), `unknown-crc-cache.db`, `settings.json`, `mod-metadata.json`, `profiles.json`, plus asset caches.
+Runtime data lives in the Electron `userData` dir: `mods-cache.db` (GameBanana catalog mirror + FTS5), `stats.db` (player stats), `unknown-crc-cache.db`, `settings.json`, `mod-metadata.json`, `profiles.json`, `interchange-ledger.json`, plus asset caches.
 
 Heavy VPK/model/texture/sound work shells out to the bundled `vpkmerge` CLI (`resources/vpkmerge/`, version + sha256 pinned in `scripts/fetch-vpkmerge.mjs`).
 
 ## Hard rules
 
 - **No em-dashes**, anywhere: UI strings, comments, docs, commit messages. Use a colon, period or parens.
-- **No telemetry.** Nothing phones home on a fresh install: no analytics, usage pings or heartbeats. Network calls only happen for features the user invoked or opted into.
+- **No telemetry.** No analytics, usage pings or heartbeats. On its own the app only talks to services the user chose: GitHub for the app update check (which has a setting) and GameBanana for the catalog refresh, the Installed mod update check and mod thumbnails. Everything else waits for a click or an opt-in. Every request is listed on the privacy guide page (`docs/guide/privacy.md`, published at grimoiremods.com/docs/privacy), so a new one needs an entry there. One that sends user data somewhere the user didn't choose also needs an off switch: SignPath's signing terms require it.
 - **Main process owns secrets.** API keys and the social session token (stored via `safeStorage`) never reach the renderer. The main process attaches auth headers itself.
 - **Wire-format types come from `@grimoire/social-types`** (`../grimoire-social/packages/social-types/`). Never redeclare them here. Social routes are `/v1/*`, additive only; breaking changes go to `/v2/`.
 - **External APIs go through a rate limiter** in `electron/main/services/rateLimiter.ts` (GameBanana, deadlock-api, Steam community, GitHub). New integrations reuse that pattern.
@@ -133,10 +133,9 @@ After any catalog change run `pnpm i18n:manifest`, or CI and pre-push fail. Tran
 
 ## Gotchas that have shipped bugs
 
-- **New main-process runtime deps must be bundled.** `externalizeDepsPlugin()` leaves prod deps as bare imports, and `electron-builder.yml` strips `node_modules` except an explicit native allowlist. Add the package to the `exclude` list in `electron.vite.config.ts`, or every packaged user crashes on launch. After `pnpm build`, `grep -c 'Could not resolve "' dist/main/index.js` must print `0`.
+- **New main-process runtime deps must be bundled.** `build.externalizeDeps` leaves prod deps as bare imports, and `electron-builder.yml` strips `node_modules` except an explicit native allowlist. Add the package to the `exclude` list in `electron.vite.config.ts`, or every packaged user crashes on launch. After `pnpm build`, `grep -c 'Could not resolve "' dist/main/index.js` must print `0`.
 - **`@grimoire/social-types` stays in `devDependencies`.** It is bundled at build time. As a prod dep, `@electron/rebuild` trips over its out-of-root symlink.
-- **Main-process string literals must not end with the word `import`.** electron-vite's CJS shim regex treats `...import'` as an import statement and splices code into the next string literal. The error ("Unterminated string literal") points at an unrelated line.
-- **Tests run on Node 20 in CI** with no DOM. A renderer module that touches `navigator`/`window` at import time passes locally on newer Node and fails CI for every test that transitively imports it. Watch the test count, not just pass/fail.
+- **Tests run on Node 24 in CI** with no DOM. Node provides a global `navigator`, but `window` and `document` are still unavailable. Renderer modules that access DOM APIs at import time can fail every test that transitively imports them. Watch the test count, not just pass/fail.
 - **The CSP only applies to packaged builds.** `pnpm dev` has none, so "works in dev, broken packaged" bugs (especially 3D previews over `grimoire-hero:`/`grimoire-soul:`/`blob:`) usually mean the `connect-src` in `electron/main/index.ts` needs updating.
 - **vpkmerge version coupling.** A feature that needs a new vpkmerge flag or subcommand requires a vpkmerge release first, then a bump of the version + 3 sha256s in `scripts/fetch-vpkmerge.mjs`. `pnpm dev` hides the break when a locally built binary sits in `resources/vpkmerge/`.
 - **Mod mutations are serialized.** Enable/disable/reorder share an in-process lock (`withModMutationLock` / `runExclusiveModMutation` in `electron/main/services/mods.ts`) because racing `pakNN` slot writes clobbered VPKs. Route new mutating operations through it.
@@ -146,6 +145,7 @@ After any catalog change run `pnpm i18n:manifest`, or CI and pre-push fail. Tran
 
 | Area | Doc |
 |---|---|
+| Manager-neutral mod transfer | `docs/mod-interchange.md` |
 | Portable profiles (`mp1:` codes, `.modprofile.json`) | `docs/profile-spec.md` |
 | Social layer, ADRs (append-only, never edit a shipped ADR) | `docs/social-architecture.md`, `docs/social-architecture-decisions.md` |
 | `gameinfo.gi` handling, Deadworks servers | `docs/deadworks-servers.md` |
@@ -161,6 +161,7 @@ After any catalog change run `pnpm i18n:manifest`, or CI and pre-push fail. Tran
 
 ## Working conventions
 
+- Mod transfer uses the interchange format. DMM input is converted through the reader in `electron/main/services/modInterchange/`, and new source managers are registered in `electron/main/ipc/modInterchange.ts`.
 - `Installed.tsx` and `Browse.tsx` are god files (thousands of lines). Put new features in their own components under `src/components/<feature>/` rather than growing them. When splitting, make move-only PRs with no behavior or visual change mixed in.
 - Experimental features are gated behind `experimental*` settings (see `AppSettings`) and default off.
 - Commits: imperative, conventional-style subjects (`fix(installed): ...`, `feat: ...`). PRs are squash-merged. Branch protection has no required checks, so `gh pr merge --auto` merges immediately: check `gh pr checks` first.

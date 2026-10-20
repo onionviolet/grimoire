@@ -287,6 +287,11 @@ export interface FoundryAssetExportResult {
     path?: string;
 }
 
+/** Upstream's single-entry request shape, used by the shared SaveAssetButton. */
+export type FoundryAssetExportRequest =
+    | { kind: 'texture'; category: TextureCategory; path: string }
+    | { kind: 'sound'; path: string };
+
 /**
  * Request to swap a hero gameplay sound event's audio with a user-supplied MP3
  * and install the result as a managed local mod. `heroCodename` is the roster

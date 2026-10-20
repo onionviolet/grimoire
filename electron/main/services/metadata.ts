@@ -1,10 +1,11 @@
 import { createHash, randomBytes } from 'crypto';
 import { createReadStream, readFileSync, writeFileSync, existsSync, renameSync, unlinkSync, statSync, mkdirSync, copyFileSync, readdirSync } from 'fs';
-import { join, dirname } from 'path';
+import { join, dirname, basename } from 'path';
 import { metaKeyFor } from './deadlock';
 import { listInstalledUserVpks } from './modLibrary';
 import { resolveVpkIdentity } from './vpkIdentity';
-import { getMetadataPath } from '../utils/paths';
+import { getMetadataPath as metadataPathForMode } from '../utils/paths';
+import { loadSettings } from './settings';
 
 export interface ModMetadata {
     modName?: string;      // The human-readable mod name from GameBanana
@@ -16,6 +17,7 @@ export interface ModMetadata {
     gameBananaId?: number;
     gameBananaFileId?: number; // The specific file ID that was downloaded
     vpkIndex?: number;      // Size-sorted index inside a multi-VPK GameBanana file
+    archiveVpkPath?: string; // Where the VPK sat in the downloaded archive ("<variant folder>/<name>"); maps parts across updates
     categoryId?: number;
     categoryName?: string; // Hero/category name from GameBanana
     sourceSection?: string;
@@ -67,8 +69,7 @@ export interface ModMetadata {
     /** Set when this VPK was handed over by deadlockforge.net through the local
      *  install bridge (see services/forgeBridge.ts). Presence marks the mod as
      *  forge-built so the UI can show the bundled DeadlockForge badge rather
-     *  than a GameBanana thumbnail (there is none to fetch, and Grimoire never
-     *  phones home for one). */
+     *  than a GameBanana thumbnail (there is none to fetch). */
     forgeInstall?: import('../../../src/types/mod').ForgeInstallInfo;
     /** Set on the single Locker cosmetics VPK that holds applied hero cards.
      *  The card selection set; rebuilt on every apply/revert. Presence marks
@@ -158,18 +159,53 @@ export interface ModMetadata {
 
 export type ModMetadataMap = Record<string, ModMetadata>;
 
+/**
+ * Whether a sidecar row records an identity: a GameBanana link, a name, a
+ * Grimoire-built VPK, or a choice the user made about the file. Startup gives
+ * every unknown VPK a row too (the sha256 backfill, the inferred hero and
+ * global type), so the mere presence of a row, a hash or a `lockerHero` does
+ * not mean Grimoire manages the file.
+ */
+export function hasModIdentity(meta: ModMetadata): boolean {
+    return (
+        meta.gameBananaId !== undefined ||
+        (typeof meta.modName === 'string' && meta.modName.trim().length > 0) ||
+        meta.lockerHeroSource === 'manual' ||
+        meta.merged !== undefined ||
+        meta.forgeInstall !== undefined ||
+        meta.lockerCosmetics !== undefined ||
+        meta.lockerSounds !== undefined ||
+        meta.lockerColors !== undefined ||
+        meta.lockerTrippySkins !== undefined ||
+        meta.soulImport !== undefined ||
+        meta.urnImport !== undefined ||
+        meta.soundSwap !== undefined ||
+        meta.localGroupId !== undefined ||
+        meta.priorityMod !== undefined
+    );
+}
+
 // In-memory cache of the parsed metadata.json. Without this, every enrichMod
 // call (one per installed mod) re-reads + re-parses the whole sidecar from
 // disk on the main thread; users with many mods see noticeable freezes on
-// import/get-mods. Invalidated via (mtimeMs, size) so external writes still
-// get picked up, and refreshed eagerly inside saveMetadata to avoid an
-// immediate re-read after we just wrote.
+// import/get-mods. Invalidated via (path, mtimeMs, size), so mode changes and
+// external writes get picked up. saveMetadata refreshes it eagerly to avoid
+// an immediate re-read after we just wrote.
 interface MetadataCacheEntry {
+    path: string;
     mtimeMs: number;
     size: number;
     data: ModMetadataMap;
 }
 let metadataCache: MetadataCacheEntry | null = null;
+
+function getMetadataPath(): string {
+    return metadataPathForMode(loadSettings().devMode);
+}
+
+export function metadataBackupDirectory(path = getMetadataPath()): string {
+    return join(dirname(path), `${basename(path, '.json')}.backups`);
+}
 
 /**
  * Load mod metadata from disk
@@ -186,6 +222,7 @@ export function loadMetadata(): ModMetadataMap {
         const stat = statSync(path);
         if (
             metadataCache &&
+            metadataCache.path === path &&
             metadataCache.mtimeMs === stat.mtimeMs &&
             metadataCache.size === stat.size
         ) {
@@ -194,7 +231,7 @@ export function loadMetadata(): ModMetadataMap {
 
         const content = readFileSync(path, 'utf-8');
         const data = JSON.parse(content) as ModMetadataMap;
-        metadataCache = { mtimeMs: stat.mtimeMs, size: stat.size, data };
+        metadataCache = { path, mtimeMs: stat.mtimeMs, size: stat.size, data };
         return data;
     } catch (error) {
         // Returning {} here means every writer that follows treats "I could not
@@ -225,7 +262,7 @@ export function saveMetadata(metadata: ModMetadataMap): void {
         renameSync(tempPath, path);
         try {
             const stat = statSync(path);
-            metadataCache = { mtimeMs: stat.mtimeMs, size: stat.size, data: metadata };
+            metadataCache = { path, mtimeMs: stat.mtimeMs, size: stat.size, data: metadata };
         } catch {
             metadataCache = null;
         }
@@ -287,9 +324,14 @@ export async function setModMetadataWithHash(
     data: ModMetadata,
     filePath: string
 ): Promise<void> {
+    const metadataPath = getMetadataPath();
+    const { sha256 } = await resolveVpkIdentity(filePath);
+    if (getMetadataPath() !== metadataPath) {
+        throw new Error('The active metadata mode changed before the mod could be saved.');
+    }
     setModMetadata(fileName, {
         ...data,
-        sha256: (await resolveVpkIdentity(filePath)).sha256,
+        sha256,
     });
 }
 
@@ -370,29 +412,43 @@ function mintModUid(seed: string, taken: ReadonlySet<string>): string {
  * Backfill SHA-256 values for metadata written before hashes existed.
  * This runs without renaming/moving files; entries whose VPK no longer exists
  * are skipped and can still be pruned by the normal metadata cleanup path.
+ *
+ * Hashing a large VPK takes long enough that holding the mod-mutation lock for
+ * it would stall every toggle, so the hashes are computed first, unlocked. They
+ * are then written inside `runLocked` (a short step that re-reads the sidecar),
+ * and only for files that are still the ones that were hashed: same key, size
+ * and mtime. A row another writer touched while hashing is left alone.
  */
-export async function backfillMissingMetadataHashes(deadlockPath: string): Promise<number> {
+export async function backfillMissingMetadataHashes(
+    deadlockPath: string,
+    runLocked: (apply: () => Promise<number>) => Promise<number>
+): Promise<number> {
+    const metadataPath = getMetadataPath();
     const metadata = loadMetadata();
     const filesByKey = await collectInstalledVpkPaths(deadlockPath);
     const metadataKeysByLower = new Map(
         Object.keys(metadata).map((key) => [key.toLowerCase(), key])
     );
-    let updated = 0;
+    const hashed: Array<{ key: string; lowerKey: string; filePath: string; size: number; mtimeMs: number; sha256: string }> = [];
+
+    const hashFile = async (key: string, lowerKey: string, filePath: string): Promise<void> => {
+        try {
+            const stat = statSync(filePath);
+            // Canonical (embed-aware) identity: an imprinted file backfills its
+            // embedded original hash, never the post-imprint live bytes.
+            const { sha256 } = await resolveVpkIdentity(filePath);
+            hashed.push({ key, lowerKey, filePath, size: stat.size, mtimeMs: stat.mtimeMs, sha256 });
+        } catch (error) {
+            console.warn(`[Metadata] Failed to backfill SHA-256 for ${key}:`, error);
+        }
+    };
 
     // First repair pre-hash metadata entries that still have a VPK on disk.
     for (const [key, data] of Object.entries(metadata)) {
         if (isValidSha256(data.sha256)) continue;
         const filePath = filesByKey.get(key.toLowerCase());
         if (!filePath) continue;
-
-        try {
-            // Canonical (embed-aware) identity: an imprinted file backfills its
-            // embedded original hash, never the post-imprint live bytes.
-            data.sha256 = (await resolveVpkIdentity(filePath)).sha256;
-            updated++;
-        } catch (error) {
-            console.warn(`[Metadata] Failed to backfill SHA-256 for ${key}:`, error);
-        }
+        await hashFile(key, key.toLowerCase(), filePath);
     }
 
     // A VPK dropped straight into addons has no sidecar entry at all. Give it
@@ -401,21 +457,37 @@ export async function backfillMissingMetadataHashes(deadlockPath: string): Promi
     // callers classify on gameBananaId/modName, not metadata-row existence.
     for (const [lowerKey, filePath] of filesByKey) {
         if (metadataKeysByLower.has(lowerKey)) continue;
-        const key = metaKeyFor(filePath);
-        try {
-            metadata[key] = { sha256: (await resolveVpkIdentity(filePath)).sha256 };
-            metadataKeysByLower.set(lowerKey, key);
+        await hashFile(metaKeyFor(filePath), lowerKey, filePath);
+    }
+
+    if (hashed.length === 0) return 0;
+
+    return runLocked(async () => {
+        if (getMetadataPath() !== metadataPath) return 0;
+        const current = await collectInstalledVpkPaths(deadlockPath);
+        if (getMetadataPath() !== metadataPath) return 0;
+        const latest = loadMetadata();
+        const latestKeysByLower = new Map(Object.keys(latest).map((key) => [key.toLowerCase(), key]));
+        let updated = 0;
+        for (const entry of hashed) {
+            if (current.get(entry.lowerKey) !== entry.filePath) continue;
+            const stat = statSync(entry.filePath, { throwIfNoEntry: false });
+            if (!stat || stat.size !== entry.size || stat.mtimeMs !== entry.mtimeMs) continue;
+
+            const existingKey = latestKeysByLower.get(entry.lowerKey);
+            if (metadataKeysByLower.has(entry.lowerKey)) {
+                if (!existingKey || isValidSha256(latest[existingKey].sha256)) continue;
+                latest[existingKey].sha256 = entry.sha256;
+            } else {
+                if (existingKey) continue;
+                latest[entry.key] = { sha256: entry.sha256 };
+                latestKeysByLower.set(entry.lowerKey, entry.key);
+            }
             updated++;
-        } catch (error) {
-            console.warn(`[Metadata] Failed to create SHA-256 metadata for ${key}:`, error);
         }
-    }
-
-    if (updated > 0) {
-        saveMetadata(metadata);
-    }
-
-    return updated;
+        if (updated > 0) saveMetadata(latest);
+        return updated;
+    });
 }
 
 // Map every installed user VPK to its absolute path, keyed by metaKey
@@ -438,6 +510,70 @@ function isValidSha256(value: string | undefined): boolean {
 }
 
 /**
+ * Give back the identity the orphan prune took from files that were only
+ * parked, not gone (Launch Vanilla used to hide Global and overflow mods from
+ * it). Each current row with a hash but no identity is matched, by sha256 only
+ * (slots get reused, which is what the prune guards against), against the
+ * pre-prune backups, newest first; the first identified row with that hash
+ * fills in the fields the current row lacks. One synchronous load-merge-save,
+ * so no other metadata write can interleave. Never throws; returns the number
+ * of rows recovered.
+ */
+export function recoverPrunedIdentities(): number {
+    // Folder healing adds priorityMod even when a file has no known identity.
+    const hasRecoverableIdentity = (row: ModMetadata): boolean => hasModIdentity({ ...row, priorityMod: undefined });
+    try {
+        const metadata = loadMetadata();
+        const wanted = new Map<string, ModMetadata[]>();
+        for (const [key, row] of Object.entries(metadata)) {
+            if (key.startsWith('locker:') || !isValidSha256(row.sha256) || hasRecoverableIdentity(row)) continue;
+            const sha = row.sha256!.toLowerCase();
+            wanted.set(sha, [...(wanted.get(sha) ?? []), row]);
+        }
+        if (wanted.size === 0) return 0;
+
+        const dir = metadataBackupDirectory();
+        if (!existsSync(dir)) return 0;
+        const backups = readdirSync(dir)
+            .filter((name) => name.endsWith('_pre-prune.json'))
+            .sort()
+            .reverse();
+
+        let recovered = 0;
+        for (const name of backups) {
+            if (wanted.size === 0) break;
+            let backup: ModMetadataMap;
+            try {
+                backup = JSON.parse(readFileSync(join(dir, name), 'utf-8')) as ModMetadataMap;
+            } catch {
+                continue;
+            }
+            for (const old of Object.values(backup)) {
+                if (!old || !isValidSha256(old.sha256) || !hasRecoverableIdentity(old)) continue;
+                const sha = old.sha256!.toLowerCase();
+                const rows = wanted.get(sha);
+                if (!rows) continue;
+                for (const row of rows) {
+                    for (const [field, value] of Object.entries(old)) {
+                        // A load-order slot from the old row would point at a slot that may be reused.
+                        if (field === 'lastPriority' || field === 'sha256') continue;
+                        const target = row as Record<string, unknown>;
+                        if (target[field] === undefined) target[field] = value;
+                    }
+                    recovered++;
+                }
+                wanted.delete(sha);
+            }
+        }
+        if (recovered > 0) saveMetadata(metadata);
+        return recovered;
+    } catch (error) {
+        console.warn('[Metadata] Pruned-identity recovery failed:', error);
+        return 0;
+    }
+}
+
+/**
  * Copy the metadata sidecar into mod-metadata.backups/<timestamp>_<tag>.json
  * before a batch identity mutation (e.g. the DMM import), so a bad batch can
  * be rolled back by restoring the file. Keeps the newest `keep` backups.
@@ -450,7 +586,7 @@ export function backupMetadataSidecar(tag: string, keep = 5): string | null {
     if (!existsSync(path)) return null;
 
     try {
-        const dir = join(dirname(path), 'mod-metadata.backups');
+        const dir = metadataBackupDirectory(path);
         mkdirSync(dir, { recursive: true });
         const stamp = new Date().toISOString().replace(/[:.]/g, '-');
         const backupPath = join(dir, `${stamp}_${tag}.json`);
@@ -511,13 +647,17 @@ export const deleteModMetadata = removeModMetadata;
  *
  * metaKeyFor produces three shapes: `grimoire/<file>` for the priority root,
  * `addonsN/<file>` for an overflow root, and a bare `<file>` otherwise, which
- * can be sitting in either citadel/addons or citadel/addons/.disabled.
+ * can be sitting in either citadel/addons or citadel/addons/.disabled. A
+ * prefixed key also counts as live when Launch Vanilla has it parked in
+ * `.disabled/<folder>/<file>` (see stashSlotPath in launch.ts).
  */
 function resolveMetaKeyPaths(deadlockPath: string, key: string): string[] {
     const citadel = join(deadlockPath, 'game', 'citadel');
     const slash = key.indexOf('/');
     if (slash !== -1) {
-        return [join(citadel, key.slice(0, slash), key.slice(slash + 1))];
+        const folder = key.slice(0, slash);
+        const file = key.slice(slash + 1);
+        return [join(citadel, folder, file), join(citadel, 'addons', '.disabled', folder, file)];
     }
     return [join(citadel, 'addons', key), join(citadel, 'addons', '.disabled', key)];
 }
