@@ -3,7 +3,7 @@ title: Browsing mod sites inside Grimoire
 description: The in-app browser, what it deliberately refuses to do, and how a download from it reaches your library.
 slug: browser
 order: 29
-updated: 2026-08-30
+updated: 2026-10-07
 ---
 
 # Browsing mod sites inside Grimoire
@@ -14,9 +14,20 @@ It is a convenience, not a mod source. Installing still happens through [Browse]
 
 ## Getting somewhere
 
-Type an address in the bar, or pick from the start page, which groups known destinations as **Mod hosts**, **Tools**, **Reference**, and **Community**. **Home** returns there.
+Type an address in the bar, or open **Site shortcuts**, which groups known destinations as **Mod hosts**, **Tools**, **Reference**, and **Community**. **Home** opens GameBanana's Deadlock page.
 
 **Open in your browser** hands the current page to your real browser, which is what you want for anything involving a login.
+
+## Reading a page
+
+**Find in page** searches the current page and shows your position and the total
+number of matches. Use the arrows, **Enter** for the next match, or
+**Shift+Enter** for the previous one while the find field is focused.
+**Escape** closes find and clears its highlight. Loading another page clears
+the search.
+
+The zoom buttons resize the page from **50% to 200%**. Click the percentage to
+return to **100%**. Site shortcuts start collapsed so the page has more room.
 
 ## What it will not do
 
@@ -26,7 +37,21 @@ This is the part worth knowing before you trust it with anything.
 
 **It does not run pages with any access to the app.** Pages are isolated from Grimoire, and popups go to your real browser.
 
-**It blocks ads and trackers.** The filter lists are built into the app, so the blocking itself makes no network request. See [privacy](./privacy.md).
+**It blocks ads and trackers.** Filtering uses local lists and makes no network
+request itself. Open **Ad blocker** to see status and the request count, or pause
+and resume filtering for the current site. That action reloads the page. Saved
+exceptions apply only to that site's exact address, including its scheme and
+port. See [privacy](./privacy.md).
+
+In Settings, the browser filter controls show the list revision and download
+date. **Check for list updates** downloads a candidate from the official source;
+review its rule counts, then choose **Apply reviewed update**. Updates happen
+only when requested, and a failed check keeps the active lists.
+
+A custom file can contain hosts entries and supported EasyList/uBlock rules.
+The controls report recognized lines and rejected line numbers. **Reload custom
+list** applies edits to the chosen file. Reload open pages after changing filters
+so their hidden elements and cached resources are checked again.
 
 ## Downloads from tool sites
 

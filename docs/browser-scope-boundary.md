@@ -13,22 +13,88 @@ missing should find a decision here, not conclude the app forgot.
 |---|---|
 | Back | Steps the guest's own navigation history backward, via `<webview>.goBack()`. |
 | Forward | Steps the guest's own navigation history forward, via `<webview>.goForward()`. |
-| Reload / Stop | One button that reloads the current page while idle and cancels an in-flight load while loading, mirroring what the load state actually allows. |
+| Reload / Stop | One button that reloads the current page without cached resources while idle and cancels an in-flight load while loading, mirroring what the load state actually allows. |
 | Home | Navigates to `HOME_DESTINATION_URL`, the catalog's named Home destination (see below), not whatever happens to load first. |
 | Address bar | Accepts a typed URL or bare host, normalizes it to `https://` when no scheme is given, and refuses anything that isn't `http(s)` before it ever reaches the guest. |
 | Open externally | Hands the current URL to the user's real, unsandboxed browser via `window.open`, for anything the in-app guest's deliberately narrow feature set can't do. |
-| Destination catalog | The kind-grouped shortcut rows (Mod hosts, Tools, Reference, Community) sourced from `BROWSER_DESTINATIONS`, the curated list of sites this page exists to shortcut to. |
+| Destination catalog | The collapsible Site shortcuts list groups Mod hosts, Tools, Reference and Community from `BROWSER_DESTINATIONS`. It starts closed and its expanded list scrolls within a bounded height to leave room for the guest page. |
+| Find in page | Searches the guest through Electron's native find API, with live match counts, previous/next controls, Enter/Shift+Enter and Escape. Empty searches and closing clear the selection. Full page navigation clears the query and ignores late results from the previous search. |
+| Zoom | Changes the guest's actual zoom from 50% to 200%, with a percentage/reset control. The displayed value is read back from the guest and refreshed when its document becomes ready, including Chromium's per-origin zoom behavior. |
 
 ## Controls that deliberately do not exist
 
 | Control | Reason |
 |---|---|
 | Tabs | The guest is a single `<webview>` with a single pinned session partition. Multiple tabs would multiply the surface `will-attach-webview` has to harden for no benefit to a shortcut page; "open externally" is the escape hatch for anyone who wants a real multi-tab session. |
-| Find in page | Not one of the handful of workflows this page exists for (follow a shortcut, download a tool's output, hand a GameBanana link back to Grimoire). A user who needs it can open externally. |
-| Zoom | Same reasoning as find in page: a real browser feature this page doesn't try to reproduce, deliberately, rather than by omission. |
-| Extension surface | The guest has no preload and no extension host; `hardenGuestWebPreferences` strips exactly this kind of privilege on every attach, unconditionally. Adding an extension surface would mean building a second, less-audited runtime inside the app. |
+| Extension surface | The guest cannot load an app or page-selected preload and has no extension host; `hardenGuestWebPreferences` strips exactly this kind of privilege on every attach, unconditionally. Adding an extension surface would mean building a second, less-audited runtime inside the app. |
 | History panel beyond the guest's own back/forward stack | Grimoire does not own or persist a navigation history separate from what the guest's own `canGoBack()`/`canGoForward()` already report. A history panel would imply Grimoire is tracking browsing activity it in fact never records. |
 | Download manager | Phase 6 added download capture for exactly one declared tool-kind destination (`kind: 'tool'`, currently Pimp My Hideout): a download from that destination is either handed to the mod library after an explicit confirmation, or (for every other destination, and for the tool destination when refused) handed to the system browser. There is nothing in between for a user to manage, so there is no manager surface. What makes that true rather than aspirational: the disclosure is owned by the app shell, not by the Browser page, so leaving the page does not lose it, and a temp file that never reaches an answer is deleted at the next launch (see "Disclosure lifetime and temp file retention" below). Building a manager surface would still imply a queue, history, or pause/resume capability that does not exist and was never built for this page. |
+
+## Reading and navigation follow-up (2026-10-03)
+
+The browser now supports finding text and zooming for the reference and tool
+pages it already links to. This revises the earlier decision to omit those two
+controls. It remains one guest with the same main-process privilege floor and
+download confirmation contract. There is no new preload, page script injection,
+history database or global keyboard interception. The find field's keyboard
+controls apply while that field has focus.
+
+`useBrowserNavigation` binds listeners when asynchronously loaded settings
+mount the guest, waits for `dom-ready` before calling guest methods and ignores
+subframe navigation/failures and ordinary aborted loads. Translation changes
+do not rebind listeners or overwrite the live destination. The address and
+capture grant follow committed guest navigation; a pending top-level navigation
+revokes the previous tool grant. Leaving or disabling Browser removes listeners
+and revokes the grant. `Browser.test.tsx` covers these transitions and the
+reader controls with a structural guest fixture.
+
+Find session semantics follow the pinned Electron 35 implementation:
+[`findNext` maps to Chromium's `new_session`](https://github.com/electron/electron/blob/v35.0.0/shell/browser/api/electron_api_web_contents.cc#L3125).
+Initial/edited queries pass true; stepping within the same query passes false.
+
+Verification for this follow-up: `pnpm test --maxWorkers=4` passed 3,139 tests
+with 12 skipped, including 10 browser lifecycle/reader cases. Typecheck,
+ESLint, UI ratchet, English-key/manifest and encoding checks passed. The isolated
+Electron slot 4 loaded local HTTP fixtures, found four case-insensitive matches,
+stepped forward/backward, changed zoom to 110% and reset it, navigated back and
+forward, and cleared searches on full navigation, with no UI alerts. A 900 by
+800 DOM layout check had no horizontal overflow and left 618 px of guest
+height with find open and shortcuts closed. Native screenshot capture was not
+completed, so this is automated behavior/layout evidence, not visual or human
+acceptance. No installed-app update or release was performed.
+
+## Ad and tracker filtering (2026-10-07)
+
+The Browser Ad blocker panel reports readiness and requests stopped since
+launch. Pause/resume saves an exception for the exact HTTP(S) origin, including
+scheme and port. It bypasses network rules, filter CSP changes and cosmetic
+injection for that guest page, then reloads without cached resources. Exceptions
+do not grant camera, microphone, location, notification or clipboard access.
+Settings lists saved exceptions and allows removing each one.
+
+Settings shows the active source revision and download date, real supported
+rule counts after cold or cached startup, custom accepted/rejected lines and
+rejected line numbers. Reload custom list rereads the selected file, serializes
+engine changes and clears the guest HTTP cache. Cookies and site storage remain.
+Prior injected rules are removed without deleting overlapping bundled rules.
+Changes to hidden page elements require a page reload.
+
+Startup loads local lists and registers the blocker session preload before
+loading the app renderer, so the first guest document can receive cosmetic
+rules. This is the trusted Ghostery filtering helper, never Grimoire's app
+preload or one chosen by a page. The earlier no-preload shorthand described
+page/app preload access, not the existing blocker helper.
+
+Check for list updates is the only runtime download trigger. It uses the shared
+GitHub limiter, resolves the official asset repository to one immutable commit,
+then downloads bounded HTTPS assets from that commit. The current engine must
+parse the lists and resources before a review is offered. Apply reviewed update
+checks its token and current generation, writes one checksum-verified local
+bundle atomically and swaps the engine. A failed download or rejected review
+leaves active lists unchanged; an attachment failure rolls back the saved
+bundle and engine. No scheduled refresh or browsing-history transmission exists.
+Packaging's explicit --refresh also resolves one current asset commit; ordinary
+postinstall retains the pinned seed when creating absent bundled files.
 
 ## Disclosure lifetime and temp file retention
 

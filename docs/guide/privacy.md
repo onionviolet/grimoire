@@ -57,7 +57,13 @@ If you have ever signed in, Grimoire also checks your session at startup even wi
 
 A **Browser** tab for mod sites. Anything you visit in it reaches that site exactly as it would in a normal browser, so this is the one feature whose network activity is entirely yours to direct.
 
-Two things it does not do. It **blocks ads and trackers using filter lists bundled into the app at build time**, so the blocking itself makes no request and nobody learns what you browsed. And it never installs anything on its own: a download is handed to your real browser, or, for a recognized mod file, offered to your library only after you confirm.
+It **blocks ads and trackers using local filter lists**, initially bundled with
+the app. Filtering does not send browsing history anywhere. Choosing **Check
+for list updates** contacts GitHub for the official Ghostery asset revision and
+its list files; it sends no visited URLs or custom-list contents. Updates are
+reviewed before activation and never checked on a schedule.
+
+It never installs anything on its own: a download is handed to your real browser, or, for a recognized mod file, offered to your library only after you confirm.
 
 ### Deadworks Servers
 
