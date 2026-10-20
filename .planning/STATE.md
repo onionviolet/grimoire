@@ -1,14 +1,14 @@
 ---
 status: source-verified
 current_focus: Setup evidence, reusable merges and model auditions
-last_updated: "2026-10-09"
+last_updated: "2026-10-20"
 previous_release: v1.28.2
-upstream_source: de1e4a51bfc5e7bebbc6e7afc584c8f6061add4a
+upstream_source: 01d6822c
 ---
 
 # Project State
 
-The current source integrates upstream v1.30.1 while keeping the fork's
+The current source integrates upstream v1.33.0 (intake record: [upstream-absorption-1.33.md](../docs/upstream-absorption-1.33.md); open gates there: fork engine pin vs newer vpkmerge verbs, nix hash, pnpm 10 lockfile check, packaged build). It previously integrated upstream v1.30.1 while keeping the fork's
 Foundry, sound, Config, Saved and browser workflows. Profile application now
 reviews missing, changed and ambiguous matches before writing. Dev slots select
 their data directory before eager SQLite services initialize. The release
