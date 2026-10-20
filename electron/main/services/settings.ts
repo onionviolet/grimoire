@@ -20,6 +20,8 @@ const DEFAULT_SETTINGS: AppSettings = {
     autoDisableSiblingVariants: true,
     autoEnableDownloads: false,
     steamLaunchOptions: '',
+    updateReleaseChannel: 'stable',
+    checkUpdatesOnStartup: false,
     activeProfileId: null,
     confirmProfileUpdate: true,
     experimentalStats: false,
@@ -49,6 +51,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     backgroundGradient: null,
     verboseModTrace: false,
     forgeLocalInstallEnabled: false,
+    browserFilterExceptions: [],
 };
 
 /** One hidden creator/mod entry from user-editable settings.json, or null when
@@ -132,6 +135,8 @@ export function loadSettings(): AppSettings {
         return {
             ...DEFAULT_SETTINGS,
             ...settings,
+            updateReleaseChannel: settings.updateReleaseChannel === 'preview' ? 'preview' : 'stable',
+            checkUpdatesOnStartup: settings.checkUpdatesOnStartup === true,
             hiddenCreators: normalizeHiddenCreators(settings.hiddenCreators),
             hiddenMods: normalizeHiddenMods(settings.hiddenMods),
             nsfwContentMode:

@@ -402,8 +402,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getAppearanceImageEdit: (surface: AppearanceSurface) =>
         ipcRenderer.invoke('get-appearance-image-edit', surface),
     mergeMods: (args: MergeModsArgs) => ipcRenderer.invoke('merge-mods', args),
-    analyzeMerge: (modIds: string[], respectOrder = false) =>
-        ipcRenderer.invoke('analyze-merge', modIds, respectOrder),
+    listMergeRecipes: () => ipcRenderer.invoke('merge-recipes:list'),
+    saveMergeRecipe: args => ipcRenderer.invoke('merge-recipes:save', args),
+    reviewMergeRecipe: (id, modIds) => ipcRenderer.invoke('merge-recipes:review', id, modIds),
+    analyzeMerge: (modIds, respectOrder = false, flatten = false, pathPolicy) =>
+        ipcRenderer.invoke('analyze-merge', modIds, respectOrder, flatten, pathPolicy),
     unmergeMod: (mergedModId: string) => ipcRenderer.invoke('unmerge-mod', mergedModId),
     extractMergeSource: (mergedModId: string, sourceFileName: string) =>
         ipcRenderer.invoke('extract-merge-source', mergedModId, sourceFileName),
@@ -642,8 +645,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     createProfileFromGameBananaIds: (args: { name: string; gameBananaIds: number[] }) =>
         ipcRenderer.invoke('create-profile-from-gamebanana-ids', args),
     updateProfile: (profileId: string, crosshairSettings?: ProfileCrosshairSettings) => ipcRenderer.invoke('update-profile', profileId, crosshairSettings),
-    previewProfile: (profileId: string) => ipcRenderer.invoke('preview-profile', profileId),
-    applyProfile: (profileId: string, reviewToken?: string) => ipcRenderer.invoke('apply-profile', profileId, reviewToken),
+    previewProfile: (profileId, mappings) => ipcRenderer.invoke('preview-profile', profileId, mappings),
+    applyProfile: (profileId, reviewToken, mappings) => ipcRenderer.invoke('apply-profile', profileId, reviewToken, mappings),
     listProfileRecoveryPoints: () => ipcRenderer.invoke('list-profile-recovery-points'),
     getInterruptedProfileRecovery: () => ipcRenderer.invoke('recovery:interrupted'),
     recoverInterruptedProfileRecovery: (reviewToken: string) => ipcRenderer.invoke('recovery:recover-interrupted', reviewToken),
@@ -653,6 +656,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     applyModIsolationTrial: (reviewToken: string) => ipcRenderer.invoke('recovery:isolation-apply', reviewToken),
     recordModIsolationResult: (reviewToken: string, result: 'works' | 'crashes') => ipcRenderer.invoke('recovery:isolation-result', reviewToken, result),
     finishModIsolation: (reviewToken: string) => ipcRenderer.invoke('recovery:isolation-finish', reviewToken),
+    getSetupTestHistory: () => ipcRenderer.invoke('recovery:setup-tests'),
+    previewDownloadCache: () => ipcRenderer.invoke('recovery:download-cache'),
+    cleanDownloadCache: (reviewToken: string) => ipcRenderer.invoke('recovery:clean-download-cache', reviewToken),
+    recordSetupTest: (reviewToken: string, result: 'works' | 'crashes', note: string) => ipcRenderer.invoke('recovery:record-setup-test', reviewToken, result, note),
     previewProfileRecovery: (id: string) => ipcRenderer.invoke('preview-profile-recovery', id),
     restoreProfileRecovery: (id: string, reviewToken: string) => ipcRenderer.invoke('restore-profile-recovery', id, reviewToken),
     recovery: {
@@ -876,6 +883,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // In-app browser: read-only view of the ad/tracker filter's state.
     browser: {
         filterStats: () => ipcRenderer.invoke('browser:filterStats'),
+        reloadFilter: () => ipcRenderer.invoke('browser:reload-filter'),
+        checkFilterUpdate: () => ipcRenderer.invoke('browser:check-filter-update'),
+        applyFilterUpdate: (reviewId: string) => ipcRenderer.invoke('browser:apply-filter-update', reviewId),
     },
 
     // Language packs (downloaded on demand from GitHub)

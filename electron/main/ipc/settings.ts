@@ -4,7 +4,7 @@ import { auditInstalledSafety } from '../services/modSafetyAudit';
 import { syncWindowBackgroundWithSettings } from '../services/windowBackground';
 import { detectDeadlockPath, looksLikeDeadlockPath } from '../services/deadlock';
 import { ensureDevDeadlockPath } from '../services/dev';
-import { configureFilter, filterStats } from '../services/browserContentFilter';
+import { configureFilter, filterStats, reloadBrowserFilter, checkBrowserFilterUpdate, applyBrowserFilterUpdate } from '../services/browserContentFilter';
 import type { BrowserFilterStats } from '../../../src/types/foundry';
 import { syncForgeBridgeWithSettings } from '../services/forgeBridge';
 
@@ -40,6 +40,7 @@ ipcMain.handle('set-settings', (_, settings: AppSettings): void => {
     configureFilter({
         enabled: settings.browserBlockTrackers !== false,
         userListPath: settings.browserBlockListPath,
+            exceptions: settings.browserFilterExceptions,
     });
     syncWindowBackgroundWithSettings();
     // Bring the DeadlockForge bridge up or down to match. Toggling it off must
@@ -59,4 +60,12 @@ ipcMain.handle('set-settings', (_, settings: AppSettings): void => {
 // it the blocking is invisible and a broken custom list would fail silently.
 ipcMain.handle('browser:filterStats', (): BrowserFilterStats => {
     return filterStats();
+});
+
+// Main process owns file reads, update source selection and review validation.
+ipcMain.handle('browser:reload-filter', () => reloadBrowserFilter());
+ipcMain.handle('browser:check-filter-update', () => checkBrowserFilterUpdate());
+ipcMain.handle('browser:apply-filter-update', (_event, reviewId: unknown) => {
+    if (typeof reviewId !== 'string' || reviewId.length > 100) throw new Error('Invalid filter review.');
+    return applyBrowserFilterUpdate(reviewId);
 });

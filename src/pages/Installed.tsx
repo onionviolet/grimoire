@@ -2640,14 +2640,18 @@ export default function Installed() {
     name,
     strict,
     sourceOrder,
+    reviewToken,
+    pathPolicy,
   }: {
     modIds: string[];
     name: string;
     strict: boolean;
     sourceOrder?: string[];
+    reviewToken?: string;
+    pathPolicy?: import('../types/mergeRecipe').MergePathPolicy;
   }) => {
     if (!mergeSources) return;
-    await mergeMods({ modIds, name, strict, sourceOrder });
+    await mergeMods({ modIds, name, strict, sourceOrder, reviewToken, pathPolicy });
     setMergeSources(null);
     await loadMods();
     exitSelectMode();

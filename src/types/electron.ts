@@ -915,6 +915,7 @@ export interface CrosshairPreset {
 }
 
 export interface UpdateStatus {
+    checked?: boolean;
     checking: boolean;
     available: boolean;
     downloading: boolean;
@@ -1270,7 +1271,10 @@ export interface ElectronAPI {
     mergeMods: (args: MergeModsArgs) => Promise<Mod>;
     /** `respectOrder` treats `modIds` as a reviewed winner-first composition
      *  order instead of re-deriving the order from pak priority. */
-    analyzeMerge: (modIds: string[], respectOrder?: boolean) => Promise<MergeAnalysisResult>;
+    analyzeMerge: (modIds: string[], respectOrder?: boolean, flatten?: boolean, pathPolicy?: import('./mergeRecipe').MergePathPolicy) => Promise<MergeAnalysisResult>;
+    listMergeRecipes: () => Promise<import('./mergeRecipe').MergeRecipe[]>;
+    saveMergeRecipe: (args: import('./mergeRecipe').MergeRecipeSave) => Promise<void>;
+    reviewMergeRecipe: (id: string, modIds: string[]) => Promise<import('./mergeRecipe').MergeRecipeReview>;
     unmergeMod: (mergedModId: string) => Promise<UnmergeModResult>;
     extractMergeSource: (mergedModId: string, sourceFileName: string) => Promise<ExtractMergeSourceResult>;
     addMergeSources: (mergedModId: string, addModIds: string[], strict?: boolean) => Promise<AddMergeSourcesResult>;
@@ -1438,8 +1442,8 @@ export interface ElectronAPI {
     createProfile: (name: string, crosshairSettings?: ProfileCrosshairSettings) => Promise<Profile>;
     createProfileFromGameBananaIds: (args: { name: string; gameBananaIds: number[] }) => Promise<Profile>;
     updateProfile: (profileId: string, crosshairSettings?: ProfileCrosshairSettings) => Promise<Profile>;
-    previewProfile: (profileId: string) => Promise<ProfileApplyPreview>;
-    applyProfile: (profileId: string, reviewToken?: string) => Promise<ApplyProfileResult>;
+    previewProfile: (profileId: string, mappings?: ProfileApplyMapping[]) => Promise<ProfileApplyPreview>;
+    applyProfile: (profileId: string, reviewToken?: string, mappings?: ProfileApplyMapping[]) => Promise<ApplyProfileResult>;
     listProfileRecoveryPoints: () => Promise<import('./profileRecovery').ProfileRecoverySummary[]>;
     getInterruptedProfileRecovery: () => Promise<import('./profileRecovery').InterruptedRecovery | null>;
     recoverInterruptedProfileRecovery: (reviewToken: string) => Promise<void>;
@@ -1449,6 +1453,10 @@ export interface ElectronAPI {
     applyModIsolationTrial: (reviewToken: string) => Promise<import('./recovery').ModIsolationSession>;
     recordModIsolationResult: (reviewToken: string, result: 'works' | 'crashes') => Promise<import('./recovery').ModIsolationSession>;
     finishModIsolation: (reviewToken: string) => Promise<void>;
+    getSetupTestHistory: () => Promise<import('./setupTestHistory').SetupTestHistory>;
+    recordSetupTest: (reviewToken: string, result: 'works' | 'crashes', note: string) => Promise<void>;
+    previewDownloadCache: () => Promise<import('./downloadCache').DownloadCachePreview>;
+    cleanDownloadCache: (reviewToken: string) => Promise<import('./downloadCache').DownloadCacheCleanup>;
     previewProfileRecovery: (id: string) => Promise<import('./profileRecovery').ProfileRecoveryPreview>;
     restoreProfileRecovery: (id: string, reviewToken: string) => Promise<void>;
     recovery: {
@@ -1719,6 +1727,9 @@ export interface ElectronAPI {
     };
     browser: {
         filterStats: () => Promise<import('./foundry').BrowserFilterStats>;
+        reloadFilter: () => Promise<import('./foundry').BrowserFilterStats>;
+        checkFilterUpdate: () => Promise<import('./browserFilter').BrowserFilterUpdateReview>;
+        applyFilterUpdate: (reviewId: string) => Promise<import('./foundry').BrowserFilterStats>;
     };
 
     // Language packs (downloaded on demand from GitHub)
@@ -1888,9 +1899,10 @@ export interface ApplyProfileResult {
 }
 
 export interface ProfileApplyEntry {
+    entryIndex?: number;
     fileName: string;
     enabled: boolean;
-    status: 'matched' | 'changed' | 'missing' | 'replaced' | 'ambiguous';
+    status: 'matched' | 'changed' | 'missing' | 'replaced' | 'ambiguous' | 'mapped';
     modName?: string;
     modId?: string;
 }
@@ -1903,6 +1915,13 @@ export interface ProfileApplyPreview {
     enableCount: number;
     disableCount: number;
     reviewToken: string;
+    mappings?: ProfileApplyMapping[];
+    localMods?: Array<{ id: string; name: string; fileName: string }>;
+}
+
+export interface ProfileApplyMapping {
+    entryIndex: number;
+    modId: string;
 }
 
 declare global {

@@ -472,6 +472,10 @@ export interface EngineInfo {
  *  to load (bundled or custom), which would otherwise fail silently and look
  *  like weak blocking. */
 export interface BrowserFilterStats {
+    status: 'off' | 'loading' | 'active' | 'fallback' | 'error';
+    list: import('./browserFilter').BrowserFilterListInfo | null;
+    custom: import('./browserFilter').BrowserCustomListInfo;
+    exceptions: string[];
     filters: number;
     domains: number;
     blocked: number;
