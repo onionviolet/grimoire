@@ -4,6 +4,9 @@
 allowBuilds:
   electron: true
   esbuild: true
+  # Downloads the FFmpeg binary that audio conversion spawns and that
+  # electron-builder.yml bundles from node_modules/ffmpeg-static.
+  ffmpeg-static: true
   better-sqlite3: false
   electron-winstaller: false
   sharp: false
