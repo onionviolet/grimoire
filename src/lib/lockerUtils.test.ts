@@ -1,6 +1,23 @@
 import { describe, it, expect } from 'vitest';
 import type { Mod } from '../types/mod';
-import { countLockerSkins, groupLockerSkins, modLoadOrder, activeLockerSkin, buildHeroList, heroListMissesRoster, HERO_NAMES_SORTED, inferHeroFromTitle } from './lockerUtils';
+import { sortLockerMods, getEffectiveGlobalType, groupGlobalMods, countLockerSkins, groupLockerSkins, groupModsByCategory, modLoadOrder, activeLockerSkin, buildHeroList, buildHeroByCategoryId, heroListMissesRoster, HERO_NAMES_SORTED, inferHeroFromTitle, isLockerManagedMod, isLockerManagedSound } from './lockerUtils';
+import type { GameBananaCategoryNode } from '../types/gamebanana';
+
+const skinCategories: GameBananaCategoryNode[] = [{
+  id: 33295, name: 'Skins', itemCount: 0,
+  children: [
+    {
+      id: 33325, name: 'Viscous', itemCount: 0,
+      children: [
+        { id: 50570, name: 'Faithful/Vanilla+', itemCount: 0 },
+        { id: 50571, name: 'Ports', itemCount: 0, children: [
+          { id: 60000, name: 'Nested port category', itemCount: 0 },
+        ] },
+      ],
+    },
+    { id: 33301, name: 'Haze', itemCount: 0 },
+  ],
+}];
 
 function mod(over: Partial<Mod> & { id: string; metaKey: string; priority: number }): Mod {
   return {
@@ -21,6 +38,28 @@ function mod(over: Partial<Mod> & { id: string; metaKey: string; priority: numbe
  * line in the canonical SearchPaths block, so it must outrank every addons
  * folder; this used to be mirrored by hand on the Conflicts page and went stale.
  */
+describe('tag selections in Locker', () => {
+  it('routes every selected Base destination and keeps cleared tags out of Locker', () => {
+    const target = mod({ id: 'tags', metaKey: 'tags.vpk', priority: 1, sourceSection: 'Mod',
+      categoryName: 'Skins', lockerHeroes: ['Haze'], tagOverrides: { base: ['HUD', 'Maps'], heroes: ['Ivy'] } });
+    const groups = groupGlobalMods([target]);
+    expect(groups.hud).toEqual([target]);
+    expect(groups.maps).toEqual([target]);
+    const cleared = { ...target, tagOverrides: { base: [], heroes: [] } };
+    expect(getEffectiveGlobalType(cleared)).toBeUndefined();
+    expect(isLockerManagedMod(cleared)).toBe(false);
+    expect(isLockerManagedSound({ ...cleared, sourceSection: 'Sound' })).toBe(false);
+    const sounds = { ...cleared, tagOverrides: { base: ['Sounds'], heroes: ['Ivy'] } };
+    expect(isLockerManagedSound(sounds)).toBe(true);
+    expect(isLockerManagedMod(sounds)).toBe(false);
+    const skins = { ...cleared, tagOverrides: { base: ['Skins'], heroes: [] } };
+    expect(isLockerManagedMod({ ...skins, sourceSection: 'Wip' })).toBe(true);
+    expect(isLockerManagedMod({ ...skins, sourceSection: 'Sound' })).toBe(true);
+    expect(isLockerManagedSound({ ...skins, sourceSection: 'Sound' })).toBe(false);
+    expect(groupModsByCategory([{ ...cleared, categoryId: 33301, lockerHeroes: undefined }], buildHeroList(skinCategories)).unassigned).toHaveLength(1);
+  });
+});
+
 describe('modLoadOrder', () => {
   it('ranks the priority root ahead of base addons', () => {
     const global = mod({ id: 'g', metaKey: 'grimoire/pak99_dir.vpk', priority: 99 });
@@ -83,6 +122,77 @@ describe('buildHeroList', () => {
   });
 });
 
+describe('groupModsByCategory', () => {
+  const heroes = buildHeroList(skinCategories);
+
+  it.each([33325, 50570, 50571, 60000])('files skin category %i under its hero', (categoryId) => {
+    const skin = mod({ id: 'skin', metaKey: 'pak01_dir.vpk', priority: 1,
+      name: 'A remodel without a hero in its title', categoryId });
+    const grouped = groupModsByCategory([skin], heroes);
+    expect([...grouped.map.entries()]).toEqual([[33325, [skin]]]);
+    expect(grouped.unassigned).toEqual([]);
+  });
+
+  it('keeps a manual hero assignment ahead of category ancestry', () => {
+    const skin = mod({ id: 'skin', metaKey: 'pak01_dir.vpk', priority: 1,
+      categoryId: 50570, lockerHero: 'Haze' });
+    expect([...groupModsByCategory([skin], heroes).map.entries()]).toEqual([[33301, [skin]]]);
+  });
+
+  it('does not infer a hero from a submission title when its category is unknown', () => {
+    const skin = mod({ id: 'skin', metaKey: 'pak01_dir.vpk', priority: 1,
+      name: 'Viscous Redesign', categoryId: 99999, categoryName: 'Faithful/Vanilla+' });
+    expect(groupModsByCategory([skin], heroes).unassigned).toEqual([skin]);
+  });
+
+  it.each(['Sound', 'Wip'])('files a shared %s payload under each resolved hero once', (sourceSection) => {
+    const shared = mod({ id: 'shared', metaKey: 'shared.vpk', priority: 1,
+      sourceSection, lockerHeroes: ['Viscous', 'Haze', 'Viscous'] });
+    const grouped = groupModsByCategory([shared], heroes);
+    expect([...grouped.map.entries()]).toEqual([[33325, [shared]], [33301, [shared]]]);
+    expect(grouped.unassigned).toEqual([]);
+    expect(sourceSection === 'Sound' ? isLockerManagedSound(shared) : isLockerManagedMod(shared)).toBe(true);
+    expect(countLockerSkins([shared])).toBe(1);
+  });
+
+  it('honors an explicitly resolved empty set and keeps category models separate', () => {
+    const empty = mod({ id: 'empty', metaKey: 'a', priority: 1,
+      categoryId: 33325, lockerHero: 'Haze', lockerHeroes: [] });
+    const sound = mod({ id: 'sound', metaKey: 'b', priority: 2,
+      sourceSection: 'Sound', categoryId: 33325 });
+    expect(groupModsByCategory([empty, sound], heroes).unassigned).toEqual([empty, sound]);
+  });
+
+  it('keeps an unknown category visible in Unassigned when no hero matches', () => {
+    const skin = mod({ id: 'skin', metaKey: 'pak01_dir.vpk', priority: 1,
+      name: 'Unknown remodel', categoryId: 99999 });
+    const grouped = groupModsByCategory([skin], heroes);
+    expect(grouped.map.size).toBe(0);
+    expect(grouped.unassigned).toEqual([skin]);
+  });
+});
+
+describe('buildHeroByCategoryId', () => {
+  it('maps a hero category and every nested subcategory to the hero', () => {
+    const tree = [
+      { id: 31713, name: 'HUD', itemCount: 0, children: [{ id: 1, name: 'Crosshairs', itemCount: 0 }] },
+      {
+        id: 33295, name: 'Skins', itemCount: 0,
+        children: [
+          {
+            id: 33325, name: 'Viscous', itemCount: 0,
+            children: [{ id: 50571, name: 'Ports', itemCount: 0, children: [{ id: 60000, name: 'Nested', itemCount: 0 }] }],
+          },
+          { id: 49629, name: 'RatKing', itemCount: 0 },
+        ],
+      },
+    ];
+    expect([...buildHeroByCategoryId(tree)]).toEqual([
+      [33325, 'Viscous'], [50571, 'Viscous'], [60000, 'Viscous'], [49629, 'Rat King'],
+    ]);
+  });
+});
+
 describe('inferHeroFromTitle', () => {
   it('does not let colour words or partial names steal a title from the hero it names', () => {
     expect(inferHeroFromTitle('Patches of Violet on Billy Blasted (Ability 3)')).toBe('Billy');
@@ -116,4 +226,67 @@ describe('countLockerSkins', () => {
     expect(mods).toEqual(original);
     expect(countLockerSkins([])).toBe(0);
   });
+});
+
+
+it('files GameBanana animations in General unless manually reassigned', () => {
+  const animation = mod({ id: 'animation', metaKey: 'pak01_dir.vpk', priority: 1,
+    sourceSection: 'Mod', categoryName: 'Animations', lockerHero: 'Haze', lockerHeroSource: 'download-title' });
+  expect(groupGlobalMods([animation]).animations).toEqual([animation]);
+  expect(getEffectiveGlobalType({ ...animation, lockerHeroSource: undefined })).toBe('animations');
+  expect(getEffectiveGlobalType({ ...animation, lockerHeroSource: 'manual' })).toBeUndefined();
+  expect(getEffectiveGlobalType({ ...animation, globalType: 'hud' })).toBe('hud');
+});
+
+describe('Maps in General', () => {
+  const map = mod({ id: 'map', metaKey: 'pak01_dir.vpk', priority: 1,
+    sourceSection: 'Mod', categoryName: ' Maps ' });
+
+  it('groups existing GameBanana maps under Maps', () => {
+    expect(getEffectiveGlobalType(map)).toBe('maps');
+    expect(groupGlobalMods([map]).maps).toEqual([map]);
+  });
+
+  it('respects explicit assignments and ignores other sections', () => {
+    expect(getEffectiveGlobalType({ ...map, globalType: 'hud' })).toBe('hud');
+    expect(getEffectiveGlobalType({ ...map, lockerHero: 'Haze' })).toBeUndefined();
+    expect(getEffectiveGlobalType({ ...map, sourceSection: 'Sound' })).toBe('sounds');
+    expect(getEffectiveGlobalType({ ...map, categoryName: 'Minimaps' })).toBeUndefined();
+    expect(getEffectiveGlobalType({ ...map, categoryName: undefined, globalType: 'maps' })).toBe('maps');
+  });
+});
+
+describe('Locker mod display order', () => {
+  const options = {
+    favorites: new Set(['favorite', 'active-favorite']),
+    keyOf: (item: { id: string }) => item.id,
+    isActive: (item: { active: boolean }) => item.active,
+  };
+
+  it('keeps active mods ahead of favorites without changing their relative order', () => {
+    const items = [
+      { id: 'plain', active: false }, { id: 'active', active: true },
+      { id: 'favorite', active: false }, { id: 'active-favorite', active: true },
+      { id: 'other', active: false },
+    ];
+    expect(sortLockerMods(items, options).map(item => item.id))
+      .toEqual(['active', 'active-favorite', 'favorite', 'plain', 'other']);
+    expect(items.map(item => item.id)).toEqual(['plain', 'active', 'favorite', 'active-favorite', 'other']);
+  });
+
+  it('places favorites first when no mod is active and restores the existing order when cleared', () => {
+    const items = [{ id: 'plain', active: false }, { id: 'favorite', active: false }];
+    expect(sortLockerMods(items, options).map(item => item.id)).toEqual(['favorite', 'plain']);
+    expect(sortLockerMods(items, { ...options, favorites: new Set() })).toEqual(items);
+  });
+});
+
+it('shares mixed prop packs across General categories and folds legacy killstreak music into Sounds', () => {
+  const mixed = mod({ id: 'mixed', metaKey: 'mixed.vpk', priority: 1, propTypes: ['hidden-king', 'archmother', 'sinner'] });
+  const legacy = mod({ id: 'legacy', metaKey: 'legacy.vpk', priority: 2, globalType: 'killstreak-music' });
+  const heroSound = mod({ id: 'hero-sound', metaKey: 'hero.vpk', priority: 3, sourceSection: 'Sound', lockerHeroes: ['Ivy'] });
+  const groups = groupGlobalMods([mixed, legacy, heroSound]);
+  expect(groups['hidden-king']).toEqual([mixed]); expect(groups.archmother).toEqual([mixed]); expect(groups.sinner).toEqual([mixed]);
+  expect(groups.patron).toEqual([]); expect(groups.boxes).toEqual([]);
+  expect(groups.sounds).toEqual([legacy]); expect(groups['killstreak-music']).toEqual([]);
 });

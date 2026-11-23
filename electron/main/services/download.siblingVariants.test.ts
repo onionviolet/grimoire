@@ -3,7 +3,7 @@ import type { BrowserWindow } from 'electron';
 
 const harness = vi.hoisted(() => ({
     settings: { autoDisableSiblingVariants: true, autoEnableDownloads: false } as Record<string, unknown>,
-    metadata: new Map<string, { gameBananaId: number; gameBananaFileId: number }>(),
+    metadata: new Map<string, { gameBananaId: number; gameBananaFileId: number; localImport?: boolean }>(),
     installed: [] as Array<{ id: string; name: string; fileName: string; metaKey: string; enabled: boolean }>,
 }));
 const modMocks = vi.hoisted(() => ({
@@ -18,7 +18,6 @@ vi.mock('electron', () => ({
         static getAllWindows() { return []; }
     },
 }));
-vi.mock('@grimoire/social-types/heroes', () => ({ inferHeroFromTitle: () => null }));
 vi.mock('./settings', async (importOriginal) => ({
     ...(await importOriginal<typeof import('./settings')>()),
     loadSettings: () => harness.settings,
@@ -85,6 +84,12 @@ describe('applyPostInstallEnableRules', () => {
             modId: QOL,
             fileId: HOTFIX,
         }));
+    });
+
+    it('keeps a custom imported sibling enabled when installing an original variant', async () => {
+        harness.metadata.set('pak03_dir.vpk', { gameBananaId: QOL, gameBananaFileId: 1680726, localImport: true });
+        await applyPostInstallEnableRules('/game', ['hotfix_dir.vpk'], target(), mainWindow, '[test]');
+        expect(modMocks.disableMod.mock.calls.map(call => call[1])).toEqual(['old-main']);
     });
 
     it('leaves every sibling enabled when the install replaces specific files', async () => {

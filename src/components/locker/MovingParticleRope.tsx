@@ -2,7 +2,7 @@ import { useFrame } from '@react-three/fiber';
 import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { advanceSpriteEmission, ageCurveValue, paramScalar, spriteGradientColor, spriteParamsFor, type FxDescriptor, type FxRenderer, type SpriteEmissionState } from './fxDescriptor';
-import { resolveParticleAttachment } from './particleAttachment';
+import { resolveParticleControlPoint } from './particleAttachment';
 import { particleInitialScalars } from './particleScalarInput';
 import { spritecardMaterial } from './spritecardMaterial';
 import { particleRopeAcceleration, particleRopeExtraAlpha, particleRopeInitialField } from './particleRopeMotion';
@@ -20,8 +20,9 @@ export function MovingParticleRope({ system, renderer, model, textureBaseUrl, de
   controlPointComponents?: Readonly<Record<number, number>>;
 }) {
   const mesh = useRef<THREE.Mesh>(null), clock = useRef(0), points = useRef<Point[]>([]), emissions = useRef<SpriteEmissionState[]>([]), initialized = useRef(false);
+  const particleNumber = useRef(0);
   const params = useMemo(() => spriteParamsFor(system, renderer), [system, renderer]);
-  const attachment = useMemo(() => resolveParticleAttachment(model, params?.attachment ?? null, attachments), [model, params, attachments]);
+  const attachment = useMemo(() => resolveParticleControlPoint(model, params?.controlPoint, params?.attachment ?? null, attachments), [model, params, attachments]);
   const resource = useMemo(() => spritecardMaterial(renderer, textureBaseUrl, VERT, true), [renderer, textureBaseUrl]);
   const maximum = Math.max(2, Math.min(128, params?.maxParticles ?? 2));
   const subdivisions = Math.floor(Math.max(1, Math.min(8, paramScalar(renderer.params.m_nMaxTesselation, 8))));
@@ -37,7 +38,7 @@ export function MovingParticleRope({ system, renderer, model, textureBaseUrl, de
     sourceOrientation: new THREE.Quaternion(), rootScale: new THREE.Vector3(), gravity: new THREE.Vector3(), tangent: new THREE.Vector3(), eye: new THREE.Vector3(), side: new THREE.Vector3(), force: new THREE.Vector3(), sourcePosition: new THREE.Vector3(), inverseSource: new THREE.Quaternion(), edge: new THREE.Vector3() }), []);
   useEffect(() => () => geometry.dispose(), [geometry]);
   useEffect(() => () => { resource?.material.dispose(); resource?.textures.forEach(t => t.dispose()); }, [resource]);
-  useEffect(() => { clock.current = 0; points.current = []; emissions.current = []; initialized.current = false; }, [system]);
+  useEffect(() => { clock.current = 0; points.current = []; emissions.current = []; initialized.current = false; particleNumber.current = 0; }, [system]);
   useFrame(({camera}, rawDelta) => {
     if (!params || !resource || !mesh.current?.parent || !attachment.object || playback?.paused) return;
     const dt = Math.max(0, Math.min(.1, rawDelta*(playback?.speed ?? 1))); if (!dt) return;
@@ -51,12 +52,14 @@ export function MovingParticleRope({ system, renderer, model, textureBaseUrl, de
     else anchor.getWorldPosition(state.origin);
     if (!initialized.current) { state.previous.copy(state.origin); initialized.current = true; }
     state.shift.copy(state.origin).sub(state.previous);
+    state.previous.copy(state.origin);
     state.gravity.fromArray(params.gravity).multiplyScalar(unit).applyQuaternion(state.sourceOrientation);
     const list = points.current.filter(p => p.age+dt < p.life);
+    const existing = list.length;
     const births = advanceSpriteEmission(params.emissions.map(e => ({...e,start:e.start+delay})), emissions.current, clock.current, clock.current+dt, maximum-list.length);
     clock.current += dt;
     for (const born of births) {
-      const { life, radius, alpha } = particleInitialScalars(system, controlPointComponents);
+      const { life, radius, alpha } = particleInitialScalars(system, controlPointComponents, particleNumber.current++);
       const position = state.origin.clone();
       for (const offset of params.offsets) position.add(new THREE.Vector3(...offset.min.map((lo, i) => THREE.MathUtils.lerp(lo, offset.max[i], Math.random()))).multiplyScalar(unit).applyQuaternion(offset.local ? state.orientation : state.sourceOrientation));
       const velocity = new THREE.Vector3(...params.localSpeedMin.map((lo, i) => THREE.MathUtils.lerp(lo, params.localSpeedMax[i], Math.random()))).multiplyScalar(unit).applyQuaternion(state.orientation);
@@ -64,9 +67,15 @@ export function MovingParticleRope({ system, renderer, model, textureBaseUrl, de
       list.push({ position, velocity, age: born-dt, life, radius: radius*unit, alpha, extraAlpha: particleRopeInitialField(system,39,1) });
     }
     const lock = system.operators.find(n => n.class === 'C_OP_PositionLock');
-    for (const p of list) {
+    for (let index = 0; index < list.length; index++) {
+      const p = list[index];
       p.age += dt; const step = Math.min(dt, p.age), t = p.age/p.life;
-      if (lock && t >= paramScalar(lock.params.m_flStartTime_min, 0) && t < paramScalar(lock.params.m_flEndTime_max, 1)) p.position.add(state.shift);
+      if (lock && index < existing) {
+        // Start/end describe the unlock window. New births already use this frame's tip.
+        const start = paramScalar(lock.params.m_flStartTime_min, 1), end = paramScalar(lock.params.m_flEndTime_max, 1);
+        const weight = t <= start ? 1 : end > start ? THREE.MathUtils.clamp((end-t)/(end-start), 0, 1) : 0;
+        p.position.addScaledVector(state.shift, weight);
+      }
       state.inverseSource.copy(state.sourceOrientation).invert();
       state.sourcePosition.copy(p.position).applyQuaternion(state.inverseSource).divideScalar(unit);
       state.force.fromArray(particleRopeAcceleration(system, state.sourcePosition.toArray() as [number,number,number], t, clock.current)).multiplyScalar(unit).applyQuaternion(state.sourceOrientation);
@@ -90,7 +99,7 @@ export function MovingParticleRope({ system, renderer, model, textureBaseUrl, de
       state.tangent.copy(renderPoints[Math.min(i+1,renderCount-1)]).sub(renderPoints[Math.max(0,i-1)]).normalize();
       camera.getWorldPosition(state.eye).sub(p.position).normalize();
       state.side.crossVectors(state.tangent,state.eye).normalize().multiplyScalar(p.radius*params.radiusScale*Math.max(0,ageCurveValue(params.radiusCurve,t)));
-      const tint = spriteGradientColor(params.colorGradient,t) ?? params.colorMin;
+      const tint = spriteGradientColor(params.colorGradient,t,undefined,clock.current) ?? params.colorMin;
       for(let edge=0;edge<2;edge++) {
         state.edge.copy(p.position).addScaledVector(state.side,edge?1:-1);mesh.current.parent.worldToLocal(state.edge);
         positions.setXYZ(2*i+edge,state.edge.x,state.edge.y,state.edge.z);
@@ -101,7 +110,6 @@ export function MovingParticleRope({ system, renderer, model, textureBaseUrl, de
     }
     geometry.setDrawRange(0,Math.max(0,(list.length-1)*subdivisions)*6);
     for(const attribute of [positions,uv,alpha,color]) attribute.needsUpdate = true;
-    state.previous.copy(state.origin);
   });
   if (!params || !resource || attachment.kind !== 'exact') return null;
   return <mesh ref={mesh} geometry={geometry} material={resource.material} frustumCulled={false} />;

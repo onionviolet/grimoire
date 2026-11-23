@@ -7,8 +7,8 @@
  *
  * Built with the bundled `vpkmerge model export --pose`: it bakes one animation
  * frame into the mesh and emits a *static* `.glb` (no skeleton, skin, or clips)
- * with Deadlock's inverted-hull `*_outline` and additive `*_glow` shells
- * dropped (both collapse to an opaque white halo as plain glTF). For a skin the
+ * with authored outline/jitter geometry marked for the viewer's supported
+ * material paths. Unsupported shells stay hidden. For a skin the
  * pose clip is mapped from the base pak onto the skin's own rig by bone name
  * (same hero = same rig), so a skin VPK that ships zero clips still poses.
  *
@@ -29,17 +29,33 @@ import { tmpdir } from 'os';
 import { pathToFileURL } from 'url';
 import { app, net } from 'electron';
 import { registerAssetProtocol } from './assetProtocol';
-import { runVpkmerge, runVpkmergeStdout, verifyVpkOutput } from './modMerger';
+import { runVpkmerge, runVpkmergeStdout, verifyVpkOutput, vpkmergeBinaryPath } from './modMerger';
 import { SOURCE2_EXTRAS_VERSION } from '../../../src/lib/source2ExtrasVersion';
 import { modelCodenamesForHero, modelEntryForHero } from '../../../src/lib/heroIdentity';
 import { exportParticleBundle } from './heroParticleExport';
+import { BUNDLE_FILENAME, BUNDLE_TEXTURE_DIRNAME } from './heroParticleBundle';
+import { exportHeroParticlesInWorker, readHeroPostBloomInWorker } from './heroParticleWorkerClient';
+import { PackageStack, type VpkmergeRunner } from './heroParticleSources';
+import { BUNDLE_TEXTURE_FILE, PARTICLE_BUNDLE_VERSION } from '../../../src/lib/particles/host/bundle';
 import { exportModelAttachments } from './modelAttachments';
 import { readHeroAnimationMetadata } from './heroAnimationMetadata';
 import { heroAnimationRecipe, selectHeroAnimations, type HeroAnimationInfo } from '../../../src/lib/heroAnimationCatalog';
+import { writeHeroAnimationPolicy } from './heroAnimationExport';
 import { getCitadelPath, getAddonsPath, getDisabledPath } from './deadlock';
 import { resolvePreviewVpk } from './previewVpkRegistry';
 import { readEmbeddedClipEvents } from './abilityClipEvents';
 import type { EmbeddedClipEventMetadata } from '../../../src/types/abilityEvents';
+import { parseVpkDirectoryCached } from './vpk';
+import { skinPreviewForm, skinFormExportArgs, type SkinModelForm } from '../../../src/lib/skinModelForms';
+import { hideoutCacheFile } from './hideoutScene';
+import { movementCacheFile, movementEngineFile } from './movementFxPaths';
+import { animationPreviewFile } from './animationModPreview';
+import { selectMovementClips } from '../../../src/lib/movementMotion';
+import { resolveGraphMovementClips } from '../../../src/lib/movementGraphClips';
+import { compatibleHeroAnimationRig } from './heroRigCompatibility';
+import { discoverRiggedHeroClips, type RiggedHeroClip } from './heroRiggedClips';
+import type { HeroPoseInfo } from '../../../src/types/portrait';
+export type { HeroPoseInfo } from '../../../src/types/portrait';
 
 export const HERO_POSE_SCHEME = 'grimoire-hero';
 
@@ -102,7 +118,7 @@ export const HERO_POSE_SCHEME = 'grimoire-hero';
  */
 // Reviewed production pins used by the animation catalog; the identity table's
 // `modelEntry` is consulted after this table (see modelEntryFor).
-const MODEL_ENTRY_OVERRIDES: Readonly<Record<string, string>> = {
+export const MODEL_ENTRY_OVERRIDES: Readonly<Record<string, string>> = {
     Abrams: 'models/heroes_wip/abrams/abrams.vmdl_c',
     McGinnis: 'models/heroes_wip/mcginnis/mcginnis.vmdl_c',
     Pocket: 'models/heroes_wip/pocket/pocket.vmdl_c',
@@ -150,6 +166,30 @@ const MODEL_ENTRY_OVERRIDES: Readonly<Record<string, string>> = {
     Baba: 'models/heroes_wip/baba/baba.vmdl_c',
 };
 
+// `_vN` is ignored on both sides: a newer body can still read its textures from the older folder.
+const bodyModelFolder = (folder: string) => folder.replace(/_v\d+$/, '');
+// 'The Doorman' is the roster spelling of the same pin; the first name wins.
+const BODY_MODEL_HEROES = new Map<string, string>();
+for (const [hero, entry] of Object.entries(MODEL_ENTRY_OVERRIDES)) {
+    const folder = bodyModelFolder(entry.split('/')[2]);
+    if (!BODY_MODEL_HEROES.has(folder)) BODY_MODEL_HEROES.set(folder, hero);
+}
+
+/**
+ * Heroes whose previewed body a VPK changes: any mesh, material or texture in the folder of the
+ * model the preview exports. A HUD, sound or ability-effect file tagged with a hero has none.
+ */
+export function bodyModelHeroes(paths: readonly string[]): string[] {
+    const heroes = new Set<string>();
+    for (const path of paths) {
+        const folder = /^(?:models|materials(?:\/models)?)\/heroes(?:_wip|_staging)?\/([a-z0-9_]+)\//
+            .exec(path.replace(/\\/g, '/').toLowerCase())?.[1];
+        const hero = folder && BODY_MODEL_HEROES.get(bodyModelFolder(folder));
+        if (hero) heroes.add(hero);
+    }
+    return [...heroes].sort((a, b) => a.localeCompare(b));
+}
+
 /** Pinned model entry for a hero: the reviewed table above first, then the
  *  fork's hero identity table, so both sources of pins keep working. */
 function modelEntryFor(heroName: string): string | null {
@@ -163,9 +203,14 @@ function modelEntryFor(heroName: string): string | null {
  * Each element is the discriminating arg pair spliced into the export command.
  */
 function modelSelectorsForHero(heroName: string): string[][] {
-    const entry = modelEntryFor(heroName);
+    const entry = skinPreviewForm(heroName)?.entry ?? modelEntryFor(heroName);
     if (entry) return [['--entry', entry]];
     return modelCodenamesForHero(heroName).map((codename) => ['--hero', codename]);
+}
+
+/** A form's other settings, with its body choice left to the caller. */
+function withoutMeshGroup(form: SkinModelForm | undefined): SkinModelForm | undefined {
+    return form ? { ...form, meshGroup: undefined } : undefined;
 }
 
 function sanitize(value: string): string {
@@ -204,7 +249,8 @@ export interface HeroPoseSkinSource {
 function poseKey(
     heroName: string,
     skinSources: HeroPoseSkinSource[] = [],
-    fingerprint = ''
+    fingerprint = '',
+    meshGroup?: string
 ): string {
     const base =
         skinSources.length === 0
@@ -214,7 +260,10 @@ function poseKey(
               : `${heroName}::stack::${skinSources
                     .map((source) => `${source.priority}:${source.metaKey}`)
                     .join('+')}`;
-    return fingerprint ? `${base}::c${fingerprint}` : base;
+    const form = skinPreviewForm(heroName);
+    const formed = form ? `${base}::form2-${createHash('sha256').update(JSON.stringify([form.entry, form.meshGroup, form.materialGroup, form.materialOverride])).digest('hex').slice(0, 8)}` : base;
+    const selected = meshGroup ? `${formed}::mg-${meshGroup}` : formed;
+    return fingerprint ? `${selected}::c${fingerprint}` : selected;
 }
 
 function modelDir(key: string): string {
@@ -228,6 +277,7 @@ const STATIC_MODEL_FILENAME = 'model.glb';
 const RIGGED_MODEL_FILENAME = 'model-rigged.glb';
 const RIGGED_CLOTH_FILENAME = 'cloth-rigged.json';
 const RIGGED_ATTACHMENTS_FILENAME = 'attachments.json';
+const RIGGED_ANIMATION_FILENAME = 'animation-fallback.glb';
 
 function modelFile(key: string): string {
     return join(modelDir(key), STATIC_MODEL_FILENAME);
@@ -313,7 +363,10 @@ function riggedClothFile(key: string): string {
  * expected schema. Bump POSE_PIPELINE_VERSION only for export changes unrelated
  * to the extras schema (model resolution, index offsets, ...).
  */
-const POSE_PIPELINE_VERSION = '16';
+// v17: opt into marked authored outline/jitter geometry.
+// v18: the alt albedo (g_tAltColor_Reveal) ships with materials that reveal it, and a
+// skin whose VPK spells its root directory as an empty string exports at all.
+const POSE_PIPELINE_VERSION = '18';
 const POSE_CACHE_VERSION = `${POSE_PIPELINE_VERSION}.x${SOURCE2_EXTRAS_VERSION}`;
 
 /**
@@ -369,7 +422,32 @@ function versionFile(key: string): string {
  */
 // v14: Graves uses the complete standing weapon pose; shop parks its spectral
 // hand at the model origin. Refresh existing menus instead of reusing that pose.
-const RIGGED_PIPELINE_VERSION = '15';
+// v21: the movement bundle carries the heavy melee lunge (melee_dash) for the staged preview.
+// v23: recover missing skin clips and accept the neutral primary_idle alias.
+// v24: discover and export external AnimGraph2 clips as well as embedded clips.
+// v25: v21, v23 and v24 in one cache (v24 no-clip markers predate external clips).
+// v26: use complete UI graph states for the default and preserve authored playback.
+// v27: opt into marked authored outline/jitter geometry.
+// v28: export a standing idle beside the graph default and use it when the
+// graph pose stages part of the hero on the floor (Graves' shop hand).
+// v29: also when it holds the hero off the floor (Rem's seat, Danny's flight), and
+// record each clip's floor offset (Doorman's lowered shop idle).
+// v30: a skin without clip files plays the game's clips, not the stale copies in its model.
+// v31: a graph pose that leaves the hero lying flat yields to the standing idle (Viscous).
+// v32: a skin missing a dangling hero bone chain takes the game's clips (2B on Yamato has
+// no ponytail); its v31 no-clip marker predates that.
+// 33: the standing action bundle (movement.glb) carries the parry and parry success clips.
+// 34: movement clips export in parts of eight (movement.glb, movement-2.glb) and add the medium knockdown.
+// 35: and the flinch a heavy melee's target plays.
+// 36: the parry clips are the ones the hero's parry graph plays (Mina's parry_to_idle), not found by name
+// 37: same alt albedo and empty root directory changes as POSE_PIPELINE_VERSION v18.
+const RIGGED_PIPELINE_VERSION = '37';
+/** `workshop motions` takes at most eight clips, so the standing actions are exported in parts of eight. */
+const MOTIONS_PER_PART = 8;
+/** The standing action bundle's parts: `movement.glb`, then `movement-2.glb` and on. */
+const MOVEMENT_PARTS_LIMIT = 4;
+const movementPartFile = (part: number) => part === 1 ? 'movement.glb' : `movement-${part}.glb`;
+const MOVEMENT_PART_FILE = /^movement(?:-[2-4])?\.glb$/;
 const RIGGED_CACHE_VERSION = `${RIGGED_PIPELINE_VERSION}.x${SOURCE2_EXTRAS_VERSION}`;
 
 const RIGGED_VERSION_FILENAME = '.rigged-cache-version';
@@ -394,7 +472,7 @@ async function hasNoRiggedClips(key: string): Promise<boolean> {
 
 /** Animation count from a GLB's JSON chunk, without reading the binary chunk.
  *  Null when the file is not a readable GLB, so only a proven zero is recorded. */
-async function glbAnimationCount(file: string): Promise<number | null> {
+async function readGlbJson(file: string): Promise<unknown> {
     const handle = await fs.open(file, 'r');
     try {
         const header = Buffer.alloc(20);
@@ -402,12 +480,79 @@ async function glbAnimationCount(file: string): Promise<number | null> {
         if (bytesRead < 20 || header.readUInt32LE(0) !== 0x46546c67 || header.readUInt32LE(16) !== 0x4e4f534a) return null;
         const json = Buffer.alloc(header.readUInt32LE(12));
         await handle.read(json, 0, json.length, 20);
-        const parsed = JSON.parse(json.toString('utf8')) as { animations?: unknown[] };
-        return Array.isArray(parsed.animations) ? parsed.animations.length : 0;
+        return JSON.parse(json.toString('utf8'));
     } catch {
         return null;
     } finally {
         await handle.close();
+    }
+}
+
+async function glbAnimationCount(file: string): Promise<number | null> {
+    const parsed = asRecord(await readGlbJson(file));
+    if (!parsed) return null;
+    const accessors = Array.isArray(parsed.accessors) ? parsed.accessors : [];
+    return Array.isArray(parsed.animations) ? parsed.animations.filter(value => {
+        const clip = asRecord(value);
+        return Array.isArray(clip?.channels) && clip.channels.length > 0 && Array.isArray(clip.samplers) && clip.samplers.some(value => {
+            const sampler = asRecord(value);
+            const input = typeof sampler?.input === 'number' ? asRecord(accessors[sampler.input]) : null;
+            return Array.isArray(input?.max) && typeof input.max[0] === 'number' && input.max[0] > 0.001;
+        });
+    }).length : 0;
+}
+
+async function recoverSkinAnimations(vpk: string, base: string, selector: string[], clips: RiggedHeroClip[], dir: string, useBaseAnimations: boolean): Promise<boolean> {
+    if (vpk === base && clips.every(clip => clip.resource.startsWith('legacy:'))) return false;
+    const entryIndex = selector.indexOf('--entry');
+    let modelEntry = entryIndex >= 0 ? selector[entryIndex + 1] : undefined;
+    if (!modelEntry) {
+        const rows: unknown = JSON.parse(await runVpkmergeStdout(['model', 'live-materials', '--vpk', vpk, ...selector, '--base', base, '--json']));
+        const entry = Array.isArray(rows) ? asRecord(rows[0])?.model_entry : undefined;
+        if (typeof entry !== 'string') return false;
+        modelEntry = entry;
+    }
+    const out = join(dir, RIGGED_ANIMATION_FILENAME);
+    const donor = join(dir, '.animation-donor.glb');
+    // workshop motions has a stricter frame budget than model export.
+    let frames = 0;
+    const bounded = clips.filter((clip) => {
+        if (frames + clip.frameCount > 2400) return false;
+        frames += clip.frameCount;
+        return true;
+    }).slice(0, 8);
+    if (!bounded.length) return false;
+    const args = ['--entry', modelEntry, ...bounded.flatMap((clip) => ['--clip', `${clip.name}=${clip.resource}`])];
+    try {
+        const baseOnly = useBaseAnimations || vpk === base || clips.every(clip => clip.resource.startsWith('legacy:'));
+        // The game plays clip files through its animation graph. Copies baked into a skin's model are
+        // never played and go stale (Graves Shirt's idle predates the game hiding her jar), so a skin
+        // without clip files of its own takes its motions from the game.
+        const skinHasClipFiles = parseVpkDirectoryCached(vpk)?.some(path => path.endsWith('.vnmclip_c')) ?? true;
+        // vpkmerge measures a skin's rig against the clips with its cloth bones counted, so a
+        // skin that adds cloth fails there. The base rig's motions bind to it by bone name,
+        // which the check below verifies.
+        const attempts = baseOnly ? [[base]] : skinHasClipFiles ? [[vpk, base], [base]] : [[base], [vpk, base]];
+        for (const [attempt, packages] of attempts.entries()) {
+            try {
+                await runVpkmerge(['workshop', 'motions', ...packages.flatMap(path => ['--vpk', path]), ...args, '--out', donor]);
+                break;
+            } catch (error) {
+                if (attempt === attempts.length - 1) throw error;
+            }
+        }
+        if ((await glbAnimationCount(donor) ?? 0) === 0) return false;
+        if (!compatibleHeroAnimationRig(await readGlbJson(join(dir, RIGGED_MODEL_FILENAME)), await readGlbJson(donor))) {
+            console.warn('[heroPoseModels] animation donor has an incompatible rig:', modelEntry);
+            return false;
+        }
+        // GLTFLoader binds tracks by bone name, independent of node indices.
+        // Use the donor bundle even when the skin ships unrelated clips: the
+        // helper's legacy path would otherwise prefer those over the base set.
+        await fs.rename(donor, out);
+        return true;
+    } finally {
+        await fs.rm(donor, { force: true });
     }
 }
 
@@ -560,7 +705,7 @@ async function chooseRiggedClipForSelector(
     pak01: string,
     selector: string[],
     heroName: string
-): Promise<ModelClipInfo[]> {
+): Promise<RiggedHeroClip[]> {
     const json = await runVpkmergeStdout([
         'model',
         'clips',
@@ -582,7 +727,24 @@ async function chooseRiggedClipForSelector(
             if (flags?.rootMotion) clip.rootMotion = true;
         }
     }
-    return choosePreviewClips(clips, heroName);
+    let resolved: RiggedHeroClip[] = clips.map(clip => ({ ...clip, resource: `legacy:${clip.name}` }));
+    const paths = [...new Set([...(parseVpkDirectoryCached(vpk) ?? []), ...(vpk === pak01 ? [] : parseVpkDirectoryCached(pak01) ?? [])])];
+    if (paths.some(path => path.endsWith('.vnmclip_c'))) {
+        let modelEntry = entryIndex >= 0 ? selector[entryIndex + 1] : undefined;
+        if (!modelEntry) {
+            const rows: unknown = JSON.parse(await runVpkmergeStdout(['model', 'live-materials', '--vpk', vpk, ...selector, '--base', pak01, '--json']));
+            const entry = Array.isArray(rows) ? asRecord(rows[0])?.model_entry : undefined;
+            if (typeof entry !== 'string') throw new Error(`No model entry resolved for ${heroName}.`);
+            modelEntry = entry;
+        }
+        const stack = new PackageStack([vpk, pak01], { stdout: runVpkmergeStdout }, '');
+        resolved = await discoverRiggedHeroClips({ embedded: clips, modelEntry, heroName, paths, decode: entry => stack.decode(entry) });
+    }
+    const byName = new Map(resolved.map(clip => [clip.name, clip]));
+    return choosePreviewClips(resolved, heroName).flatMap(clip => {
+        const source = byName.get(clip.name);
+        return source ? [source] : [];
+    });
 }
 
 /** A bounded menu of full-body motions. Directional variants and additive
@@ -654,7 +816,7 @@ async function runPoseCacheSweep(): Promise<void> {
         let lastUsedMs = 0;
         try {
             if (!(await fs.stat(dir)).isDirectory()) continue;
-            for (const file of await fs.readdir(dir)) {
+            for (const file of await fs.readdir(dir, { recursive: true })) {
                 const stat = await fs.stat(join(dir, file));
                 bytes += stat.size;
                 lastUsedMs = Math.max(lastUsedMs, stat.mtimeMs);
@@ -807,11 +969,12 @@ function strippedSources(resolved: ResolvedSource[]): HeroPoseSkinSource[] {
 async function resolvePoseKey(
     deadlockPath: string,
     heroName: string,
-    skinSources: HeroPoseSkinSource[]
+    skinSources: HeroPoseSkinSource[],
+    meshGroup?: string
 ): Promise<string> {
     const resolved = await resolveSources(deadlockPath, normalizeSkinSources(skinSources));
     const fingerprint = await fingerprintResolved(resolved);
-    return poseKey(heroName, strippedSources(resolved), fingerprint);
+    return poseKey(heroName, strippedSources(resolved), fingerprint, meshGroup);
 }
 
 interface PoseSource {
@@ -859,14 +1022,46 @@ async function resolvePoseSource(
     }
 }
 
-export interface HeroPoseInfo {
-    hasModel: boolean;
-    /** mtime of the stored GLB, used to cache-bust the renderer URL on re-export. */
-    mtimeMs: number | null;
-    /** The resolved storage key the renderer builds its `grimoire-hero:` URL
-     *  from. Returned (rather than recomputed in the renderer) because export
-     *  may fall back from a skin to vanilla, which changes the key. */
-    key: string;
+async function resolveAllSkinSources(deadlockPath: string, normalized: HeroPoseSkinSource[]): Promise<ResolvedSource[]> {
+    const resolved = await resolveSources(deadlockPath, normalized);
+    if (resolved.length !== normalized.length) throw new Error('A selected skin is no longer installed. Select the source again.');
+    return resolved;
+}
+
+async function skinEditFingerprint(base: string, entry: string, sourceFingerprint: string): Promise<string> {
+    const game = await fs.stat(base);
+    return createHash('sha256').update(`${entry}:${sourceFingerprint}:${game.size}:${game.mtimeMs}`).digest('hex');
+}
+
+/** withHeroSkinSource's fingerprint for an already-resolved model entry, without merging the stack. */
+export async function heroSkinSourceFingerprint(deadlockPath: string, skinSources: HeroPoseSkinSource[], entry: string): Promise<string> {
+    const resolved = await resolveAllSkinSources(deadlockPath, normalizeSkinSources(skinSources));
+    return skinEditFingerprint(join(getCitadelPath(deadlockPath), 'pak01_dir.vpk'), entry, await fingerprintResolved(resolved));
+}
+
+export async function withHeroSkinSource<T>(
+    deadlockPath: string,
+    heroName: string,
+    skinSources: HeroPoseSkinSource[],
+    action: (source: { vpk: string; base: string; entry: string; fingerprint: string }) => Promise<T>
+): Promise<T> {
+    const base = join(getCitadelPath(deadlockPath), 'pak01_dir.vpk');
+    const normalized = normalizeSkinSources(skinSources);
+    await resolveAllSkinSources(deadlockPath, normalized);
+    const source = await resolvePoseSource(deadlockPath, base, normalized);
+    try {
+        const paths = [...(parseVpkDirectoryCached(source.vpk) ?? []), ...(parseVpkDirectoryCached(base) ?? [])];
+        let entry: string | undefined;
+        for (const [kind, value] of modelSelectorsForHero(heroName)) {
+            entry = kind === '--entry' ? paths.find((path) => path === value)
+                : paths.find((path) => /^models\/heroes[^/]*\//i.test(path) && path.endsWith(`/${value}.vmdl_c`));
+            if (entry) break;
+        }
+        if (!entry) throw new Error('The selected hero model could not be found.');
+        return await action({ vpk: source.vpk, base, entry, fingerprint: await skinEditFingerprint(base, entry, source.fingerprint) });
+    } finally {
+        if (source.tempDir) await fs.rm(source.tempDir, { recursive: true, force: true });
+    }
 }
 
 async function infoForKey(key: string): Promise<HeroPoseInfo> {
@@ -906,7 +1101,15 @@ async function infoForRiggedKey(key: string): Promise<HeroPoseInfo> {
         }
         await fs.access(riggedClothFile(key));
         await fs.access(join(modelDir(key), RIGGED_ATTACHMENTS_FILENAME));
-        return { hasModel: true, mtimeMs: stat.mtimeMs, key };
+        let movementParts = 0;
+        while (movementParts < MOVEMENT_PARTS_LIMIT && await fs.access(join(modelDir(key), movementPartFile(movementParts + 1))).then(() => true, () => false)) movementParts++;
+        const hasMovement = movementParts > 0;
+        const hasAnimationFallback = await fs.access(join(modelDir(key), RIGGED_ANIMATION_FILENAME)).then(() => true, () => false);
+        if (hasAnimationFallback ? (await glbAnimationCount(join(modelDir(key), RIGGED_ANIMATION_FILENAME)) ?? 0) === 0
+            : await glbAnimationCount(riggedModelFile(key)) === 0) {
+            return { hasModel: false, mtimeMs: null, key };
+        }
+        return { hasModel: true, hasMovement, movementParts, hasAnimationFallback, mtimeMs: stat.mtimeMs, key };
     } catch {
         return { hasModel: false, mtimeMs: null, key };
     }
@@ -917,9 +1120,10 @@ async function infoForRiggedKey(key: string): Promise<HeroPoseInfo> {
 export async function getRiggedHeroPose(
     deadlockPath: string,
     heroName: string,
-    skinSources?: HeroPoseSkinSource[]
+    skinSources?: HeroPoseSkinSource[],
+    meshGroup?: string
 ): Promise<HeroPoseInfo> {
-    return infoForRiggedKey(await resolvePoseKey(deadlockPath, heroName, skinSources ?? []));
+    return infoForRiggedKey(await resolvePoseKey(deadlockPath, heroName, skinSources ?? [], meshGroup));
 }
 
 /**
@@ -1013,17 +1217,15 @@ async function runHeroPoseExportForSources(
                     '--vpk',
                     source.vpk,
                     ...selector,
+                    ...skinFormExportArgs(skinPreviewForm(heroName)),
                     '--base',
                     pak01,
                     '--pose',
-                    // Refuse to bake a static bind/T-pose: a model carrying no pose
-                    // clip errors here and the Locker falls back to the 2D portrait
-                    // instead of showing an unposed model. The formerly clipless WIP
-                    // heroes (Apollo, Billy, Celeste, Mina, Paige) have since shipped
-                    // pose clips and all export cleanly, so this guard is now a
-                    // safety net for future WIP additions rather than a live filter
-                    // (re-verified against the installed pak, 2026-07-28).
-                    '--require-pose',
+                    // Refuse to bake a static bind/T-pose: a clipless WIP hero
+                    // (Apollo, Billy, Celeste, Mina, Paige, Rem) errors here and the
+                    // Locker falls back to the 2D portrait instead of an unposed model.
+                    ...(!skinPreviewForm(heroName) ? ['--require-pose'] : []),
+                    '--include-outline-shells',
                     '--max-texture',
                     PREVIEW_MAX_TEXTURE,
                     '--out',
@@ -1061,19 +1263,21 @@ export async function exportRiggedHeroPose(
     deadlockPath: string,
     heroName: string,
     skinSources?: HeroPoseSkinSource[],
-    fallbackSkinMetaKey?: string
+    fallbackSkinMetaKey?: string,
+    /** A body group choice to export instead of the default body (an animation that hides a weapon). */
+    meshGroup?: string
 ): Promise<HeroPoseInfo> {
     const normalized = normalizeSkinSources(skinSources);
-    const requestKey = poseKey(heroName, normalized);
+    const requestKey = poseKey(heroName, normalized, '', meshGroup);
     const existing = inFlightRiggedExports.get(requestKey);
     if (existing) return existing;
 
     // Registered before the first await, so a concurrent request for the same
     // stack joins this run instead of exporting into the same files.
     const work = (async (): Promise<HeroPoseInfo> => {
-        const cachedKey = await resolvePoseKey(deadlockPath, heroName, normalized);
+        const cachedKey = await resolvePoseKey(deadlockPath, heroName, normalized, meshGroup);
         if (await hasNoRiggedClips(cachedKey)) return { hasModel: false, mtimeMs: null, key: cachedKey };
-        return runRiggedHeroExport(deadlockPath, heroName, normalized, fallbackSkinMetaKey);
+        return runRiggedHeroExport(deadlockPath, heroName, normalized, fallbackSkinMetaKey, meshGroup);
     })();
     inFlightRiggedExports.set(requestKey, work);
     try {
@@ -1132,10 +1336,11 @@ async function runRiggedHeroExport(
     deadlockPath: string,
     heroName: string,
     skinSources: HeroPoseSkinSource[],
-    fallbackSkinMetaKey?: string
+    fallbackSkinMetaKey?: string,
+    meshGroup?: string
 ): Promise<HeroPoseInfo> {
     try {
-        return await runRiggedHeroExportForSources(deadlockPath, heroName, skinSources);
+        return await runRiggedHeroExportForSources(deadlockPath, heroName, skinSources, meshGroup);
     } catch (err) {
         if (skinSources.length <= 1 || !fallbackSkinMetaKey) throw err;
         const fallback =
@@ -1143,14 +1348,15 @@ async function runRiggedHeroExport(
                 metaKey: fallbackSkinMetaKey,
                 priority: 0,
             };
-        return runRiggedHeroExportForSources(deadlockPath, heroName, [fallback]);
+        return runRiggedHeroExportForSources(deadlockPath, heroName, [fallback], meshGroup);
     }
 }
 
 async function runRiggedHeroExportForSources(
     deadlockPath: string,
     heroName: string,
-    skinSources: HeroPoseSkinSource[]
+    skinSources: HeroPoseSkinSource[],
+    meshGroup?: string
 ): Promise<HeroPoseInfo> {
     const selectors = modelSelectorsForHero(heroName);
     if (selectors.length === 0) {
@@ -1160,7 +1366,7 @@ async function runRiggedHeroExportForSources(
     const pak01 = join(getCitadelPath(deadlockPath), 'pak01_dir.vpk');
     const source = await resolvePoseSource(deadlockPath, pak01, skinSources);
     try {
-        const key = poseKey(heroName, source.sources, source.fingerprint);
+        const key = poseKey(heroName, source.sources, source.fingerprint, meshGroup);
         const dir = modelDir(key);
         await fs.mkdir(dir, { recursive: true });
         const out = riggedModelFile(key);
@@ -1169,9 +1375,14 @@ async function runRiggedHeroExportForSources(
         let foundUsableClip = false;
         let lastError: unknown;
         for (const selector of selectors) {
-            let clips: ModelClipInfo[];
+            let clips: RiggedHeroClip[];
+            let useBaseAnimations = false;
             try {
                 clips = await chooseRiggedClipForSelector(source.vpk, pak01, selector, heroName);
+                if (!clips.length && source.vpk !== pak01) {
+                    clips = await chooseRiggedClipForSelector(pak01, pak01, selector, heroName);
+                    useBaseAnimations = true;
+                }
                 listedAny = true;
             } catch (err) {
                 lastError = err;
@@ -1198,6 +1409,7 @@ async function runRiggedHeroExportForSources(
                 : Promise.resolve([]);
             try {
                 await fs.rm(riggedVersionFile(key), { force: true });
+                await fs.rm(join(dir, RIGGED_ANIMATION_FILENAME), { force: true });
                 await runVpkmerge([
                     'model',
                     'export',
@@ -1207,19 +1419,75 @@ async function runRiggedHeroExportForSources(
                     '--base',
                     pak01,
                     // The viewer plays one action at a time from this menu.
-                    ...clips.flatMap((clip) => ['--clip', clip.name]),
+                    ...(useBaseAnimations || clips.some(clip => !clip.resource.startsWith('legacy:'))
+                        ? ['--no-anim'] : clips.flatMap((clip) => ['--clip', clip.name])),
+                    ...(meshGroup ? ['--mesh-group', meshGroup] : []),
+                    ...skinFormExportArgs(meshGroup ? withoutMeshGroup(skinPreviewForm(heroName)) : skinPreviewForm(heroName)),
+                    '--include-outline-shells',
                     '--max-texture',
                     PREVIEW_MAX_TEXTURE,
                     '--out',
                     out,
                 ]);
-                if (await glbAnimationCount(out) === 0) {
+                if (await glbAnimationCount(out) === 0 && !await recoverSkinAnimations(source.vpk, pak01, selector, clips, dir, useBaseAnimations)) {
                     await fs.writeFile(riggedNoClipsFile(key), RIGGED_CACHE_VERSION);
                     return { hasModel: false, mtimeMs: null, key };
                 }
+                const animationFile = await fs.access(join(dir, RIGGED_ANIMATION_FILENAME)).then(() => join(dir, RIGGED_ANIMATION_FILENAME), () => out);
+                await writeHeroAnimationPolicy(animationFile, clips, { modelFile: out, heroName });
                 await fs.rm(riggedNoClipsFile(key), { force: true });
                 await fs.writeFile(riggedClothFile(key), JSON.stringify(await cloth));
                 await fs.writeFile(join(dir, RIGGED_ATTACHMENTS_FILENAME), JSON.stringify(await attachments));
+                const modelEntry = entryIndex >= 0 ? selector[entryIndex + 1] : undefined;
+                // The parry clips the hero's own animation graph plays (names are the fallback)
+                const graphStack = new PackageStack([source.vpk, pak01], { stdout: runVpkmergeStdout }, '');
+                const graphClips = modelEntry ? await resolveGraphMovementClips(modelEntry, (entry) => graphStack.decode(entry))
+                    .then((found) => Object.fromEntries(Object.entries(found).map(([action, clip]) => [action, clip.clip])), () => ({})) : {};
+                let motions = modelEntry ? selectMovementClips(parseVpkDirectoryCached(pak01) ?? [], modelEntry, modelCodenamesForHero(heroName), [], graphClips) : [];
+                if (modelEntry && motions.length < 6) {
+                    const embedded = parseModelClipsJson(await runVpkmergeStdout(['model', 'clips', '--vpk', source.vpk, ...selector, '--base', pak01, '--json']));
+                    motions = selectMovementClips(parseVpkDirectoryCached(pak01) ?? [], modelEntry, modelCodenamesForHero(heroName), embedded.map(clip => clip.name), graphClips);
+                }
+                const partFiles = Array.from({ length: MOVEMENT_PARTS_LIMIT }, (_, i) => join(dir, movementPartFile(i + 1)));
+                await Promise.all(partFiles.map((file) => fs.rm(file, { force: true })));
+                if (modelEntry && motions.length) {
+                    const exportMotions = async (batch: typeof motions, motionFile: string) => {
+                        const motionArgs = ['--entry', modelEntry, ...batch.flatMap(([name, path]) => ['--clip', `movement_${name}=${path}`]), '--out', motionFile];
+                        try {
+                            await runVpkmerge(['workshop', 'motions', '--vpk', source.vpk, '--vpk', pak01, ...motionArgs]);
+                        } catch (error) {
+                            // As in recoverSkinAnimations: a skin with added cloth bones takes the base rig's motions.
+                            if (source.vpk === pak01) throw error;
+                            await runVpkmerge(['workshop', 'motions', '--vpk', pak01, ...motionArgs]);
+                            if (!compatibleHeroAnimationRig(await readGlbJson(out), await readGlbJson(motionFile))) throw error;
+                        }
+                    };
+                    const probe = join(dir, 'movement-probe.glb');
+                    try {
+                        let pending = motions;
+                        for (let part = 0; pending.length > 0 && part < MOVEMENT_PARTS_LIMIT;) {
+                            const batch = pending.slice(0, MOTIONS_PER_PART);
+                            try {
+                                await exportMotions(batch, partFiles[part]);
+                                pending = pending.slice(MOTIONS_PER_PART);
+                                part++;
+                            } catch (error) {
+                                // One clip it cannot export (a held one-frame pose) would cost every clip: leave out the
+                                // clips that fail on their own, and the preview plays its fallback for them
+                                const failing: typeof motions = [];
+                                for (const motion of batch) await exportMotions([motion], probe).catch(() => failing.push(motion));
+                                if (failing.length === 0) throw error;
+                                console.warn('[heroPoseModels] movement clips left out:', heroName, failing.map(([name]) => name).join(', '));
+                                pending = pending.filter((motion) => !failing.includes(motion));
+                            }
+                        }
+                    } catch (error) {
+                        await Promise.all(partFiles.map((file) => fs.rm(file, { force: true })));
+                        console.warn('[heroPoseModels] standing action bundle unavailable:', heroName, error);
+                    } finally {
+                        await fs.rm(probe, { force: true });
+                    }
+                }
                 await fs.writeFile(riggedVersionFile(key), RIGGED_CACHE_VERSION);
                 return infoForRiggedKey(key);
             } catch (err) {
@@ -1335,12 +1603,133 @@ export async function exportHeroEffect(
  * registerSchemesAsPrivileged({ scheme, privileges }) call before app-ready
  * (done in index.ts).
  */
+/** The faithful particle runtime's bundle for a hero, under the pose cache entry (see heroParticleBundle.ts). */
+const PARTICLE_BUNDLE_DIRNAME = 'particles';
+const PARTICLE_VERSION_FILENAME = '.particles-cache-version';
+
+function particleBundleDir(key: string): string {
+    return join(modelDir(key), PARTICLE_BUNDLE_DIRNAME);
+}
+
+function particleVersionFile(key: string): string {
+    return join(modelDir(key), PARTICLE_VERSION_FILENAME);
+}
+
+const particleVpkmerge: VpkmergeRunner = { stdout: (args) => runVpkmergeStdout(args) };
+
+let particleSupport: Promise<[boolean, boolean]> | null = null;
+
+/**
+ * What a cached bundle was made with: the bundle version, whether the bundled vpkmerge reported stored
+ * KV3 formats and exported stored mips (a vpkmerge update that adds either re-exports), the clips
+ * whose events it read, and the game files it read them from.
+ */
+async function particleCacheTag(clips: readonly string[], basePak: string): Promise<string> {
+    const probe = new PackageStack([], particleVpkmerge, tmpdir());
+    particleSupport ??= Promise.all([probe.supportsFormat(), probe.supportsMips()]);
+    const [format, mips] = await particleSupport;
+    const clipHash = createHash('md5').update([...clips].sort().join('|')).digest('hex').slice(0, 8);
+    const { size, mtimeMs } = await fs.stat(basePak);
+    const gameHash = createHash('md5').update(`${size}:${mtimeMs}`).digest('hex').slice(0, 8);
+    return `${PARTICLE_BUNDLE_VERSION}:${format ? 'f' : 'n'}${mips ? 'm' : ''}:${clipHash}:${gameHash}`;
+}
+
+export interface HeroParticleBundleInfo {
+    hasBundle: boolean;
+    /** Content-addressed storage key for the selected skin stack. */
+    key: string;
+    /** How many effects discovery found, 0 when it found none. */
+    effects: number;
+    postBloomEnabled: boolean;
+}
+
+const inFlightParticleExports = new Map<string, Promise<HeroParticleBundleInfo>>();
+
+/**
+ * Discover a hero's own particle effects from game data (and the selected skin stack) and export the
+ * bundle the renderer's faithful particle runtime reads: `particles/bundle.json` and `particles/tex/`,
+ * served over the `grimoire-hero:` scheme. Reads mod packages first, then citadel, then core.
+ */
+export async function exportHeroParticles(
+    deadlockPath: string,
+    heroName: string,
+    skinSources: HeroPoseSkinSource[] = [],
+    clips: readonly string[] = []
+): Promise<HeroParticleBundleInfo> {
+    const normalized = normalizeSkinSources(skinSources);
+    const key = await resolvePoseKey(deadlockPath, heroName, normalized);
+    const tag = await particleCacheTag(clips.slice(0, 64), join(getCitadelPath(deadlockPath), 'pak01_dir.vpk'));
+    const postBloomEnabled = await readHeroPostBloomInWorker(deadlockPath).catch(() => true);
+    // Different clip requests still write one directory. Drain its writer, then recheck our tag,
+    // rather than deleting its textures or publishing its cache stamp while it is still exporting.
+    const existing = inFlightParticleExports.get(key);
+    if (existing) {
+        await existing.catch(() => undefined);
+        return exportHeroParticles(deadlockPath, heroName, skinSources, clips);
+    }
+
+    const work = (async (): Promise<HeroParticleBundleInfo> => {
+        // Cache reads share the writer lock too: another clip request may be replacing the files.
+        const cached = await fs.readFile(particleVersionFile(key), 'utf8').catch(() => '');
+        if (cached.startsWith(`${tag}:`)) {
+            const effects = Number(cached.slice(tag.length + 1)) || 0;
+            if (effects === 0) return { hasBundle: false, key, effects, postBloomEnabled };
+            if (await fs.access(join(particleBundleDir(key), BUNDLE_FILENAME)).then(() => true, () => false)) {
+                return { hasBundle: true, key, effects, postBloomEnabled };
+            }
+        }
+        const pak01 = join(getCitadelPath(deadlockPath), 'pak01_dir.vpk');
+        const source = await resolvePoseSource(deadlockPath, pak01, normalized);
+        try {
+            const exportKey = poseKey(heroName, source.sources, source.fingerprint);
+            const outDir = particleBundleDir(exportKey);
+            await fs.mkdir(outDir, { recursive: true });
+            await fs.rm(particleVersionFile(exportKey), { force: true });
+            const effects = await exportHeroParticlesInWorker({
+                packages: [source.vpk, pak01, join(deadlockPath, 'game', 'core', 'pak01_dir.vpk')],
+                binary: vpkmergeBinaryPath(), hero: heroName, outDir,
+                modelEntry: MODEL_ENTRY_OVERRIDES[heroName], clips: clips.slice(0, 64),
+            });
+            await fs.writeFile(particleVersionFile(exportKey), `${tag}:${effects}`);
+            return { hasBundle: effects > 0, key: exportKey, effects, postBloomEnabled };
+        } finally {
+            if (source.tempDir) await fs.rm(source.tempDir, { recursive: true, force: true });
+        }
+    })();
+    inFlightParticleExports.set(key, work);
+    try {
+        return await work;
+    } finally {
+        inFlightParticleExports.delete(key);
+    }
+}
+
 export function registerHeroPoseProtocol(): void {
     registerAssetProtocol(HERO_POSE_SCHEME, async (request) => {
         try {
             const url = new URL(request.url);
             const parts = url.pathname.split('/').filter(Boolean);
             const key = decodeURIComponent(parts[0] ?? '');
+            if (url.hostname === 'f') {
+                const file = parts[1] === 'effect-tex' && parts.length === 3 ? movementCacheFile(key, parts[2])
+                    : parts[1] === 'engine' ? movementEngineFile(key, parts.slice(1)) : null;
+                return file ? net.fetch(pathToFileURL(file).toString()) : new Response(null, { status: 404 });
+            }
+            if (url.hostname === 'a') {
+                const file = parts.length === 2 ? animationPreviewFile(key, parts[1]) : null;
+                return file ? net.fetch(pathToFileURL(file).toString()) : new Response(null, { status: 404 });
+            }
+            if (url.hostname === 's') {
+                const name = parts.slice(1).join('/');
+                const sceneFile = hideoutCacheFile(key, name);
+                if (!sceneFile) return new Response(null, { status: 404 });
+                if (name.startsWith('snapshots/')) {
+                    const now = new Date();
+                    // A missing snapshot is the normal first-open case, not an error to log.
+                    try { await fs.utimes(sceneFile, now, now); } catch { return new Response(null, { status: 204 }); }
+                }
+                return net.fetch(pathToFileURL(sceneFile).toString());
+            }
             // The trailing segment(s) name what's served: the static `model.glb`
             // (default; legacy URLs omit it), the rigged GLB and cloth sidecar, the
             // ambient FX descriptor `effect.json`, or a bundled effect texture
@@ -1349,7 +1738,20 @@ export function registerHeroPoseProtocol(): void {
             // entry dir.
             const requested = parts[1] ?? STATIC_MODEL_FILENAME;
             let file: string;
-            if (requested === EFFECT_DESCRIPTOR_FILENAME) {
+            if (requested === PARTICLE_BUNDLE_DIRNAME) {
+                // particles/bundle.json, or particles/tex/<name>.png and its stored mips <name>.mip<n>.png
+                if (parts.length === 3 && parts[2] === BUNDLE_FILENAME) {
+                    file = join(particleBundleDir(key), BUNDLE_FILENAME);
+                } else if (parts.length === 4 && parts[2] === BUNDLE_TEXTURE_DIRNAME && BUNDLE_TEXTURE_FILE.test(parts[3])) {
+                    file = join(particleBundleDir(key), BUNDLE_TEXTURE_DIRNAME, parts[3]);
+                } else {
+                    return new Response(null, { status: 404 });
+                }
+                await fs.access(file);
+                const now = new Date();
+                void fs.utimes(particleVersionFile(key), now, now).catch(() => { });
+                return net.fetch(pathToFileURL(file).toString());
+            } else if (requested === EFFECT_DESCRIPTOR_FILENAME) {
                 file = effectFile(key);
             } else if (requested === EFFECT_TEX_DIRNAME) {
                 const png = parts[2] ?? '';
@@ -1359,6 +1761,10 @@ export function registerHeroPoseProtocol(): void {
                 file = join(effectTexDir(key), png);
             } else if (requested === RIGGED_MODEL_FILENAME) {
                 file = riggedModelFile(key);
+            } else if (MOVEMENT_PART_FILE.test(requested)) {
+                file = join(modelDir(key), requested);
+            } else if (requested === RIGGED_ANIMATION_FILENAME) {
+                file = join(modelDir(key), RIGGED_ANIMATION_FILENAME);
             } else if (requested === RIGGED_CLOTH_FILENAME) {
                 file = riggedClothFile(key);
             } else if (requested === RIGGED_ATTACHMENTS_FILENAME) {
@@ -1373,7 +1779,7 @@ export function registerHeroPoseProtocol(): void {
             // must keep meaning "export time". Both glbs share the dir, so
             // touching the one sidecar protects the whole entry.
             const now = new Date();
-            const version = requested === RIGGED_MODEL_FILENAME || requested === RIGGED_CLOTH_FILENAME || requested === RIGGED_ATTACHMENTS_FILENAME
+            const version = requested === RIGGED_MODEL_FILENAME || requested === RIGGED_CLOTH_FILENAME || requested === RIGGED_ATTACHMENTS_FILENAME || requested === RIGGED_ANIMATION_FILENAME
                 ? riggedVersionFile(key) : versionFile(key);
             void fs.utimes(version, now, now).catch(() => { });
             return net.fetch(pathToFileURL(file).toString());

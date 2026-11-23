@@ -5,9 +5,11 @@ import { metaKeyFor } from './deadlock';
 import { listInstalledUserVpks } from './modLibrary';
 import { resolveVpkIdentity } from './vpkIdentity';
 import { getMetadataPath as metadataPathForMode } from '../utils/paths';
-import { loadSettings } from './settings';
+import { isDevModeEnabled } from './settings';
+import { normalizeCategoryLabel } from '../../../src/lib/categoryPaths';
 
 export interface ModMetadata {
+    movementFx?: import('../../../src/lib/movementFx').MovementFxChoice;
     modName?: string;      // The human-readable mod name from GameBanana
     /** GameBanana submitter name, captured at download time. Absent for local
      *  mods. Embedded into the imprint (addonauthor / modinfo.author). */
@@ -29,39 +31,29 @@ export interface ModMetadata {
     variantLabel?: string;  // User-provided label to disambiguate variants of the same mod
     fileDescription?: string;  // GameBanana file "header" (_sDescription) — author's per-file label, used as fallback when the user hasn't named the variant
     sourceFileName?: string;   // Original GameBanana filename stem (e.g. "galaxy_rem_gold") — used as a label fallback when the author didn't set a file header
-    /** Opaque id linking several locally imported VPKs as variants of one mod.
-     *  The local analogue of gameBananaId for GROUPING ONLY: it carries no
-     *  provenance, names no upstream submission, and is meaningless outside
-     *  this install (it is a randomUUID minted at import time). Undefined for
-     *  GameBanana mods (they group by gameBananaId) and for standalone local
-     *  imports. The sidecar is merge-on-write, so no migration is needed. */
+    /** User-defined variant group. Downloaded and imported members retain their
+     *  own identity; localImport distinguishes origin inside mixed groups. */
     localGroupId?: string;
-    /** Hero this mod belongs to in the Locker, by canonical hero name (e.g. "Lady Geist").
-     *  Two reasons to store it: (1) GameBanana sometimes leaves a Skin under the
-     *  generic "Skins" parent so categoryId never names a hero; (2) Sound mods
-     *  live under their own category tree entirely. Set automatically at download
-     *  time for Sound mods via inferHeroFromTitle, or manually by the user from
-     *  the Locker's unassigned section. Takes precedence over categoryId when
-     *  the locker maps mods to heroes. */
+    /** Import origin, independent of embedded GameBanana identity. Legacy entries infer it. */
+    localImport?: boolean;
+    /** Explicit hero assignment or a preserved legacy local identity.
+     *  New automatic results are payload-specific and live in heroDetection. */
     lockerHero?: string;
+    tagOverrides?: import('../../../src/types/mod').ModTagOverrides;
     /** Provenance for lockerHero. Missing values are legacy inferred tags. */
     lockerHeroSource?: import('../../../src/types/mod').LockerHeroSource;
-    /** Set once we've run the full VPK-tree hero inference for an UNKNOWN mod
-     *  (see inferHeroFromVpkTree). Lets enrichMod skip the re-parse on later
-     *  scans when the tree yielded no confident hero, the same way globalType
-     *  uses a null sentinel. Only meaningful for unknown mods. */
+    /** Fingerprinted Sound, WiP, HUD, or conservative local-file hero detection. */
+    heroDetection?: import('../../../src/types/mod').InstalledHeroDetection;
+    propDetection?: import('../../../src/types/mod').InstalledPropDetection;
+    bodyModelDetection?: import('../../../src/types/mod').InstalledBodyModelDetection;
+    /** Legacy local inference marker, retained with existing local metadata. */
     lockerHeroVpkChecked?: boolean;
-    /** Global (non-hero) cosmetic category, classified from the VPK file tree
-     *  (see classifyGlobalModType in vpk.ts). Tri-state: a GlobalModType when
-     *  the mod is a recognized global cosmetic, `null` when we classified it
-     *  and it is NOT one (a hero skin or unrecognized), and `undefined` when it
-     *  has not been classified yet. The null sentinel lets enrichMod skip
-     *  re-parsing every skin's VPK on subsequent scans. */
+    /** Preserved local General classification or an explicit manual override.
+     *  Linked submissions otherwise derive their classification from categories. */
     globalType?: import('../../../src/types/mod').GlobalModType | null;
-    /** Classifier version that produced `globalType`. Lets enrichMod re-run a
-     *  stale `null` result when the classifier patterns improve (see
-     *  GLOBAL_CLASSIFIER_VERSION in vpk.ts). Absent on pre-stamp metadata,
-     *  treated as version 0. */
+    /** Identifies new manual choices, including null for explicitly unassigned. */
+    globalTypeSource?: 'manual';
+    /** Legacy local classifier stamp, preserved with existing local metadata. */
     globalTypeClassifierVersion?: number;
     /** Set when this VPK was produced by mergeMods. The share code +
      *  source list are the unroll payload. */
@@ -90,8 +82,8 @@ export interface ModMetadata {
      *  Presence marks the VPK as Locker-managed. Separate from lockerColors
      *  (disjoint paths: body/weapon materials vs particles). */
     lockerTrippySkins?: import('../../../src/types/mod').LockerTrippySkinsInfo;
-    /** Per-ability sound classification from the VPK file tree. Tri-state like
-     *  globalType: an AbilitySoundClassification when the mod has recognized
+    /** Per-ability sound classification from the VPK file tree:
+     *  an AbilitySoundClassification when the mod has recognized
      *  hero ability/VO sounds, `null` when classified and it has none, and
      *  `undefined` when not yet classified (so enrichMod skips the re-parse). */
     abilitySounds?: import('../../../src/types/mod').AbilitySoundClassification | null;
@@ -114,6 +106,10 @@ export interface ModMetadata {
      * the confirmed write set plus each part's provenance, so the "My changes"
      * surface can list, group, and rebuild it without re-authoring. */
     foundryBuild?: import('../../../src/types/mod').FoundryBuildInfo;
+    /** Set on a Door Stuck skin-editor overlay. Saving the same hero and
+     *  sources again replaces the overlay that carries a matching target, and
+     *  reopening the editor on it starts from its sources and edits. */
+    skinEdit?: import('../../../src/types/skinEditor').SkinEditRecord;
     /** Load-order slot this mod last held while enabled. Disabled mods now
      *  get free-form filenames (no pakNN), so the priority is no longer encoded
      *  in the name; we stash it here on disable and try to restore it on enable
@@ -159,18 +155,63 @@ export interface ModMetadata {
 
 export type ModMetadataMap = Record<string, ModMetadata>;
 
+/** Old sidecars and backup restores must not revive retired automatic tags. */
+export function sanitizeLinkedModMetadata(metadata: ModMetadata): ModMetadata {
+    if (!(typeof metadata?.gameBananaId === 'number' && metadata.gameBananaId > 0)) return metadata;
+    let result = metadata;
+    const remove = (key: keyof ModMetadata) => {
+        if (!Object.prototype.hasOwnProperty.call(result, key)) return;
+        if (result === metadata) result = { ...metadata };
+        delete result[key];
+    };
+    if (metadata.globalTypeSource !== 'manual') remove('globalType');
+    remove('globalTypeClassifierVersion');
+    if ((metadata.sourceSection === 'Sound' || metadata.sourceSection === 'Wip')
+        && metadata.lockerHeroSource !== 'manual') {
+        remove('lockerHero');
+        remove('lockerHeroSource');
+        remove('lockerHeroVpkChecked');
+    }
+    return result;
+}
+
+type CategoryMetadataResolver = (row: ModMetadata) => { id: number; name: string } | undefined;
+
+function sanitizeMetadata(metadata: ModMetadataMap, resolveCategory?: CategoryMetadataResolver): ModMetadataMap {
+    let result = metadata;
+    for (const [key, row] of Object.entries(metadata)) {
+        let sanitized = sanitizeLinkedModMetadata(row);
+        if (resolveCategory && typeof row.gameBananaId === 'number' && row.gameBananaId > 0) {
+            const category = resolveCategory(row);
+            const name = category && normalizeCategoryLabel(category.name);
+            if (category && (category.id !== row.categoryId || name !== row.categoryName)) {
+                sanitized = {
+                    ...sanitized,
+                    categoryId: category.id,
+                    categoryName: name,
+                };
+            }
+        }
+        if (sanitized === row) continue;
+        if (result === metadata) result = { ...metadata };
+        result[key] = sanitized;
+    }
+    return result;
+}
+
 /**
  * Whether a sidecar row records an identity: a GameBanana link, a name, a
  * Grimoire-built VPK, or a choice the user made about the file. Startup gives
- * every unknown VPK a row too (the sha256 backfill, the inferred hero and
- * global type), so the mere presence of a row, a hash or a `lockerHero` does
- * not mean Grimoire manages the file.
+ * unknown VPKs rows for hashes and automatic hints too. Those fields alone
+ * do not mean Grimoire manages the file.
  */
 export function hasModIdentity(meta: ModMetadata): boolean {
     return (
         meta.gameBananaId !== undefined ||
         (typeof meta.modName === 'string' && meta.modName.trim().length > 0) ||
         meta.lockerHeroSource === 'manual' ||
+        meta.globalTypeSource === 'manual' ||
+        meta.tagOverrides !== undefined ||
         meta.merged !== undefined ||
         meta.forgeInstall !== undefined ||
         meta.lockerCosmetics !== undefined ||
@@ -200,7 +241,7 @@ interface MetadataCacheEntry {
 let metadataCache: MetadataCacheEntry | null = null;
 
 function getMetadataPath(): string {
-    return metadataPathForMode(loadSettings().devMode);
+    return metadataPathForMode(isDevModeEnabled());
 }
 
 export function metadataBackupDirectory(path = getMetadataPath()): string {
@@ -208,9 +249,10 @@ export function metadataBackupDirectory(path = getMetadataPath()): string {
 }
 
 /**
- * Load mod metadata from disk
+ * Load metadata, optionally repairing old categories from the local catalog.
+ * Only changed data is written; unavailable categories retain their saved values.
  */
-export function loadMetadata(): ModMetadataMap {
+export function loadMetadata(resolveCategory?: CategoryMetadataResolver): ModMetadataMap {
     const path = getMetadataPath();
 
     if (!existsSync(path)) {
@@ -218,21 +260,22 @@ export function loadMetadata(): ModMetadataMap {
         return {};
     }
 
+    let stat: ReturnType<typeof statSync>;
+    let data: ModMetadataMap;
     try {
-        const stat = statSync(path);
+        stat = statSync(path);
         if (
             metadataCache &&
             metadataCache.path === path &&
             metadataCache.mtimeMs === stat.mtimeMs &&
             metadataCache.size === stat.size
         ) {
-            return metadataCache.data;
+            if (!resolveCategory) return metadataCache.data;
+            data = metadataCache.data;
+        } else {
+            const content = readFileSync(path, 'utf-8');
+            data = JSON.parse(content) as ModMetadataMap;
         }
-
-        const content = readFileSync(path, 'utf-8');
-        const data = JSON.parse(content) as ModMetadataMap;
-        metadataCache = { path, mtimeMs: stat.mtimeMs, size: stat.size, data };
-        return data;
     } catch (error) {
         // Returning {} here means every writer that follows treats "I could not
         // read the sidecar" as "there is nothing in the sidecar", and the first
@@ -247,6 +290,20 @@ export function loadMetadata(): ModMetadataMap {
         metadataCache = null;
         return {};
     }
+
+    // Keep migration errors outside the read/parse fallback: a failed backup
+    // or atomic write must leave the existing sidecar available for retry.
+    const sanitized = sanitizeMetadata(data, resolveCategory);
+    if (sanitized !== data) {
+        metadataCache = null;
+        if (!backupMetadataSidecar('pre-category-tags')) {
+            throw new Error('Cannot migrate mod tags without a metadata backup.');
+        }
+        saveMetadata(sanitized);
+        return sanitized;
+    }
+    metadataCache = { path, mtimeMs: stat.mtimeMs, size: stat.size, data };
+    return data;
 }
 
 /**
@@ -256,13 +313,14 @@ export function loadMetadata(): ModMetadataMap {
 export function saveMetadata(metadata: ModMetadataMap): void {
     const path = getMetadataPath();
     const tempPath = `${path}.tmp`;
+    const sanitized = sanitizeMetadata(metadata);
 
     try {
-        writeFileSync(tempPath, JSON.stringify(metadata, null, 2), 'utf-8');
+        writeFileSync(tempPath, JSON.stringify(sanitized, null, 2), 'utf-8');
         renameSync(tempPath, path);
         try {
             const stat = statSync(path);
-            metadataCache = { path, mtimeMs: stat.mtimeMs, size: stat.size, data: metadata };
+            metadataCache = { path, mtimeMs: stat.mtimeMs, size: stat.size, data: sanitized };
         } catch {
             metadataCache = null;
         }

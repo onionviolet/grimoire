@@ -21,34 +21,37 @@ const args = {
 };
 
 describe('planLocalVariantReplacementRestore', () => {
-    it('copies the explicit group name and classification to a validated replacement', () => {
-        const plan = planLocalVariantReplacementRestore([
-            member({
-                id: 'old',
-                name: 'My variants',
-                gameBananaId: 7,
-                gameBananaFileId: 9,
-                localGroupId: 'group-1',
-                lockerHero: 'Ivy',
-                lockerHeroSource: 'manual',
-                globalType: null,
-            }),
-            member({ id: 'peer', localGroupId: 'group-1', lockerHero: 'Ivy', lockerHeroSource: 'manual', globalType: null }),
-            member({ id: 'fresh', gameBananaId: 7, gameBananaFileId: 10 }),
-        ], args);
-
-        expect(plan).toEqual({
-            groupId: 'group-1',
-            modName: 'My variants',
-            classification: {
-                lockerHero: 'Ivy',
-                lockerHeroSource: 'manual',
-                lockerHeroVpkChecked: undefined,
-                globalType: null,
-                globalTypeClassifierVersion: undefined,
-            },
-            replacementMetaKeys: ['fresh.vpk'],
+    it('restores group membership without copying classification from the source or its peers', () => {
+        const all = [
+            member({ id: 'old', name: 'CompLock', gameBananaId: 7, gameBananaFileId: 9,
+                localGroupId: 'group-1', lockerHero: 'Ivy', lockerHeroSource: 'manual' }),
+            member({ id: 'peer', localGroupId: 'group-1', globalType: 'hud', globalTypeSource: 'manual' }),
+            member({ id: 'fresh', gameBananaId: 7, gameBananaFileId: 10,
+                globalType: 'maps', globalTypeSource: 'manual', resolvedGlobalType: 'maps', resolvedHeroes: [] }),
+        ];
+        const before = structuredClone(all);
+        expect(planLocalVariantReplacementRestore(all, args)).toEqual({
+            groupId: 'group-1', modName: 'CompLock', replacementMetaKeys: ['fresh.vpk'],
         });
+        expect(all).toEqual(before);
+    });
+
+    it.each([
+        { resolvedHeroes: ['Ivy'] },
+        { resolvedHeroes: ['Haze', 'Wraith'] },
+        { lockerHero: 'Haze', lockerHeroSource: 'manual' as const },
+        { globalType: 'hud' as const, globalTypeSource: 'manual' as const },
+        { globalType: null, globalTypeSource: 'manual' as const },
+        {},
+    ])('preserves the replacement identity independently of the group: %j', identity => {
+        const replacement = member({ id: 'fresh', gameBananaId: 7, gameBananaFileId: 10, ...identity });
+        const plan = planLocalVariantReplacementRestore([
+            member({ id: 'old', gameBananaId: 7, gameBananaFileId: 9, localGroupId: 'group-1',
+                resolvedHeroes: ['Ivy', 'Lady Geist'] }),
+            replacement,
+        ], args);
+        expect(plan).toEqual({ groupId: 'group-1', modName: 'old', replacementMetaKeys: ['fresh.vpk'] });
+        expect(replacement).toMatchObject(identity);
     });
 
     it('rejects a replacement from a different GameBanana file or mod', () => {

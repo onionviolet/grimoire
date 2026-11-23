@@ -14,6 +14,10 @@ interface FoundryHeroGridProps {
   heroes: HeroInfo[];
   /** Open the per-hero workshop for the picked hero. */
   onPick: (hero: HeroInfo) => void;
+  /** Controlled search text, so the page can keep it across visits. Omit both
+   *  to let the grid own it. */
+  query?: string;
+  onQueryChange?: (query: string) => void;
 }
 
 /**
@@ -30,9 +34,11 @@ interface FoundryHeroGridProps {
  * Within each group: heroes with authored changes first, then selectable
  * heroes, then in-development ones, alphabetical inside each.
  */
-export default function FoundryHeroGrid({ heroes, onPick }: FoundryHeroGridProps) {
+export default function FoundryHeroGrid({ heroes, onPick, query: controlledQuery, onQueryChange }: FoundryHeroGridProps) {
   const { t } = useTranslation();
-  const [query, setQuery] = useState('');
+  const [localQuery, setLocalQuery] = useState('');
+  const query = controlledQuery ?? localQuery;
+  const setQuery = onQueryChange ?? setLocalQuery;
   const [showDisabled, setShowDisabled] = useState(false);
   const summaryId = useId();
   const mods = useAppStore((s) => s.mods);
@@ -162,7 +168,7 @@ function HeroCard({
 
   return (
     <div
-      className={`group relative aspect-[3/4] overflow-hidden rounded-md border border-border bg-bg-secondary transition-all hover:-translate-y-0.5 hover:border-accent/60 hover:shadow-lg hover:shadow-black/30 ${
+      className={`always-dark group relative aspect-[3/4] overflow-hidden rounded-md border border-border bg-bg-secondary transition-all hover:-translate-y-0.5 hover:border-accent/60 hover:shadow-lg hover:shadow-black/30 ${
         hero.selectable ? '' : 'opacity-70'
       }`}
     >

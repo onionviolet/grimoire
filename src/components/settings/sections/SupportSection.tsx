@@ -1,3 +1,4 @@
+import { FilterDivider } from '../../common/FilteredContent';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Bug, Check, Copy, FileText, Heart, LifeBuoy } from 'lucide-react';
@@ -89,7 +90,7 @@ export default function SupportSection() {
   }, [bugDescription, t]);
 
   return (
-    <Card title={<Tx k="settings.sections.support" fallback="Support" />} icon={LifeBuoy}>
+    <Card id="settings-support-settings-sections-support-card" title={<Tx k="settings.sections.support" fallback="Support" />} icon={LifeBuoy}>
       <div className="space-y-6">
         <div className="space-y-3">
           <h4 className="font-medium text-sm flex items-center gap-2">
@@ -168,7 +169,7 @@ export default function SupportSection() {
           </div>
         </div>
 
-        <div className="h-px bg-hl/5" />
+        <FilterDivider className="h-px bg-hl/5" />
 
         <CrashHistoryPanel selectedIds={crashReportIds} onToggle={id => {
           setCrashReportIds(previous => previous.includes(id) ? previous.filter(item => item !== id)
@@ -176,7 +177,7 @@ export default function SupportSection() {
           setBugReportText(null);
         }} />
 
-        <div className="h-px bg-hl/5" />
+        <FilterDivider className="h-px bg-hl/5" />
 
         <div className="space-y-3">
           <div>

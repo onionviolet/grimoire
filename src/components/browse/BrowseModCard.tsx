@@ -1,22 +1,26 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Download, Eye, ThumbsUp, Volume2, VolumeX, AlertTriangle, Clock, Power, Play } from 'lucide-react';
+import { Download, Eye, ThumbsUp, Volume2, VolumeX, AlertTriangle, Power, Play } from 'lucide-react';
 import type { GameBananaMod } from '../../types/gamebanana';
 import { getModThumbnail, getSoundPreviewUrl, formatDate, isModOutdated } from '../../types/gamebanana';
 import ModThumbnail from '../ModThumbnail';
 import ImageContextMenu from '../ImageContextMenu';
 import AudioPreviewPlayer from '../AudioPreviewPlayer';
+import { BrowseCardAudio } from './BrowseCardAudio';
 import { Tag } from '../common/ui';
 import { RevealImage } from '../common/RevealImage';
 import { SkeletonModCard } from '../common/Skeleton';
 import { IconText } from '../common/IconText';
-import { inferHeroFromTitle, getHeroRenderPath, getHeroFacePosition } from '../../lib/lockerUtils';
+import { HeroTagLabel } from '../installed/chips';
+import { getHeroRenderPath, getHeroFacePosition } from '../../lib/lockerUtils';
+import { categoryModelForSection } from '../../lib/categoryPaths';
+import { useCategoryStore } from '../../stores/categoryStore';
+import { useAppStore } from '../../stores/appStore';
 import {
   BROWSE_READABLE_CARD_GOLDEN,
   getReadableCardTargetWidth,
   getReadableDensity,
   type BrowseCardDesign,
-  type ViewMode,
 } from './cardGeometry';
 import { BROWSE_READABLE_MAX_VISIBLE_CHIPS, BrowseReadableChipRow } from './cardChips';
 import {
@@ -28,10 +32,11 @@ import {
   BrowseSoundPlaceholder,
   BrowseStatItem,
 } from './cardParts';
-import { formatCount, getReadableCardChips } from './cardUtils';
+import { formatCount, getBrowseCardTaxonomy } from './cardUtils';
 
 // Treat Enter/Space as a click on role="button" divs (keyboard navigation).
 function handleCardKeyDown(e: React.KeyboardEvent, onClick: () => void): void {
+  if (e.target !== e.currentTarget) return;
   if (e.key === 'Enter' || e.key === ' ') {
     e.preventDefault();
     onClick();
@@ -41,6 +46,7 @@ function handleCardKeyDown(e: React.KeyboardEvent, onClick: () => void): void {
 // Below this card width the "last updated" line moves to its own row under the
 // author instead of sharing the stats row, so it never squashes likes/views.
 const BROWSE_READABLE_UPDATED_INLINE_MIN = 300;
+const BROWSE_READABLE_HERO_ICON_SPACE = 28; // 22px icon plus a 6px gap.
 
 function ReadableBrowseModCard({
   mod,
@@ -56,63 +62,43 @@ function ReadableBrowseModCard({
   onVolumeChange,
   hideNsfwPreviews,
   isPlaying,
-  suppressHoverIntentRef,
   onPlayingChange,
   onClick,
   onQuickDownload,
   onEnable,
   priority,
-}: ModCardProps) {
+  taxonomy,
+}: ModCardProps & { taxonomy: ReturnType<typeof getBrowseCardTaxonomy> }) {
   const { t } = useTranslation();
+  const revealNsfwOnHover = useAppStore((state) => state.settings?.revealNsfwOnHover ?? false);
+  const alwaysShowNsfwTag = useAppStore((state) => state.settings?.browseAlwaysShowNsfwTag ?? false);
   const readableCardWidth = cardWidth ?? getReadableCardTargetWidth(cardSize);
   const thumbnail = getModThumbnail(mod);
   const audioPreview = section === 'Sound' ? getSoundPreviewUrl(mod) : undefined;
   const isSoundSection = section === 'Sound';
-  const hasAudioPreview = Boolean(audioPreview);
-  const inferredHero = inferHeroFromTitle(mod.name);
+  const { heroNames, chips } = taxonomy;
+  const inferredHero = heroNames.length === 1 ? heroNames[0] : undefined;
+  const visibleHeroes = heroNames.slice(0, heroNames.length > 2 ? 1 : 2);
+  const hiddenHeroes = heroNames.slice(visibleHeroes.length);
+  const heroIconSpace = (visibleHeroes.length + (hiddenHeroes.length ? 1 : 0)) * BROWSE_READABLE_HERO_ICON_SPACE;
   const heroRenderUrl = isSoundSection && inferredHero ? getHeroRenderPath(inferredHero) : undefined;
   const heroFacePosX = getHeroFacePosition(inferredHero).x;
   const shouldHideNsfw = Boolean(mod.nsfw && hideNsfwPreviews);
   const readableDensity = getReadableDensity(readableCardWidth);
-  const [showVolumeSlider, setShowVolumeSlider] = useState(false);
-  const [audioControlsActive, setAudioControlsActive] = useState(false);
   const readableScale = readableCardWidth / BROWSE_READABLE_CARD_GOLDEN;
   const chipRowWidth = Math.round(readableCardWidth - 24 * readableScale);
-  const chips = getReadableCardChips(mod, section, inferredHero);
-  const showChips = readableDensity !== 'micro';
   const showAuthor = readableDensity !== 'micro';
   // "Last updated" sits in the stats row when the card is wide enough; on
   // narrower cards it drops to its own line under the author so it can't
   // squash the likes/views counts.
-  const showUpdated = readableDensity === 'full';
-  const updatedInline = showUpdated && readableCardWidth >= BROWSE_READABLE_UPDATED_INLINE_MIN;
-  const updatedOwnLine = showUpdated && !updatedInline;
+  const updatedInline = readableDensity === 'full' && readableCardWidth >= BROWSE_READABLE_UPDATED_INLINE_MIN + heroIconSpace;
+  const updatedWithAuthor = readableDensity === 'full' && !updatedInline;
   const isMicro = readableDensity === 'micro';
-  const isCompactReadable = readableDensity === 'compact';
-  const actionIconOnly = readableCardWidth < 220;
-  const showInlineAudioPreview = isSoundSection && hasAudioPreview;
+  const actionIconOnly = readableCardWidth < 220 + heroIconSpace;
   const cardFrameStyle = typeof cardHeight === 'number' ? { height: `${cardHeight}px` } : undefined;
-  const mediaHeightClass = isMicro
-    ? 'aspect-[16/9]'
-    : isCompactReadable
-      ? 'h-[56cqw]'
-      : 'h-[57.1429cqw]';
-  const bodyPaddingClass = isMicro
-    ? 'px-[clamp(8px,5cqw,10px)] pb-[clamp(7px,4.6429cqw,9px)] pt-[clamp(7px,4.6429cqw,9px)]'
-    : isCompactReadable
-      ? 'px-[clamp(12px,5cqw,14px)] pb-[clamp(12px,5cqw,14px)] pt-[clamp(12px,5cqw,14px)]'
-      : 'px-[clamp(14px,5cqw,16px)] pb-[clamp(14px,5cqw,16px)] pt-[clamp(14px,5cqw,16px)]';
-  // Chips moved onto the thumbnail overlay, so the title is now the first body
-  // row in every density and needs no top margin.
-  const titleMarginClass = 'mt-0';
-  const footerMarginClass = isMicro
-    ? 'mt-[clamp(6px,3.5714cqw,8px)]'
-    : 'mt-[clamp(7px,3.5714cqw,11px)]';
-  const footerHeightClass = isMicro
-    ? 'h-6'
-    : 'h-[clamp(24px,10cqw,32px)]';
+  const bodyPaddingClass = isMicro ? 'p-2' : 'p-3';
   const media = isSoundSection ? (
-    <div className="relative h-full w-full overflow-hidden bg-bg-tertiary">
+    <div className="relative h-full w-full overflow-hidden bg-bg-tertiary" data-nsfw-blurred={shouldHideNsfw || undefined}>
       {heroRenderUrl ? (
         shouldHideNsfw ? (
           <RevealImage
@@ -150,7 +136,7 @@ function ReadableBrowseModCard({
         <BrowseSoundPlaceholder title={mod.name} />
       )}
       {shouldHideNsfw && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-bg-primary/55 text-state-danger">
+        <div data-nsfw-overlay className="absolute inset-0 flex flex-col items-center justify-center bg-bg-primary/55 text-state-danger">
           <AlertTriangle className="h-5 w-5" />
           <span className="mt-1 text-2xs font-semibold">{t('browse.card.nsfwHidden')}</span>
         </div>
@@ -175,22 +161,11 @@ function ReadableBrowseModCard({
     <div
       onClick={onClick}
       onKeyDown={(e) => handleCardKeyDown(e, onClick)}
-      onMouseEnter={() => {
-        if (!suppressHoverIntentRef?.current) setAudioControlsActive(true);
-      }}
-      onMouseLeave={() => {
-        if (!isPlaying) setAudioControlsActive(false);
-      }}
-      onFocus={() => setAudioControlsActive(true)}
-      onBlur={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null) && !isPlaying) {
-          setAudioControlsActive(false);
-        }
-      }}
       role="button"
       tabIndex={0}
-      aria-label={`Open details for ${mod.name}`}
+      aria-label={t('browse.card.openDetails', { name: mod.name })}
       style={cardFrameStyle}
+      data-nsfw-hover-reveal={revealNsfwOnHover || undefined}
       className={`browse-card-hover-surface browse-readable-card premium-card-glow group flex w-full flex-col overflow-hidden rounded-xl border bg-bg-sunken text-left shadow-[0_1px_0_rgba(255,255,255,0.03)] cursor-pointer focus-visible:border-accent focus-visible:outline-none [container-type:inline-size] ${
         isPlaying
           ? 'border-state-danger/70 ring-2 ring-state-danger/35 shadow-lg shadow-state-danger/15'
@@ -201,120 +176,70 @@ function ReadableBrowseModCard({
               : 'border-hl/[0.07]'
       }`}
     >
-      <div className={`browse-readable-card-media relative ${mediaHeightClass} overflow-hidden rounded-t-xl bg-bg-tertiary`}>
+      <div className="browse-readable-card-media relative aspect-video shrink-0 overflow-hidden rounded-t-xl bg-bg-tertiary">
         {media}
-        {showChips && chips.length > 0 && (
-          <div className="browse-readable-card-chips pointer-events-none absolute inset-x-0 bottom-0 z-[3] flex items-end bg-gradient-to-t from-black/75 via-black/30 to-transparent px-[clamp(8px,4cqw,12px)] pb-[clamp(7px,3.5cqw,10px)] pt-8">
+        {chips.length > 0 && (
+          <div className={`browse-readable-card-chips pointer-events-none absolute inset-x-0 z-10 flex items-end px-2 py-2 ${audioPreview ? 'top-0' : 'bottom-0'}`}>
             <div className="pointer-events-auto min-w-0">
               <BrowseReadableChipRow
                 chips={chips}
                 availableWidth={chipRowWidth}
                 maxVisible={readableDensity === 'compact' ? 2 : BROWSE_READABLE_MAX_VISIBLE_CHIPS}
+                alwaysShowNsfwTag={alwaysShowNsfwTag}
                 onImage
               />
             </div>
           </div>
         )}
+        {audioPreview && (
+          <BrowseCardAudio
+            src={audioPreview}
+            volume={volume}
+            onVolumeChange={onVolumeChange}
+            onPlayingChange={onPlayingChange}
+            compact={isMicro}
+          />
+        )}
       </div>
 
       <div
-        className={`browse-readable-card-body relative flex flex-none flex-col ${bodyPaddingClass}`}
+        className={`browse-readable-card-body relative flex min-h-0 flex-1 flex-col gap-2 ${bodyPaddingClass}`}
       >
-        <div className={`${titleMarginClass} min-w-0`}>
+        <div className="min-w-0 shrink-0">
           {/* font-semibold, not font-bold: Reaver ships only a 600 face, so
               bolder weights get synthetic (smeared, blurry) emboldening. */}
           <h3
-            className={`block truncate font-mod-title font-semibold text-mod-title ${
-              isMicro
-                ? 'text-[13px] leading-4'
-                : 'text-[clamp(11px,5.3571cqw,17px)] leading-[1.28] pb-px'
-            }`}
+            className={`block truncate font-mod-title font-semibold text-mod-title ${isMicro ? 'text-[13px] leading-4' : 'text-[clamp(11px,5.3571cqw,17px)] leading-[1.28] pb-px'}`}
             title={mod.name}
           >
             {mod.name}
           </h3>
           {showAuthor && (
-            <p className="mt-0 truncate text-[clamp(10px,4.2857cqw,13px)] font-normal leading-[1.12] text-text-secondary/85">
-              by {mod.submitter?.name ?? t('browse.card.unknownAuthor')}
-            </p>
+            <div className="flex h-4 min-w-0 items-center gap-2 text-xs leading-4">
+              <p className="min-w-0 flex-1 truncate text-[clamp(10px,4.2857cqw,13px)] font-normal leading-[1.12] text-text-secondary/85" title={mod.submitter?.name}>
+                {mod.submitter?.name != null ? t('browse.card.byAuthor', { name: mod.submitter.name }) : t('browse.card.byUnknownAuthor')}
+              </p>
+              {updatedWithAuthor && <BrowseReadableUpdatedLine timestamp={mod.dateModified} />}
+            </div>
           )}
-          {updatedOwnLine && <BrowseReadableUpdatedLine timestamp={mod.dateModified} variant="block" />}
         </div>
 
-        {showInlineAudioPreview && (
-          <div
-            className={`mt-[clamp(8px,3.5714cqw,10px)] flex items-center rounded-[clamp(9px,3.5714cqw,12px)] border border-hl/10 bg-bg-primary/55 px-[clamp(7px,2.8571cqw,9px)] text-text-secondary shadow-[0_1px_0_rgba(255,255,255,0.03)] ${
-              isMicro ? 'h-7' : 'h-[clamp(33px,12.8571cqw,41px)]'
-            }`}
-            onClick={(event) => event.stopPropagation()}
-          >
-            {audioControlsActive ? (
-              <>
-                <AudioPreviewPlayer
-                  src={audioPreview!}
-                  compact
-                  variant="inline"
-                  volume={volume}
-                  onPlayingChange={onPlayingChange}
-                  className="min-w-0 flex-1"
+        <div className={`mt-auto flex shrink-0 items-center justify-between gap-2 ${isMicro ? 'h-6' : 'h-7'}`}>
+          <div className="flex min-w-0 flex-1 items-center gap-1.5">
+            {visibleHeroes.map(hero => (
+              <span key={hero} className="inline-flex max-w-6 flex-shrink-0 items-center" title={hero}>
+                <HeroTagLabel
+                  heroName={hero}
+                  iconClassName={isMicro ? 'h-4 w-4' : readableDensity === 'full' ? 'h-[22px] w-[22px]' : 'h-5 w-5'}
+                  iconOnly
                 />
-                <div className="relative ml-[clamp(6px,2.1429cqw,8px)] flex-shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => setShowVolumeSlider((value) => !value)}
-                    className="flex h-[clamp(24px,8.5714cqw,28px)] w-[clamp(24px,8.5714cqw,28px)] items-center justify-center rounded-full border border-hl/10 bg-hl/5 text-white/80 transition-colors hover:bg-hl/10 hover:text-white cursor-pointer"
-                    title={showVolumeSlider ? 'Hide volume slider' : 'Show volume slider'}
-                    aria-label={showVolumeSlider ? 'Hide volume slider' : 'Show volume slider'}
-                    aria-expanded={showVolumeSlider}
-                  >
-                    {volume > 0 ? (
-                      <Volume2 className="h-[clamp(13px,4.2857cqw,15px)] w-[clamp(13px,4.2857cqw,15px)]" />
-                    ) : (
-                      <VolumeX className="h-[clamp(13px,4.2857cqw,15px)] w-[clamp(13px,4.2857cqw,15px)]" />
-                    )}
-                  </button>
-                  {showVolumeSlider && (
-                    <div className="absolute bottom-[calc(100%+8px)] right-0 flex items-center rounded-full border border-hl/10 bg-bg-glass/92 px-3 py-2 shadow-[0_8px_24px_rgba(0,0,0,0.45)] backdrop-blur-md">
-                      <input
-                        type="range"
-                        min={0}
-                        max={100}
-                        step={1}
-                        value={Math.round(volume * 100)}
-                        onChange={(e) => onVolumeChange(parseInt(e.target.value, 10) / 100)}
-                        className="w-24 h-1 accent-accent cursor-pointer"
-                        title={`Volume: ${Math.round(volume * 100)}%`}
-                        aria-label={t('browse.card.volume')}
-                      />
-                    </div>
-                  )}
-                </div>
-              </>
-            ) : (
-              <div className={`flex min-w-0 flex-1 items-center ${isMicro ? 'gap-2' : 'gap-4'}`}>
-                <span
-                  className={`flex flex-shrink-0 items-center justify-center rounded-full border border-accent/50 bg-accent/25 text-text-primary shadow-sm ${
-                    isMicro ? 'h-5 w-5' : 'h-8 w-8'
-                  }`}
-                >
-                  <Play className={`${isMicro ? 'h-3 w-3' : 'h-4 w-4'} ml-0.5 fill-current`} />
-                </span>
-                <span className="h-1.5 min-w-0 flex-1 rounded-full bg-bg-primary" />
-                {!isMicro && (
-                  <>
-                    <span className="flex-shrink-0 text-[10px] tabular-nums text-text-secondary">0:00</span>
-                    <span className="flex h-[clamp(24px,8.5714cqw,28px)] w-[clamp(24px,8.5714cqw,28px)] flex-shrink-0 items-center justify-center rounded-full border border-hl/10 bg-hl/5 text-white/80">
-                      <Volume2 className="h-[clamp(13px,4.2857cqw,15px)] w-[clamp(13px,4.2857cqw,15px)]" />
-                    </span>
-                  </>
-                )}
-              </div>
+              </span>
+            ))}
+            {hiddenHeroes.length > 0 && (
+              <span className="shrink-0 text-2xs text-text-secondary" title={hiddenHeroes.join('\n')}>+{hiddenHeroes.length}</span>
             )}
+            <BrowseReadableStatsRow mod={mod} density={readableDensity} showUpdated={updatedInline} />
           </div>
-        )}
-
-        <div className={`${footerMarginClass} flex ${footerHeightClass} items-center justify-between gap-[clamp(6px,4.2857cqw,14px)]`}>
-          <BrowseReadableStatsRow mod={mod} density={readableDensity} showUpdated={updatedInline} />
           <BrowseReadableAction
             modName={mod.name}
             installed={installed}
@@ -340,7 +265,6 @@ interface ModCardProps {
   installedDisabled?: boolean;
   downloading: boolean;
   queuePosition?: number;
-  viewMode: ViewMode;
   cardDesign: BrowseCardDesign;
   cardSize: number;
   cardWidth?: number;
@@ -368,34 +292,27 @@ interface ModCardProps {
 
 /** Placeholder with the geometry of the card it stands in for. */
 export function ModCardSkeleton({
-  viewMode,
   cardDesign,
   height,
   index,
 }: {
-  viewMode: ViewMode;
   cardDesign: BrowseCardDesign;
   height?: number;
   index?: number;
 }) {
-  const layout = viewMode === 'list' ? 'browse-list' : cardDesign === 'readable' ? 'browse' : 'browse-classic';
-  return viewMode === 'list' ? (
-    <SkeletonModCard layout={layout} index={index} className="self-start" />
-  ) : (
-    <SkeletonModCard layout={layout} height={height} index={index} />
-  );
+  return <SkeletonModCard layout={cardDesign === 'readable' ? 'browse' : 'browse-classic'} height={height} index={index} />;
 }
 
-// Browse list rows show the thumbnail in a w-32 h-20 box.
-const LIST_THUMB_WIDTH = 128;
-const LIST_THUMB_HEIGHT = 80;
-
-function ModCard({ mod, installed, installedDisabled, downloading, queuePosition, viewMode, cardDesign, cardSize, cardWidth, cardHeight, section, volume, onVolumeChange, hideNsfwPreviews, isPlaying, suppressHoverIntentRef, onPlayingChange, onClick, onQuickDownload, onEnable, priority }: ModCardProps) {
+function ModCard({ mod, installed, installedDisabled, downloading, queuePosition, cardDesign, cardSize, cardWidth, cardHeight, section, volume, onVolumeChange, hideNsfwPreviews, isPlaying, suppressHoverIntentRef, onPlayingChange, onClick, onQuickDownload, onEnable, priority }: ModCardProps) {
   const { t } = useTranslation();
+  const revealNsfwOnHover = useAppStore((state) => state.settings?.revealNsfwOnHover ?? false);
+  const paths = useCategoryStore((state) => state.pathsByModel[categoryModelForSection(section)]);
+  const heroNames = useCategoryStore((state) => state.heroNames);
+  const taxonomy = getBrowseCardTaxonomy(mod, section, paths, heroNames);
   const thumbnail = getModThumbnail(mod);
   // Classic grid cards are aspect-[3/2], taller than a screenshot.
-  const thumbWidth = viewMode === 'list' ? LIST_THUMB_WIDTH : (cardWidth ?? cardSize);
-  const thumbHeight = viewMode === 'list' ? LIST_THUMB_HEIGHT : (thumbWidth * 2) / 3;
+  const thumbWidth = cardWidth ?? cardSize;
+  const thumbHeight = (thumbWidth * 2) / 3;
   const audioPreview = section === 'Sound' ? getSoundPreviewUrl(mod) : undefined;
   // At the smallest grid sizes the bottom overlay (title + stats + author) eats
   // most of a classic card, burying the art it's drawn over. Below this width
@@ -403,167 +320,23 @@ function ModCard({ mod, installed, installedDisabled, downloading, queuePosition
   // Keyed off the real card width so it tracks the card-size slider.
   const minimalChrome =
     cardDesign === 'classic' && typeof cardWidth === 'number' && cardWidth > 0 && cardWidth < 205;
-  const isList = viewMode === 'list';
   const isSoundSection = section === 'Sound';
   const hasAudioPreview = Boolean(audioPreview);
-  // Sound mods don't carry hero info in the API, so guess from the title.
-  // Used to swap in the locker hero portrait as the card backdrop.
-  const inferredHero = isSoundSection ? inferHeroFromTitle(mod.name) : null;
-  const heroRenderUrl = inferredHero ? getHeroRenderPath(inferredHero) : undefined;
+  const inferredHero = taxonomy.heroNames.length === 1 ? taxonomy.heroNames[0] : undefined;
+  const heroRenderUrl = isSoundSection && inferredHero ? getHeroRenderPath(inferredHero) : undefined;
   const heroFacePosX = getHeroFacePosition(inferredHero).x;
   const [audioControlsActive, setAudioControlsActive] = useState(false);
-
-  // List view keeps original layout
-  if (isList) {
-    return (
-      <div
-        onClick={onClick}
-        onKeyDown={(e) => handleCardKeyDown(e, onClick)}
-        onMouseEnter={() => {
-          if (!suppressHoverIntentRef?.current) setAudioControlsActive(true);
-        }}
-        onMouseLeave={() => {
-          if (!isPlaying) setAudioControlsActive(false);
-        }}
-        onFocus={() => setAudioControlsActive(true)}
-        onBlur={(event) => {
-          if (!event.currentTarget.contains(event.relatedTarget as Node | null) && !isPlaying) {
-            setAudioControlsActive(false);
-          }
-        }}
-        role="button"
-        tabIndex={0}
-        aria-label={`Open details for ${mod.name}`}
-        className={`browse-card-hover-surface relative bg-bg-secondary border rounded-xl overflow-hidden focus-visible:border-accent focus-visible:outline-none transition-colors text-left cursor-pointer flex items-center gap-4 p-3 ${
-          isPlaying
-            ? 'border-state-danger ring-2 ring-state-danger/60 shadow-lg shadow-state-danger/20'
-            : 'border-border hover:border-accent/50'
-        }`}
-      >
-        <div className="relative bg-bg-tertiary w-32 h-20 flex-shrink-0 rounded-lg overflow-hidden">
-          {isSoundSection ? (
-            heroRenderUrl ? (
-              <ImageContextMenu src={heroRenderUrl} alt={inferredHero ?? mod.name}>
-                <RevealImage
-                  src={heroRenderUrl}
-                  alt={inferredHero ?? mod.name}
-                  priority={priority}
-                  className="browse-card-media-zoom w-full h-full object-cover"
-                  style={{ objectPosition: `${heroFacePosX}% 25%` }}
-                />
-              </ImageContextMenu>
-            ) : thumbnail ? (
-              <ModThumbnail src={thumbnail} alt={mod.name} nsfw={mod.nsfw} hideNsfw={hideNsfwPreviews} className="w-full h-full" imageFit="cover" imagePosition="center top" width={thumbWidth} height={thumbHeight} priority={priority} />
-            ) : (
-              <div className="w-full h-full bg-gradient-to-br from-bg-tertiary via-bg-secondary to-bg-tertiary flex items-center justify-center">
-                <div className="flex items-center gap-1 px-2 py-1 rounded-full border border-accent/40 bg-accent/10 text-text-primary text-[10px] font-semibold">
-                  <Volume2 className="w-3 h-3" />
-                  {t('browse.card.sound')}
-                </div>
-              </div>
-            )
-          ) : (
-            <ModThumbnail src={thumbnail} alt={mod.name} nsfw={mod.nsfw} hideNsfw={hideNsfwPreviews} className="w-full h-full" imageFit="cover" imagePosition="center top" width={thumbWidth} height={thumbHeight} priority={priority} />
-          )}
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-start justify-between gap-2">
-            <h3 className="font-mod-title font-medium truncate flex-1">{mod.name}</h3>
-            {installed && installedDisabled && onEnable ? (
-              <button
-                onClick={(e) => { e.stopPropagation(); onEnable(); }}
-                className="flex-shrink-0 flex items-center gap-1.5 px-2.5 h-7 bg-state-warning/15 hover:bg-state-warning/25 border border-state-warning/40 text-state-warning rounded-full text-xs font-semibold transition-colors cursor-pointer"
-                title={t('browse.actions.enableDisabledTitle')}
-              >
-                <Power className="w-3 h-3" />
-                Enable
-              </button>
-            ) : installed ? (
-              <Tag tone="success" variant="overlay" title={t('nav.installed')} className="flex-shrink-0">
-                <span aria-hidden>✓</span>
-                {t('nav.installed')}
-              </Tag>
-            ) : downloading ? (
-              <span className="flex-shrink-0 flex items-center justify-center w-7 h-7 bg-bg-primary/80 rounded-full">
-                <BrowseDownloadSpinner className="text-accent" />
-              </span>
-            ) : (
-              <button
-                onClick={(e) => { e.stopPropagation(); onQuickDownload(e.currentTarget); }}
-                className="flex-shrink-0 flex items-center justify-center w-7 h-7 border border-accent/40 bg-accent/10 hover:bg-accent/20 hover:border-accent/60 text-text-primary rounded-full shadow-lg transition-colors cursor-pointer"
-                title={t('browse.card.install')}
-              >
-                <Download className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
-          <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-text-secondary">
-            <BrowseStatItem type="likes" icon={ThumbsUp} value={formatCount(mod.likeCount)} title={`${mod.likeCount ?? 0} likes`} />
-            <BrowseStatItem type="views" icon={Eye} value={formatCount(mod.viewCount)} title={`${mod.viewCount ?? 0} views`} />
-            {mod.nsfw && <Tag tone="danger">18+</Tag>}
-          </div>
-          {mod.submitter && <p className="text-text-secondary mt-1 truncate text-xs">by {mod.submitter.name}</p>}
-          {mod.dateModified > 0 && (
-            <IconText
-              icon={isModOutdated(mod.dateModified) ? AlertTriangle : Clock}
-              className={`mt-1 max-w-full text-xs ${isModOutdated(mod.dateModified) ? 'text-state-warning' : 'text-text-secondary'}`}
-              iconClassName="browse-meta-icon"
-            >
-              <span className="truncate">{isModOutdated(mod.dateModified) ? t('browse.card.outdatedPrefix') : ''}{formatDate(mod.dateModified)}</span>
-            </IconText>
-          )}
-        </div>
-
-        {/* Right-side audio cluster for sound mods — fills the empty space on wide rows */}
-        {isSoundSection && hasAudioPreview && (
-          <div
-            className="flex-shrink-0 w-72 hidden md:flex items-center gap-3 bg-bg-tertiary/50 rounded-full border border-border px-3 py-1.5"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex-1 min-w-0">
-              {audioControlsActive ? (
-                <AudioPreviewPlayer src={audioPreview!} compact variant="inline" volume={volume} onPlayingChange={onPlayingChange} />
-              ) : (
-                <div className="flex items-center gap-3 text-text-secondary">
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-accent/50 bg-accent/25 text-text-primary">
-                    <Play className="h-4 w-4 ml-0.5 fill-current" />
-                  </span>
-                  <span className="h-1.5 min-w-0 flex-1 rounded-full bg-bg-primary" />
-                  <span className="shrink-0 text-[10px] tabular-nums">0:00</span>
-                </div>
-              )}
-            </div>
-            <div className="w-px h-4 bg-border flex-shrink-0" />
-            <div className="flex items-center gap-1.5 flex-shrink-0">
-              <Volume2 className="w-3.5 h-3.5 text-text-secondary" />
-              <input
-                type="range"
-                min={0}
-                max={100}
-                step={1}
-                value={Math.round(volume * 100)}
-                onChange={(e) => onVolumeChange(parseInt(e.target.value, 10) / 100)}
-                className="w-14 h-1 accent-accent cursor-pointer"
-                aria-label={t('browse.card.volume')}
-              />
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  }
 
   // Grid: overlay card. Image fills card, info overlaid at bottom
   if (cardDesign === 'readable') {
     return (
-      <BrowseArtParallaxCard>
+      <BrowseArtParallaxCard suppressHoverIntentRef={suppressHoverIntentRef}>
         <ReadableBrowseModCard
           mod={mod}
           installed={installed}
           installedDisabled={installedDisabled}
           downloading={downloading}
           queuePosition={queuePosition}
-          viewMode={viewMode}
           cardDesign={cardDesign}
           cardSize={cardSize}
           cardWidth={cardWidth}
@@ -579,14 +352,17 @@ function ModCard({ mod, installed, installedDisabled, downloading, queuePosition
           onQuickDownload={onQuickDownload}
           onEnable={onEnable}
           priority={priority}
+          taxonomy={taxonomy}
         />
       </BrowseArtParallaxCard>
     );
   }
 
   const isOutdated = mod.dateModified > 0 && isModOutdated(mod.dateModified);
+  // Classic cards already show the content warning in their state-tag stack.
+  const categoryChips = taxonomy.chips.filter(chip => chip.label !== '18+');
   return (
-    <BrowseArtParallaxCard>
+    <BrowseArtParallaxCard suppressHoverIntentRef={suppressHoverIntentRef}>
       <div
         onClick={onClick}
         onKeyDown={(e) => handleCardKeyDown(e, onClick)}
@@ -604,7 +380,8 @@ function ModCard({ mod, installed, installedDisabled, downloading, queuePosition
         }}
         role="button"
         tabIndex={0}
-        aria-label={`Open details for ${mod.name}`}
+        aria-label={t('browse.card.openDetails', { name: mod.name })}
+        data-nsfw-hover-reveal={revealNsfwOnHover || undefined}
         className={`browse-card-hover-surface premium-card-glow relative isolate bg-bg-tertiary border rounded-xl overflow-hidden focus-visible:border-accent focus-visible:outline-none text-left cursor-pointer group aspect-[3/2] ${
           isPlaying
             ? 'border-state-danger ring-2 ring-state-danger/60 shadow-lg shadow-state-danger/20'
@@ -698,13 +475,18 @@ function ModCard({ mod, installed, installedDisabled, downloading, queuePosition
           variant because the title is anchored at top:0 instead of bottom:0. */}
       {isSoundSection && hasAudioPreview ? (
         <div className="absolute top-0 left-0 right-0 pointer-events-none p-3 pr-12">
+          {categoryChips.length > 0 && (
+            <div className="browse-readable-card-chips pointer-events-auto mb-1.5">
+              <BrowseReadableChipRow chips={categoryChips} availableWidth={Math.max(48, thumbWidth - 72)} maxVisible={2} onImage />
+            </div>
+          )}
           {(mod.nsfw || installed || isOutdated) && (
             <div className="flex flex-wrap items-center gap-1 mb-1.5">
               {mod.nsfw && <Tag tone="danger" variant="overlay">18+</Tag>}
               {installed && (
                 <Tag tone="success" variant="overlay">
                   <span aria-hidden>✓</span>
-                  Installed
+                  {t('browse.card.installed')}
                 </Tag>
               )}
               {!installed && isOutdated && (
@@ -712,7 +494,7 @@ function ModCard({ mod, installed, installedDisabled, downloading, queuePosition
                   tone="warning"
                   variant="overlay"
                   icon={AlertTriangle}
-                  title={`Last updated ${formatDate(mod.dateModified)}`}
+                  title={t('browse.card.lastUpdated', { date: formatDate(mod.dateModified) })}
                 >
                   {t('browse.card.outdated')}
                 </Tag>
@@ -721,13 +503,19 @@ function ModCard({ mod, installed, installedDisabled, downloading, queuePosition
           )}
           <h3 className="font-mod-title font-semibold truncate text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)] text-base">{mod.name}</h3>
           <div className="mt-1 flex flex-wrap items-center gap-3 text-white/90 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)] text-xs">
-            <BrowseStatItem type="likes" icon={ThumbsUp} value={formatCount(mod.likeCount)} title={`${mod.likeCount ?? 0} likes`} />
-            <BrowseStatItem type="views" icon={Eye} value={formatCount(mod.viewCount)} title={`${mod.viewCount ?? 0} views`} />
-            {mod.submitter && <span className="truncate">by {mod.submitter.name}</span>}
+            {taxonomy.heroNames.map(hero => <span key={hero} title={hero}><HeroTagLabel heroName={hero} iconClassName="h-5 w-5" iconOnly /></span>)}
+            <BrowseStatItem type="likes" icon={ThumbsUp} value={formatCount(mod.likeCount)} title={t('browse.card.likes', { count: mod.likeCount ?? 0 })} />
+            <BrowseStatItem type="views" icon={Eye} value={formatCount(mod.viewCount)} title={t('browse.card.views', { count: mod.viewCount ?? 0 })} />
+            {mod.submitter && <span className="truncate">{t('browse.card.byAuthor', { name: mod.submitter.name })}</span>}
           </div>
         </div>
       ) : (
         <div className={`absolute bottom-0 left-0 right-0 ${minimalChrome ? 'p-2' : 'p-3'}`}>
+          {categoryChips.length > 0 && (
+            <div className="browse-readable-card-chips mb-1.5">
+              <BrowseReadableChipRow chips={categoryChips} availableWidth={Math.max(48, thumbWidth - 24)} maxVisible={2} onImage />
+            </div>
+          )}
           <h3 className={`font-mod-title font-semibold truncate text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)] ${minimalChrome ? 'text-sm' : 'text-base'}`}>{mod.name}</h3>
           {/* Stats / author / outdated. On minimal cards this group is collapsed
               to zero height at rest and slides up on hover or keyboard focus. */}
@@ -739,9 +527,10 @@ function ModCard({ mod, installed, installedDisabled, downloading, queuePosition
             }
           >
             <div className="mt-1 flex flex-wrap items-center gap-3 text-white/90 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)] text-sm">
-              <BrowseStatItem type="likes" icon={ThumbsUp} value={formatCount(mod.likeCount)} title={`${mod.likeCount ?? 0} likes`} />
-              <BrowseStatItem type="views" icon={Eye} value={formatCount(mod.viewCount)} title={`${mod.viewCount ?? 0} views`} />
-              {mod.submitter && <span className="truncate">by {mod.submitter.name}</span>}
+              {taxonomy.heroNames.map(hero => <span key={hero} title={hero}><HeroTagLabel heroName={hero} iconClassName="h-5 w-5" iconOnly /></span>)}
+              <BrowseStatItem type="likes" icon={ThumbsUp} value={formatCount(mod.likeCount)} title={t('browse.card.likes', { count: mod.likeCount ?? 0 })} />
+              <BrowseStatItem type="views" icon={Eye} value={formatCount(mod.viewCount)} title={t('browse.card.views', { count: mod.viewCount ?? 0 })} />
+              {mod.submitter && <span className="truncate">{t('browse.card.byAuthor', { name: mod.submitter.name })}</span>}
             </div>
             {mod.dateModified > 0 && isModOutdated(mod.dateModified) && (
               <IconText
@@ -767,7 +556,7 @@ function ModCard({ mod, installed, installedDisabled, downloading, queuePosition
           {installed && (
             <Tag tone="success" variant="overlay">
               <span aria-hidden>✓</span>
-              Installed
+              {t('browse.card.installed')}
             </Tag>
           )}
           {!installed && isOutdated && (
@@ -775,7 +564,7 @@ function ModCard({ mod, installed, installedDisabled, downloading, queuePosition
               tone="warning"
               variant="overlay"
               icon={AlertTriangle}
-              title={`Last updated ${formatDate(mod.dateModified)}`}
+              title={t('browse.card.lastUpdated', { date: formatDate(mod.dateModified) })}
             >
               {t('browse.card.outdated')}
             </Tag>
@@ -819,9 +608,9 @@ function ModCard({ mod, installed, installedDisabled, downloading, queuePosition
                   e.stopPropagation();
                   onVolumeChange(volume > 0 ? 0 : 1);
                 }}
-                className="flex h-6 w-6 items-center justify-center rounded-full border border-hl/10 bg-hl/5 text-white/70 transition-colors hover:bg-hl/10 hover:text-white cursor-pointer"
-                title={volume > 0 ? 'Mute' : 'Unmute'}
-                aria-label={volume > 0 ? 'Mute' : 'Unmute'}
+                className="flex h-6 w-6 items-center justify-center rounded-full border border-hl/10 bg-hl/5 text-text-primary/70 transition-colors hover:bg-hl/10 hover:text-text-primary cursor-pointer"
+                title={volume > 0 ? t('audioPreview.mute') : t('audioPreview.unmute')}
+                aria-label={volume > 0 ? t('audioPreview.mute') : t('audioPreview.unmute')}
               >
                 {volume > 0 ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
               </button>
@@ -833,7 +622,7 @@ function ModCard({ mod, installed, installedDisabled, downloading, queuePosition
                 value={Math.round(volume * 100)}
                 onChange={(e) => onVolumeChange(parseInt(e.target.value, 10) / 100)}
                 className="w-16 h-1 accent-accent cursor-pointer"
-                title={`Volume: ${Math.round(volume * 100)}%`}
+                title={t('browse.card.volumeValue', { value: Math.round(volume * 100) })}
                 aria-label={t('browse.card.volume')}
               />
             </div>
@@ -853,7 +642,7 @@ function ModCard({ mod, installed, installedDisabled, downloading, queuePosition
             title={t('browse.actions.enableDisabledTitle')}
           >
             <Power className="w-3.5 h-3.5" />
-            Enable
+            {t('browse.card.enable')}
           </button>
         ) : installed ? (
           <span
@@ -869,7 +658,7 @@ function ModCard({ mod, installed, installedDisabled, downloading, queuePosition
         ) : queuePosition ? (
           <div
             className="flex items-center justify-center bg-accent text-bg-primary rounded-full font-bold ring-1 ring-border shadow-md w-8 h-8 text-xs"
-            title={`Queued #${queuePosition}`}
+            title={t('browse.card.queuedNumber', { position: queuePosition })}
           >
             {queuePosition}
           </div>
@@ -894,7 +683,6 @@ export const MemoizedModCard = React.memo(ModCard, (prev, next) => (
   prev.installedDisabled === next.installedDisabled &&
   prev.downloading === next.downloading &&
   prev.queuePosition === next.queuePosition &&
-  prev.viewMode === next.viewMode &&
   prev.cardDesign === next.cardDesign &&
   prev.cardSize === next.cardSize &&
   prev.cardWidth === next.cardWidth &&

@@ -19,38 +19,8 @@ import { listInstalledUserVpks } from './modLibrary';
 import { parseVpkDirectoryCached } from './vpk';
 import { vpkmergeBinaryPath, runVpkmerge } from './modMerger';
 import { getModMetadata } from './metadata';
+import { cardArtSets, codenamesForHero } from './heroCodenames';
 import type { HeroPortrait } from '../../../src/types/portrait';
-import {
-    portraitCodenameForHero,
-    portraitCodenamesForHero,
-} from '../../../src/lib/heroPortraitIdentity';
-
-// Display name -> panorama codename. This is the `class_name` namespace
-// (deadlock-api `hero_<codename>`, stripped of the `hero_` prefix) that hero
-// card art lives under as `panorama/images/heroes/<codename>_<variant>`.
-//
-// The names come from the one hero identity table (src/lib/heroIdentity.ts) via
-// its panorama accessors. Asking it for the PANORAMA namespace is the whole
-// point: the sound namespace disagrees for Abrams (sound `abrams` vs panorama
-// `atlas`) and Mo & Krill (`mokrill` vs `krill`), and reading the wrong one
-// made the card picker silently return nothing for those heroes.
-//
-// Source of truth for the values: assets.deadlock-api.com/v2/heroes
-// `class_name`. Both "Doorman" (GameBanana's category name) and "The Doorman"
-// (the API/roster name) resolve, so the lookup works whichever name flows in.
-/** Resolve a hero display name (e.g. "Vindicta") to its primary panorama
- *  codename (e.g. "hornet"), or undefined when the name is unknown. */
-export function codenameForHero(heroName: string): string | undefined {
-    return portraitCodenameForHero(heroName);
-}
-
-/** Every panorama codename a hero's card art might be filed under: the current
- *  class_name first, then any legacy aliases. Empty when the name is unknown.
- *  Card scanning and apply both iterate this so neither old nor new packs are
- *  missed. */
-export function codenamesForHero(heroName: string): string[] {
-    return portraitCodenamesForHero(heroName);
-}
 
 function sanitize(value: string): string {
     return value.replace(/[^a-zA-Z0-9_-]+/g, '_');
@@ -68,8 +38,60 @@ interface PortraitManifest {
         width: number;
         height: number;
         format_name: string;
+        source_path: string;
         output_path: string | null;
     }>;
+}
+
+/** One card texture `vpkmerge portrait` decoded, as a PNG data URL. */
+export interface DecodedCardArt {
+    variant: string;
+    width: number;
+    height: number;
+    formatName: string;
+    sourcePath: string;
+    dataUrl: string;
+}
+
+/**
+ * Decode all of one codename's card art in a VPK, alternate forms included,
+ * using `cacheDir` for the PNGs. A set that fails to decode or read back is
+ * logged and skipped so it can't sink the others.
+ */
+export async function decodeHeroCardArt(
+    vpkPath: string,
+    codename: string,
+    cacheDir: string
+): Promise<DecodedCardArt[]> {
+    const decoded: DecodedCardArt[] = [];
+    for (const set of cardArtSets(parseVpkDirectoryCached(vpkPath) ?? [], codename)) {
+        const outDir = join(cacheDir, set.codename);
+        const manifestPath = join(outDir, 'manifest.json');
+        try {
+            await runVpkmerge(
+                ['portrait', vpkPath, '--hero', set.codename, '--out', outDir, '--manifest', manifestPath],
+                60000
+            );
+            const manifest = JSON.parse(
+                await fs.readFile(manifestPath, 'utf-8')
+            ) as PortraitManifest;
+            for (const p of manifest.portraits) {
+                if (!p.output_path) continue;
+                const png = await fs.readFile(p.output_path);
+                decoded.push({
+                    variant: `${set.variantPrefix}${p.variant}`,
+                    width: p.width,
+                    height: p.height,
+                    formatName: p.format_name,
+                    sourcePath: p.source_path,
+                    dataUrl: `data:image/png;base64,${png.toString('base64')}`,
+                });
+            }
+        } catch (err) {
+            console.warn(`[heroPortraits] skipping ${basename(vpkPath)} (${set.codename}): ${String(err)}`);
+        }
+    }
+    return decoded;
 }
 
 /**
@@ -120,31 +142,16 @@ export async function getHeroPortraits(
         for (const codename of matched) {
             // Cache dir keyed by the unique metaKey so two same-named sources in
             // different folders don't clobber each other's decoded portraits.
-            const outDir = join(cacheRoot, sanitize(metaKey), codename);
-            const manifestPath = join(outDir, 'manifest.json');
-            try {
-                await runVpkmerge(
-                    ['portrait', vpk, '--hero', codename, '--out', outDir, '--manifest', manifestPath],
-                    60000
-                );
-                const manifest = JSON.parse(
-                    await fs.readFile(manifestPath, 'utf-8')
-                ) as PortraitManifest;
-                for (const p of manifest.portraits) {
-                    if (!p.output_path) continue;
-                    const png = await fs.readFile(p.output_path);
-                    results.push({
-                        modFileName: metaKey,
-                        variant: p.variant,
-                        width: p.width,
-                        height: p.height,
-                        formatName: p.format_name,
-                        dataUrl: `data:image/png;base64,${png.toString('base64')}`,
-                    });
-                }
-            } catch (err) {
-                // One malformed VPK shouldn't sink the whole picker.
-                console.warn(`[heroPortraits] skipping ${basename(vpk)} (${codename}): ${String(err)}`);
+            const art = await decodeHeroCardArt(vpk, codename, join(cacheRoot, sanitize(metaKey)));
+            for (const p of art) {
+                results.push({
+                    modFileName: metaKey,
+                    variant: p.variant,
+                    width: p.width,
+                    height: p.height,
+                    formatName: p.formatName,
+                    dataUrl: p.dataUrl,
+                });
             }
         }
     }

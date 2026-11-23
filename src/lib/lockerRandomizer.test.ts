@@ -1,6 +1,8 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import type { GlobalModType, Mod } from '../types/mod';
+import { buildHeroList } from './lockerUtils';
 import {
+  getManualOnlyShuffleKeys,
   planRandomization,
   planLaunchShuffle,
   planCardShuffle,
@@ -12,6 +14,7 @@ import {
   shuffleGroupKind,
   shufflePoolKey,
   summarizeShufflePool,
+  shuffleExclusionKey,
   readStoredShuffleIncluded,
   readStoredShuffleVariants,
   type VariantChoice,
@@ -44,6 +47,119 @@ const sequenceRng = (...values: number[]) => {
   let index = 0;
   return () => values[Math.min(index++, values.length - 1)] ?? 0;
 };
+
+it('leaves multi-hero WiP files untouched by both hero selection and disable sweeps', () => {
+  const shared = mod({ id: 'shared', sourceSection: 'Wip', enabled: true,
+    lockerHeroes: ['Haze', 'Wraith'] });
+  const haze = mod({ id: 'haze', sourceSection: 'Mod', lockerHeroes: ['Haze'] });
+  const wraith = mod({ id: 'wraith', sourceSection: 'Mod', lockerHeroes: ['Wraith'] });
+  const included = new Set([shared, haze, wraith].map(shuffleSkinKey));
+  const plan = planRandomization({
+    heroSkins: new Map([[1, [shared, haze]], [2, [shared, wraith]]]),
+    heroIds: [1, 2], included, rng: fixedRng(0),
+  });
+  expect(plan.enableIds).toEqual(['haze', 'wraith']);
+  expect(plan.disableIds).toEqual([]);
+  expect(shuffleGroupKind(shared)).toBeNull();
+});
+
+it('preserves every variant of a logical skin containing a shared hero payload', () => {
+  const shared = mod({ id: 'shared', gameBananaId: 7, sourceSection: 'Wip', enabled: true,
+    lockerHeroes: ['Haze', 'Wraith'] });
+  const single = mod({ id: 'single', gameBananaId: 7, sourceSection: 'Wip', enabled: true,
+    lockerHeroes: ['Haze'] });
+  const alternative = mod({ id: 'alternative', sourceSection: 'Mod', lockerHeroes: ['Haze'] });
+  const included = new Set([shared, alternative].map(shuffleSkinKey));
+  expect(planRandomization({
+    heroSkins: new Map([[1, [shared, single, alternative]], [2, [shared]]]),
+    heroIds: [1, 2], included, rng: fixedRng(0),
+  })).toEqual({ enableIds: ['alternative'], disableIds: [], changedHeroes: [1] });
+  const excludedSkinKeys = getManualOnlyShuffleKeys([shared, single, alternative]);
+  expect(shuffleGroupKind(single, { excludedSkinKeys })).toBeNull();
+});
+
+it('excludes a shared logical skin before splitting the library into visible hero groups', () => {
+  const shared = mod({ id: 'shared', localGroupId: 'g', sourceSection: 'Wip', enabled: true,
+    lockerHeroes: ['Haze', 'Wraith'] });
+  const single = mod({ id: 'single', localGroupId: 'g', sourceSection: 'Wip', enabled: true,
+    lockerHeroes: ['Ivy'] });
+  const alternative = mod({ id: 'alternative', sourceSection: 'Mod', lockerHeroes: ['Ivy'] });
+  expect(planLaunchShuffle({
+    mods: [shared, single, alternative], heroList: [{ id: 1, name: 'Ivy' }],
+    included: new Set([shared, alternative].map(shuffleSkinKey)), rng: fixedRng(0),
+  })).toEqual({ enableIds: ['alternative'], disableIds: [], changedHeroes: [1] });
+});
+
+it('does not exclude an unrelated skin when a Sound submission shares its numeric ID', () => {
+  const sound = mod({ id: 'sound', gameBananaId: 7, sourceSection: 'Sound',
+    lockerHeroes: ['Haze', 'Wraith'] });
+  const skin = mod({ id: 'skin', gameBananaId: 7, sourceSection: 'Mod', lockerHeroes: ['Haze'] });
+  expect(planLaunchShuffle({
+    mods: [sound, skin], heroList: [{ id: 1, name: 'Haze' }],
+    included: new Set([shuffleSkinKey(skin)]), rng: fixedRng(0),
+  }).enableIds).toEqual(['skin']);
+});
+
+it('keeps hero-attributed HUDs in their existing General shuffle bucket', () => {
+  const hud = mod({ id: 'hud', gameBananaId: 7, sourceSection: 'Mod', globalType: 'hud',
+    lockerHeroes: ['Haze', 'Wraith'] });
+  const skin = mod({ id: 'skin', gameBananaId: 7, sourceSection: 'Mod', lockerHeroes: ['Haze'] });
+  const excludedSkinKeys = getManualOnlyShuffleKeys([hud, skin]);
+  expect(excludedSkinKeys.size).toBe(0);
+  expect(shuffleGroupKind(hud, { excludedSkinKeys })).toBe('bucket');
+  expect(shuffleGroupKind(skin, { excludedSkinKeys })).toBe('hero');
+  expect(planLaunchShuffle({
+    mods: [hud], heroList: [{ id: 1, name: 'Haze' }, { id: 2, name: 'Wraith' }],
+    included: new Set([shufflePoolKey(hud)]), rng: fixedRng(0),
+  }).enableIds).toEqual(['hud']);
+});
+
+it('scopes remote exclusions to their section without changing persisted shuffle identities', () => {
+  const shared = mod({ id: 'shared', gameBananaId: 7, sourceSection: 'Wip', enabled: true,
+    lockerHeroes: ['Haze', 'Wraith'] });
+  const wipSibling = mod({ id: 'sibling', gameBananaId: 7, sourceSection: 'Wip', enabled: true,
+    lockerHeroes: ['Haze'] });
+  const unrelated = mod({ id: 'skin', gameBananaId: 7, sourceSection: 'Mod', lockerHeroes: ['Haze'] });
+  const excludedSkinKeys = getManualOnlyShuffleKeys([shared, wipSibling, unrelated]);
+  expect(shuffleSkinKey(shared)).toBe(shuffleSkinKey(unrelated));
+  expect(shuffleExclusionKey(shared)).not.toBe(shuffleExclusionKey(unrelated));
+  expect(shuffleGroupKind(wipSibling, { excludedSkinKeys })).toBeNull();
+  expect(shuffleGroupKind(unrelated, { excludedSkinKeys })).toBe('hero');
+  expect(planLaunchShuffle({
+    mods: [shared, wipSibling, unrelated], heroList: [{ id: 1, name: 'Haze' }, { id: 2, name: 'Wraith' }],
+    included: new Set([shuffleSkinKey(unrelated)]), rng: fixedRng(0),
+  })).toEqual({ enableIds: ['skin'], disableIds: [], changedHeroes: [1] });
+});
+
+it('keeps an explicit local group excluded as a whole across member sections and remote provenance', () => {
+  const shared = mod({ id: 'shared', localGroupId: 'mixed', gameBananaId: 7, sourceSection: 'Wip',
+    lockerHeroes: ['Haze', 'Wraith'] });
+  const sibling = mod({ id: 'sibling', localGroupId: 'mixed', gameBananaId: 8, sourceSection: 'Mod',
+    lockerHeroes: ['Haze'] });
+  const excludedSkinKeys = getManualOnlyShuffleKeys([shared, sibling]);
+  expect(shuffleExclusionKey(shared)).toBe('localgroup:mixed');
+  expect(shuffleExclusionKey(sibling)).toBe(shuffleExclusionKey(shared));
+  expect(shuffleGroupKind(sibling, { excludedSkinKeys })).toBeNull();
+});
+
+it('shuffles direct and descendant skin categories together under their hero', () => {
+  const heroList = buildHeroList([{
+    id: 33295, name: 'Skins', itemCount: 0,
+    children: [{ id: 33325, name: 'Viscous', itemCount: 0,
+      children: [{ id: 50570, name: 'Faithful/Vanilla+', itemCount: 0 }],
+    }],
+  }]);
+  const direct = mod({ id: 'direct', sourceSection: 'Mod', categoryId: 33325, enabled: true });
+  const child = mod({ id: 'child', sourceSection: 'Mod', categoryId: 50570 });
+  const plan = planLaunchShuffle({
+    mods: [direct, child], heroList,
+    included: new Set([shufflePoolKey(direct), shufflePoolKey(child)]),
+    rng: fixedRng(0.99),
+  });
+  expect(plan.enableIds).toEqual(['child']);
+  expect(plan.disableIds).toEqual(['direct']);
+  expect(plan.changedHeroes).toEqual([33325]);
+});
 
 describe('shuffleSkinKey', () => {
   it('prefers gameBananaId, then sha256, then mod id', () => {
@@ -595,7 +711,7 @@ describe('planRandomization', () => {
 
     it('leaves a bucket with nothing opted in untouched', () => {
       const globalBuckets = new Map<GlobalModType, Mod[]>([
-        ['announcer', [mod({ id: 'ann', gameBananaId: 1, enabled: true, priority: 1 })]],
+        ['animations', [mod({ id: 'ann', gameBananaId: 1, enabled: true, priority: 1 })]],
       ]);
       const plan = planRandomization({
         heroSkins: new Map(),
@@ -610,7 +726,7 @@ describe('planRandomization', () => {
     it('never picks or disables a Global mod inside a bucket', () => {
       const globalBuckets = new Map<GlobalModType, Mod[]>([
         [
-          'icons',
+          'maps',
           [
             mod({ id: 'glob', gameBananaId: 1, enabled: true, priority: 1, priorityMod: true, metaKey: 'grimoire/pak05_dir.vpk' }),
             mod({ id: 'ico-a', gameBananaId: 2, enabled: true, priority: 2 }),
@@ -713,8 +829,8 @@ describe('planRandomization', () => {
           'soul-container',
           [
             // Enabled but never opted in: the user's current pick.
-            mod({ id: 'soul-keep', gameBananaId: 1, globalType: 'soul-container', enabled: true, priority: 1 }),
-            mod({ id: 'soul-b', gameBananaId: 2, globalType: 'soul-container', enabled: false, priority: 2 }),
+            mod({ id: 'soul-keep', gameBananaId: 1, globalType: 'soul-container', propTypes: ['soul-container'], enabled: true, priority: 1 }),
+            mod({ id: 'soul-b', gameBananaId: 2, globalType: 'soul-container', propTypes: ['soul-container'], enabled: false, priority: 2 }),
           ],
         ],
       ]);
@@ -734,9 +850,9 @@ describe('planRandomization', () => {
         [
           'spirit-urn',
           [
-            mod({ id: 'urn-global', gameBananaId: 1, globalType: 'spirit-urn', enabled: true, priorityMod: true }),
-            mod({ id: 'urn-a', gameBananaId: 2, globalType: 'spirit-urn', enabled: true, priority: 1 }),
-            mod({ id: 'urn-b', gameBananaId: 3, globalType: 'spirit-urn', enabled: false, priority: 2 }),
+            mod({ id: 'urn-global', gameBananaId: 1, globalType: 'spirit-urn', propTypes: ['spirit-urn'], enabled: true, priorityMod: true }),
+            mod({ id: 'urn-a', gameBananaId: 2, globalType: 'spirit-urn', propTypes: ['spirit-urn'], enabled: true, priority: 1 }),
+            mod({ id: 'urn-b', gameBananaId: 3, globalType: 'spirit-urn', propTypes: ['spirit-urn'], enabled: false, priority: 2 }),
           ],
         ],
       ]);
@@ -758,10 +874,10 @@ describe('planRandomization', () => {
       // armed by an opt-in the user made on a completely different card.
       const globalBuckets = new Map<GlobalModType, Mod[]>([
         [
-          'announcer',
+          'animations',
           [
-            mod({ id: 'ann-a', gameBananaId: 1, globalType: 'announcer', enabled: true }),
-            mod({ id: 'ann-b', gameBananaId: 2, globalType: 'announcer', enabled: false }),
+            mod({ id: 'ann-a', gameBananaId: 1, globalType: 'animations', enabled: true }),
+            mod({ id: 'ann-b', gameBananaId: 2, globalType: 'animations', enabled: false }),
           ],
         ],
       ]);
@@ -862,16 +978,16 @@ describe('planLaunchShuffle', () => {
   });
 
   it('re-rolls a General classification bucket alongside the heroes', () => {
-    // Announcer packs are their own shuffle group: the pooled one that is off
+    // Animation mods are their own shuffle group: the pooled one that is off
     // comes on and the one that was on goes off, exactly like a hero skin.
     const mods = [
-      skin({ id: 'ann-a', gameBananaId: 6, enabled: true, globalType: 'announcer', priority: 1 }),
-      skin({ id: 'ann-b', gameBananaId: 7, enabled: false, globalType: 'announcer', priority: 2 }),
+      skin({ id: 'ann-a', gameBananaId: 6, enabled: true, globalType: 'animations', priority: 1 }),
+      skin({ id: 'ann-b', gameBananaId: 7, enabled: false, globalType: 'animations', priority: 2 }),
     ];
     const plan = planLaunchShuffle({
       mods,
       heroList,
-      included: new Set(['bucket:announcer:gamebanana:6', 'bucket:announcer:gamebanana:7']),
+      included: new Set(['bucket:animations:gamebanana:6', 'bucket:animations:gamebanana:7']),
     });
     expect(plan.enableIds).toEqual(['ann-b']);
     expect(plan.disableIds).toEqual(['ann-a']);
@@ -885,7 +1001,7 @@ describe('planLaunchShuffle', () => {
         id: 'g',
         gameBananaId: 6,
         enabled: true,
-        globalType: 'announcer',
+        globalType: 'animations',
         priorityMod: true,
         metaKey: 'grimoire/pak05_dir.vpk',
       }),
@@ -894,7 +1010,7 @@ describe('planLaunchShuffle', () => {
       planLaunchShuffle({
         mods,
         heroList,
-        included: new Set(['bucket:announcer:gamebanana:6']),
+        included: new Set(['bucket:animations:gamebanana:6']),
       })
     ).toEqual(EMPTY);
   });
@@ -988,9 +1104,15 @@ describe('shuffleGroupKind', () => {
 
   it('reports bucket for a classified mod, hero tag or not', () => {
     expect(shuffleGroupKind(skin({ id: 'hud', globalType: 'hud' }), { heroList })).toBe('bucket');
-    expect(shuffleGroupKind(mod({ id: 'ann', globalType: 'announcer' }), { heroList })).toBe(
+    expect(shuffleGroupKind(mod({ id: 'ann', globalType: 'animations' }), { heroList })).toBe(
       'bucket'
     );
+  });
+
+  it('does not offer shuffle for retired General buckets', () => {
+    for (const globalType of ['icons', 'effects', 'announcer'] as const) {
+      expect(shuffleGroupKind(mod({ id: globalType, globalType }), { heroList })).toBeNull();
+    }
   });
 
   it('reports priority for a Global mod, whatever else it is', () => {
@@ -1025,12 +1147,12 @@ describe('shuffleGroupKind', () => {
 
   it('agrees with planLaunchShuffle: each kind ends up exactly where it says', () => {
     const heroSkin = skin({ id: 'hero-pick', gameBananaId: 1 });
-    const bucketMod = skin({ id: 'bucket-pick', gameBananaId: 2, globalType: 'announcer' });
+    const bucketMod = skin({ id: 'bucket-pick', gameBananaId: 2, globalType: 'animations' });
     const globalMod = skin({
       id: 'global-pinned',
       gameBananaId: 3,
       enabled: true,
-      globalType: 'announcer',
+      globalType: 'animations',
       priorityMod: true,
       metaKey: 'grimoire/pak05_dir.vpk',
     });
@@ -1041,7 +1163,7 @@ describe('shuffleGroupKind', () => {
     expect(shuffleGroupKind(heroSkin, options)).toBe('hero');
     expect(shuffleGroupKind(bucketMod, options)).toBe('bucket');
     expect(shuffleGroupKind(globalMod, options)).toBe('priority');
-    expect(shuffleGroupKind(untouched, options)).toBeNull();
+    expect(shuffleGroupKind(untouched, options)).toBe('bucket');
 
     const plan = planLaunchShuffle({
       mods,
@@ -1050,8 +1172,8 @@ describe('shuffleGroupKind', () => {
       // hero-axis one under the bare key.
       included: new Set([
         'gamebanana:1',
-        'bucket:announcer:gamebanana:2',
-        'bucket:announcer:gamebanana:3',
+        'bucket:animations:gamebanana:2',
+        'bucket:animations:gamebanana:3',
         'gamebanana:4',
       ]),
     });
@@ -1079,7 +1201,8 @@ describe('summarizeShufflePool', () => {
       skin({ id: 'a', gameBananaId: 1 }),
       skin({ id: 'b', gameBananaId: 2, globalType: 'hud' }),
       skin({ id: 'g', gameBananaId: 3, priorityMod: true, metaKey: 'grimoire/pak05_dir.vpk' }),
-      mod({ id: 'snd', sourceSection: 'Sound', gameBananaId: 4 }),
+      // A hero sound stays in its hero's Sounds tab; a hero-less one is a General bucket.
+      mod({ id: 'snd', sourceSection: 'Sound', gameBananaId: 4, lockerHero: 'Vindicta' }),
     ];
     const summary = summarizeShufflePool(mods, new Set(), { heroList });
     // The hero-axis card keeps the bare key; the classified one is qualified by
@@ -1121,7 +1244,7 @@ describe('summarizeShufflePool', () => {
   });
 
   it('is not allIncluded when nothing is eligible (the bulk button stays hidden)', () => {
-    const mods = [mod({ id: 'snd', sourceSection: 'Sound', gameBananaId: 4 })];
+    const mods = [mod({ id: 'snd', sourceSection: 'Sound', gameBananaId: 4, lockerHero: 'Vindicta' })];
     const summary = summarizeShufflePool(mods, new Set(['gamebanana:4']), { heroList });
     expect(summary.eligibleKeys).toEqual([]);
     expect(summary.allIncluded).toBe(false);
@@ -1256,4 +1379,48 @@ describe('readStoredShuffleVariants', () => {
         )
     );
   });
+});
+
+
+it('keeps a hero animation enabled while shuffling that hero\'s skins', () => {
+  const heroList = [{ id: 33311, name: 'Haze', count: 0 }];
+  const animation = mod({ id: 'animation', name: 'Haze Animation Redux', sourceSection: 'Mod',
+    categoryName: 'Animations', lockerHero: 'Haze', lockerHeroSource: 'download-title', enabled: true });
+  const skin = mod({ id: 'skin', sourceSection: 'Mod', categoryName: 'Haze', categoryId: 33311, enabled: true });
+  const other = mod({ id: 'other', sourceSection: 'Mod', categoryName: 'Haze', categoryId: 33311 });
+  const plan = planLaunchShuffle({ mods: [animation, skin, other], heroList,
+    included: new Set([shufflePoolKey(skin), shufflePoolKey(other)]), rng: fixedRng(0.99) });
+  expect(shuffleGroupKind(animation, { heroList })).toBe('bucket');
+  expect(plan.enableIds).toEqual(['other']);
+  expect(plan.disableIds).toEqual(['skin']);
+});
+
+it('preserves legacy Killstreak Music shuffle membership and variant choices in Sounds', () => {
+  vi.stubGlobal('localStorage', { getItem: (key: string) => key === 'lockerShuffleIncluded'
+    ? JSON.stringify(['bucket:killstreak-music:gamebanana:42', 'gamebanana:7'])
+    : JSON.stringify({ 'bucket:killstreak-music:gamebanana:42': 'random' }) });
+  try {
+    expect(readStoredShuffleIncluded()).toEqual(new Set(['bucket:sounds:gamebanana:42', 'gamebanana:7']));
+    expect(readStoredShuffleVariants()).toEqual(new Map([['bucket:sounds:gamebanana:42', 'random']]));
+  } finally { vi.unstubAllGlobals(); }
+});
+
+it('carries legacy Patron shuffle preferences into both detected destinations', () => {
+  vi.stubGlobal('localStorage', { getItem: (key: string) => key === 'lockerShuffleIncluded'
+    ? '["bucket:patron:gamebanana:42"]' : '{"bucket:patron:gamebanana:42":"random"}' });
+  try {
+    expect([...readStoredShuffleIncluded()]).toEqual(['bucket:hidden-king:gamebanana:42', 'bucket:archmother:gamebanana:42']);
+    expect([...readStoredShuffleVariants().keys()]).toEqual(['bucket:hidden-king:gamebanana:42', 'bucket:archmother:gamebanana:42']);
+  } finally { vi.unstubAllGlobals(); }
+});
+
+it('shuffles a two-patron VPK once without duplicate or contradictory actions', () => {
+  const first = mod({ id: 'first', propTypes: ['hidden-king', 'archmother'], enabled: true });
+  const next = mod({ id: 'next', propTypes: ['hidden-king', 'archmother'] });
+  const rng = vi.fn(() => 0.99);
+  const plan = planLaunchShuffle({ mods: [first, next], heroList: [],
+    included: new Set([shufflePoolKey(first), shufflePoolKey(next)]), rng });
+  expect(plan.enableIds).toEqual(['next']);
+  expect(plan.disableIds).toEqual(['first']);
+  expect(rng).toHaveBeenCalledOnce();
 });

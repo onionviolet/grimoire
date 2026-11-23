@@ -371,7 +371,7 @@ export default function Profiles() {
       setError(null);
       const result = await applyReviewedProfile(profileId);
       if (!result) return;
-      const { profile, failures, unresolved } = result;
+      const { profile, failures, unresolved, lockerError } = result;
 
       // Update local crosshair store if profile has settings
       if (profile.crosshair) {
@@ -388,11 +388,12 @@ export default function Profiles() {
       // complete (typically a VPK locked by the running game) are counted, not
       // thrown. Surface that count so the profile doesn't silently launch with
       // missing mods.
-      if (failures.length > 0) {
-        setError(t('profiles.errors.applyPartial', { count: failures.length }));
-      } else if (unresolved.length > 0) {
-        setError(t('profiles.review.partial', { count: unresolved.length }));
-      }
+      const problems = [
+        failures.length > 0 && t('profiles.errors.applyPartial', { count: failures.length }),
+        unresolved.length > 0 && t('profiles.review.partial', { count: unresolved.length }),
+        lockerError && t('profiles.errors.applyLockerFailed', { error: lockerError }),
+      ].filter(Boolean);
+      if (problems.length > 0) setError(problems.join(' '));
     } catch (err) {
       setError(String(err));
     } finally {
@@ -847,7 +848,7 @@ export default function Profiles() {
                     }
                   >
                     <div className="flex flex-col gap-4">
-                        <div className="flex items-center justify-between text-sm text-text-secondary bg-black/20 p-4 rounded-lg border border-hl/5">
+                        <div className="flex items-center justify-between text-sm text-text-secondary bg-shade/20 p-4 rounded-lg border border-hl/5">
                           <div className="flex flex-col items-center">
                             <span className="text-2xl font-bold text-text-primary">{profileModGroups.length}</span>
                             <span className="text-xs uppercase tracking-wider opacity-70">

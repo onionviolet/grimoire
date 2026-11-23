@@ -1,4 +1,4 @@
-import type { Mod, AppSettings, DeleteModEntry, DeleteModsProgress, DeleteModsResult, GlobalModType, UnknownModFilterGuess, UnknownModDetectionProgress, ApplyUnknownModMatchArgs, ApplyUnknownCustomModArgs, AssociateUnknownModArgs, UnknownModFileList, EditLocalModArgs, MergeModsArgs, UnmergeModResult, ExtractMergeSourceResult, AddMergeSourcesResult, MergeSourceReplacement, ReplaceMergeSourcesResult, ImprintAllInstalledResult, ImprintInstalledProgress, ImprintPreflightResult, ImprintDetails, PeekImprintResult, ApplyHeroCardResult, HeroAbilitySlot, AbilitySlot, AbilitySoundParams, ActiveHeroSound, ApplyHeroSoundResult, ActiveHeroColor, ApplyHeroColorResult, ApplyHeroPrismResult, ActiveTrippySkin, ApplyTrippySkinResult, ApplyTrippyVfxResult, TrippySpriteOptions, TrippySpriteResult, TrippyVfxChoice, LockerOverview, LockerCardThumbnail, LockerClearScope, AppearanceSurface, ModelCompatibilityReport } from '../types/mod';
+import type { Mod, ModelCompatibilityReport, AppSettings, DeleteModEntry, ModSwapPlacement, DeleteModsProgress, DeleteModsResult, GlobalModType, UnknownModFilterGuess, UnknownModDetectionProgress, ApplyUnknownModMatchArgs, ApplyUnknownCustomModArgs, AssociateUnknownModArgs, UnknownModFileList, EditLocalModArgs, MergeModsArgs, UnmergeModResult, ExtractMergeSourceResult, AddMergeSourcesResult, MergeSourceReplacement, ReplaceMergeSourcesResult, ImprintAllInstalledResult, ImprintInstalledProgress, ImprintPreflightResult, ImprintDetails, PeekImprintResult, ApplyHeroCardResult, HeroAbilitySlot, AbilitySlot, AbilitySoundParams, ActiveHeroSound, ApplyHeroSoundResult, ActiveHeroColor, ApplyHeroColorResult, ApplyHeroPrismResult, ActiveTrippySkin, ApplyTrippySkinResult, ApplyTrippyVfxResult, TrippySpriteOptions, TrippySpriteResult, TrippyVfxChoice, LockerOverview, LockerCardThumbnail, LockerClearScope, AppearanceSurface } from '../types/mod';
 import type {
   InterchangeDocument,
   InterchangeExportReport,
@@ -16,6 +16,7 @@ import type {
   HeroPoseInfo,
   HeroPoseSkinSource,
   HeroEffectInfo,
+  HeroParticleBundleInfo,
   SoulModelInfo,
 } from '../types/portrait';
 import type {
@@ -33,6 +34,7 @@ import type {
 } from '../types/gamebanana';
 import type { DownloadedLocale, LocaleManifest } from '../types/locales';
 import type {
+  GameRunningStatus,
   ImportCustomModArgs,
   ImportCustomModResult,
   ImportCustomModsBatchResult,
@@ -43,20 +45,9 @@ import type {
 import { showToast } from '../stores/toastStore';
 import type { ChooseModUpdateReplacementArgs, ModUpdateState, StartModUpdatesArgs } from '../types/modUpdates';
 import i18n from '../i18n';
+import { isGameRunningModLockError, VANILLA_WINDOW_LOCK_MESSAGE } from './modLocks';
 
-// Sentinel that matches the Error thrown by the main process
-// (GAME_RUNNING_MOD_LOCK_MESSAGE in gameSessionMods.ts). It crosses the IPC
-// boundary as a raw string, so it must NOT be translated. The user-facing
-// toast is translated separately.
-const GAME_RUNNING_NOTICE = 'Game is running';
-// Same for VANILLA_WINDOW_LOCK_MESSAGE in vanillaWindow.ts: mods are refused
-// while Launch Vanilla has them parked.
-const VANILLA_WINDOW_NOTICE = 'Vanilla launch in progress';
-
-export function isGameRunningModLockError(err: unknown): boolean {
-  const text = String(err);
-  return text.includes(GAME_RUNNING_NOTICE) || text.includes(VANILLA_WINDOW_NOTICE);
-}
+export { isGameRunningModLockError };
 
 async function withGameRunningWarning<T>(operation: () => Promise<T>): Promise<T> {
   try {
@@ -64,7 +55,7 @@ async function withGameRunningWarning<T>(operation: () => Promise<T>): Promise<T
   } catch (err) {
     if (isGameRunningModLockError(err)) {
       showToast(
-        String(err).includes(VANILLA_WINDOW_NOTICE)
+        String(err).includes(VANILLA_WINDOW_LOCK_MESSAGE)
           ? i18n.t('common.vanillaLaunchWarning')
           : i18n.t('common.gameRunningWarning'),
         { tone: 'warning' },
@@ -178,6 +169,10 @@ export async function enableMod(modId: string): Promise<Mod> {
 
 export async function disableMod(modId: string): Promise<Mod> {
   return withGameRunningWarning(() => window.electronAPI.disableMod(modId));
+}
+
+export async function swapMods(enableIds: string[], disableIds: string[], placement: ModSwapPlacement): Promise<Mod[]> {
+  return withGameRunningWarning(() => window.electronAPI.swapMods(enableIds, disableIds, placement));
 }
 
 function toDeleteEntry({ id, size, installedAt }: DeleteModEntry): DeleteModEntry {
@@ -349,6 +344,14 @@ export async function getAppliedCustomCard(
 }
 
 /** Whether a soul-container mod has an exported model in the user's library (+ mtime). */
+export async function getSoulPreviewThumbnail(key: string) {
+  return window.electronAPI.getSoulPreviewThumbnail(key);
+}
+
+export async function saveSoulPreviewThumbnail(key: string, capture: import('../types/portrait').SoulPreviewThumbnailCapture) {
+  return window.electronAPI.saveSoulPreviewThumbnail(key, capture);
+}
+
 export async function getSoulModelInfo(key: string): Promise<SoulModelInfo> {
   return window.electronAPI.getSoulModelInfo(key);
 }
@@ -357,8 +360,13 @@ export async function getSoulModelInfo(key: string): Promise<SoulModelInfo> {
  *  SOURCE VPK is located by `metaKey` (folder-qualified for overflow mods); the
  *  cache is keyed by `cacheKey` (the mod's content-stable sha256) so an
  *  enable/disable rename can't serve a different soul's stale export. */
-export async function exportSoulModel(metaKey: string, cacheKey: string, entry?: string): Promise<SoulModelInfo> {
-  return window.electronAPI.exportSoulModel(metaKey, cacheKey, entry);
+export async function exportSoulModel(metaKey: string, cacheKey: string, entry?: string, options?: { animated?: boolean }): Promise<SoulModelInfo> {
+  return window.electronAPI.exportSoulModel(metaKey, cacheKey, entry, options);
+}
+
+/** An animation mod's clips on its hero's stock model, for the Installed preview. Null when it has none to play. */
+export async function exportAnimationModPreview(metaKey: string): Promise<{ heroName: string; key: string; clips: string[]; meshGroup: string | null } | null> {
+  return window.electronAPI.exportAnimationModPreview(metaKey);
 }
 
 /** Whether a hero's posed 3D still exists for the given active skin stack (+ mtime, key). */
@@ -383,9 +391,10 @@ export async function exportHeroPose(
  *  stack (+ mtime, key). Mirrors getHeroPoseInfo for the rigged variant. */
 export async function getRiggedHeroPose(
   heroName: string,
-  skinSources?: HeroPoseSkinSource[]
+  skinSources?: HeroPoseSkinSource[],
+  meshGroup?: string
 ): Promise<HeroPoseInfo> {
-  return window.electronAPI.getRiggedHeroPose(heroName, skinSources);
+  return window.electronAPI.getRiggedHeroPose(heroName, skinSources, meshGroup);
 }
 
 /** Generate a hero's RIGGED glb via the bundled vpkmerge exporter (no --pose,
@@ -394,9 +403,10 @@ export async function getRiggedHeroPose(
 export async function exportRiggedHeroPose(
   heroName: string,
   skinSources?: HeroPoseSkinSource[],
-  fallbackSkinMetaKey?: string
+  fallbackSkinMetaKey?: string,
+  meshGroup?: string
 ): Promise<HeroPoseInfo> {
-  return window.electronAPI.exportRiggedHeroPose(heroName, skinSources, fallbackSkinMetaKey);
+  return window.electronAPI.exportRiggedHeroPose(heroName, skinSources, fallbackSkinMetaKey, meshGroup);
 }
 
 /** Whether a hero's ambient FX descriptor bundle is cached/current. */
@@ -407,6 +417,10 @@ export async function getHeroEffectInfo(heroName: string, skinSources?: HeroPose
 /** Build (or refresh) a hero's ambient FX bundle via the bundled vpkmerge. */
 export async function exportHeroEffect(heroName: string, skinSources?: HeroPoseSkinSource[]): Promise<HeroEffectInfo> {
   return window.electronAPI.exportHeroEffect(heroName, skinSources);
+}
+
+export async function exportHeroParticles(heroName: string, skinSources?: HeroPoseSkinSource[], clips?: string[]): Promise<HeroParticleBundleInfo> {
+  return window.electronAPI.exportHeroParticles(heroName, skinSources, clips);
 }
 
 export async function applyHeroSound(
@@ -544,6 +558,10 @@ export async function clearLockerOverrides(scope: LockerClearScope): Promise<voi
   return window.electronAPI.clearLockerOverrides(scope);
 }
 
+export async function setModTags(modId: string, tags: Mod['tagOverrides'] | null): Promise<Mod> {
+  return window.electronAPI.setModTags(modId, tags ?? null);
+}
+
 export async function setModGlobalType(
   modId: string,
   globalType: GlobalModType | null
@@ -551,18 +569,18 @@ export async function setModGlobalType(
   return window.electronAPI.setModGlobalType(modId, globalType);
 }
 
-export async function setModIgnoreUpdates(
-  modId: string,
-  ignore: boolean
-): Promise<Mod> {
-  return window.electronAPI.setModIgnoreUpdates(modId, ignore);
-}
-
 export async function setModPriorityFolder(
   modId: string,
   priority: boolean
 ): Promise<Mod> {
   return withGameRunningWarning(() => window.electronAPI.setModPriorityFolder(modId, priority));
+}
+
+export async function setModIgnoreUpdates(
+  modId: string,
+  ignore: boolean
+): Promise<Mod> {
+  return window.electronAPI.setModIgnoreUpdates(modId, ignore);
 }
 
 export async function backfillGameBananaFileId(
@@ -601,14 +619,29 @@ export async function swapModPriority(modIdA: string, modIdB: string): Promise<M
   return withGameRunningWarning(() => window.electronAPI.swapModPriority(modIdA, modIdB));
 }
 
-/** Import several local sources in one exclusive mutation. Per-source failures
+/** Import local sources with one exclusive mutation per source. Failures
  *  come back in `results` instead of throwing, so a bad file can't discard the
  *  ones that landed. */
 export async function importCustomMods(
   items: ImportCustomModArgs[]
 ): Promise<ImportCustomModsBatchResult> {
-  return withGameRunningWarning(() => window.electronAPI.importCustomMods({ items }));
+  const galleries = new Set<string>();
+  const compactItems = items.map(item => {
+    const group = item.localGroupId ? `group:${item.localGroupId}`
+      : item.localGroupBatchKey ? `batch:${item.localGroupBatchKey}` : undefined;
+    if (!group || item.galleryImages === undefined) return item;
+    const seen = galleries.has(group);
+    galleries.add(group);
+    return seen ? { ...item, galleryImages: [] } : item;
+  });
+  return withGameRunningWarning(() => window.electronAPI.importCustomMods({ items: compactItems }));
 }
+
+export const prepareLocalModImport = (path: string, requestId: string) => window.electronAPI.prepareLocalModImport(path, requestId);
+export const releaseLocalModImport = (requestId: string) => window.electronAPI.releaseLocalModImport(requestId);
+export const getLocalModGallery = (groupId: string) => window.electronAPI.getLocalModGallery(groupId);
+export const setLocalModGallery = (groupId: string, images: string[]) => window.electronAPI.setLocalModGallery(groupId, images);
+export const setModsNsfw = (modIds: string[], nsfw: boolean) => window.electronAPI.setModsNsfw(modIds, nsfw);
 
 /** Subscribe to batch-import progress. Returns an unsubscribe function. */
 export function onImportCustomModsProgress(
@@ -913,9 +946,7 @@ export interface VanillaRestoreResult {
   failed: string[];
 }
 
-export interface GameRunningStatus {
-  running: boolean;
-}
+export type { GameRunningStatus };
 
 export interface StopGameResult {
   wasRunning: boolean;
@@ -954,6 +985,9 @@ export function onVanillaRestoreComplete(
 }
 
 // GameBanana
+// Tab navigation can resume a page whose original IPC request is still pending.
+const pendingBrowseRequests = new Map<string, Promise<GameBananaModsResponse>>();
+
 export async function browseMods(
   page: number,
   perPage: number,
@@ -963,7 +997,14 @@ export async function browseMods(
   sort?: string,
   submitterId?: number
 ): Promise<GameBananaModsResponse> {
-  return window.electronAPI.browseMods({ page, perPage, search, section, categoryId, sort, submitterId });
+  const args = { page, perPage, search, section, categoryId, sort, submitterId };
+  const key = JSON.stringify(args);
+  const pending = pendingBrowseRequests.get(key);
+  if (pending) return pending;
+  const request = window.electronAPI.browseMods(args);
+  pendingBrowseRequests.set(key, request);
+  try { return await request; }
+  finally { if (pendingBrowseRequests.get(key) === request) pendingBrowseRequests.delete(key); }
 }
 
 export async function getModFileList(modId: number, section?: string): Promise<GameBananaModFileList> {
@@ -975,7 +1016,12 @@ export async function getModDetails(
   section?: string,
   options: { includeSubmitter?: boolean } = {}
 ): Promise<GameBananaModDetails> {
-  return window.electronAPI.getModDetails({ modId, section, ...options });
+  const details = await window.electronAPI.getModDetails({ modId, section, ...options });
+  if (details.requirements) {
+    const { useRequirementsStore } = await import('../stores/requirementsStore');
+    useRequirementsStore.getState().remember({ id: modId, section: section ?? 'Mod' }, details.requirements);
+  }
+  return details;
 }
 
 export async function getModComments(modId: number, section?: string, page = 1): Promise<GameBananaCommentsResponse> {
@@ -1125,6 +1171,20 @@ export async function resetPerformanceConfigOverrides(
   videoVariant?: string | null
 ): Promise<PerformanceConfigStatus> {
   return window.electronAPI.resetPerformanceConfigOverrides(presetId, optIns, version, videoVariant);
+}
+
+export async function setPerformanceConvarOverride(
+  key: string,
+  value: string | null
+): Promise<PerformanceConfigStatus> {
+  return window.electronAPI.setPerformanceConvarOverride(key, value);
+}
+
+export async function setPerformanceConvarOverrideEnabled(
+  key: string,
+  enabled: boolean
+): Promise<PerformanceConfigStatus> {
+  return window.electronAPI.setPerformanceConvarOverrideEnabled(key, enabled);
 }
 
 export async function reapplyWipedPerformanceConfig(): Promise<PerformanceConfigStatus> {
@@ -1314,7 +1374,8 @@ export async function getProfiles(): Promise<Profile[]> {
 }
 
 export async function createProfile(name: string, crosshairSettings?: ProfileCrosshairSettings): Promise<Profile> {
-  return window.electronAPI.createProfile(name, crosshairSettings);
+  const { useAppStore } = await import('../stores/appStore');
+  return window.electronAPI.createProfile(name, crosshairSettings, useAppStore.getState().captureProfileShuffle());
 }
 
 export async function createProfileFromGameBananaIds(
@@ -1325,7 +1386,8 @@ export async function createProfileFromGameBananaIds(
 }
 
 export async function updateProfile(profileId: string, crosshairSettings?: ProfileCrosshairSettings): Promise<Profile> {
-  return window.electronAPI.updateProfile(profileId, crosshairSettings);
+  const { useAppStore } = await import('../stores/appStore');
+  return window.electronAPI.updateProfile(profileId, crosshairSettings, useAppStore.getState().captureProfileShuffle());
 }
 
 export async function previewProfile(profileId: string, mappings?: import('../types/electron').ProfileApplyMapping[]): Promise<ProfileApplyPreview> {
@@ -1333,7 +1395,14 @@ export async function previewProfile(profileId: string, mappings?: import('../ty
 }
 
 export async function applyProfile(profileId: string, reviewToken?: string, mappings?: import('../types/electron').ProfileApplyMapping[]): Promise<ApplyProfileResult> {
-  return withGameRunningWarning(() => window.electronAPI.applyProfile(profileId, reviewToken, mappings));
+  const result = await withGameRunningWarning(() => window.electronAPI.applyProfile(profileId, reviewToken, mappings));
+  const { useAppStore } = await import('../stores/appStore');
+  useAppStore.getState().restoreProfileShuffle(result.profile.shuffle);
+  if (result.profile.locker) {
+    const { clearEffectDrafts, foundryDraftScope } = await import('./foundryDrafts');
+    try { clearEffectDrafts(localStorage, foundryDraftScope(useAppStore.getState().settings)); } catch { /* Storage may be unavailable. */ }
+  }
+  return result;
 }
 
 export async function deleteProfile(profileId: string): Promise<void> {
@@ -1414,6 +1483,7 @@ import type {
   PublishResponse as SocialPublishResponse,
   ReportRequest as SocialReportRequest,
   UpdateProfileRequest as SocialUpdateProfileRequest,
+  UpdateProfileContentsRequest as SocialUpdateProfileContentsRequest,
   UpdateProfileResponse as SocialUpdateProfileResponse,
 } from '@grimoire/social-types';
 import type { SocialSessionStatus } from '../types/social';
@@ -1428,6 +1498,7 @@ export type {
   SocialPublishResponse,
   SocialReportRequest,
   SocialUpdateProfileRequest,
+  SocialUpdateProfileContentsRequest,
   SocialUpdateProfileResponse,
   SocialSessionStatus,
 };
@@ -1478,6 +1549,13 @@ export async function socialUpdateProfile(
 
 export async function socialLike(id: string): Promise<SocialLikeResponse> {
   return window.electronAPI.social.like(id);
+}
+
+export async function socialUpdateProfileContents(
+  id: string,
+  body: SocialUpdateProfileContentsRequest
+): Promise<SocialUpdateProfileResponse> {
+  return window.electronAPI.social.updateProfileContents(id, body);
 }
 
 export async function socialUnlike(id: string): Promise<SocialLikeResponse> {

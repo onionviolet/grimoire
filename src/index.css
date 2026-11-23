@@ -1,9 +1,30 @@
 @import "tailwindcss";
 
+/* Installed hover decorates cards only while their scroller is at rest. */
+@custom-variant installed-hover {
+  @media (hover: hover) {
+    &:hover:not(:where(.installed-is-scrolling *)) {
+      @slot;
+    }
+  }
+}
+
+/* For the rare utility only the light theme needs (`light:invert` on a
+   white-only icon). Prefer a token: this is for what a token cannot say. */
+@custom-variant light (&:where([data-theme='light'] *));
+
+.floating-panel {
+  transition: left 120ms ease-out, top 120ms ease-out, width 120ms ease-out, height 120ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .floating-panel { transition: none; }
+}
+
 /* Z-index scale. New surfaces pick from this ladder instead of inventing
    values (no more z-[9999]):
      z-30  page-level overlays inside the content area (Locker hero/global panels)
-     z-40  sticky chrome (sidebar)
+     z-40  sticky chrome (sidebar) and movable popups
      z-50  modals (Modal component) and full-screen dialogs
      z-60  surfaces that stack above a modal: toasts, ModDetailsModal
      z-80  context menus and popovers (always top) */
@@ -108,10 +129,16 @@
   --color-text-tertiary: #8a8a94;
   --color-border: #2d2d2d;
   /* Highlight ink for translucent surface tints: hover fills, hairline
-     borders, bevels (`bg-hl/5`, `border-hl/10`). White on the dark theme, so
-     it renders identically to the old `white/N` tints, but it is one token a
-     future light theme can flip to dark ink. Never use it for text. */
+     borders, bevels (`bg-hl/5`, `border-hl/10`). White on the dark themes, so
+     it renders identically to the old `white/N` tints; the light theme flips
+     it to dark ink. Never use it for text. */
   --color-hl: #ffffff;
+  /* Recess ink for translucent wells on a token surface: code chips, inset
+     footers, nested panels (`bg-shade/30`). Black on the dark themes, so it
+     renders identically to the old `black/N` wells; the light theme swaps in
+     a much weaker ink, because a well that reads on near-black is a grey slab
+     on paper. Literal `black/N` stays for scrims over imagery. */
+  --color-shade: #000000;
   /* Warm off-white for the Browse "readable" card title, deliberately softer
      than pure white. */
   --color-mod-title: #eee8df;
@@ -147,9 +174,11 @@
   --font-mod-title: 'Reaver', serif;
 }
 
-/* The app is permanently dark. Declaring it here (not per-theme) keeps
-   UA-drawn widgets (select popups, checkboxes, date-picker calendars)
-   rendering dark regardless of the OLED toggle. */
+/* Themes. The @theme block above is the default dark one; applyTheme() puts
+   `data-theme` on the root for the other two. Each theme is also a class, so a
+   subtree can render in a theme other than the app's (the Settings preview
+   tiles). color-scheme travels with the tokens so UA-drawn widgets (select
+   popups, checkboxes, date-picker calendars) match the surface they sit on. */
 :root {
   color-scheme: dark;
 }
@@ -157,13 +186,179 @@
 /* OLED mode keeps the existing dark-theme contrast model while moving the
    largest surfaces to true black. Raised and recessed surfaces remain subtly
    separated so cards, inputs, and popovers do not collapse into one plane. */
-:root[data-oled='true'] {
+:root[data-theme='oled'],
+.theme-oled {
   --color-bg-primary: #000000;
   --color-bg-secondary: #080808;
   --color-bg-tertiary: #141414;
   --color-bg-sunken: #030303;
   --color-bg-glass: #020304;
   --color-border: #242424;
+}
+
+/* Light mode: warm paper rather than pure white, so the serif titles and the
+   accent sit on something closer to a page. Cards (secondary) are the lightest
+   plane; inputs and chips (tertiary) and recessed wells (sunken) step darker.
+   State colors drop to their deep shades because the dark theme's pastel
+   green and yellow vanish on a light surface. */
+:root[data-theme='light'],
+.theme-light {
+  color-scheme: light;
+  --color-bg-primary: #f1efea;
+  --color-bg-secondary: #faf9f6;
+  --color-bg-tertiary: #e9e6df;
+  --color-bg-sunken: #f6f4f0;
+  --color-bg-glass: #fbfaf8;
+  --color-text-primary: #1c1b19;
+  --color-text-secondary: #57544e;
+  --color-text-tertiary: #716d65;
+  --color-border: #d6d2c8;
+  --color-hl: #1c1b19;
+  --color-shade: rgb(28 27 25 / 0.2);
+  --color-mod-title: #262421;
+  --color-state-success: #15803d;
+  --color-state-warning: #a16207;
+  --color-state-danger: #dc2626;
+  --color-state-info: #2563eb;
+  --color-state-update: #ea580c;
+}
+
+/* Raw Tailwind palette colors still in use (the debt `pnpm ui:check` tracks)
+   are pastels picked to read on near-black: a pale yellow label vanishes on
+   paper. Until they move to state tokens, the light theme points each pastel
+   shade in use at its deep counterpart (100 to 900, 200 to 800, 300 and 400
+   to 700) and the 950 tints at 100. Add a shade here when a new one shows up
+   in the code; drop the block when the debt is gone. */
+:root[data-theme='light'],
+.theme-light {
+  --color-amber-200: oklch(47.3% 0.137 46.201);
+  --color-amber-300: oklch(55.5% 0.163 48.998);
+  --color-amber-400: oklch(55.5% 0.163 48.998);
+  --color-amber-950: oklch(96.2% 0.059 95.617);
+  --color-blue-300: oklch(48.8% 0.243 264.376);
+  --color-blue-400: oklch(48.8% 0.243 264.376);
+  --color-cyan-200: oklch(45% 0.085 224.283);
+  --color-cyan-300: oklch(52% 0.105 223.128);
+  --color-emerald-300: oklch(50.8% 0.118 165.612);
+  --color-emerald-950: oklch(95% 0.052 163.051);
+  --color-green-300: oklch(52.7% 0.154 150.069);
+  --color-green-400: oklch(52.7% 0.154 150.069);
+  --color-orange-400: oklch(55.3% 0.195 38.402);
+  --color-red-100: oklch(39.6% 0.141 25.723);
+  --color-red-200: oklch(44.4% 0.177 26.899);
+  --color-red-300: oklch(50.5% 0.213 27.518);
+  --color-red-400: oklch(50.5% 0.213 27.518);
+  --color-rose-300: oklch(51.4% 0.222 16.935);
+  --color-sky-300: oklch(50% 0.134 242.749);
+  --color-violet-300: oklch(49.1% 0.27 292.581);
+  --color-yellow-100: oklch(42.1% 0.095 57.708);
+  --color-yellow-200: oklch(47.6% 0.114 61.907);
+  --color-yellow-300: oklch(55.4% 0.135 66.442);
+  --color-yellow-400: oklch(55.4% 0.135 66.442);
+}
+
+/* The dark tokens again, for a subtree inside another theme. `always-dark`
+   is for regions that paint their own dark backdrop whatever the theme: art
+   and thumbnails under a scrim, 3D viewports, dark glass panels. A control
+   whose first layer is an `art-backdrop` (the sidebar's launch buttons and
+   active tab) counts without being told. Both only act in the light theme,
+   so OLED keeps its own surfaces there. Keep the values in step with
+   @theme. */
+.theme-dark,
+:root[data-theme='light'] :is(.always-dark, :has(> .art-backdrop)) {
+  color-scheme: dark;
+  --color-bg-primary: #0f0f0f;
+  --color-bg-secondary: #1a1a1a;
+  --color-bg-tertiary: #242424;
+  --color-bg-sunken: #141414;
+  --color-bg-glass: #0a0c10;
+  --color-text-primary: #ffffff;
+  --color-text-secondary: #a1a1aa;
+  --color-text-tertiary: #8a8a94;
+  --color-border: #2d2d2d;
+  --color-hl: #ffffff;
+  --color-shade: #000000;
+  --color-mod-title: #eee8df;
+  --color-state-success: #4ade80;
+  --color-state-warning: #facc15;
+  --color-state-danger: #f87171;
+  --color-state-info: #60a5fa;
+  --color-state-update: #f97316;
+  /* Tailwind's own pastels, undoing the light theme's remap. */
+  --color-amber-200: oklch(92.4% 0.12 95.746);
+  --color-amber-300: oklch(87.9% 0.169 91.605);
+  --color-amber-400: oklch(82.8% 0.189 84.429);
+  --color-amber-950: oklch(27.9% 0.077 45.635);
+  --color-blue-300: oklch(80.9% 0.105 251.813);
+  --color-blue-400: oklch(70.7% 0.165 254.624);
+  --color-cyan-200: oklch(91.7% 0.08 205.041);
+  --color-cyan-300: oklch(86.5% 0.127 207.078);
+  --color-emerald-300: oklch(84.5% 0.143 164.978);
+  --color-emerald-950: oklch(26.2% 0.051 172.552);
+  --color-green-300: oklch(87.1% 0.15 154.449);
+  --color-green-400: oklch(79.2% 0.209 151.711);
+  --color-orange-400: oklch(75% 0.183 55.934);
+  --color-red-100: oklch(93.6% 0.032 17.717);
+  --color-red-200: oklch(88.5% 0.062 18.334);
+  --color-red-300: oklch(80.8% 0.114 19.571);
+  --color-red-400: oklch(70.4% 0.191 22.216);
+  --color-rose-300: oklch(81% 0.117 11.638);
+  --color-sky-300: oklch(82.8% 0.111 230.318);
+  --color-violet-300: oklch(81.1% 0.111 293.571);
+  --color-yellow-100: oklch(97.3% 0.071 103.193);
+  --color-yellow-200: oklch(94.5% 0.129 101.54);
+  --color-yellow-300: oklch(90.5% 0.182 98.111);
+  --color-yellow-400: oklch(85.2% 0.199 91.936);
+}
+
+/* A themed subtree states its own ink: `color` is inherited as a computed
+   value, so without this the text inside would keep the outer theme's. In the
+   base layer, so a text utility on the same element still wins. */
+@layer base {
+  .theme-dark,
+  .theme-oled,
+  .theme-light,
+  .always-dark,
+  :has(> .art-backdrop) {
+    color: var(--color-text-primary);
+  }
+}
+
+/* Light-theme surfaces that the rules below paint from literal dark values.
+   Kept together here so the dark rules stay as they were. */
+:root[data-theme='light'] .premium-glass-card {
+  background: linear-gradient(
+    135deg,
+    rgb(from var(--color-bg-secondary) r g b / 0.72) 0%,
+    rgb(from var(--color-bg-secondary) r g b / 0.96) 100%
+  );
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.7),
+    0 2px 10px rgb(60 50 30 / 0.08);
+}
+
+:root[data-theme='light'] .premium-glass-card:hover:not(:where(.installed-is-scrolling *)) {
+  background: var(--color-bg-secondary);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.8),
+    0 10px 26px rgb(60 50 30 / 0.16);
+}
+
+:root[data-theme='light'] .premium-card-glow:hover:not(:where(.installed-is-scrolling *)) {
+  box-shadow: 0 10px 26px rgb(60 50 30 / 0.18);
+}
+
+:root[data-theme='light'] .premium-card-glow-active:hover:not(:where(.installed-is-scrolling *)) {
+  box-shadow:
+    0 0 22px color-mix(in srgb, var(--color-accent) 16%, transparent),
+    0 10px 26px rgb(60 50 30 / 0.18);
+}
+
+:root[data-theme='light'] .premium-card-glow-warning:hover:not(:where(.installed-is-scrolling *)) {
+  box-shadow:
+    0 0 22px rgb(from var(--color-state-warning) r g b / 0.16),
+    0 10px 26px rgb(60 50 30 / 0.18);
+  border-color: rgb(from var(--color-state-warning) r g b / 0.5);
 }
 
 /* Bottom-up dark scrim for art/thumbnail overlays so foreground chrome stays
@@ -264,7 +459,7 @@ body {
    class is toggled by initAutoHideScrollbars), so at rest nothing sits over the
    hero art. The gutter is reserved either way, so content never shifts. */
 .scrollbar-glass.is-scrolling {
-  scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
+  scrollbar-color: rgb(from var(--color-hl) r g b / 0.22) transparent;
 }
 
 .scrollbar-glass::-webkit-scrollbar-track {
@@ -279,13 +474,43 @@ body {
 }
 
 .scrollbar-glass.is-scrolling::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.22);
+  background: rgb(from var(--color-hl) r g b / 0.22);
   background-clip: padding-box;
 }
 
 .scrollbar-glass.is-scrolling::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.35);
+  background: rgb(from var(--color-hl) r g b / 0.35);
   background-clip: padding-box;
+}
+
+/* The tint over the Locker hero view's frosted glass: solid behind the rail,
+   feathering out to the hero art on the right. On the dark themes the art is
+   as dark as the glass, so text stays readable while the tint fades under
+   the selection column. Dark text over half-faded paper is not, so the light
+   theme holds the tint near opaque to the column's right edge (about three
+   quarters of this layer) and fades after it. */
+.locker-hero-glass {
+  background: linear-gradient(
+    to right,
+    var(--color-bg-secondary) 0%,
+    rgba(26, 26, 26, 0.95) 40%,
+    rgba(26, 26, 26, 0.75) 58%,
+    rgba(26, 26, 26, 0.4) 74%,
+    rgba(26, 26, 26, 0.15) 87%,
+    transparent 97%
+  );
+}
+
+:root[data-theme='light'] .locker-hero-glass {
+  background: linear-gradient(
+    to right,
+    var(--color-bg-secondary) 0%,
+    rgb(from var(--color-bg-secondary) r g b / 0.96) 66%,
+    rgb(from var(--color-bg-secondary) r g b / 0.86) 75%,
+    rgb(from var(--color-bg-secondary) r g b / 0.55) 84%,
+    rgb(from var(--color-bg-secondary) r g b / 0.2) 92%,
+    transparent 98%
+  );
 }
 
 /* Font utility classes */
@@ -600,8 +825,8 @@ body {
   pointer-events: none;
   border-radius: inherit;
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.045),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.018);
+    inset 0 1px 0 rgb(from var(--color-hl) r g b / 0.045),
+    inset 0 0 0 1px rgb(from var(--color-hl) r g b / 0.018);
 }
 
 .browse-readable-card:focus-visible {
@@ -640,22 +865,30 @@ body {
   opacity: 1;
 }
 
-/* Category/hero/NSFW chips float over the thumbnail and fade in on card hover
+/* Category/NSFW chips float over the thumbnail and fade in on card hover
    (and keyboard focus), keeping the text body short. */
 .browse-readable-card-chips {
-  opacity: 0;
+  --browse-chip-opacity: 0;
+}
+
+.browse-readable-card-chips [data-browse-chip] {
+  opacity: var(--browse-chip-opacity);
   transition: opacity 160ms ease;
+}
+
+.browse-readable-card-chips [data-always-visible='true'] {
+  opacity: 1;
 }
 
 .group:hover .browse-readable-card-chips,
 .group:focus-visible .browse-readable-card-chips,
 .group:focus-within .browse-readable-card-chips {
-  opacity: 1;
+  --browse-chip-opacity: 1;
 }
 
 /* Suppressed during fast scroll, like the other hover affordances. */
 .browse-is-scrolling .group:hover .browse-readable-card-chips {
-  opacity: 0;
+  --browse-chip-opacity: 0;
 }
 
 .browse-sound-placeholder::before {
@@ -693,10 +926,6 @@ body {
   animation: browseSoundWaveWake 680ms ease-out both;
 }
 
-.browse-result-card {
-  animation: browseResultSettle 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
 .browse-card-hover-surface {
   transition:
     border-color 190ms cubic-bezier(0.22, 1, 0.36, 1),
@@ -713,15 +942,14 @@ body {
 .browse-card-media-zoom {
   transform-origin: center;
   transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
-  will-change: transform;
 }
 
 @media (hover: hover) and (pointer: fine) {
   .browse-art-parallax-card:not([data-parallax-disabled='true']):hover > .browse-card-hover-surface {
     transform: translateY(-2px);
     box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.055),
-      inset 0 0 0 1px rgba(255, 255, 255, 0.024),
+      inset 0 1px 0 rgb(from var(--color-hl) r g b / 0.055),
+      inset 0 0 0 1px rgb(from var(--color-hl) r g b / 0.024),
       0 14px 30px rgba(0, 0, 0, 0.3);
   }
 
@@ -735,19 +963,19 @@ body {
 
 .browse-is-scrolling .browse-card-hover-surface:hover {
   transform: none !important;
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03) !important;
+  box-shadow: 0 1px 0 rgb(from var(--color-hl) r g b / 0.03) !important;
 }
 
 .browse-readable-card:hover {
-  border-color: rgba(235, 240, 250, 0.14);
+  border-color: rgb(from var(--color-hl) r g b / 0.14);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.055),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.024),
+    inset 0 1px 0 rgb(from var(--color-hl) r g b / 0.055),
+    inset 0 0 0 1px rgb(from var(--color-hl) r g b / 0.024),
     0 14px 30px rgba(0, 0, 0, 0.3);
 }
 
 .browse-is-scrolling .browse-readable-card:hover {
-  border-color: rgba(255, 255, 255, 0.07) !important;
+  border-color: rgb(from var(--color-hl) r g b / 0.07) !important;
 }
 
 .browse-is-scrolling .browse-card-hover-surface:not(.browse-readable-card):hover {
@@ -771,6 +999,20 @@ body {
   animation: none;
   background-color: var(--color-text-secondary);
   transform: none;
+}
+
+/* Reuse card hover without rendering or changing the NSFW content filter.
+   Scrolling suppresses reveals just like the other card hover effects. */
+@media (hover: hover) and (pointer: fine) {
+  [data-nsfw-hover-reveal='true']:hover:not(:where(.browse-is-scrolling *, .installed-is-scrolling *)) [data-nsfw-blurred='true'] img {
+    filter: none;
+    scale: 1;
+  }
+
+  [data-nsfw-hover-reveal='true']:hover:not(:where(.browse-is-scrolling *, .installed-is-scrolling *)) [data-nsfw-overlay] {
+    opacity: 0;
+    pointer-events: none;
+  }
 }
 
 @keyframes browseDownloadSheen {
@@ -833,18 +1075,6 @@ body {
   0% { transform: scaleY(0.82); }
   46% { transform: scaleY(1.16); }
   100% { transform: scaleY(1); }
-}
-
-@keyframes browseResultSettle {
-  0% {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-
-  100% {
-    opacity: 1;
-    transform: translateY(0);
-  }
 }
 
 /* Docked details sidebar entrance. The aside reserves its width in one snap
@@ -1283,6 +1513,816 @@ body {
   100% { transform: rotate(var(--gear-spin-end)); }
 }
 
+/* Preview loader (common/PreviewLoader.tsx): the hideout's news computer, a render in still layers,
+   with what moves drawn or placed over them: the pentagram fan, the screen's marks and light, the
+   planchette and the mug's steam. Everything moves by transform and opacity alone, so it keeps going
+   on the compositor while a model's load holds the main thread, and every animation is a CSS loop:
+   nothing here is timed from script. The phosphor, ink and steam colors belong to the render, not to
+   the theme. It fades in after a moment, so a short load never flashes it. */
+.preview-loader {
+  --loader-phosphor: #dcffe6;
+  --loader-ink: #15422b;
+  --loader-light: #9dffc0;
+  --loader-stroke: max(1.5px, calc(var(--loader-width) * 0.006));
+  --loader-press: calc(var(--loader-width) * 0.009);
+  --loader-width: min(76cqw, 78cqh, max(300px, 58cqmin));
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: calc(var(--loader-width) * 0.03);
+  container-type: size;
+  pointer-events: none;
+  color: var(--color-accent);
+  animation: fadeIn 200ms ease-out 250ms both;
+}
+
+.preview-loader__pc {
+  position: relative;
+  flex: none;
+  width: var(--loader-width);
+  aspect-ratio: 1000 / 987;
+}
+
+.preview-loader__layer {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  user-select: none;
+}
+
+/* The keys: each one a window on the keys layer over its own cap, dipping when the phrase the
+   keyboard types reaches its letter (the component writes those keyframes, see typingOf). */
+.preview-loader__keys {
+  position: absolute;
+  inset: 0;
+}
+
+.preview-loader__keys > i {
+  position: absolute;
+  overflow: hidden;
+}
+
+.preview-loader__keys img {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: block;
+  max-width: none;
+  user-select: none;
+}
+
+.preview-loader__glow {
+  animation: previewLoaderGlow 2.4s ease-in-out infinite alternate;
+  will-change: opacity;
+}
+
+@keyframes previewLoaderGlow {
+  from { opacity: 0.45; }
+  to { opacity: 0.9; }
+}
+
+/* The screen's light on the desk, wavering as a tube does, and the beams it throws with it. Each key
+   carries its own share of that light, so it stays on the cap when the cap goes down. */
+.preview-loader__screenlight,
+.preview-loader__rays {
+  animation: previewLoaderFlicker 3.7s linear infinite;
+  will-change: opacity;
+}
+
+.preview-loader__keylight { animation: previewLoaderFlicker 3.7s linear infinite; }
+
+@keyframes previewLoaderFlicker {
+  0%, 100% { opacity: 0.5; }
+  8% { opacity: 0.68; }
+  9% { opacity: 0.46; }
+  22% { opacity: 0.72; }
+  40% { opacity: 0.6; }
+  41% { opacity: 0.8; }
+  60% { opacity: 0.55; }
+  75% { opacity: 0.74; }
+  76% { opacity: 0.58; }
+}
+
+.preview-loader__rays {
+  position: absolute;
+  width: 78%;
+  aspect-ratio: 1.5;
+  translate: -50% -4%;
+  background: conic-gradient(from 138deg at 50% 0%,
+    transparent 0deg, color-mix(in srgb, var(--loader-light) 26%, transparent) 7deg, transparent 15deg,
+    color-mix(in srgb, var(--loader-light) 16%, transparent) 24deg, transparent 33deg,
+    color-mix(in srgb, var(--loader-light) 28%, transparent) 42deg, transparent 51deg,
+    color-mix(in srgb, var(--loader-light) 16%, transparent) 60deg, transparent 69deg,
+    color-mix(in srgb, var(--loader-light) 24%, transparent) 77deg, transparent 84deg, transparent 360deg);
+  mask-image: radial-gradient(ellipse 60% 100% at 50% 0%, black 4%, transparent 68%);
+}
+
+/* A while into a load the planchette starts to move by itself: glides, rests, glides back. The
+   offsets are its path on the mat, through the ground axes the bake measured. */
+.preview-loader__planchette {
+  animation: previewLoaderPlanchette 11s ease-in-out 5s infinite;
+  will-change: transform;
+}
+
+@keyframes previewLoaderPlanchette {
+  0%, 8%, 100% { transform: translate(0, 0); }
+  22%, 34% { transform: translate(-4.05%, 0.65%); }
+  48%, 56% { transform: translate(-2.08%, -2.48%); }
+  72%, 84% { transform: translate(3.5%, -0.34%); }
+}
+
+.preview-loader .preview-loader__mini {
+  display: none;
+  width: min(40cqw, 40cqh, 32px);
+  aspect-ratio: 1;
+}
+
+/* A box too small to read the scene in gets the fan alone. */
+@container (max-width: 150px) or (max-height: 130px) {
+  .preview-loader__pc,
+  .preview-loader__status { display: none; }
+  .preview-loader .preview-loader__mini { display: block; }
+}
+
+/* Centered on the fan's hub and laid on its plane by the matrix the component sets. */
+.preview-loader__seat {
+  position: absolute;
+  aspect-ratio: 1;
+  translate: -50% -50%;
+}
+
+.preview-loader__fan {
+  width: 100%;
+  height: 100%;
+  color: var(--loader-phosphor);
+}
+
+.fan-spinner {
+  display: block;
+  overflow: visible;
+  animation: fanSpin 1s linear infinite;
+  will-change: transform;
+}
+
+.fan-spinner > * {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 0.16;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* In the computer the fan turns as fast as in the game (its clip is 0.64 s a turn) and is drawn finer. */
+.preview-loader__fan {
+  animation-duration: 0.64s;
+}
+
+.preview-loader__fan > * {
+  stroke-width: 0.09;
+  stroke-linejoin: miter;
+}
+
+.preview-loader__fan > circle {
+  stroke-width: 0.075;
+  opacity: 0.75;
+}
+
+@keyframes fanSpin {
+  to { transform: rotate(360deg); }
+}
+
+/* The screen, laid on its glass by the matrix the component sets: the hero being loaded, the
+   Grimoire's book, or a phrase being typed. */
+.preview-loader__screen {
+  position: absolute;
+  translate: -50% -50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.preview-loader__screen :is(i, b, em, span) {
+  display: block;
+  background: var(--loader-ink);
+}
+
+/* The phrase the keyboard types, as a terminal shows it: a prompt, then the text in dots a character
+   at a time, a cursor after the last one, and the tube's lines and static over it all. A line is a
+   window that slides open a cell at a time, carrying its cursor, over text sliding the other way, so
+   the letters appear where they stand. `--dot` is one dot of the lettering. */
+.preview-loader__type {
+  --dot: calc(var(--loader-width) * 0.0023);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: calc(var(--dot) * 3);
+}
+
+.preview-loader__type > div {
+  display: flex;
+}
+
+.preview-loader__type svg {
+  display: block;
+  width: auto;
+  height: calc(var(--dot) * 7);
+  fill: var(--loader-ink);
+}
+
+.preview-loader__type :is(span, em, i) {
+  background: none;
+}
+
+.preview-loader__type > div > span {
+  position: relative;
+}
+
+.preview-loader__type > div > span > span {
+  overflow: hidden;
+}
+
+.preview-loader__type i {
+  position: absolute;
+  top: 0;
+  left: 100%;
+  width: calc(var(--dot) * 5);
+  height: calc(var(--dot) * 7);
+}
+
+.preview-loader__type i > b {
+  width: 100%;
+  height: 100%;
+}
+
+/* The Grimoire logo as one loop: the book's leaves riffle from the right page to the left, then its
+   whirlwind rises out of the spine, spins and dies away. A leaf sits in a box laid on the right page
+   (x along the page, y along the spine, from the logo's own lines) and turns inside it by scaleX and
+   skewY, which stay finite where the leaf is seen edge on. The component writes the loop's keyframes
+   (BOOK in previewLoaderArt.ts): the leaves' turns, the whirlwind's rise and fall, and the fading of
+   the pages' far edges, which the logo leaves out because its whirlwind covers them. */
+.preview-loader__book {
+  position: relative;
+  height: 88%;
+  aspect-ratio: 1010 / 890;
+}
+
+.preview-loader__book svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  fill: var(--loader-ink);
+}
+
+.preview-loader__book > .preview-loader__page-tops {
+  fill: none;
+  stroke: var(--loader-ink);
+  stroke-width: 24;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.preview-loader__whirl {
+  position: absolute;
+  inset: 0;
+  transform-origin: 57.4% 69.7%;
+}
+
+.preview-loader__whirl > svg {
+  animation: previewLoaderWhirlBand 0.42s ease-in-out infinite alternate;
+}
+
+.preview-loader__whirl > svg:nth-child(2) { animation-delay: -0.1s; }
+.preview-loader__whirl > svg:nth-child(3) { animation-delay: -0.2s; }
+.preview-loader__whirl > svg:nth-child(4) { animation-delay: -0.3s; }
+
+@keyframes previewLoaderWhirlBand {
+  from { transform: translateX(-2.6%); }
+  to { transform: translateX(2.6%); }
+}
+
+.preview-loader__book > span {
+  position: absolute;
+  background: none;
+  transform-origin: 0 100%;
+}
+
+.preview-loader__book > span > b {
+  width: 100%;
+  height: 100%;
+  border: calc(var(--loader-stroke) * 0.75) solid var(--loader-ink);
+  border-left-width: 0;
+  border-radius: 0 9% 5% 0;
+  background: color-mix(in srgb, var(--loader-ink) 8%, var(--loader-phosphor));
+  opacity: 0;
+  transform-origin: 0 100%;
+}
+
+/* The hero the preview is loading, as an old tube would pull the picture in: cut into strips that
+   jolt sideways one after another, so a ripple runs down the face now and then, under static that
+   jumps about and the tube's lines. */
+.preview-loader__face {
+  position: relative;
+  width: 58%;
+  aspect-ratio: 1;
+  animation: previewLoaderHum 2.9s steps(1, end) infinite;
+}
+
+.preview-loader__face > img {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  filter: grayscale(1) sepia(1) hue-rotate(75deg) saturate(1.3) contrast(1.15) brightness(0.82);
+  animation: previewLoaderRipple 2s linear infinite;
+}
+
+@keyframes previewLoaderRipple {
+  0%, 58%, 100% { transform: translateX(0); }
+  63% { transform: translateX(7%); }
+  69% { transform: translateX(-5%); }
+  75% { transform: translateX(3%); }
+  81% { transform: translateX(-1.5%); }
+  87% { transform: translateX(0); }
+}
+
+@keyframes previewLoaderHum {
+  0%, 100% { opacity: 0.9; }
+  31% { opacity: 0.72; }
+  34% { opacity: 0.92; }
+  67% { opacity: 0.8; }
+  70% { opacity: 0.95; }
+}
+
+.preview-loader__static {
+  position: absolute;
+  inset: 5%;
+  overflow: hidden;
+  border-radius: 14%;
+  background: repeating-linear-gradient(to bottom, color-mix(in srgb, var(--loader-ink) 16%, transparent) 0 1px, transparent 1px 3px);
+}
+
+.preview-loader__static > i {
+  position: absolute;
+  inset: -40%;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='90'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.15' numOctaves='2' seed='4'/%3E%3CfeColorMatrix values='0 0 0 0 0.08 0 0 0 0 0.26 0 0 0 0 0.17 0 0 0 -2.4 1.3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  opacity: 0.5;
+  animation: previewLoaderStatic 0.5s steps(1, end) infinite;
+}
+
+@keyframes previewLoaderStatic {
+  0% { transform: translate(0, 0); }
+  17% { transform: translate(-9%, 6%); }
+  33% { transform: translate(7%, -8%); }
+  50% { transform: translate(-4%, -5%); }
+  67% { transform: translate(9%, 8%); }
+  83% { transform: translate(-7%, 3%); }
+}
+
+/* The steam of the mug, drawn as the hideout draws its smoke: one long ribbon. The ribbon is three
+   turns of a wave sliding up by one turn, seen through a window that fades it out toward the top
+   and leans from side to side. */
+.preview-loader__steam {
+  position: absolute;
+  width: 4.2%;
+  height: 21%;
+  translate: -50% -100%;
+  overflow: hidden;
+  mask-image: linear-gradient(to top, transparent, black 16%, black 42%, transparent);
+  transform-origin: 50% 100%;
+  animation: previewLoaderSteamLean 3.3s ease-in-out infinite alternate;
+}
+
+.preview-loader__steam > svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 300%;
+  fill: none;
+  stroke: rgb(255 255 255 / 0.62);
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  animation: previewLoaderSteam 2.6s linear infinite;
+  will-change: transform;
+}
+
+@keyframes previewLoaderSteam { to { transform: translateY(-33.333%); } }
+
+@keyframes previewLoaderSteamLean {
+  from { transform: skewX(-7deg); }
+  to { transform: skewX(6deg); }
+}
+
+/* The line under the scene, in the colors of the app: what says this is a load, and how far it is. */
+.preview-loader__status {
+  flex: none;
+  width: calc(var(--loader-width) * 0.4);
+  height: 3px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--color-hl) 12%, transparent);
+}
+
+.preview-loader__status > span {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--color-accent);
+  transform-origin: left;
+  transition: transform 400ms ease-out;
+}
+
+.preview-loader__status--sweep > span {
+  width: 38%;
+  transition: none;
+  animation: previewLoaderSweep 1.5s ease-in-out infinite;
+}
+
+@keyframes previewLoaderSweep {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(264%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .preview-loader { animation-duration: 0.01ms; }
+  .fan-spinner,
+  .preview-loader__fan { animation-duration: 8s; }
+  .preview-loader__glow,
+  .preview-loader__screenlight,
+  .preview-loader__rays,
+  .preview-loader__planchette,
+  .preview-loader__steam,
+  .preview-loader__steam > svg,
+  .preview-loader__screen *,
+  .preview-loader__keys > i { animation: none !important; }
+  .preview-loader__whirl { opacity: 1; transform: none; }
+  .preview-loader__page-tops { display: none; }
+  .preview-loader__book > span,
+  .preview-loader__static > i { display: none; }
+  .preview-loader__screenlight,
+  .preview-loader__keylight,
+  .preview-loader__rays { opacity: 0.6; }
+  .preview-loader__keylight { animation: none; }
+  .preview-loader__status > span { transition: none; }
+  .preview-loader__status--sweep > span { width: 100%; opacity: 0.5; animation: none; }
+}
+
+/* The news computer as a toy (common/LoaderToy.tsx): the loader's scene in a window of its own, where
+   the keys go down under the real keyboard, the screen takes what is typed, and the fan, the mug, the
+   planchette and the glass each answer a click. Nothing loads here, so script runs this one. */
+.preview-loader.loader-toy {
+  --loader-width: min(94cqw, 96cqh);
+  --toy-heat: 0;
+  animation: none;
+}
+
+.loader-toy .preview-loader__planchette { animation-delay: 0s; }
+
+/* The planchette under the real mouse: where the component has it (`--toy-mouse-x/y`, a frame at a
+   time as it glides after the pointer), and a little down while a button is. Its wandering waits until the pointer has gone. */
+.loader-toy[data-mouse] :is(.preview-loader__planchette, .loader-toy__rgb-mouse) {
+  animation: none;
+  transform: translate(var(--toy-mouse-x, 0%), var(--toy-mouse-y, 0%));
+  transition: translate 60ms ease-out;
+}
+
+.loader-toy[data-click] .preview-loader__planchette { translate: 0 0.35%; }
+
+/* The chamber glows with the fan's pace. */
+.loader-toy .preview-loader__glow { filter: brightness(calc(1 + var(--toy-heat) * 1.1)); }
+
+.loader-toy .preview-loader__keys > i { transition: transform 50ms ease-out; }
+
+.loader-toy .preview-loader__screen {
+  overflow: hidden;
+  border-radius: 13%;
+}
+
+/* The tube comes on as it opens: a bright line across the glass that opens into the picture. */
+.loader-toy__tube {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: loaderToyPowerOn 0.65s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes loaderToyPowerOn {
+  0% { transform: scale(0, 0.012); filter: brightness(3); }
+  35% { transform: scale(1, 0.012); filter: brightness(3); }
+  100% { transform: none; filter: none; }
+}
+
+/* How many of its secrets have been found, of how many there are, in small dots under the lines: faint
+   while a line is being typed, lit for a while at each new find, and otherwise out of an answer's way.
+   Its count is all the computer says about there being more to find. */
+.loader-toy__tally {
+  position: absolute;
+  right: 0;
+  bottom: 5%;
+  left: 0;
+  display: flex;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 300ms;
+}
+
+/* On a patch of the screen's own color, so that it reads over whatever the answer has drawn there. */
+.loader-toy__tally > svg {
+  display: block;
+  box-sizing: content-box;
+  width: auto;
+  height: calc(var(--loader-width) * 0.0115);
+  padding: calc(var(--loader-width) * 0.003) calc(var(--loader-width) * 0.006);
+  border-radius: calc(var(--loader-width) * 0.004);
+  background: color-mix(in srgb, var(--loader-phosphor) 88%, transparent);
+  fill: var(--loader-ink);
+}
+
+.loader-toy__tally[data-resting] { opacity: 0.45; }
+.loader-toy__tally[data-new] { animation: loaderToyTally 3.2s ease-out backwards; }
+
+/* It ends on whatever it is at rest: no last keyframe for its opacity. */
+@keyframes loaderToyTally {
+  0% { opacity: 0; transform: scale(1.7); }
+  12%, 75% { opacity: 1; }
+  12% { transform: scale(1.7); }
+  32%, 100% { transform: none; }
+}
+
+/* The parts that take a click answer the pointer before it: the fan brightens, the mug steams more, the
+   glass crackles. (A cap gives a little under it, which the component does.) */
+.loader-toy .preview-loader__seat { transition: filter 150ms; }
+.loader-toy:not([data-rgb]):has(.loader-toy__hit--fan:hover) .preview-loader__seat { filter: brightness(1.3) drop-shadow(0 0 calc(var(--loader-width) * 0.012) var(--loader-light)); }
+
+.loader-toy:has(.loader-toy__hit--mug:hover) .preview-loader__steam:not(.loader-toy__puff) > svg {
+  stroke: rgb(255 255 255 / 0.95);
+  stroke-width: 3.3;
+}
+
+.loader-toy:has(.loader-toy__hit--glass:hover) .preview-loader__static > i { opacity: 0.8; }
+
+/* A small one of the computer, in a quiet corner of the app, that opens the real one (NewsComputerDoor).
+   It stands on the page itself, with nothing behind it. */
+.loader-door {
+  position: absolute;
+  inset: 0;
+  display: block;
+  border-radius: inherit;
+  cursor: pointer;
+}
+
+.loader-door:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -2px; }
+
+/* It takes all of its box: the loader's own sizing leaves room for a line under the scene, which this has not. */
+.loader-door > .preview-loader {
+  --loader-width: min(100cqw, 101cqh);
+  animation: none;
+  transition: transform 200ms ease-out, filter 200ms;
+}
+
+.loader-door:is(:hover, :focus-visible) > .preview-loader {
+  transform: scale(1.05);
+  filter: brightness(1.15);
+}
+
+/* The whole screen's worth of lettering from the start, so the text does not shift as it grows. */
+.loader-toy .preview-loader__type {
+  width: calc(var(--dot) * 60);
+  min-height: calc(var(--dot) * 37);
+}
+
+.loader-toy__cursor > b { animation: loaderToyBlink 0.9s steps(1, end) 0.5s infinite; }
+
+@keyframes loaderToyBlink {
+  50% { opacity: 0; }
+}
+
+.loader-toy__hit {
+  position: absolute;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.loader-toy__hit--round { border-radius: 50%; }
+
+.preview-loader__steam.loader-toy__puff {
+  width: 7%;
+  height: 30%;
+  animation: loaderToyPuff 1.5s ease-out both;
+}
+
+.loader-toy__puff > svg {
+  stroke: rgb(255 255 255 / 0.85);
+  stroke-width: 3.4;
+  animation-duration: 0.8s;
+}
+
+@keyframes loaderToyPuff {
+  0% { opacity: 0; transform: scale(0.6, 0.4); }
+  18% { opacity: 1; }
+  100% { opacity: 0; transform: scale(1.25, 1.15) skewX(8deg); }
+}
+
+/* An egg on the screen (the line "yoshi"), in the tube's dots. Left alone it only rocks, now and then.
+   A knock on the glass cracks it (`data-hatch`, for 4.2 seconds): it shakes, splits along its middle,
+   its top comes off with a few sparks, and it fades back whole. */
+.loader-toy__egg {
+  position: relative;
+  height: 62%;
+  margin-top: 12%;
+  aspect-ratio: 13 / 16;
+  transform-origin: 50% 100%;
+  animation: loaderToyEggRock 4.6s ease-in-out infinite;
+}
+
+.loader-toy__egg[data-hatch] { animation: loaderToyEggHatch 4.2s ease-out both; }
+
+.loader-toy__egg > svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  fill: var(--loader-ink);
+}
+
+.loader-toy__egg > .loader-toy__egg-top { transform-origin: 15% 45%; }
+.loader-toy__egg > .loader-toy__egg-crack { clip-path: inset(0 100% 0 0); }
+.loader-toy__egg > .loader-toy__egg-sparks { opacity: 0; }
+
+.loader-toy__egg[data-hatch] > .loader-toy__egg-top { animation: loaderToyEggTop 4.2s ease-out both; }
+.loader-toy__egg[data-hatch] > .loader-toy__egg-crack { animation: loaderToyEggCrack 4.2s linear both; }
+.loader-toy__egg[data-hatch] > .loader-toy__egg-sparks { animation: loaderToyEggSparks 4.2s steps(1, end) both; }
+
+@keyframes loaderToyEggRock {
+  0%, 22%, 44%, 62%, 80%, 100% { transform: rotate(0deg); }
+  26%, 34% { transform: rotate(-5deg); }
+  30%, 38% { transform: rotate(5deg); }
+  41% { transform: rotate(-3deg); }
+  66%, 72% { transform: rotate(-8deg); }
+  69%, 75% { transform: rotate(8deg); }
+  78% { transform: rotate(-3deg); }
+}
+
+@keyframes loaderToyEggHatch {
+  0%, 12%, 84% { transform: rotate(0deg); opacity: 1; }
+  3% { transform: rotate(-9deg); }
+  6% { transform: rotate(8deg); }
+  9% { transform: rotate(-5deg); }
+  90%, 94% { transform: rotate(0deg); opacity: 0; }
+  100% { transform: rotate(0deg); opacity: 1; }
+}
+
+@keyframes loaderToyEggCrack {
+  0% { clip-path: inset(0 100% 0 0); animation-timing-function: steps(6, end); }
+  8%, 92% { clip-path: inset(0 0 0 0); animation-timing-function: steps(1, end); }
+  93%, 100% { clip-path: inset(0 100% 0 0); }
+}
+
+@keyframes loaderToyEggTop {
+  0%, 10% { transform: none; }
+  16% { transform: translate(-4%, -13%) rotate(-13deg); }
+  22%, 40%, 58%, 76%, 92% { transform: translate(-3%, -8%) rotate(-9deg); }
+  31%, 49%, 67% { transform: translate(-3%, -10%) rotate(-10deg); }
+  93%, 100% { transform: none; }
+}
+
+@keyframes loaderToyEggSparks {
+  0%, 13% { opacity: 0; }
+  14%, 28%, 42% { opacity: 1; }
+  21%, 35%, 50%, 100% { opacity: 0; }
+}
+
+/* What some lines do to the picture. A storm of static over the hero: */
+.loader-toy[data-mood='storm'] .preview-loader__static > i {
+  opacity: 1;
+  animation-duration: 0.16s;
+}
+
+.loader-toy[data-mood='storm'] .preview-loader__face { animation-duration: 0.45s; }
+.loader-toy[data-mood='storm'] .preview-loader__face > img { animation-duration: 0.55s; }
+.loader-toy[data-mood='storm'] :is(.preview-loader__screenlight, .preview-loader__rays) { animation-duration: 0.7s; }
+
+/* the book rattled like a door that will not open, and the desk with it: */
+.loader-toy[data-mood='stuck'] .preview-loader__book { animation: loaderToyStuck 1.5s linear infinite; }
+.loader-toy[data-mood='stuck'] .preview-loader__pc { animation: loaderToyShudder 1.5s linear infinite; }
+
+.loader-toy:is([data-mood='stuck'], [data-mood='awesome']) .preview-loader__book > span > b,
+.loader-toy:is([data-mood='stuck'], [data-mood='awesome']) .preview-loader__page-tops { animation: none !important; }
+
+.loader-toy[data-mood='stuck'] .preview-loader__whirl {
+  opacity: 0;
+  animation: none !important;
+}
+
+@keyframes loaderToyStuck {
+  0%, 30%, 100% { transform: none; }
+  4% { transform: translateX(-5%) rotate(-2deg); }
+  8% { transform: translateX(4%) rotate(1.5deg); }
+  12% { transform: translateX(-4%) rotate(-1.5deg); }
+  16% { transform: translateX(3%) rotate(1deg); }
+  20% { transform: translateX(-2%); }
+  24% { transform: translateX(1%); }
+}
+
+@keyframes loaderToyShudder {
+  0%, 30%, 100% { transform: none; }
+  4%, 12%, 20% { transform: translateX(-0.25%); }
+  8%, 16%, 24% { transform: translateX(0.25%); }
+}
+
+/* and the book in its glory, its whirlwind up for good. */
+.loader-toy[data-mood='awesome'] .preview-loader__whirl {
+  opacity: 1;
+  animation: loaderToyGlory 1.1s ease-in-out infinite alternate !important;
+}
+
+.loader-toy[data-mood='awesome'] .preview-loader__whirl > svg { animation-duration: 0.16s; }
+.loader-toy[data-mood='awesome'] .preview-loader__page-tops { opacity: 0; }
+
+@keyframes loaderToyGlory {
+  from { transform: scale(0.96); }
+  to { transform: scale(1.1); }
+}
+
+/* "gamer": the cabinet's light, its fan and the keys run through the rainbow. The light inside the
+   cabinet is green in the render, so turning its hue takes it through every color: a copy of the back
+   layer cut to the cabinet's window, and the cabinet's side of the glow, both turning together. */
+@keyframes loaderToyHue {
+  to { filter: hue-rotate(360deg); }
+}
+
+/* The render's greens are pale, and a turned pale color is a grey one: these are deepened as they turn. */
+@keyframes loaderToyHueDeep {
+  from { filter: saturate(3) hue-rotate(0deg); }
+  to { filter: saturate(3) hue-rotate(360deg); }
+}
+
+.loader-toy__rgb-room {
+  clip-path: polygon(29.7% 31.7%, 36.9% 27.7%, 37.3% 36%, 37.9% 46%, 37.6% 56.2%, 32.3% 62.8%, 32% 62.8%, 31% 46%, 30.1% 38%);
+  animation: loaderToyHueDeep 4s linear infinite;
+}
+
+.preview-loader__glow.loader-toy__rgb-glow {
+  mask-image: linear-gradient(to right, black 39%, transparent 46%), linear-gradient(to bottom, transparent 20%, black 27%);
+  mask-composite: intersect;
+  animation: previewLoaderGlow 2.4s ease-in-out infinite alternate, loaderToyHueDeep 4s linear infinite;
+}
+
+/* The rest of the glow (the screen's and the candle's) keeps its own color. */
+.loader-toy[data-rgb] .preview-loader__glow:not(.loader-toy__rgb-glow) {
+  mask-image: linear-gradient(to right, transparent 39%, black 46%), linear-gradient(to bottom, black 20%, transparent 27%);
+}
+
+.loader-toy[data-rgb] .preview-loader__seat { animation: loaderToyHue 4s linear infinite; }
+.loader-toy[data-rgb] .preview-loader__fan { color: #7dff8a; }
+
+/* And the mouse has its light too: a glow on the mat under the planchette, going where it goes. */
+.loader-toy__rgb-mouse {
+  position: absolute;
+  inset: 0;
+  animation: previewLoaderPlanchette 11s ease-in-out infinite;
+}
+
+.loader-toy__rgb-mouse > i {
+  position: absolute;
+  width: 19%;
+  aspect-ratio: 1.75;
+  translate: -50% -42%;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgb(110 255 135 / 0.85), rgb(110 255 135 / 0.3) 58%, transparent);
+  mix-blend-mode: screen;
+  animation: loaderToyHue 3s linear infinite;
+}
+
+/* A wave over the keyboard: each key's light a little further round than the one to its left. */
+.loader-toy[data-rgb] .preview-loader__keylight {
+  opacity: 1;
+  animation: loaderToyHueDeep 2.4s linear infinite;
+  animation-delay: calc(var(--key-x, 0) * -6s);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loader-toy .preview-loader__pc,
+  .loader-toy .preview-loader__keys > i { animation: none !important; transition: none; }
+  .loader-toy__rgb-room,
+  .loader-toy__rgb-mouse,
+  .loader-toy__rgb-mouse > i,
+  .preview-loader__glow.loader-toy__rgb-glow,
+  .loader-toy[data-rgb] .preview-loader__seat,
+  .loader-toy[data-rgb] .preview-loader__keylight { animation: none; }
+}
+
 /* Skeletons (common/Skeleton.tsx). One sweep for the whole screen: the glint
    is a fixed-attachment background, so it is positioned against the viewport
    and every placeholder shows its slice of the same band at the same moment,
@@ -1398,7 +2438,7 @@ body {
   pointer-events: none;
   background-image: repeating-linear-gradient(
     135deg,
-    var(--stripe-color, rgba(255, 255, 255, 0.06)) 0 8px,
+    var(--stripe-color, rgb(from var(--color-hl) r g b / 0.06)) 0 8px,
     transparent 8px 20px
   );
   background-size: 28px 28px;
@@ -1597,7 +2637,7 @@ body {
   padding: 0.55em 0.7em;
   border: 1px solid var(--color-border);
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.035);
+  background: rgb(from var(--color-hl) r g b / 0.035);
   color: var(--color-text-secondary);
 }
 
@@ -1649,22 +2689,22 @@ body {
     rgba(12, 12, 12, 0.75) 100%
   );
   backdrop-filter: blur(14px) saturate(125%);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgb(from var(--color-hl) r g b / 0.08);
   box-shadow: 
-    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    inset 0 1px 0 rgb(from var(--color-hl) r g b / 0.06),
     0 4px 20px rgba(0, 0, 0, 0.35);
   transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.premium-glass-card:hover {
+.premium-glass-card:hover:not(:where(.installed-is-scrolling *)) {
   background: linear-gradient(
     135deg,
     rgba(25, 25, 25, 0.55) 0%,
     rgba(18, 18, 18, 0.8) 100%
   );
-  border-color: rgba(255, 255, 255, 0.16);
+  border-color: rgb(from var(--color-hl) r g b / 0.16);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 1px 0 rgb(from var(--color-hl) r g b / 0.08),
     0 12px 32px rgba(0, 0, 0, 0.5);
   /* Lift only, no scale(): this card has backdrop-filter, and scaling a
      backdrop-filtered element upscales its whole rasterized surface, softening
@@ -1677,7 +2717,7 @@ body {
   transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.premium-card-glow:hover {
+.premium-card-glow:hover:not(:where(.installed-is-scrolling *)) {
   /* No scale() here either, see .premium-glass-card:hover. */
   transform: translateY(-3px);
   box-shadow:
@@ -1685,7 +2725,7 @@ body {
 }
 
 /* Accent Glow for Enabled cards */
-.premium-card-glow-active:hover {
+.premium-card-glow-active:hover:not(:where(.installed-is-scrolling *)) {
   box-shadow: 
     0 0 25px color-mix(in srgb, var(--color-accent) 12%, transparent),
     0 12px 30px rgba(0, 0, 0, 0.55);
@@ -1693,11 +2733,32 @@ body {
 }
 
 /* Warning Glow for Conflict cards */
-.premium-card-glow-warning:hover {
+.premium-card-glow-warning:hover:not(:where(.installed-is-scrolling *)) {
   box-shadow: 
     0 0 25px rgba(250, 204, 21, 0.12),
     0 12px 30px rgba(0, 0, 0, 0.55);
   border-color: rgba(250, 204, 21, 0.45);
+}
+
+.installed-entry-shell-grid:hover:not(:where(.installed-is-scrolling *)) {
+  z-index: 10;
+}
+
+/* Menu content is portaled, so inspect the trigger's open state on the card. */
+.installed-entry-shell:focus-within,
+.installed-entry-shell:has([data-state='open']) {
+  z-index: 20;
+}
+
+/* Stop the return from hover immediately; keep state opacity and image reveals. */
+.installed-is-scrolling .installed-card {
+  transition-property: opacity;
+}
+
+.installed-is-scrolling .installed-card-media-zoom,
+.installed-is-scrolling .installed-card-media-overlay,
+.installed-is-scrolling .installed-card-hover-action {
+  transition-property: none;
 }
 
 /* Glassmorphic Overlay Badges */
@@ -1718,21 +2779,71 @@ body {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
-/* Seamless Title Inline Renaming */
-.premium-inline-rename-input {
-  font-family: inherit;
-  font-size: inherit;
-  font-weight: inherit;
-  line-height: inherit;
-  color: inherit;
-  background: rgba(0, 0, 0, 0.3);
-  border: none;
-  border-bottom: 2px solid var(--color-accent);
-  padding: 0 4px;
-  border-radius: 2px;
-  outline: none;
-  width: 100%;
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.4);
+@keyframes mod-list-count-pop {
+  0% { transform: scale(1); }
+  45% { transform: scale(1.12); }
+  100% { transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .mod-list-drag-preview { transform: scale(1.015); }
+  .mod-list-count-pop { animation: mod-list-count-pop 240ms ease-out; }
+}
+
+@keyframes browseRefreshSpin {
+  to { transform: rotate(360deg); }
+}
+
+.browse-refresh-spin {
+  animation: browseRefreshSpin 900ms ease-in-out infinite;
+}
+
+/* Deep-link target highlight on Settings (e.g. from the Overlap page link).
+   A pseudo-element inset into the card's spacing frames the row without
+   shifting layout, then fades out after holding long enough to read. */
+[data-settings-highlight='true'] {
+  position: relative;
+  z-index: 0;
+}
+
+[data-settings-highlight='true']::before {
+  content: '';
+  position: absolute;
+  inset: -10px -12px;
+  z-index: -1;
+  pointer-events: none;
+  border-radius: 4px;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 65%, transparent);
+  background-color: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  animation: settingsTargetHighlight 3.5s ease-out forwards;
+}
+
+@keyframes settingsTargetHighlight {
+  0% {
+    opacity: 0;
+    border-color: color-mix(in srgb, var(--color-accent) 85%, transparent);
+    background-color: color-mix(in srgb, var(--color-accent) 18%, transparent);
+  }
+  8% {
+    opacity: 1;
+    border-color: color-mix(in srgb, var(--color-accent) 85%, transparent);
+    background-color: color-mix(in srgb, var(--color-accent) 18%, transparent);
+  }
+  20% {
+    opacity: 1;
+    border-color: color-mix(in srgb, var(--color-accent) 65%, transparent);
+    background-color: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  }
+  72% {
+    opacity: 1;
+    border-color: color-mix(in srgb, var(--color-accent) 65%, transparent);
+    background-color: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  }
+  100% {
+    opacity: 0;
+    border-color: color-mix(in srgb, var(--color-accent) 65%, transparent);
+    background-color: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1762,7 +2873,6 @@ body {
   .group:focus-within .browse-sound-wave-bar,
   .sidebar-active-backdrop,
   .sidebar-active-backdrop__image,
-  .browse-result-card,
   .browse-details-dock-panel {
     animation-duration: 0.01ms;
     animation-iteration-count: 1;
@@ -1818,6 +2928,10 @@ body {
     animation: none;
   }
 
+  .browse-refresh-spin {
+    animation: none;
+  }
+
   /* Settings gear: drop the rotate/spin motion. */
   .settings-gear {
     transition-duration: 0.01ms;
@@ -1830,4 +2944,20 @@ body {
   .settings-gear--spin {
     animation: none;
   }
+
+  [data-settings-highlight='true']::before {
+    animation: none;
+  }
+}
+
+/* Installed cards blur their own artwork in a clipped layer. Filtering the
+   backdrop too can leave clipped control glows in Chromium's card texture. */
+.installed-card.premium-glass-card {
+  backdrop-filter: none;
+}
+
+/* Selected borders retain the conflict border weight, using the user's accent. */
+:root .installed-card[data-selected='true'],
+:root .installed-card[data-selected='true']:hover {
+  border-color: color-mix(in srgb, var(--color-accent) 45%, transparent);
 }

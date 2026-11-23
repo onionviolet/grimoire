@@ -10,6 +10,7 @@ import { copyModsToDev } from '../services/devMods';
 import { syncForgeBridgeWithSettings } from '../services/forgeBridge';
 import { hydrateOnBoot as hydrateSocialSession } from '../services/socialAuth';
 import { runExclusiveModMutation } from '../services/mods';
+import { prebuildHideoutScene } from '../services/hideoutScene';
 import { assertModUpdateSettingsChange, assertNoModUpdates } from '../services/modUpdates';
 
 // detect-deadlock
@@ -78,6 +79,11 @@ ipcMain.handle('set-settings', async (_, patch: Partial<AppSettings>): Promise<A
     // Launch skips the saved-session check while Social is off, so turning it
     // on restores the session now instead of at the next launch.
     if (saved.experimentalSocial && !previous.experimentalSocial) void hydrateSocialSession();
+    // Startup builds the hideout cache for everyone only while the hideout is
+    // the default, so turning that on builds it now.
+    if (saved.experimentalHideoutDefault && !previous.experimentalHideoutDefault && deadlockPath) {
+        prebuildHideoutScene(deadlockPath, { everyone: true }).catch(error => console.warn('[hideout] Prebuild failed:', error));
+    }
     return saved;
 });
 

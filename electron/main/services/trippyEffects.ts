@@ -24,11 +24,17 @@
 import { promises as fs, existsSync } from 'fs';
 import { join } from 'path';
 import { randomUUID } from 'crypto';
+import { skinPartPatternSchema } from '../../../src/lib/skinEditSchema';
 import { app } from 'electron';
 import { getCitadelPath, getGrimoirePath } from './deadlock';
 import { invalidateVpkParseCache } from './vpk';
 import { runVpkmerge, vpkmergeBinaryPath, verifyVpkOutput } from './modMerger';
-import { LOCKER_TRIPPY_SKINS_KEY, lockerTrippySkinsVpkPath, ensureGrimoireConfigured } from './lockerVpk';
+import {
+    LOCKER_TRIPPY_SKINS_KEY,
+    lockerTrippySkinsVpkPath,
+    ensureGrimoireConfigured,
+    sameLockerSelections,
+} from './lockerVpk';
 import { getModMetadata, setModMetadata, removeModMetadata } from './metadata';
 import { colorCodenameForHero } from './heroColors';
 import { TRIPPY_STYLES } from '../../../src/types/mod';
@@ -44,7 +50,7 @@ import type {
 
 /** Bumped when the paint pipeline/binary changes in a way that should re-bake
  *  cached skin addons (and re-render cached preview sprites). */
-const TRIPPY_CACHE_VERSION = 1;
+const TRIPPY_CACHE_VERSION = 2;
 
 function clampRound(x: number, min: number, max: number): number {
     const v = Number.isFinite(x) ? x : min;
@@ -95,9 +101,11 @@ export async function previewTrippySprite(opts: TrippySpriteOptions): Promise<Tr
     const intensity = clampRound(opts.intensity ?? 1, 0, 1);
     const frames = clampInt(opts.frames ?? 24, SPRITE_FRAME_BOUNDS.min, SPRITE_FRAME_BOUNDS.max);
     const size = clampInt(opts.size ?? 256, SPRITE_SIZE_BOUNDS.min, SPRITE_SIZE_BOUNDS.max);
+    const colors = skinPartPatternSchema.shape.colors.parse(opts.colors)?.map((color) => color.toLowerCase());
+    const scale = style === 'moo' ? skinPartPatternSchema.shape.scale.parse(opts.scale) ?? 1 : 1;
 
     const dir = join(app.getPath('userData'), 'trippy-previews');
-    const key = `${style}_p${Math.round(phase * 100)}_s${Math.round(scroll * 100)}_i${Math.round(intensity * 100)}_f${frames}_x${size}_v${TRIPPY_CACHE_VERSION}.png`;
+    const key = `${style}_p${Math.round(phase * 100)}_s${Math.round(scroll * 100)}_i${Math.round(intensity * 100)}_f${frames}_x${size}_d${scale}${colors ? `_c${colors.map((color) => color.slice(1)).join('_')}` : ''}_v${TRIPPY_CACHE_VERSION}.png`;
     const cachePath = join(dir, key);
 
     if (!existsSync(cachePath)) {
@@ -120,6 +128,8 @@ export async function previewTrippySprite(opts: TrippySpriteOptions): Promise<Tr
                 String(size),
                 '--out',
                 tmp,
+                ...(colors ? ['--palette', colors.join(',')] : []),
+                '--scale', String(scale),
             ]);
             await fs.rename(tmp, cachePath);
         } finally {
@@ -221,7 +231,9 @@ async function rebuildTrippySkins(
     const valid = [...byCodename.values()];
 
     if (valid.length === 0) {
-        await fs.unlink(destPath).catch(() => {});
+        // A pack the running game holds open must fail here, or its effects stay live in game with
+        // nothing left in the Locker to clear them.
+        await fs.unlink(destPath).catch((error: NodeJS.ErrnoException) => { if (error.code !== 'ENOENT') throw error; });
         removeModMetadata(LOCKER_TRIPPY_SKINS_KEY);
         invalidateVpkParseCache(destPath);
         return;
@@ -328,6 +340,20 @@ export function getActiveTrippySkin(heroName: string): ActiveTrippySkin | null {
               targets: sel.targets,
           }
         : null;
+}
+
+/** Make the applied trippy skins exactly `desired` (a profile's saved set).
+ *  Mirrors setLockerColors. */
+export async function setTrippySkins(
+    deadlockPath: string,
+    desired: LockerTrippySkinSelection[],
+): Promise<void> {
+    if (sameLockerSelections(currentSkinSelections(), desired)) return;
+    if (desired.length > 0) {
+        vpkmergeBinaryPath();
+        ensureGrimoireConfigured(deadlockPath);
+    }
+    await rebuildTrippySkins(deadlockPath, desired);
 }
 
 /** Clear every applied trippy skin (rebuild to empty, deleting the VPK). */

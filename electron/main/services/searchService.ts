@@ -102,8 +102,8 @@ function applyContentFilters(
  *
  * Heroes are the exception. The list endpoint also returns `_aSubCategory`, whose
  * profile URL carries the id, so `sub_category_id` is real and a hero (a Skins
- * subcategory) matches exactly. Sound and Wip have no hero categories, so there
- * the title is all there is and it is matched as a whole word.
+ * subcategory) matches exactly. Hero names in titles also match, including
+ * Sound and Wip submissions whose categories do not identify a hero.
  */
 export function applyCategoryFilter(
     conditions: string[],
@@ -111,15 +111,19 @@ export function applyCategoryFilter(
     categoryId: SearchOptions['categoryId'],
     categoryName: SearchOptions['categoryName'],
     heroName: SearchOptions['heroName'],
-    heroCategoryIds: SearchOptions['heroCategoryIds']
+    heroCategoryIds: readonly number[] | undefined
 ): void {
     if (heroCategoryIds?.length) {
-        const placeholders = heroCategoryIds.map((id, index) => {
-            const key = `hero_category_${index}`;
+        const placeholders = heroCategoryIds.map(id => {
+            const key = `hero_category_${id}`;
             params[key] = id;
             return `@${key}`;
         });
-        conditions.push(`mods.sub_category_id IN (${placeholders.join(', ')})`);
+        const categoryMatch = `COALESCE(mods.sub_category_id, mods.category_id) IN (${placeholders.join(', ')})`;
+        if (heroName) {
+            params.heroName = heroName;
+            conditions.push(`(${categoryMatch} OR hero_name_match(mods.name, @heroName))`);
+        } else conditions.push(categoryMatch);
         return;
     }
 
@@ -169,6 +173,45 @@ function applyHiddenCreatorFilter(
     conditions.push(`(mods.submitter_id IS NULL OR mods.submitter_id NOT IN (${placeholders.join(', ')}))`);
 }
 
+export function applyBrowseScope(
+    conditions: string[],
+    params: Record<string, unknown>,
+    options: SearchOptions
+): void {
+    if (options.sections?.length) {
+        const placeholders = [...new Set(options.sections)].map((section, index) => {
+            const key = `section_${index}`;
+            params[key] = section;
+            return `@${key}`;
+        });
+        conditions.push(`mods.section IN (${placeholders.join(', ')})`);
+    } else if (options.section) {
+        conditions.push('mods.section = @section');
+        params.section = options.section;
+    }
+
+    if (options.heroName || options.heroCategoryIds) {
+        const heroMatches: string[] = [];
+        if (options.heroName) {
+            params.heroName = options.heroName;
+            heroMatches.push(options.extendedHeroMatching
+                ? 'hero_name_match(mods.name, @heroName)'
+                : "(mods.section <> 'Mod' AND hero_name_match(mods.name, @heroName))");
+        }
+        for (const [section, ids] of Object.entries(options.heroCategoryIds ?? {})) {
+            if (!ids.length) continue;
+            const categoryConditions: string[] = [];
+            applyCategoryFilter(categoryConditions, params, undefined, undefined, undefined, ids);
+            const key = `hero_section_${heroMatches.length}`;
+            params[key] = section;
+            heroMatches.push(`(mods.section = @${key} AND ${categoryConditions[0]})`);
+        }
+        if (heroMatches.length) conditions.push(`(${heroMatches.join(' OR ')})`);
+    } else {
+        applyCategoryFilter(conditions, params, options.categoryId, options.categoryName, undefined, undefined);
+    }
+}
+
 /**
  * Fallback search used when the FTS5 path returns zero results. FTS5 is
  * tokenized and prefix-only, so creative names ("MìnaMod-v2", typos, partial
@@ -187,11 +230,6 @@ function runFallbackSubstringSearch(
     offset: number
 ): SearchResult {
     const {
-        section,
-        categoryId,
-        categoryName,
-        heroName,
-        heroCategoryIds,
         sortBy,
         nsfw,
         addedWithin,
@@ -216,12 +254,7 @@ function runFallbackSubstringSearch(
         conditions.push(`LOWER(mods.name) LIKE @${key}`);
     });
 
-    if (section) {
-        conditions.push('mods.section = @section');
-        params.section = section;
-    }
-
-    applyCategoryFilter(conditions, params, categoryId, categoryName, heroName, heroCategoryIds);
+    applyBrowseScope(conditions, params, options);
     applyContentFilters(conditions, params, nsfw, addedWithin, addedFrom, addedTo);
     applyHiddenCreatorFilter(conditions, params, hiddenCreatorIds);
 
@@ -256,11 +289,6 @@ export function searchMods(options: SearchOptions): SearchResult {
     const database = initDatabase();
     const {
         query,
-        section,
-        categoryId,
-        categoryName,
-        heroName,
-        heroCategoryIds,
         sortBy = 'relevance',
         nsfw = 'all',
         addedWithin = 'all',
@@ -294,7 +322,7 @@ export function searchMods(options: SearchOptions): SearchResult {
                 .join(' ');
             if (searchTerms) {
                 params.query = searchTerms;
-                fromClause = 'FROM mods JOIN mods_fts ON mods.id = mods_fts.rowid';
+                fromClause = 'FROM mods JOIN mods_fts ON mods.row_id = mods_fts.rowid';
                 rankSelect = 'bm25(mods_fts) as rank';
                 conditions.push('mods_fts MATCH @query');
                 appliedFtsQuery = true;
@@ -303,12 +331,7 @@ export function searchMods(options: SearchOptions): SearchResult {
     }
 
     // Filter by section
-    if (section) {
-        conditions.push('mods.section = @section');
-        params.section = section;
-    }
-
-    applyCategoryFilter(conditions, params, categoryId, categoryName, heroName, heroCategoryIds);
+    applyBrowseScope(conditions, params, options);
     applyContentFilters(conditions, params, nsfw, addedWithin, addedFrom, addedTo);
     applyHiddenCreatorFilter(conditions, params, hiddenCreatorIds);
 

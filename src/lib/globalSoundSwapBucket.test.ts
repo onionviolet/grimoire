@@ -1,19 +1,17 @@
-// A Foundry *global* sound swap must reach the Locker's Sounds bucket.
+// A Foundry *global* sound swap must reach a Sounds bucket, never the
+// announcer card.
 //
 // It installs with `sourceSection: 'Sound'`, `categoryName: 'Sounds'` and
-// deliberately no `lockerHero` (there is no hero to tag), so it has to survive
-// both of the Sounds list's gates: `isLockerManagedSound` and the
-// `!getEffectiveGlobalType` filter. Two things could drop it, and both are
-// pinned here because both are one word away from silently reappearing:
-//
-//   1. GLOBAL_SOUND_CATEGORIES dropping the installed category name.
-//   2. a globalType arriving from the VPK-path classifier, which mis-reads a
-//      swap's borrowed file tree (see the companion test at
-//      electron/main/services/globalSoundSwapClassify.test.ts, and the
-//      `soundSwap` guard in resolveGlobalType that stops it).
+// deliberately no `lockerHero` (there is no hero to tag). Since upstream v1.35
+// every hero-less sound routes to the General view's `sounds` bucket (see
+// getEffectiveGlobalType), which the Locker renders as its own tab, so that is
+// where a global swap belongs. What must not come back is the old VPK-path
+// misread that tagged an item-sound swap 'announcer' from its borrowed
+// `sounds/mods/...` tree; the `soundSwap` guard in ipc/mods.ts enrichMod stops
+// that.
 
 import { describe, expect, it } from 'vitest';
-import { getEffectiveGlobalType, isLockerManagedSound } from './lockerUtils';
+import { getEffectiveGlobalType, groupGlobalMods, isLockerManagedSound } from './lockerUtils';
 import type { Mod } from '../types/mod';
 
 /** A Foundry global sound swap as ipc/mods.ts `foundry:swapSound` installs it. */
@@ -28,11 +26,13 @@ function globalSwapMod(overrides: Partial<Mod> = {}): Mod {
 }
 
 describe('global sound swap -> Locker Sounds bucket', () => {
-    it('files an unclassified global swap under Sounds, not the Global card', () => {
-        const mod = globalSwapMod();
+    it('files an unclassified global swap under the General Sounds bucket', () => {
+        const mod = { ...globalSwapMod(), id: 'swap', name: 'swap', enabled: true, priority: 1 } as Mod;
         expect(isLockerManagedSound(mod)).toBe(true);
-        // The Locker's Sounds filter is `isLockerManagedSound && !globalType`.
-        expect(getEffectiveGlobalType(mod)).toBeUndefined();
+        expect(getEffectiveGlobalType(mod)).toBe('sounds');
+        const groups = groupGlobalMods([mod]);
+        expect(groups.sounds).toEqual([mod]);
+        expect(groups.announcer).toEqual([]);
     });
 
     it("does not treat the swap's 'Sounds' category as a global drop bucket", () => {

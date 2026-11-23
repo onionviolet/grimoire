@@ -1,6 +1,5 @@
 import type { RestoreLocalVariantGroupReplacementArgs } from '../../../src/types/electron';
 import type {
-    LocalVariantGroupClassification,
     LocalVariantGroupMember,
 } from './localVariantGroup';
 import { resolveLocalVariantGroupProfile } from './localVariantGroup';
@@ -12,7 +11,6 @@ export interface LocalVariantReplacementMember extends LocalVariantGroupMember {
 export interface LocalVariantReplacementPlan {
     groupId: string;
     modName: string;
-    classification: LocalVariantGroupClassification;
     replacementMetaKeys: string[];
 }
 
@@ -81,21 +79,9 @@ export function planLocalVariantReplacementRestore(
         throw new Error('Replacement priority-folder placement does not match its variant group');
     }
 
-    const classification: LocalVariantGroupClassification = profile.classification ?? {
-        lockerHero: source.lockerHero,
-        lockerHeroSource: source.lockerHeroSource,
-        lockerHeroVpkChecked: source.lockerHeroVpkChecked,
-        // A group with no positive axis is authoritatively unassigned. Use the
-        // same null sentinel as local import so the replacement is not lazily
-        // reclassified into a different card on the next scan.
-        globalType: source.globalType ?? null,
-        globalTypeClassifierVersion: source.globalTypeClassifierVersion,
-    };
-
     return {
         groupId,
         modName: source.name,
-        classification,
         replacementMetaKeys: replacements.map((member) => member.metaKey),
     };
 }

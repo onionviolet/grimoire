@@ -28,6 +28,7 @@ import { getCitadelPath } from './deadlock';
 import { soundCodenameForHero } from './heroSoundCodenames';
 import { parseVpkEntryIndex } from './vpk';
 import { recordBuildSnapshot } from './foundryBuildSnapshots';
+import { normalizeTextureHeroes } from './foundryTextureHeroes';
 import type {
     CatalogDiagnostics,
     FoundryBuildDiffReport,
@@ -388,10 +389,14 @@ export async function getTextures(
 ): Promise<TextureEntry[]> {
     const args = ['texture', '--vpk', pak01Path(deadlockPath)];
     if (filters.category) args.push('--category', filters.category);
-    if (filters.hero) args.push('--hero', filters.hero);
     if (filters.search) args.push('--search', filters.search);
-    if (typeof filters.limit === 'number') args.push('--limit', String(filters.limit));
-    return runCatalogJson<TextureEntry[]>(args);
+    // Hero filtering and the limit follow alias resolution, so bull_* portraits
+    // and abrams_* backgrounds both appear when the roster hero is atlas.
+    const [entries, heroes] = await Promise.all([
+        runCatalogJson<TextureEntry[]>(args),
+        filters.category === 'item-icon' ? [] : getHeroRoster(deadlockPath).catch(() => []),
+    ]);
+    return normalizeTextureHeroes(entries, heroes, filters);
 }
 
 interface BuildFingerprint {

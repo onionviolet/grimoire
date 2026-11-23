@@ -135,7 +135,7 @@ const EDGE_GRIPS: Array<{ edge: Edge; className: string }> = [
 ];
 
 export default function FloatingModelPanel({
-  surface,
+  surface = 'locker',
   title,
   onClose,
   children,
@@ -143,7 +143,7 @@ export default function FloatingModelPanel({
   /** Which surface's remembered panel this is. Locker and Foundry are separate
    *  habits: where you park the stage while picking skins is not where you want
    *  it while editing one. Matches the key split in useModelPanelOpen. */
-  surface: ModelPanelSurface;
+  surface?: ModelPanelSurface;
   title: string;
   onClose: () => void;
   children: ReactNode;

@@ -1,12 +1,13 @@
 import { lazy, useEffect } from 'react';
 import { listenForModBackupChanges } from './stores/modBackupsStore';
 import { useTranslation } from 'react-i18next';
-import { HashRouter, Routes, Route } from 'react-router-dom';
+import { HashRouter, Navigate, Routes, Route } from 'react-router-dom';
 import { UploadCloud } from 'lucide-react';
 import Layout from './components/Layout';
 import Installed from './pages/Installed';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { ConfirmProvider } from './components/common/confirm';
+import { LoaderToyHost } from './components/common/LoaderToy';
 import { useSocialStore } from './stores/socialStore';
 import { useAppStore } from './stores/appStore';
 import { getAssetPath } from './lib/assetPath';
@@ -24,7 +25,7 @@ const Discover = lazy(() => import('./pages/Discover'));
 const Servers = lazy(() => import('./pages/Servers'));
 const Locker = lazy(() => import('./pages/Locker'));
 const Foundry = lazy(() => import('./pages/Foundry'));
-const Conflicts = lazy(() => import('./pages/Conflicts'));
+const Overlap = lazy(() => import('./pages/Overlap'));
 const Profiles = lazy(() => import('./pages/Profiles'));
 const Settings = lazy(() => import('./pages/Settings'));
 const Crosshair = lazy(() => import('./pages/Crosshair'));
@@ -102,7 +103,9 @@ export default function App() {
                 bookmarks while keeping Looks and Sounds one destination. */}
             <Route path="locker/*" element={<Locker />} />
             <Route path="foundry" element={<Foundry />} />
-            <Route path="conflicts" element={<Conflicts />} />
+            <Route path="overlap" element={<Overlap />} />
+            {/* Old bookmarks and deep links used the pre-rename path. */}
+            <Route path="conflicts" element={<Navigate to="/overlap" replace />} />
             <Route path="profiles" element={<Profiles />} />
             <Route path="crosshair" element={<Crosshair />} />
             <Route path="autoexec" element={<Autoexec />} />
@@ -116,6 +119,7 @@ export default function App() {
         </ConfirmProvider>
       </ErrorBoundary>
     </HashRouter>
+    <LoaderToyHost />
       {/* Shows for any external file drag: the extension is only knowable at
           drop time, so the copy offers the import rather than promising it. */}
       {fileDragOver && (

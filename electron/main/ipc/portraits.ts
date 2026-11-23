@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron';
 import { getActiveDeadlockPath } from '../services/settings';
 import { getHeroPortraits } from '../services/heroPortraits';
+import { getHeroShaderNoise } from '../services/heroShaderNoise';
 import { applyHeroCard, revertHeroCard, getActiveHeroCard } from '../services/heroCards';
 import {
     getCustomCardSlots,
@@ -11,6 +12,8 @@ import {
 } from '../services/customHeroCards';
 import type { CustomCardSlot } from '../../../src/types/portrait';
 import {
+    getSoulPreviewThumbnail,
+    saveSoulPreviewThumbnail,
     getSoulModelInfo,
     exportSoulModel,
     type SoulModelInfo,
@@ -22,14 +25,23 @@ import {
     exportRiggedHeroPose,
     getHeroEffectInfo,
     exportHeroEffect,
+    exportHeroParticles,
+    type HeroParticleBundleInfo,
     type HeroPoseInfo,
     type HeroPoseSkinSource,
     type HeroEffectInfo,
 } from '../services/heroPoseModels';
+import { exportAnimationModPreview, type AnimationModPreview } from '../services/animationModPreview';
 import type { HeroPortrait } from '../../../src/types/portrait';
 import type { ApplyHeroCardResult } from '../../../src/types/mod';
 
 /** Active Deadlock install path (dev override wins, same as ipc/mods.ts). */
+ipcMain.handle('get-hero-shader-noise', async (): Promise<string> => {
+    const deadlockPath = getActiveDeadlockPath();
+    if (!deadlockPath) throw new Error('No Deadlock path configured');
+    return getHeroShaderNoise(deadlockPath);
+});
+
 ipcMain.handle(
     'get-hero-portraits',
     async (_, heroName: string): Promise<HeroPortrait[]> => {
@@ -107,6 +119,9 @@ ipcMain.handle(
     }
 );
 
+ipcMain.handle('get-soul-preview-thumbnail', (_, key: string) => getSoulPreviewThumbnail(key));
+ipcMain.handle('save-soul-preview-thumbnail', (_, key: string, capture: import('../../../src/types/portrait').SoulPreviewThumbnailCapture) => saveSoulPreviewThumbnail(key, capture));
+
 ipcMain.handle(
     'get-soul-model-info',
     async (_, key: string): Promise<SoulModelInfo> => {
@@ -116,10 +131,19 @@ ipcMain.handle(
 
 ipcMain.handle(
     'export-soul-model',
-    async (_, metaKey: string, cacheKey: string, entry?: string): Promise<SoulModelInfo> => {
+    async (_, metaKey: string, cacheKey: string, entry?: string, options?: { animated?: boolean }): Promise<SoulModelInfo> => {
         const deadlockPath = getActiveDeadlockPath();
         if (!deadlockPath) throw new Error('No Deadlock path configured');
-        return exportSoulModel(deadlockPath, metaKey, cacheKey, entry);
+        return exportSoulModel(deadlockPath, metaKey, cacheKey, entry, { animated: options?.animated === true });
+    }
+);
+
+ipcMain.handle(
+    'export-animation-mod-preview',
+    async (_, metaKey: string): Promise<AnimationModPreview | null> => {
+        const deadlockPath = getActiveDeadlockPath();
+        if (!deadlockPath) throw new Error('No Deadlock path configured');
+        return exportAnimationModPreview(deadlockPath, metaKey);
     }
 );
 
@@ -150,10 +174,10 @@ ipcMain.handle(
 
 ipcMain.handle(
     'get-rigged-hero-pose',
-    async (_, heroName: string, skinSources?: HeroPoseSkinSource[]): Promise<HeroPoseInfo> => {
+    async (_, heroName: string, skinSources?: HeroPoseSkinSource[], meshGroup?: string): Promise<HeroPoseInfo> => {
         const deadlockPath = getActiveDeadlockPath();
         if (!deadlockPath) return { hasModel: false, mtimeMs: null, key: '' };
-        return getRiggedHeroPose(deadlockPath, heroName, skinSources);
+        return getRiggedHeroPose(deadlockPath, heroName, skinSources, typeof meshGroup === 'string' ? meshGroup : undefined);
     }
 );
 
@@ -163,11 +187,12 @@ ipcMain.handle(
         _,
         heroName: string,
         skinSources?: HeroPoseSkinSource[],
-        fallbackSkinMetaKey?: string
+        fallbackSkinMetaKey?: string,
+        meshGroup?: string
     ): Promise<HeroPoseInfo> => {
         const deadlockPath = getActiveDeadlockPath();
         if (!deadlockPath) throw new Error('No Deadlock path configured');
-        return exportRiggedHeroPose(deadlockPath, heroName, skinSources, fallbackSkinMetaKey);
+        return exportRiggedHeroPose(deadlockPath, heroName, skinSources, fallbackSkinMetaKey, typeof meshGroup === 'string' ? meshGroup : undefined);
     }
 );
 
@@ -177,6 +202,15 @@ ipcMain.handle(
         const deadlockPath = getActiveDeadlockPath();
         if (!deadlockPath) throw new Error('No Deadlock path configured');
         return getHeroEffectInfo(deadlockPath, heroName, skinSources);
+    }
+);
+
+ipcMain.handle(
+    'export-hero-particles',
+    async (_, heroName: string, skinSources?: HeroPoseSkinSource[], clips?: string[]): Promise<HeroParticleBundleInfo> => {
+        const deadlockPath = getActiveDeadlockPath();
+        if (!deadlockPath) throw new Error('No Deadlock path configured');
+        return exportHeroParticles(deadlockPath, heroName, skinSources, Array.isArray(clips) ? clips.filter((clip) => typeof clip === 'string').slice(0, 64) : []);
     }
 );
 

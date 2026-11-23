@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { Images, Loader2, AlertCircle, Check, Upload, X, Download, Shuffle } from 'lucide-react';
@@ -43,8 +43,6 @@ interface HeroCardPickerProps {
   heroName: string;
 }
 
-
-
 /** A cheap order-independent fingerprint of the current picks, used to tell
  *  whether the slots differ from what was last applied (drives the Apply vs
  *  Applied vs Update button state). Length + tail avoids hashing whole data
@@ -59,6 +57,36 @@ function picksSignature(picks: Record<string, string>): string {
 interface PortraitFileGroup {
   modFileName: string;
   variants: HeroPortrait[];
+}
+
+/** Keep the filename secondary, and give long names the whole available row. */
+function PortraitSourceLabel({ name, fileName }: { name: string; fileName: string }) {
+  const containerRef = useRef<HTMLSpanElement>(null);
+  const nameRef = useRef<HTMLSpanElement>(null);
+  const fileRef = useRef<HTMLSpanElement>(null);
+  useLayoutEffect(() => {
+    const container = containerRef.current, label = nameRef.current, file = fileRef.current;
+    const bar = container?.parentElement;
+    if (!container || !label || !file || !bar) return;
+    let cancelled = false;
+    const update = () => {
+      if (cancelled) return;
+      const style = getComputedStyle(bar);
+      const width = bar.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+      const hide = name === fileName || label.scrollWidth >= width / 2;
+      file.hidden = hide;
+      label.style.flexShrink = hide ? '1' : '0';
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(bar); observer.observe(label);
+    void document.fonts?.ready.then(update);
+    return () => { cancelled = true; observer.disconnect(); };
+  }, [name, fileName]);
+  return <span ref={containerRef} className="flex min-w-0 flex-1 items-baseline gap-2 overflow-hidden" data-portrait-source-label>
+    <span ref={nameRef} className="min-w-0 truncate text-sm font-semibold text-text-primary" title={name}>{name}</span>
+    <span ref={fileRef} hidden className="min-w-0 flex-1 truncate text-xs text-text-secondary" title={fileName}>{fileName}</span>
+  </span>;
 }
 
 /**
@@ -93,6 +121,7 @@ export default function HeroCardPicker({ heroName }: HeroCardPickerProps) {
   const toggleMod = useAppStore((s) => s.toggleMod);
   const cardShuffleIncluded = useAppStore((s) => s.cardShuffleIncluded);
   const toggleCardShuffleIncluded = useAppStore((s) => s.toggleCardShuffleIncluded);
+  const modsByKey = useMemo(() => new Map(mods.map(mod => [mod.metaKey, mod])), [mods]);
   // This component is remounted per hero (the parent LockerHeroView is keyed
   // by hero.id), so initial state stands in for the per-hero reset.
   const [portraits, setPortraits] = useState<HeroPortrait[]>([]);
@@ -239,7 +268,7 @@ export default function HeroCardPicker({ heroName }: HeroCardPickerProps) {
         title: t('locker.cards.chooseImageForCard', {
           variant: variantLabel(slot.variant),
         }),
-        filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp'] }],
+        filters: [{ name: t('common.fileTypes.images'), extensions: ['png', 'jpg', 'jpeg', 'webp'] }],
       });
       if (!path) return;
       const sourceDataUrl = await readImageDataUrl(path);
@@ -312,7 +341,7 @@ export default function HeroCardPicker({ heroName }: HeroCardPickerProps) {
       const destPath = await showSaveDialog({
         title: t('locker.cards.exportDialogTitle', { hero: heroName }),
         defaultPath: `${safeName}_custom_card_dir.vpk`,
-        filters: [{ name: 'VPK addon', extensions: ['vpk'] }],
+        filters: [{ name: t('common.fileTypes.vpkAddon'), extensions: ['vpk'] }],
       });
       if (!destPath) return;
       setExporting(true);
@@ -359,7 +388,7 @@ export default function HeroCardPicker({ heroName }: HeroCardPickerProps) {
       <div className="flex items-center gap-2">
         <Images className="w-4 h-4 text-accent" />
         <h3 className="text-sm font-semibold text-text-primary">{t('locker.cards.heroCard')}</h3>
-        <span className="rounded-full border border-accent/40 bg-accent/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent">
+        <span className="rounded-full border border-accent/40 bg-accent/10 px-2 py-0.5 text-2xs font-semibold text-accent">
           {t('locker.cards.experimental')}
         </span>
       </div>
@@ -430,6 +459,9 @@ export default function HeroCardPicker({ heroName }: HeroCardPickerProps) {
               with one scope. */}
           <p className="text-2xs text-text-secondary">{t('locker.cards.shuffleScopeThisHero')}</p>
           {fileGroups.map((group) => {
+            const sourceMod = modsByKey.get(group.modFileName);
+            const fileName = sourceMod?.fileName ?? group.modFileName.split(/[\\/]/).pop() ?? group.modFileName;
+            const modName = sourceMod?.name ?? fileName;
             const isApplied = activeSource === group.modFileName;
             const isBusy = busySource === group.modFileName;
             const shuffleKey = shuffleCardKey(heroName, group.modFileName);
@@ -445,41 +477,35 @@ export default function HeroCardPicker({ heroName }: HeroCardPickerProps) {
                 // state too since these sit directly over the hero portrait.
                 className={`group relative overflow-hidden rounded-[10px] border text-left backdrop-blur-sm transition-[border-color,background-color,box-shadow] duration-200 ${
                   isApplied
-                    ? 'border-accent bg-accent/[0.08] shadow-[0_0_0_1px_var(--color-accent),0_0_18px_-6px_var(--color-accent)] hover:bg-accent/[0.12]'
-                    : 'border-hl/[0.08] bg-bg-sunken/55 hover:border-hl/[0.16]'
+                    ? 'border-accent shadow-[0_0_0_1px_var(--color-accent),0_0_18px_-6px_var(--color-accent)]'
+                    : 'border-hl/[0.08] hover:border-hl/[0.16]'
                 } ${busySource !== null && !isBusy ? 'opacity-60' : 'cursor-pointer'}`}
               >
-                <div className="relative z-10 flex items-center justify-between gap-2 border-b border-border/50 px-3 py-2">
+                <div className="relative z-10 flex min-w-0 items-center justify-between gap-2 border-b border-border/50 bg-bg-secondary/95 px-3 py-2" data-portrait-source-header>
                   {/* The mod's own name, the same string the sources panel one
                       scroll below uses. These read as two different mods
                       otherwise: the 2026-07-30 matrix caught `pak12` heading a
                       card whose sources row called it
                       `Crying Girlfriend Mina`. */}
-                  <span
-                    className="truncate text-xs font-semibold text-text-primary"
-                    title={group.modFileName}
-                  >
-                    {modByMetaKey.get(group.modFileName)?.name?.trim() ||
-                      group.modFileName.replace(/_dir\.vpk$/, '')}
-                  </span>
+                  <PortraitSourceLabel name={modName.trim() || fileName.replace(/_dir\.vpk$/, '')} fileName={fileName} />
                   <div className="flex flex-shrink-0 items-center gap-2">
                     {source && (<span className="rounded-full border border-border/70 px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-text-secondary">{t(`locker.cards.provenance.${source.provenance}`)} {source.enabled ? t('locker.cards.enabled') : t('locker.cards.disabled')}</span>)}
                     <button
                       type="button"
                       disabled={busySource !== null}
                       onClick={() => toggleCardShuffleIncluded(shuffleKey)}
-                      title={inShuffle ? t('locker.randomize.removeFromShuffle', { name: group.modFileName }) : t('locker.randomize.addToShuffle', { name: group.modFileName })}
-                      aria-label={inShuffle ? t('locker.randomize.removeFromShuffle', { name: group.modFileName }) : t('locker.randomize.addToShuffle', { name: group.modFileName })}
+                      title={inShuffle ? t('locker.randomize.removeFromShuffle', { name: modName }) : t('locker.randomize.addToShuffle', { name: modName })}
+                      aria-label={inShuffle ? t('locker.randomize.removeFromShuffle', { name: modName }) : t('locker.randomize.addToShuffle', { name: modName })}
                       className={`rounded p-1 transition-colors ${inShuffle ? 'bg-accent text-accent-foreground' : 'text-text-secondary hover:bg-hl/10 hover:text-text-primary'}`}
                     >
                       <Shuffle className="h-3.5 w-3.5" />
                     </button>
                     {isApplied ? (
-                      <span className="flex items-center gap-1 rounded-full bg-accent px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-accent-foreground">
+                      <span className="flex flex-shrink-0 items-center gap-1 rounded-full bg-accent px-2 py-0.5 text-2xs font-semibold text-accent-foreground">
                         <Check className="h-2.5 w-2.5" /> {t('locker.cards.applied')}
                       </span>
                     ) : (
-                      <span className="text-[10px] uppercase tracking-wide text-text-secondary">
+                      <span className="flex-shrink-0 text-2xs text-text-secondary">
                         {t('locker.cards.portraitCount', { count: group.variants.length })}
                       </span>
                     )}
@@ -531,10 +557,10 @@ export default function HeroCardPicker({ heroName }: HeroCardPickerProps) {
 
       {!loading && !error && slots.length > 0 && (
         <div
-          className={`space-y-3 rounded-[10px] border p-3 backdrop-blur-sm transition-[border-color,box-shadow] duration-200 ${
+          className={`space-y-3 rounded-[10px] border bg-bg-secondary/90 p-3 backdrop-blur-sm transition-[border-color,box-shadow] duration-200 ${
             customApplied
-              ? 'border-accent bg-accent/[0.08] shadow-[0_0_0_1px_var(--color-accent),0_0_18px_-6px_var(--color-accent)]'
-              : 'border-hl/[0.08] bg-bg-sunken/55'
+              ? 'border-accent shadow-[0_0_0_1px_var(--color-accent),0_0_18px_-6px_var(--color-accent)]'
+              : 'border-hl/[0.08]'
           }`}
         >
           <div className="flex items-center justify-between gap-2">
@@ -543,11 +569,11 @@ export default function HeroCardPicker({ heroName }: HeroCardPickerProps) {
               <span className="text-xs font-semibold text-text-primary">{t('locker.cards.uploadYourOwn')}</span>
             </div>
             {customApplied ? (
-              <span className="flex flex-shrink-0 items-center gap-1 rounded-full bg-accent px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-accent-foreground">
+              <span className="flex flex-shrink-0 items-center gap-1 rounded-full bg-accent px-2 py-0.5 text-2xs font-semibold text-accent-foreground">
                 <Check className="h-2.5 w-2.5" /> {t('locker.cards.applied')}
               </span>
             ) : (
-              <span className="flex-shrink-0 text-[10px] uppercase tracking-wide text-text-secondary">
+              <span className="flex-shrink-0 text-2xs text-text-secondary">
                 {t('locker.cards.slotCount', { count: slots.length })}
               </span>
             )}
@@ -612,7 +638,7 @@ export default function HeroCardPicker({ heroName }: HeroCardPickerProps) {
                     <span className="block truncate text-[9px] uppercase tracking-wide text-text-secondary">
                       {variantLabel(slot.variant)}
                     </span>
-                    <span className="block text-[9px] tabular-nums text-text-secondary/70">
+                    <span className="block truncate text-2xs tabular-nums text-text-secondary">
                       {slot.width} x {slot.height}
                     </span>
                   </figcaption>

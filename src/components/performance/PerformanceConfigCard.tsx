@@ -7,6 +7,7 @@ import { useSegmentedTabs } from '../common/useSegmentedTabs';
 import EditorPickerModal from './EditorPickerModal';
 import VersionPicker from './VersionPicker';
 import GameplayOptIns from './GameplayOptIns';
+import ConvarOverrides from './ConvarOverrides';
 import { useAppStore, type BrowseArtistRef } from '../../stores/appStore';
 import { showToast } from '../../stores/toastStore';
 import { useGameinfoStore } from '../../stores/gameinfoStore';
@@ -20,6 +21,8 @@ import {
   removePerformanceConfig,
   resetPerformanceConfigOverrides,
   restorePerformanceConfigBackup,
+  setPerformanceConvarOverride,
+  setPerformanceConvarOverrideEnabled,
 } from '../../lib/api';
 import {
   savedOptIns,
@@ -196,6 +199,22 @@ export default function PerformanceConfigCard() {
     }
   };
 
+  // Override writes keep the card's applied status on validation errors, so
+  // the pin editor stays mounted and shows the service's message inline.
+  const runOverride = async (action: () => Promise<PerformanceConfigStatus>) => {
+    setBusy(true);
+    try {
+      const result = await action();
+      if (result.state !== 'error') await refresh();
+      return result;
+    } catch {
+      return null;
+    } finally {
+      setBusy(false);
+      void useGameinfoStore.getState().recheck();
+    }
+  };
+
   // Write a preset, folding in upstream tracking: re-check right before
   // writing so a stale cache never decides what lands in the file. Offline
   // this falls back to the bundled release. The video.txt variant defaults to
@@ -308,6 +327,17 @@ export default function PerformanceConfigCard() {
       await write(selected, selectedVersion, selectedOptIns, { track: true });
     }
   };
+
+  // Global convar pins. The service resolves the applied preset/version
+  // itself, so pinning a value never also updates the preset as a side effect.
+  const onSetConvar = (key: string, value: string) =>
+    runOverride(() => setPerformanceConvarOverride(key, value));
+
+  const onToggleConvar = (key: string, enabled: boolean) =>
+    runOverride(() => setPerformanceConvarOverrideEnabled(key, enabled));
+
+  const onRemoveConvar = (key: string) =>
+    runOverride(() => setPerformanceConvarOverride(key, null));
 
   const openFile = async () => {
     setOpenError(null);
@@ -539,6 +569,17 @@ export default function PerformanceConfigCard() {
             className={busy ? 'opacity-60' : ''}
           />
         </div>
+      )}
+
+      {applied && (
+        <ConvarOverrides
+          overrides={status?.pinnedConvars ?? {}}
+          fileValues={status?.managedConvarValues}
+          disabled={busy}
+          onSet={onSetConvar}
+          onToggle={onToggleConvar}
+          onRemove={onRemoveConvar}
+        />
       )}
 
       <div className="border-t border-hl/5">

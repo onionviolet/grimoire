@@ -1,3 +1,4 @@
+import { FilterItem } from '../../common/FilteredContent';
 import { useCallback, useEffect, useId, useState } from 'react';
 import { useTranslation, Trans } from 'react-i18next';
 import { ArrowDownCircle, Download, RefreshCw, Sparkles } from 'lucide-react';
@@ -94,9 +95,9 @@ export default function UpdatesSection() {
 
   return (
     <>
-      <Card title={<Tx k="settings.sections.updates" fallback="Updates" />} icon={Download}>
+      <Card id="settings-updates-settings-sections-updates-card" title={<Tx k="settings.sections.updates" fallback="Updates" />} icon={Download}>
         <div className="space-y-4">
-          {installSource !== 'managed' && <>
+          {installSource !== 'managed' && <FilterItem id="settings-update-channel" className="space-y-2">
             <label htmlFor="update-release-channel" className="block text-sm text-text-secondary">{t('settings.updates.channel')}</label>
             <Select id="update-release-channel" value={settings?.updateReleaseChannel ?? 'stable'} className="max-w-80"
               disabled={!settings || !!updateStatus?.checking || !!updateStatus?.downloading || !!updateStatus?.downloaded}
@@ -105,10 +106,10 @@ export default function UpdatesSection() {
               <option value="preview">{t('settings.updates.preview')}</option>
             </Select>
             <p className="text-xs text-text-secondary">{t('settings.updates.channelHelp')}</p>
-            <Toggle checked={settings?.checkUpdatesOnStartup ?? false} disabled={!settings} onChange={checked => { if (settings) void saveSettings({ ...settings, checkUpdatesOnStartup: checked }); }}
+            <Toggle id="settings-updates-startupCheck-toggle" checked={settings?.checkUpdatesOnStartup ?? false} disabled={!settings} onChange={checked => { if (settings) void saveSettings({ ...settings, checkUpdatesOnStartup: checked }); }}
               label={t('settings.updates.startupCheck')} description={t('settings.updates.startupCheckHelp')} />
-          </>}
-          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+          </FilterItem>}
+          <FilterItem id="settings-update-version" className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium">
@@ -178,7 +179,7 @@ export default function UpdatesSection() {
                 </Button>
               )}
             </div>
-          </div>
+          </FilterItem>
 
           {installSource === 'fork' && (
             <div className="rounded-lg bg-bg-tertiary border border-hl/10 p-3 text-sm text-text-secondary space-y-2">
@@ -216,6 +217,15 @@ export default function UpdatesSection() {
                     deb: <code className="font-mono text-text-primary" />,
                     rpm: <code className="font-mono text-text-primary" />,
                     url: <code className="font-mono text-text-primary" />,
+                  }}
+                />
+              </p>
+              <p>
+                <Trans
+                  i18nKey="settings.updates.managedNix"
+                  components={{
+                    ref: <code className="font-mono text-text-primary" />,
+                    cmd: <code className="font-mono text-text-primary" />,
                   }}
                 />
               </p>

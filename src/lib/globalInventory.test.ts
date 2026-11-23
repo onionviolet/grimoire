@@ -6,19 +6,11 @@ import {
   globalInventoryRailRows,
   type GlobalRailRowInput,
 } from './globalInventory';
-import type { GlobalModGroups } from './lockerUtils';
+import { groupGlobalMods, type GlobalModGroups } from './lockerUtils';
 import type { SoundInventoryEntry } from './soundInventory';
 
-const groups = (): GlobalModGroups => ({
-  'soul-container': [],
-  'spirit-urn': [],
-  hideout: [],
-  icons: [],
-  effects: [],
-  hud: [],
-  announcer: [],
-  'killstreak-music': [],
-});
+// Every GlobalModType bucket, empty: groupGlobalMods([]) is the canonical shape.
+const groups = (): GlobalModGroups => groupGlobalMods([]);
 
 const sound = (
   modId: string,

@@ -2,6 +2,8 @@ import { formatDateParts } from '../lib/dateFormat';
 
 export interface GameBananaMod {
   id: number;
+  /** Item identity is section + id in a combined Browse feed. */
+  section?: string;
   name: string;
   profileUrl: string;
   dateAdded: number;
@@ -14,8 +16,7 @@ export interface GameBananaMod {
   submitter?: GameBananaSubmitter;
   previewMedia?: GameBananaPreviewMedia;
   rootCategory?: GameBananaCategory;
-  /** Deepest category the mod is filed under (a hero, under Skins). Absent when
-   *  it sits directly in a root category. */
+  /** Deepest assigned category, which can be several levels below the root. */
   subCategory?: GameBananaCategory;
 }
 
@@ -68,6 +69,7 @@ export interface GameBananaImage {
   file: string;
   file220?: string;
   file530?: string;
+  caption?: string;
 }
 
 export interface GameBananaCategory {
@@ -98,6 +100,7 @@ export interface GameBananaFile {
 }
 
 export interface GameBananaModDetails {
+  requirements?: ModRequirementSnapshot;
   id: number;
   name: string;
   description?: string;
@@ -105,9 +108,29 @@ export interface GameBananaModDetails {
   gameId?: number;
   gameName?: string;
   category?: GameBananaCategory;
+  /** Root fallback retained when offline catalog details only know the leaf ID. */
+  rootCategory?: GameBananaCategory;
   files?: GameBananaFile[];
   previewMedia?: GameBananaPreviewMedia;
   submitter?: GameBananaSubmitter;
+}
+
+export interface ModRequirement {
+  name: string;
+  /** Exact installed source required by a locally generated skin overlay. */
+  sha256?: string;
+  url?: string;
+  importance: 'required' | 'recommended' | 'optional' | 'unknown';
+  state: 'on' | 'off' | 'unknown';
+}
+
+export type ModRequirementSnapshot =
+  | { status: 'loaded'; checkedAt: number; items: ModRequirement[] }
+  | { status: 'unavailable'; checkedAt: number };
+
+export interface ModRequirementSource extends GameBananaItemRef {
+  name: string;
+  requirements: ModRequirementSnapshot;
 }
 
 /** One row of a mod's file list as the Installed update check reads it. */
@@ -191,6 +214,7 @@ export interface GameBananaCollectionItem {
   submitter?: GameBananaSubmitter;
   previewMedia?: GameBananaPreviewMedia;
   rootCategory?: GameBananaCategory;
+  subCategory?: GameBananaCategory;
 }
 
 export interface GameBananaCollectionItemsResponse {

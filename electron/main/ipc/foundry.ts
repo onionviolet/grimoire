@@ -52,6 +52,10 @@ import {
     listSoundAnnotations,
     saveSoundAnnotation,
 } from '../services/soundAnnotations';
+import { getSkinEditInfo, exportSkinEdits, skinEditSourceSchema } from '../services/skinEditor';
+import { hideoutBuildProgress, hideoutSceneReady, loadHideoutScene, saveHideoutSnapshot } from '../services/hideoutScene';
+import { resumeSkinEdit, saveSkinEdits } from '../services/saveSkinEdits';
+import { previewMovementFx, previewMovementEngine, exportMovementFx, saveMovementFx } from '../services/movementFx';
 import type {
     CatalogDiagnostics,
     EngineInfo,
@@ -142,6 +146,28 @@ ipcMain.handle('foundry:exportModel', async (_event, entryPath: string): Promise
     const model = await prepareFoundryModel(requireDeadlockPath(), entryPath);
     return saveFoundryAsset(model.path, basename(entryPath).replace(/\.vmdl_c$/, ''), '.glb', 'Binary glTF');
 });
+ipcMain.handle('foundry:skinEditInfo', (_event, input: unknown) =>
+    getSkinEditInfo(requireDeadlockPath(), skinEditSourceSchema.parse(input)));
+ipcMain.handle('foundry:resumeSkinEdit', (_event, input: unknown) =>
+    resumeSkinEdit(requireDeadlockPath(), skinEditSourceSchema.parse(input)));
+ipcMain.handle('foundry:exportSkinEdits', (_event, input: unknown) => exportSkinEdits(requireDeadlockPath(), input));
+ipcMain.handle('foundry:saveSkinEdits', (event, input: unknown) => saveSkinEdits(requireDeadlockPath(), input, (progress) => {
+    if (!event.sender.isDestroyed()) event.sender.send('foundry:skinEditProgress', progress);
+}));
+ipcMain.handle('viewer:hideout', () => loadHideoutScene(requireDeadlockPath()));
+ipcMain.handle('viewer:hideoutProgress', () => hideoutBuildProgress());
+ipcMain.handle('viewer:hideoutReady', () => {
+    const deadlockPath = getActiveDeadlockPath();
+    return deadlockPath ? hideoutSceneReady(deadlockPath) : false;
+});
+ipcMain.handle('viewer:hideoutSnapshot', (_event, key: unknown, name: unknown, bytes: unknown) => {
+    if (typeof key !== 'string' || typeof name !== 'string' || !(bytes instanceof Uint8Array)) throw new Error('Invalid hideout snapshot.');
+    return saveHideoutSnapshot(key, name, bytes);
+});
+ipcMain.handle('foundry:previewMovementFx', (_event, input: unknown) => previewMovementFx(requireDeadlockPath(), input));
+ipcMain.handle('foundry:previewMovementEngine', (_event, input: unknown) => previewMovementEngine(requireDeadlockPath(), input));
+ipcMain.handle('foundry:exportMovementFx', (_event, input: unknown) => exportMovementFx(requireDeadlockPath(), input));
+ipcMain.handle('foundry:saveMovementFx', (_event, input: unknown) => saveMovementFx(requireDeadlockPath(), input));
 
 ipcMain.handle('foundry:exportAsset', async (_e, request: unknown): Promise<VpkExportResult> => {
     return exportFoundryAsset(requireDeadlockPath(), request);

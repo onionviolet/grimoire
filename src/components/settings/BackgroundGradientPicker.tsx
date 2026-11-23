@@ -6,14 +6,17 @@ import { HexColorPicker, HexColorInput } from 'react-colorful';
 import { useAppStore } from '../../stores/appStore';
 import {
   BACKGROUND_GRADIENT_PRESETS,
+  BACKGROUND_SWATCH_RULES,
   applyBackgroundGradient,
   backgroundGradientPreviewCss,
   sameGradient,
   type BackgroundGradient,
 } from '../../lib/backgroundGradient';
-import { Button, SegmentedControl } from '../common/ui';
 import { useBackdropDismiss } from '../common/useBackdropDismiss';
 import { useSegmentedTabs } from '../common/useSegmentedTabs';
+import { applyCustomSwatch, customSwatches, removeCustomSwatch, sameSwatches } from '../../lib/customSwatches';
+import RemovableSwatch from './RemovableSwatch';
+import { Button, SegmentedControl } from '../common/ui';
 import Tx from '../translation/Tx';
 
 const CUSTOM_FALLBACK: BackgroundGradient = { from: '#8b5cf6', to: '#06b6d4' };
@@ -64,7 +67,9 @@ function GradientTile({
 }
 
 /**
- * Background glow picker: presets plus a two-corner custom pick.
+ * Background glow picker: presets, the user's own glows, and a pipette that
+ * opens the two-corner picker. A glow made there becomes a swatch of its own,
+ * as in the accent row (the rules are in lib/customSwatches).
  *
  * Mirrors the accent-color row directly above it, including the live-preview
  * behaviour: dragging in the custom picker repaints the app immediately but
@@ -81,8 +86,7 @@ export default function BackgroundGradientPicker() {
   const [corner, setCorner] = useState<'from' | 'to'>('from');
   const cornerTabs = useSegmentedTabs<'from' | 'to'>();
 
-  const isPreset = !!saved && BACKGROUND_GRADIENT_PRESETS.some((p) => sameGradient(p, saved));
-  const isCustomActive = !!saved && !isPreset;
+  const custom = customSwatches(settings?.customBackgroundGradients, saved, BACKGROUND_SWATCH_RULES);
 
   const select = async (gradient: BackgroundGradient | null) => {
     applyBackgroundGradient(gradient);
@@ -111,10 +115,20 @@ export default function BackgroundGradientPicker() {
   const commit = useCallback(async () => {
     setPickerOpen(false);
     applyBackgroundGradient(draft);
-    if (settings && !sameGradient(draft, saved)) {
-      await saveSettings({ ...settings, backgroundGradient: draft });
-    }
-  }, [draft, saved, settings, saveSettings]);
+    if (!settings) return;
+    const next = applyCustomSwatch(custom, saved, draft, BACKGROUND_SWATCH_RULES);
+    if (sameGradient(draft, saved) && sameSwatches(next, settings.customBackgroundGradients ?? [], BACKGROUND_SWATCH_RULES)) return;
+    await saveSettings({ ...settings, backgroundGradient: draft, customBackgroundGradients: next });
+  }, [draft, saved, settings, saveSettings, custom]);
+
+  const removeCustom = async (gradient: BackgroundGradient) => {
+    if (!settings) return;
+    const next = removeCustomSwatch(custom, gradient, BACKGROUND_SWATCH_RULES);
+    // Removing the glow in use turns the glow off.
+    const backgroundGradient = sameGradient(gradient, saved) ? null : saved;
+    applyBackgroundGradient(backgroundGradient);
+    await saveSettings({ ...settings, backgroundGradient, customBackgroundGradients: next });
+  };
 
   useEffect(() => {
     if (!pickerOpen) return;
@@ -162,9 +176,24 @@ export default function BackgroundGradientPicker() {
             key={preset.id}
             gradient={preset}
             active={sameGradient(preset, saved)}
-            label={preset.name}
+            label={t(preset.nameKey)}
             onClick={() => void select({ from: preset.from, to: preset.to })}
           />
+        ))}
+
+        {custom.map((gradient, index) => (
+          <RemovableSwatch
+            key={`${gradient.from}:${gradient.to}`}
+            removeLabel={t('settings.appearance.background.removeYourGlow', { number: index + 1 })}
+            onRemove={() => void removeCustom(gradient)}
+          >
+            <GradientTile
+              gradient={gradient}
+              active={sameGradient(gradient, saved)}
+              label={t('settings.appearance.background.yourGlow', { number: index + 1 })}
+              onClick={() => void select(gradient)}
+            />
+          </RemovableSwatch>
         ))}
 
         <button
@@ -172,19 +201,11 @@ export default function BackgroundGradientPicker() {
           onClick={openPicker}
           title={t('settings.appearance.background.custom')}
           aria-label={t('settings.appearance.background.custom')}
-          aria-pressed={isCustomActive}
           aria-haspopup="dialog"
-          className={`${TILE_BASE} ${isCustomActive ? 'border-accent/70' : 'border-hl/10 hover:border-hl/30'}`}
-          style={
-            isCustomActive
-              ? { background: backgroundGradientPreviewCss(saved) }
-              : { background: 'conic-gradient(from 0deg, #ef4444, #f59e0b, #10b981, #06b6d4, #3b82f6, #8b5cf6, #ec4899, #ef4444)' }
-          }
+          className={`${TILE_BASE} border-hl/10 hover:border-hl/30`}
+          style={{ background: 'conic-gradient(from 0deg, #ef4444, #f59e0b, #10b981, #06b6d4, #3b82f6, #8b5cf6, #ec4899, #ef4444)' }}
         >
-          <Pipette
-            className={`h-3.5 w-3.5 ${isCustomActive ? 'text-text-primary' : 'text-black/70 drop-shadow-[0_1px_0_rgba(255,255,255,0.5)]'}`}
-            aria-hidden
-          />
+          <Pipette className="h-3.5 w-3.5 text-black/70 drop-shadow-[0_1px_0_rgba(255,255,255,0.5)]" aria-hidden />
         </button>
       </div>
 

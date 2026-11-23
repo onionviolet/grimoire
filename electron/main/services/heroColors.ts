@@ -30,7 +30,12 @@ import { app } from 'electron';
 import { getCitadelPath, getGrimoirePath } from './deadlock';
 import { invalidateVpkParseCache } from './vpk';
 import { runVpkmerge, vpkmergeBinaryPath, verifyVpkOutput } from './modMerger';
-import { LOCKER_COLORS_KEY, lockerColorsVpkPath, ensureGrimoireConfigured } from './lockerVpk';
+import {
+    LOCKER_COLORS_KEY,
+    lockerColorsVpkPath,
+    ensureGrimoireConfigured,
+    sameLockerSelections,
+} from './lockerVpk';
 import { getModMetadata, setModMetadata, removeModMetadata } from './metadata';
 import { TRIPPY_ANIMATION_STYLES, TRIPPY_STYLES } from '../../../src/types/mod';
 import type {
@@ -53,8 +58,10 @@ import { particleCodenameForHero } from '../../../src/lib/heroCodenames';
  *  v4: Graves picker-hand albedo + transmissive textures + necro_hands tint.
  *  v5: Graves hand flame aura (g_vSelfIllumTint on necro_flame_effect*).
  *  v6: Infernus body self-illum accents + flame materials + arm flame ramp.
- *  v7: bundled vpkmerge main build with full selectable-roster recipe coverage. */
-const RECIPE_CACHE_VERSION = 7;
+ *  v7: bundled vpkmerge main build with full selectable-roster recipe coverage.
+ *  v8: shared VFX recolored as hero-local copies (no bleed onto other heroes),
+ *  recipes for Baba, Solomon, Rat King, Violet, Deadman Danny and Nurse Harrow. */
+const RECIPE_CACHE_VERSION = 8;
 
 /**
  * The recolor codename for a hero, or null when no recipe is pinned for it.
@@ -357,7 +364,9 @@ async function rebuildLockerColors(
     const valid = [...byCodename.values()];
 
     if (valid.length === 0) {
-        await fs.unlink(destPath).catch(() => {});
+        // A pack the running game holds open must fail here, or its colors stay live in game with
+        // nothing left in the Locker to clear them.
+        await fs.unlink(destPath).catch((error: NodeJS.ErrnoException) => { if (error.code !== 'ENOENT') throw error; });
         removeModMetadata(LOCKER_COLORS_KEY);
         invalidateVpkParseCache(destPath);
         return { fileName: null };
@@ -708,6 +717,24 @@ export async function previewHeroColor(
     } finally {
         await fs.unlink(tmpPng).catch(() => {});
     }
+}
+
+/**
+ * Make the applied ability colors exactly `desired` (a profile's saved set).
+ * Skips the rebuild when the Locker already matches, so switching between
+ * profiles with the same colors costs nothing.
+ */
+export async function setLockerColors(
+    deadlockPath: string,
+    desired: LockerColorSelection[],
+): Promise<void> {
+    const wanted = desired.map(withScales);
+    if (sameLockerSelections(currentColorSelections(), wanted)) return;
+    if (wanted.length > 0) {
+        vpkmergeBinaryPath();
+        ensureGrimoireConfigured(deadlockPath);
+    }
+    await rebuildLockerColors(deadlockPath, wanted);
 }
 
 /** Clear every applied ability color (rebuild to empty, deleting the VPK). */

@@ -9,7 +9,10 @@ import type { CrashAdvisory } from '../../types/crashAdvisory';
 
 vi.mock('react-i18next', () => ({
   initReactI18next: { type: '3rdParty', init: () => {} },
-  useTranslation: () => ({ t: (key: string) => key, i18n: { language: 'en' } }),
+  useTranslation: () => ({
+    t: (key: string, options?: { count?: number }) => (options?.count === undefined ? key : `${key}:${options.count}`),
+    i18n: { language: 'en' },
+  }),
 }));
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -42,6 +45,55 @@ beforeEach(() => {
 afterEach(() => { act(() => root.unmount()); host.remove(); vi.unstubAllGlobals(); });
 
 describe('crash badges on installed cards', () => {
+  const mergedCard = (view: Props['viewMode']) => {
+    const input = props(0, false, view);
+    input.mod.merged = { id: 'merge', createdAt: '', shareCode: '', sources: [] };
+    return input;
+  };
+  const updateAction = () => [...host.querySelectorAll('button')]
+    .find(button => button.textContent === 'profiles.actions.update');
+  const openMenu = async () => {
+    await act(async () => host.querySelector('div')
+      ?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 10, clientY: 10 })));
+    return document.body.textContent ?? '';
+  };
+
+  it.each(['grid', 'compact'] as const)('keeps merged update badges passive like other tags in %s', async view => {
+    const input = mergedCard(view);
+    await act(async () => root.render(<ModCard {...input} staleSourceCount={3} updatableSourceCount={2} />));
+    const title = 'mergedContents.staleSourcesUpdatable:2\ninstalled.card.staleSourcesTitle:1';
+    const badge = [...host.querySelectorAll<HTMLSpanElement>('span')].find(span => span.title === title)!;
+    expect(badge.textContent).toBe('profiles.actions.update');
+    expect(badge.closest('button')).toBeNull();
+    await act(async () => badge.click());
+    expect(onOpenDetails).not.toHaveBeenCalled();
+    expect(onToggle).not.toHaveBeenCalled();
+    await act(async () => root.render(<ModCard {...input} staleSourceCount={0} updatableSourceCount={0} />));
+    expect(host.textContent).not.toContain('profiles.actions.update');
+  });
+
+  it.each(['grid', 'compact'] as const)('offers no update action for outdated sources that cannot resolve in %s', async view => {
+    const input = mergedCard(view);
+    await act(async () => root.render(<ModCard {...input} staleSourceCount={2} updatableSourceCount={0} />));
+    expect(updateAction()).toBeUndefined();
+    const badge = host.querySelector('[title="installed.card.staleSourcesTitle:2"]');
+    expect(badge).toBeDefined();
+    expect(badge?.textContent).toBe('profiles.actions.update');
+    expect(badge?.closest('button')).toBeNull();
+    expect(badge?.closest('[title]')?.getAttribute('title')).toBe('installed.card.staleSourcesTitle:2');
+  });
+
+  it('lists Update sources in the card menu only when a source can resolve', async () => {
+    const input = mergedCard('grid');
+    await act(async () => root.render(<ModCard {...input} staleSourceCount={2} updatableSourceCount={0} />));
+    const unresolvable = await openMenu();
+    expect(unresolvable).toContain('installed.card.viewDetails');
+    expect(unresolvable).not.toContain('mergedContents.updateSources');
+    await act(async () => { document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); });
+    await act(async () => root.render(<ModCard {...input} staleSourceCount={2} updatableSourceCount={1} />));
+    expect(await openMenu()).toContain('mergedContents.updateSources:1');
+  });
+
   it('skips ordinary hover renders and preserves Shift preview over a stationary pointer', async () => {
     const onRender = vi.fn();
     const input = { ...props(0, true, 'grid'), onSelectToggle };
@@ -75,15 +127,15 @@ describe('crash badges on installed cards', () => {
     expect(preview()).not.toBeNull();
   });
 
-  it.each(['grid', 'compact', 'list'] as const)('keeps the crash action independent across badge combinations in %s', async view => {
+  it.each(['grid', 'compact'] as const)('keeps the crash action independent across badge combinations in %s', async view => {
     for (const enabled of [true, false]) for (let mask = 0; mask < 64; mask++) {
       await act(async () => root.render(<ModCard {...props(mask, enabled, view)} />));
       const badge = host.querySelector<HTMLButtonElement>('[aria-label="crashAdvisory.viewForMod"]');
       expect(badge, `mask ${mask}, enabled ${enabled}`).not.toBeNull();
       expect(badge!.disabled).toBe(false);
       expect(badge!.closest('button')?.parentElement?.closest('button')).toBeNull();
-      if (mask & 2) expect(host.textContent).toContain('installed.card.outdatedData');
-      expect(host.textContent?.includes('installed.card.staleModel'), `mask ${mask}`).toBe(!!(mask & 32));
+      expect(!!host.querySelector('[data-issue-stack] .lucide-file-warning'), `mask ${mask}`).toBe(!!(mask & 2));
+      expect(!!host.querySelector('[data-issue-stack] .lucide-camera-off'), `mask ${mask}`).toBe(!!(mask & 32));
       if (mask & 4) expect(host.querySelector('[title="modSafety.viewFindings"]') ?? host.querySelector('[aria-label^="modSafety.needsReview"]')).not.toBeNull();
       await act(async () => badge!.click());
       expect(useCrashAdvisoryStore.getState().detailId).toBe(finding.id);
@@ -92,7 +144,7 @@ describe('crash badges on installed cards', () => {
     }
   });
 
-  it.each(['grid', 'compact', 'list'] as const)('finds a suspect variant on a grouped, merged sound card in %s', async view => {
+  it.each(['grid', 'compact'] as const)('finds a suspect variant on a grouped, merged sound card in %s', async view => {
     const input = props(31, true, view);
     input.mod = { ...input.mod, id: 'group', crashModIds: ['other', 'suspect'], priorityMod: true,
       isUnknown: true, sourceSection: 'Sound', audioUrl: 'data:audio/wav;base64,',
@@ -140,7 +192,7 @@ describe('blocked mod toggles', () => {
   it('restarts repeated feedback without cancelling other card animations', async () => {
     vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: false })));
     onToggle.mockResolvedValueOnce(false).mockResolvedValueOnce(false);
-    await act(async () => root.render(<ModCard {...props(0, true, 'list')} entryKey="test" />));
+    await act(async () => root.render(<ModCard {...props(0, true, 'grid')} entryKey="test" />));
     const card = host.querySelector<HTMLElement>('[data-mod-entry-key="test"]')!;
     const animate = vi.fn();
     const cancelShake = vi.fn();

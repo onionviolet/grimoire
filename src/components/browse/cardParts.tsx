@@ -25,6 +25,7 @@ export function BrowseReadableUpdatedLine({
    *  (used on narrow cards where the stats row has no room for it). */
   variant?: 'inline' | 'block';
 }) {
+  const { t } = useTranslation();
   const iso = gameBananaTimestampToIso(timestamp);
   const relative = iso ? formatRelativeDate(iso).replace(/(\d+)\s+(mo|yr)\s+ago/g, '$1$2 ago') : null;
   const absolute = iso ? formatAbsoluteDate(iso) : null;
@@ -32,7 +33,11 @@ export function BrowseReadableUpdatedLine({
 
   if (!relative) return null;
 
-  const title = absolute ? `${isOutdated ? 'Outdated. ' : ''}Last updated on GameBanana: ${absolute}` : undefined;
+  const title = absolute
+    ? isOutdated
+      ? t('browse.card.outdatedLastUpdatedOnGameBanana', { date: absolute })
+      : t('browse.card.lastUpdatedOnGameBanana', { date: absolute })
+    : undefined;
 
   if (variant === 'block') {
     return (
@@ -62,32 +67,47 @@ export function BrowseReadableUpdatedLine({
 export function BrowseArtParallaxCard({
   children,
   disabled = false,
+  suppressHoverIntentRef,
 }: {
   children: React.ReactNode;
   disabled?: boolean;
+  suppressHoverIntentRef?: React.RefObject<boolean>;
 }) {
   const cardRef = useRef<HTMLDivElement | null>(null);
+  const frameRef = useRef<number | null>(null);
+  const pointerRef = useRef<{ x: number; y: number } | null>(null);
   const prefersReducedMotion = usePrefersReducedMotion();
   const effectDisabled = disabled || prefersReducedMotion;
 
+  const cancelFrame = useCallback(() => {
+    if (frameRef.current !== null) {
+      window.cancelAnimationFrame(frameRef.current);
+      frameRef.current = null;
+    }
+    pointerRef.current = null;
+  }, []);
+
   const resetParallax = useCallback(() => {
+    cancelFrame();
     const element = cardRef.current;
     if (!element) return;
 
     element.style.setProperty('--browse-art-x', '0px');
     element.style.setProperty('--browse-art-y', '0px');
     element.style.setProperty('--browse-art-rotate', '0deg');
-  }, []);
+  }, [cancelFrame]);
 
-  const handlePointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    if (effectDisabled || event.pointerType !== 'mouse') return;
+  const updateParallax = useCallback(() => {
+    frameRef.current = null;
+    const pointer = pointerRef.current;
+    if (effectDisabled || suppressHoverIntentRef?.current || !pointer) return;
 
     const element = cardRef.current;
     if (!element) return;
 
     const rect = element.getBoundingClientRect();
-    const x = (event.clientX - rect.left) / Math.max(rect.width, 1);
-    const y = (event.clientY - rect.top) / Math.max(rect.height, 1);
+    const x = (pointer.x - rect.left) / Math.max(rect.width, 1);
+    const y = (pointer.y - rect.top) / Math.max(rect.height, 1);
     const moveX = (0.5 - x) * 4;
     const moveY = (0.5 - y) * 4;
     const rotate = (x - 0.5) * 0.2;
@@ -95,7 +115,20 @@ export function BrowseArtParallaxCard({
     element.style.setProperty('--browse-art-x', `${moveX.toFixed(2)}px`);
     element.style.setProperty('--browse-art-y', `${moveY.toFixed(2)}px`);
     element.style.setProperty('--browse-art-rotate', `${rotate.toFixed(2)}deg`);
-  }, [effectDisabled]);
+  }, [effectDisabled, suppressHoverIntentRef]);
+
+  const handlePointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (effectDisabled || suppressHoverIntentRef?.current || event.pointerType !== 'mouse') return;
+    pointerRef.current = { x: event.clientX, y: event.clientY };
+    // High-rate mice can deliver several events between paints. Read geometry
+    // and update the image only once, using the latest pointer position.
+    if (frameRef.current === null) {
+      frameRef.current = window.requestAnimationFrame(updateParallax);
+    }
+  }, [effectDisabled, suppressHoverIntentRef, updateParallax]);
+
+  // A queued frame belongs to the current effect settings and scroll ref.
+  useEffect(() => cancelFrame, [cancelFrame, updateParallax]);
 
   useEffect(() => {
     if (effectDisabled) resetParallax();
@@ -147,10 +180,11 @@ export function BrowseStatItem({
 }
 
 export function BrowseReadableStatsRow({ mod, density, showUpdated }: { mod: GameBananaMod; density: BrowseReadableDensity; showUpdated: boolean }) {
+  const { t } = useTranslation();
   const isMicro = density === 'micro';
   const groupClass = isMicro
-    ? 'grid w-full grid-cols-2 items-center text-[clamp(11px,4.3cqw,13px)] font-semibold text-text-tertiary/85'
-    : 'flex h-5 min-w-0 flex-1 items-center gap-[clamp(5px,2.5cqw,10px)] text-[clamp(11px,4.3cqw,13px)] font-semibold text-text-tertiary/85';
+    ? 'grid min-w-0 flex-1 grid-cols-1 items-center text-2xs font-semibold leading-none text-text-tertiary/85'
+    : 'flex h-5 min-w-0 flex-1 items-center gap-[clamp(5px,2.5cqw,10px)] text-[clamp(11px,4.3cqw,13px)] font-semibold text-text-tertiary/85 [&>.browse-stat-item]:shrink-0';
   const itemEmphasis = isMicro ? 'strong' : 'muted';
 
   return (
@@ -159,7 +193,7 @@ export function BrowseReadableStatsRow({ mod, density, showUpdated }: { mod: Gam
         type="likes"
         icon={ThumbsUp}
         value={formatCount(mod.likeCount)}
-        title={`${mod.likeCount ?? 0} likes`}
+        title={t('browse.card.likes', { count: mod.likeCount ?? 0 })}
         align="start"
         emphasis={itemEmphasis}
       />
@@ -167,7 +201,7 @@ export function BrowseReadableStatsRow({ mod, density, showUpdated }: { mod: Gam
         type="views"
         icon={Eye}
         value={formatCount(mod.viewCount)}
-        title={`${mod.viewCount ?? 0} views`}
+        title={t('browse.card.views', { count: mod.viewCount ?? 0 })}
         align="start"
         emphasis={itemEmphasis}
       />
@@ -177,13 +211,14 @@ export function BrowseReadableStatsRow({ mod, density, showUpdated }: { mod: Gam
 }
 
 export function BrowseSoundPlaceholder({ title }: { title: string }) {
+  const { t } = useTranslation();
   const bars = [22, 38, 54, 30, 68, 46, 34, 58, 26, 42, 62, 36, 48, 28];
 
   return (
     <div
       className="browse-sound-placeholder absolute inset-0 overflow-hidden bg-[radial-gradient(circle_at_24%_22%,rgba(249,115,22,0.22),transparent_30%),radial-gradient(circle_at_78%_18%,rgba(96,165,250,0.16),transparent_28%),linear-gradient(135deg,#151312,#22242a_55%,#121416)]"
       role="img"
-      aria-label={`${title} audio preview`}
+      aria-label={t('browse.card.audioPreviewAria', { title })}
     >
       <div className="absolute inset-x-8 top-[46%] flex h-12 -translate-y-1/2 items-center justify-center gap-1.5 opacity-35">
         {bars.map((height, index) => (
@@ -255,11 +290,11 @@ export function BrowseReadableAction({
     action === 'enable'
       ? t('browse.card.enable')
       : action === 'installed'
-        ? t('nav.installed')
+        ? t('browse.card.installed')
         : action === 'downloading'
-          ? 'Loading'
+          ? t('browse.card.loading')
           : action === 'queued'
-            ? `Queued ${queuePosition}`
+            ? t('browse.card.queuedPosition', { position: queuePosition })
             : t('browse.card.install');
   const iconOnly = iconOnlyOverride ?? density === 'micro';
   const className = iconOnly
@@ -360,8 +395,8 @@ export function BrowseReadableAction({
         type="button"
         onClick={(event) => { event.stopPropagation(); onQuickDownload(event.currentTarget); }}
         className={`${motionClassName} cursor-pointer`}
-        title={`Install ${modName}`}
-        aria-label={`Install ${modName}`}
+        title={t('browse.card.installNamed', { name: modName })}
+        aria-label={t('browse.card.installNamed', { name: modName })}
       >
         {content}
       </button>

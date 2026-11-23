@@ -12,7 +12,8 @@ export interface HeroPortrait {
    *  but stays unique across folders, which the bare filename does not once a
    *  user overflows. Round-tripped verbatim back into applyHeroCard. */
   modFileName: string;
-  /** card | vertical | minimap | small | card_critical | card_gloat | other */
+  /** card | vertical | minimap | small | card_critical | card_gloat | other, or
+   *  one of those with an alternate form prefix (wolf_card). */
   variant: string;
   width: number;
   height: number;
@@ -29,7 +30,8 @@ export interface HeroPortrait {
  * exact dimensions the game expects for that variant.
  */
 export interface CustomCardSlot {
-  /** card | vertical | minimap | small | card_critical | card_gloat | other */
+  /** card | vertical | minimap | small | card_critical | card_gloat | other, or
+   *  one of those with an alternate form prefix (wolf_card). */
   variant: string;
   /** VPK entry path of the base template `.vtex_c` this slot replaces, fed
    *  straight back into applyCustomHeroCard as the `--set ENTRY=PNG` target. */
@@ -51,6 +53,18 @@ export interface CustomCardSlot {
 export interface SoulModelInfo {
   hasModel: boolean;
   mtimeMs: number | null;
+}
+
+export interface SoulPreviewThumbnailInfo {
+  portrait?: boolean;
+  mtimeMs: number | null;
+  yaw: number | null;
+}
+
+export interface SoulPreviewThumbnailCapture {
+  yaw: number;
+  pngDataUrl: string;
+  modelMtimeMs: number;
 }
 
 export interface HeroPoseSkinSource {
@@ -77,6 +91,10 @@ export interface HeroPoseSkinSource {
  * to a vanilla pose, which changes it.
  */
 export interface HeroPoseInfo {
+  hasAnimationFallback?: boolean;
+  hasMovement?: boolean;
+  /** How many parts the standing action bundle has (`movement.glb`, `movement-2.glb`, ...). */
+  movementParts?: number;
   hasModel: boolean;
   mtimeMs: number | null;
   key: string;
@@ -88,4 +106,14 @@ export interface HeroEffectInfo {
   hasEffect: boolean;
   key: string;
   entry: string | null;
+}
+
+/** A hero's particle bundle for the faithful particle runtime. */
+export interface HeroParticleBundleInfo {
+  hasBundle: boolean;
+  key: string;
+  /** How many effects discovery found. */
+  effects: number;
+  /** The native video.txt post-bloom switch, refreshed even on a bundle cache hit. */
+  postBloomEnabled?: boolean;
 }

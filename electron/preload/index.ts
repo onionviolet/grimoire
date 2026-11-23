@@ -1,3 +1,5 @@
+import type { ProfileShuffle } from '../../src/lib/profileShuffle';
+import { themeFromArguments } from '../../src/lib/theme';
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type { ChooseModUpdateReplacementArgs, ModUpdateState, StartModUpdatesArgs } from '../../src/types/modUpdates';
 import type {
@@ -26,6 +28,7 @@ import type {
     ApplyUnknownModMatchArgs,
     AssociateUnknownModArgs,
     DeleteModEntry,
+    ModSwapPlacement,
     DeleteModsProgress,
     GlobalModType,
     EditLocalModArgs,
@@ -101,6 +104,7 @@ import type {
     PublishRequest,
     ReportRequest,
     UpdateProfileRequest,
+    UpdateProfileContentsRequest,
 } from '@grimoire/social-types';
 
 const slotArgument = process.argv.find((argument) => argument.startsWith('--grimoire-dev-slot='));
@@ -112,9 +116,9 @@ if (slotArgument) {
 contextBridge.exposeInMainWorld('electronAPI', {
     platform: process.platform,
 
-    // Saved OLED setting, forwarded by main via additionalArguments so the
-    // renderer can theme itself before the settings IPC round-trip resolves.
-    initialOledMode: process.argv.includes('--grimoire-oled'),
+    // Saved theme, forwarded by main via additionalArguments so the renderer
+    // can theme itself before the settings IPC round-trip resolves.
+    initialTheme: themeFromArguments(process.argv),
 
     // Settings
     detectDeadlock: () => ipcRenderer.invoke('detect-deadlock'),
@@ -185,6 +189,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getInstalledModSafety: () => ipcRenderer.invoke('get-installed-mod-safety'),
     rescanModSafety: () => ipcRenderer.invoke('rescan-mod-safety'),
     reviewModSafety: (id: string, fingerprint: string) => ipcRenderer.invoke('review-mod-safety', id, fingerprint),
+    disallowModSafety: (id: string) => ipcRenderer.invoke('disallow-mod-safety', id),
     onModSafetyChanged: (callback: () => void) => {
         const listener = () => callback();
         ipcRenderer.on('mod-safety-changed', listener);
@@ -198,6 +203,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getMods: () => ipcRenderer.invoke('get-mods'),
     enableMod: (modId: string) => ipcRenderer.invoke('enable-mod', modId),
     disableMod: (modId: string) => ipcRenderer.invoke('disable-mod', modId),
+    swapMods: (enableIds: string[], disableIds: string[], placement: ModSwapPlacement) => ipcRenderer.invoke('swap-mods', enableIds, disableIds, placement),
     deleteMod: (entry: DeleteModEntry) => ipcRenderer.invoke('delete-mod', entry),
     deleteMods: (entries: DeleteModEntry[]) => ipcRenderer.invoke('delete-mods', entries),
     onDeleteModsProgress: (callback: (progress: DeleteModsProgress) => void) => {
@@ -267,18 +273,39 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ) => ipcRenderer.invoke('export-custom-hero-card', heroName, uploads, destPath),
     getAppliedCustomCard: (heroName: string) =>
         ipcRenderer.invoke('get-applied-custom-card', heroName),
+    getSoulPreviewThumbnail: (key) => ipcRenderer.invoke('get-soul-preview-thumbnail', key),
+    saveSoulPreviewThumbnail: (key, capture) => ipcRenderer.invoke('save-soul-preview-thumbnail', key, capture),
     getSoulModelInfo: (key: string) =>
         ipcRenderer.invoke('get-soul-model-info', key),
-    exportSoulModel: (metaKey: string, cacheKey: string, entry?: string) =>
-        ipcRenderer.invoke('export-soul-model', metaKey, cacheKey, entry),
+    exportSoulModel: (metaKey: string, cacheKey: string, entry?: string, options?: { animated?: boolean }) =>
+        ipcRenderer.invoke('export-soul-model', metaKey, cacheKey, entry, options),
+    exportAnimationModPreview: (metaKey: string) => ipcRenderer.invoke('export-animation-mod-preview', metaKey),
+    getHeroShaderNoise: () => ipcRenderer.invoke('get-hero-shader-noise'),
     getHeroPoseInfo: (heroName: string, skinSources?: unknown[]) =>
         ipcRenderer.invoke('get-hero-pose-info', heroName, skinSources),
+    getSkinEditInfo: (source) => ipcRenderer.invoke('foundry:skinEditInfo', source),
+    previewMovementFx: (request) => ipcRenderer.invoke('foundry:previewMovementFx', request),
+    previewMovementEngine: (request) => ipcRenderer.invoke('foundry:previewMovementEngine', request),
+    exportMovementFx: (choice) => ipcRenderer.invoke('foundry:exportMovementFx', choice),
+    saveMovementFx: (request) => ipcRenderer.invoke('foundry:saveMovementFx', request),
+    resumeSkinEdit: (source) => ipcRenderer.invoke('foundry:resumeSkinEdit', source),
+    exportSkinEdits: (request) => ipcRenderer.invoke('foundry:exportSkinEdits', request),
+    saveSkinEdits: (request) => ipcRenderer.invoke('foundry:saveSkinEdits', request),
+    onSkinEditProgress: (callback) => {
+        const handler = (_event: Electron.IpcRendererEvent, progress: import('../../src/types/skinEditor').SkinEditProgress) => callback(progress);
+        ipcRenderer.on('foundry:skinEditProgress', handler);
+        return () => ipcRenderer.removeListener('foundry:skinEditProgress', handler);
+    },
+    loadHideoutScene: () => ipcRenderer.invoke('viewer:hideout'),
+    isHideoutSceneReady: () => ipcRenderer.invoke('viewer:hideoutReady'),
+    getHideoutBuildProgress: () => ipcRenderer.invoke('viewer:hideoutProgress'),
+    saveHideoutSnapshot: (key, name, bytes) => ipcRenderer.invoke('viewer:hideoutSnapshot', key, name, bytes),
     exportHeroPose: (heroName: string, skinSources?: unknown[], fallbackSkinMetaKey?: string) =>
         ipcRenderer.invoke('export-hero-pose', heroName, skinSources, fallbackSkinMetaKey),
-    getRiggedHeroPose: (heroName: string, skinSources?: unknown[]) =>
-        ipcRenderer.invoke('get-rigged-hero-pose', heroName, skinSources),
-    exportRiggedHeroPose: (heroName: string, skinSources?: unknown[], fallbackSkinMetaKey?: string) =>
-        ipcRenderer.invoke('export-rigged-hero-pose', heroName, skinSources, fallbackSkinMetaKey),
+    getRiggedHeroPose: (heroName: string, skinSources?: unknown[], meshGroup?: string) =>
+        ipcRenderer.invoke('get-rigged-hero-pose', heroName, skinSources, meshGroup),
+    exportRiggedHeroPose: (heroName: string, skinSources?: unknown[], fallbackSkinMetaKey?: string, meshGroup?: string) =>
+        ipcRenderer.invoke('export-rigged-hero-pose', heroName, skinSources, fallbackSkinMetaKey, meshGroup),
     getHeroClothModel: (heroName: string, skinSources?: unknown[]) =>
         ipcRenderer.invoke('get-hero-cloth-model', heroName, skinSources),
     getHeroAbilityPreviews: (heroName: string) => ipcRenderer.invoke('ability-preview:list', heroName),
@@ -287,10 +314,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
         ipcRenderer.invoke('get-hero-effect-info', heroName, skinSources),
     exportHeroEffect: (heroName: string, skinSources?: unknown[]) =>
         ipcRenderer.invoke('export-hero-effect', heroName, skinSources),
+    exportHeroParticles: (heroName: string, skinSources?: unknown[], clips?: string[]) =>
+        ipcRenderer.invoke('export-hero-particles', heroName, skinSources, clips),
     getPreviewCacheSize: () =>
         ipcRenderer.invoke('get-preview-cache-size'),
     clearPreviewCache: () =>
         ipcRenderer.invoke('clear-preview-cache'),
+    onPreviewCacheCleared: (callback: () => void) => {
+        const listener = () => callback();
+        ipcRenderer.on('preview-cache-cleared', listener);
+        return () => ipcRenderer.removeListener('preview-cache-cleared', listener);
+    },
     getGameBananaFileServerDiagnostics: () =>
         ipcRenderer.invoke('gamebanana-fileservers:getDiagnostics'),
     getGameBananaDownloadProxy: () => ipcRenderer.invoke('gamebanana-download-proxy:get'),
@@ -358,10 +392,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
         ipcRenderer.invoke('clear-locker-overrides', scope),
     setModGlobalType: (modId: string, globalType: GlobalModType | null) =>
         ipcRenderer.invoke('set-mod-global-type', modId, globalType),
-    setModIgnoreUpdates: (modId: string, ignore: boolean) =>
-        ipcRenderer.invoke('set-mod-ignore-updates', modId, ignore),
+    setModTags: (modId, tags) => ipcRenderer.invoke('set-mod-tags', modId, tags),
     setModPriorityFolder: (modId: string, priority: boolean) =>
         ipcRenderer.invoke('set-mod-priority-folder', modId, priority),
+    setModIgnoreUpdates: (modId: string, ignore: boolean) =>
+        ipcRenderer.invoke('set-mod-ignore-updates', modId, ignore),
     backfillGameBananaFileId: (
         modId: string,
         payload: { gameBananaFileId: number; fileDescription?: string; sourceFileName?: string }
@@ -379,6 +414,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
         ipcRenderer.invoke('swap-mod-priority', modIdA, modIdB),
     importCustomMods: (args: ImportCustomModsBatchArgs) =>
         ipcRenderer.invoke('import-custom-mods', args),
+    prepareLocalModImport: (path: string, requestId: string) => ipcRenderer.invoke('prepare-local-mod-import', path, requestId),
+    releaseLocalModImport: (requestId: string) => ipcRenderer.invoke('release-local-mod-import', requestId),
+    getLocalModGallery: (groupId: string) => ipcRenderer.invoke('get-local-mod-gallery', groupId),
+    setLocalModGallery: (groupId: string, images: string[]) => ipcRenderer.invoke('set-local-mod-gallery', groupId, images),
+    setModsNsfw: (modIds: string[], nsfw: boolean) => ipcRenderer.invoke('set-mods-nsfw', modIds, nsfw),
     onImportCustomModsProgress: (callback: (progress: ImportCustomModsProgress) => void) => {
         const handler = (_event: Electron.IpcRendererEvent, progress: ImportCustomModsProgress) =>
             callback(progress);
@@ -492,6 +532,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // GameBanana
     browseMods: (args: BrowseModsArgs) => ipcRenderer.invoke('browse-mods', args),
     getModDetails: (args: GetModDetailsArgs) => ipcRenderer.invoke('get-mod-details', args),
+    getModRequirements: (targets, refresh) => ipcRenderer.invoke('get-mod-requirements', targets, refresh),
+    onRequirementInstallCheck: (callback) => {
+        const listener = (_: Electron.IpcRendererEvent, request: Parameters<typeof callback>[0]) => callback(request);
+        ipcRenderer.on('requirement-install-check', listener);
+        return () => ipcRenderer.removeListener('requirement-install-check', listener);
+    },
+    respondToRequirementInstallCheck: (requestId, accepted) => ipcRenderer.invoke('requirement-install-check:respond', requestId, accepted),
     getModFileList: (args: GetModDetailsArgs) => ipcRenderer.invoke('get-mod-file-list', args),
     getModComments: (args: GetModCommentsArgs) => ipcRenderer.invoke('get-mod-comments', args),
     getModUpdates: (args: GetModUpdatesArgs) => ipcRenderer.invoke('get-mod-updates', args),
@@ -509,6 +556,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getGameBananaSections: () => ipcRenderer.invoke('get-gamebanana-sections'),
     getGameBananaCategories: (args: GetCategoriesArgs) =>
         ipcRenderer.invoke('get-gamebanana-categories', args),
+    onGamebananaCategoriesChanged: (callback: (model: string) => void) => {
+        const listener = (_: unknown, model: string) => callback(model);
+        ipcRenderer.on('gamebanana-categories-changed', listener);
+        return () => ipcRenderer.removeListener('gamebanana-categories-changed', listener);
+    },
     getCollection: (args: { collectionId: number }) =>
         ipcRenderer.invoke('get-collection', args),
     getCollectionItems: (args: { collectionId: number; page?: number }) =>
@@ -545,6 +597,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
         version?: string | null,
         videoVariant?: string | null
     ) => ipcRenderer.invoke('reset-performance-config-overrides', presetId, optIns, version, videoVariant),
+    setPerformanceConvarOverride: (key: string, value: string | null) =>
+        ipcRenderer.invoke('set-performance-convar-override', key, value),
+    setPerformanceConvarOverrideEnabled: (key: string, enabled: boolean) =>
+        ipcRenderer.invoke('set-performance-convar-override-enabled', key, enabled),
     reapplyWipedPerformanceConfig: () => ipcRenderer.invoke('reapply-wiped-performance-config'),
     restorePerformanceConfigBackup: () => ipcRenderer.invoke('restore-performance-config-backup'),
     getPerformanceLatestInfo: (presetId: string) =>
@@ -703,10 +759,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     // Profiles
     getProfiles: () => ipcRenderer.invoke('get-profiles'),
-    createProfile: (name: string, crosshairSettings?: ProfileCrosshairSettings) => ipcRenderer.invoke('create-profile', name, crosshairSettings),
+    createProfile: (name: string, crosshairSettings?: ProfileCrosshairSettings, shuffle?: ProfileShuffle) => ipcRenderer.invoke('create-profile', name, crosshairSettings, shuffle),
     createProfileFromGameBananaIds: (args: { name: string; gameBananaIds: number[] }) =>
         ipcRenderer.invoke('create-profile-from-gamebanana-ids', args),
-    updateProfile: (profileId: string, crosshairSettings?: ProfileCrosshairSettings) => ipcRenderer.invoke('update-profile', profileId, crosshairSettings),
+    updateProfile: (profileId: string, crosshairSettings?: ProfileCrosshairSettings, shuffle?: ProfileShuffle) => ipcRenderer.invoke('update-profile', profileId, crosshairSettings, shuffle),
     previewProfile: (profileId, mappings) => ipcRenderer.invoke('preview-profile', profileId, mappings),
     applyProfile: (profileId, reviewToken, mappings) => ipcRenderer.invoke('apply-profile', profileId, reviewToken, mappings),
     listProfileRecoveryPoints: () => ipcRenderer.invoke('list-profile-recovery-points'),
@@ -747,13 +803,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // Mod Database (Local Cache)
     syncAllMods: () => ipcRenderer.invoke('sync-all-mods'),
     syncSection: (section: string) => ipcRenderer.invoke('sync-section', section),
-    refreshCatalogHead: () => ipcRenderer.invoke('refresh-catalog-head'),
+    refreshCatalogHead: (sections?: string[]) => ipcRenderer.invoke('refresh-catalog-head', sections),
     wipeModCache: () => ipcRenderer.invoke('wipe-mod-cache'),
     getSyncStatus: () => ipcRenderer.invoke('get-sync-status'),
     needsSync: () => ipcRenderer.invoke('needs-sync'),
     isSyncInProgress: () => ipcRenderer.invoke('is-sync-in-progress'),
     searchLocalMods: (options: SearchLocalModsOptions) => ipcRenderer.invoke('search-local-mods', options),
-    getCachedMod: (id: number) => ipcRenderer.invoke('get-cached-mod', id),
     getFavoriteMods: (section?: string) => ipcRenderer.invoke('get-favorite-mods', section),
     setFavoriteMod: (modId: number, section: string, saved: boolean) =>
         ipcRenderer.invoke('set-favorite-mod', modId, section, saved),
@@ -770,13 +825,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     exportSavedMods: () => ipcRenderer.invoke('export-saved-mods'),
     importSavedMods: () => ipcRenderer.invoke('import-saved-mods'),
     checkSavedModUpdates: () => ipcRenderer.invoke('check-saved-mod-updates'),
+    getCachedMod: (id: number, section?: string) => ipcRenderer.invoke('get-cached-mod', id, section),
+    getHiddenContentPreviews: (creatorIds: number[], mods: Array<{ id: number; section: string }>) =>
+        ipcRenderer.invoke('get-hidden-content-previews', creatorIds, mods),
     getLocalModCount: (section?: string) => ipcRenderer.invoke('get-local-mod-count', section),
     getLocalCategories: (section?: string) => ipcRenderer.invoke('get-local-categories', section),
     getSectionStats: () => ipcRenderer.invoke('get-section-stats'),
-    getModsNsfwStatus: (ids: number[]) => ipcRenderer.invoke('get-mods-nsfw-status', ids),
-    updateModNsfw: (modId: number, isNsfw: boolean) => ipcRenderer.invoke('update-mod-nsfw', modId, isNsfw),
-    getModsDownloadCounts: (ids: number[]) => ipcRenderer.invoke('get-mods-download-counts', ids),
-    updateModDownloadCount: (modId: number, downloadCount: number) => ipcRenderer.invoke('update-mod-download-count', modId, downloadCount),
+    getModsNsfwStatus: (ids: number[], section?: string) => ipcRenderer.invoke('get-mods-nsfw-status', ids, section),
+    updateModNsfw: (modId: number, isNsfw: boolean, section?: string) => ipcRenderer.invoke('update-mod-nsfw', modId, isNsfw, section),
+    getModsDownloadCounts: (ids: number[], section?: string) => ipcRenderer.invoke('get-mods-download-counts', ids, section),
+    updateModDownloadCount: (modId: number, downloadCount: number, section?: string) => ipcRenderer.invoke('update-mod-download-count', modId, downloadCount, section),
     onSyncProgress: (callback: (data: SyncProgressData) => void) => {
         const handler = (_event: Electron.IpcRendererEvent, data: SyncProgressData) => callback(data);
         ipcRenderer.on('sync-progress', handler);
@@ -809,6 +867,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getAutoexecStatus: (gamePath: string) => ipcRenderer.invoke('crosshair:getAutoexecStatus', gamePath),
     createAutoexec: (gamePath: string) => ipcRenderer.invoke('crosshair:createAutoexec', gamePath),
     importCrosshairFromGame: (gamePath: string) => ipcRenderer.invoke('crosshair:importFromGame', gamePath),
+    copyCrosshairShareCode: (settings: CrosshairSettings) => ipcRenderer.invoke('crosshair:copyShareCode', settings),
+    pasteCrosshairShareCode: (current: CrosshairSettings) => ipcRenderer.invoke('crosshair:pasteShareCode', current),
     getAutoexecCommands: (gamePath: string) => ipcRenderer.invoke('autoexec:getCommands', gamePath),
     saveAutoexecCommands: (gamePath: string, commands: string[]) => ipcRenderer.invoke('autoexec:saveCommands', gamePath, commands),
 
@@ -861,6 +921,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
         publish: (body: PublishRequest) => ipcRenderer.invoke('social:publish', body),
         updateProfile: (id: string, body: UpdateProfileRequest) =>
             ipcRenderer.invoke('social:updateProfile', { id, body }),
+        updateProfileContents: (id: string, body: UpdateProfileContentsRequest) =>
+            ipcRenderer.invoke('social:updateProfileContents', { id, body }),
         like: (id: string) => ipcRenderer.invoke('social:like', id),
         unlike: (id: string) => ipcRenderer.invoke('social:unlike', id),
         report: (id: string, body: ReportRequest) =>
@@ -983,10 +1045,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
             ipcRenderer.invoke('stats:setPrimaryPlayer', accountId),
 
         // Player Data (API)
-        getPlayerMMR: (accountIds: number[]) =>
-            ipcRenderer.invoke('stats:getPlayerMMR', accountIds),
-        getPlayerMMRHistory: (accountId: number) =>
-            ipcRenderer.invoke('stats:getPlayerMMRHistory', accountId),
+        getPlayerRank: (accountIds: number[]) =>
+            ipcRenderer.invoke('stats:getPlayerRank', accountIds),
+        getRankedSeasons: () => ipcRenderer.invoke('stats:getRankedSeasons'),
+        getMatchScoreboard: (matchId: number) => ipcRenderer.invoke('stats:getMatchScoreboard', matchId),
+        getSeasonRankDistribution: () => ipcRenderer.invoke('stats:getSeasonRankDistribution'),
         getHeroes: () => ipcRenderer.invoke('stats:getHeroes'),
         getRanks: () => ipcRenderer.invoke('stats:getRanks'),
         getPlayerHeroStats: (accountId: number) =>
@@ -1018,8 +1081,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
         getActiveMatches: () => ipcRenderer.invoke('stats:getActiveMatches'),
 
         // Leaderboards
-        getLeaderboard: (region: string) =>
-            ipcRenderer.invoke('stats:getLeaderboard', region),
+        getLeaderboard: (region: string, leaderboardId?: number) =>
+            ipcRenderer.invoke('stats:getLeaderboard', region, leaderboardId),
         getHeroLeaderboard: (region: string, heroId: number) =>
             ipcRenderer.invoke('stats:getHeroLeaderboard', region, heroId),
 
@@ -1032,25 +1095,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
             ipcRenderer.invoke('stats:getHeroSynergies', heroId),
         getItemAnalytics: () => ipcRenderer.invoke('stats:getItemAnalytics'),
         getBadgeDistribution: () => ipcRenderer.invoke('stats:getBadgeDistribution'),
-        getMMRDistribution: () => ipcRenderer.invoke('stats:getMMRDistribution'),
-
-        // Extended MMR
-        getHeroMMR: (accountIds: number[], heroId: number) =>
-            ipcRenderer.invoke('stats:getHeroMMR', accountIds, heroId),
-        getHeroMMRHistory: (accountId: number, heroId: number) =>
-            ipcRenderer.invoke('stats:getHeroMMRHistory', accountId, heroId),
-        getMMRDistributionGlobal: (filters?: unknown) =>
-            ipcRenderer.invoke('stats:getMMRDistributionGlobal', filters),
-        getHeroMMRDistribution: (heroId: number, filters?: unknown) =>
-            ipcRenderer.invoke('stats:getHeroMMRDistribution', heroId, filters),
 
         // Player Social Stats
         getEnemyStats: (accountId: number, filters?: unknown) =>
             ipcRenderer.invoke('stats:getEnemyStats', accountId, filters),
         getMateStats: (accountId: number, filters?: unknown) =>
             ipcRenderer.invoke('stats:getMateStats', accountId, filters),
-        getPartyStats: (accountId: number, filters?: unknown) =>
-            ipcRenderer.invoke('stats:getPartyStats', accountId, filters),
         searchSteamProfiles: (query: string) =>
             ipcRenderer.invoke('stats:searchSteamProfiles', query),
 

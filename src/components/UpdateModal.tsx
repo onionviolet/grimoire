@@ -1,6 +1,6 @@
 import { useEffect, useId, useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
-import { Download, ArrowDownCircle, RefreshCw, Sparkles, AlertTriangle, Package } from 'lucide-react';
+import { Download, ArrowDownCircle, RefreshCw, Sparkles, AlertTriangle, Package, ExternalLink } from 'lucide-react';
 import { GithubIcon } from './common/BrandIcons';
 import DOMPurify from 'dompurify';
 import { Button, ModalHeader } from './common/ui';
@@ -16,6 +16,7 @@ type InstallSource = 'managed' | 'appimage' | 'standard' | 'fork' | 'manual';
 const FORK_ISSUES = 'https://github.com/onionviolet/grimoire/issues';
 
 const RELEASES_URL = 'https://github.com/Slush97/grimoire/releases';
+const releaseTagUrl = (version: string) => `${RELEASES_URL}/tag/v${encodeURIComponent(version)}`;
 
 interface Props {
     onClose: () => void;
@@ -66,17 +67,31 @@ export default function UpdateModal({ onClose }: Props) {
     };
 
     const releaseNotes = status?.updateInfo?.releaseNotes;
+    const releaseUrl = status?.updateInfo
+        ? releaseTagUrl(status.updateInfo.version)
+        : `${RELEASES_URL}/latest`;
+    const title = status?.downloaded
+        ? t('updateModal.titleReady', { version: status.updateInfo?.version })
+        : status?.available
+            ? t('updateModal.titleAvailable', { version: status.updateInfo?.version })
+            : t('updateModal.appUpdates');
     const hasNotes = Array.isArray(releaseNotes) ? releaseNotes.length > 0 : Boolean(releaseNotes);
 
     return (
         <Modal onClose={onClose} labelledBy={titleId} size="lg">
                 <ModalHeader
                     title={
-                        status?.downloaded
-                            ? t('updateModal.titleReady', { version: status.updateInfo?.version })
-                            : status?.available
-                                ? t('updateModal.titleAvailable', { version: status.updateInfo?.version })
-                                : t('updateModal.appUpdates')
+                        status?.updateInfo && (status.available || status.downloaded) ? (
+                            <a
+                                href={releaseUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                title={t('settings.updates.releaseNotesTitle', { version: status.updateInfo.version })}
+                                className="underline decoration-dotted underline-offset-2 transition-colors hover:text-accent"
+                            >
+                                {title}
+                            </a>
+                        ) : title
                     }
                     titleId={titleId}
                     subtitle={
@@ -97,7 +112,7 @@ export default function UpdateModal({ onClose }: Props) {
 
                 {/* Outside the scrolling body so it stays in view over long release notes. */}
                 {status?.downloading && (
-                    <div className="flex-shrink-0 px-5 pt-4">
+                    <div className="flex-shrink-0 border-b border-border px-5 py-4">
                         <div className="flex justify-between text-xs text-text-secondary mb-1">
                             <span>{t('updateModal.downloadingUpdate')}</span>
                             <span className="tabular-nums">{Math.round(status.progress)}%</span>
@@ -164,7 +179,7 @@ export default function UpdateModal({ onClose }: Props) {
                                 <p className="text-text-primary font-medium">{t('updateModal.manualDownloadRequired')}</p>
                                 <p>{t('updateModal.manualUnsignedExplanation')}</p>
                                 <a
-                                    href={status?.updateInfo ? `${RELEASES_URL}/tag/v${status.updateInfo.version}` : `${RELEASES_URL}/latest`}
+                                    href={releaseUrl}
                                     target="_blank"
                                     rel="noreferrer noopener"
                                     className="inline-block font-mono text-text-primary underline underline-offset-2 hover:text-accent transition-colors"
@@ -213,9 +228,19 @@ export default function UpdateModal({ onClose }: Props) {
                                 />
                             ) : (
                                 <div className="space-y-5 divide-y divide-hl/5">
-                                    {(releaseNotes as { version: string; note: string | null }[]).map((note, idx) => (
+                                    {releaseNotes?.map((note, idx) => (
                                         <div key={`${note.version}-${idx}`} className={idx > 0 ? 'pt-5' : ''}>
-                                            <h4 className="font-semibold text-accent mb-2">v{note.version}</h4>
+                                            <h4 className="font-semibold text-accent mb-2">
+                                                <a
+                                                    href={releaseTagUrl(note.version)}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    title={t('settings.updates.releaseNotesTitle', { version: note.version })}
+                                                    className="underline decoration-dotted underline-offset-2 transition-colors hover:text-accent"
+                                                >
+                                                    v{note.version}
+                                                </a>
+                                            </h4>
                                             {note.note ? (
                                                 <div
                                                     className="release-notes"
@@ -236,17 +261,28 @@ export default function UpdateModal({ onClose }: Props) {
                     )}
                 </ModalBody>
 
-                <ModalFooter>
-                    <a
-                        href={FORK_ISSUES}
-                        target="_blank"
-                        rel="noreferrer noopener"
-                        title={t('settings.support.githubIssuesTitle')}
-                        className="inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium border border-border bg-bg-tertiary/40 text-text-primary hover:bg-bg-tertiary/70 hover:border-text-secondary/60 transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-text-secondary/60 whitespace-nowrap"
-                    >
-                        <GithubIcon className="w-4 h-4" aria-hidden="true" />
-                        {t('settings.support.githubIssues')}
-                    </a>
+                <ModalFooter className="flex-wrap">
+                    <div className="mr-auto flex flex-wrap items-center gap-2">
+                        <a
+                            href={FORK_ISSUES}
+                            target="_blank"
+                            rel="noreferrer noopener"
+                            title={t('settings.support.githubIssuesTitle')}
+                            className="inline-flex h-8 items-center justify-center gap-2 rounded-sm border border-border bg-bg-tertiary px-3 text-sm font-medium text-text-primary transition-colors hover:bg-hl/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 whitespace-nowrap"
+                        >
+                            <GithubIcon className="w-4 h-4" aria-hidden="true" />
+                            {t('settings.support.githubIssues')}
+                        </a>
+                        <a
+                            href={releaseUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex h-8 items-center justify-center gap-2 rounded-sm border border-border bg-bg-tertiary px-3 text-sm font-medium text-text-primary transition-colors hover:bg-hl/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 whitespace-nowrap"
+                        >
+                            <ExternalLink aria-hidden="true" className="h-4 w-4" />
+                            {t('updateModal.githubReleases')}
+                        </a>
+                    </div>
                     <div className="flex items-center gap-2">
                         <Button onClick={onClose} variant="secondary">
                             {t('common.actions.close')}

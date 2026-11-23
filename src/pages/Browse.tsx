@@ -1,101 +1,106 @@
-import type { LucideIcon } from 'lucide-react';
-import {
-AlertTriangle,
-ChevronDown,
-Construction,
-Eye,
-EyeClosed,
-EyeOff,
-Grid3x3,
-LayoutGrid,
-Library,
-List,
-Loader2,
-Maximize2,
-Music,
-Package,
-PanelRight,
-RefreshCw,
-Search,
-SlidersHorizontal,
-Upload,
-X,
-} from 'lucide-react';
-import React,{ useCallback,useEffect,useId,useLayoutEffect,useMemo,useRef,useState } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, useId } from 'react';
+import { gameBananaCategoryLabel } from '../lib/gameBananaCategories';
 import { useTranslation } from 'react-i18next';
-import { useNavigate,useSearchParams } from 'react-router-dom';
-import { BrowseArtistBanner } from '../components/browse/BrowseArtistBanner';
-import { ModCardSkeleton } from '../components/browse/BrowseModCard';
-import { BrowseVirtualGrid } from '../components/browse/BrowseVirtualGrid';
-import {
-estimateBrowseRowHeight,
-getReadableCardGridGap,
-getReadableCardTargetWidth,
-type BrowseCardDesign,
-type ViewMode,
-} from '../components/browse/cardGeometry';
-import BrowseFileQuickPicker from '../components/BrowseFileQuickPicker';
-import { AnchoredPopover } from '../components/common/AnchoredPopover';
-import { DynamicSelect } from '../components/common/DynamicSelect';
-import { Select } from '../components/common/forms';
-import { HeroSelect } from '../components/common/HeroSelect';
-import { ConfirmModal,EmptyState } from '../components/common/PageComponents';
-import ResultSummary from '../components/common/ResultSummary';
-import { Button } from '../components/common/ui';
-import { HiddenCreatorsModal,HiddenModsModal } from '../components/HiddenContentManager';
-import ImportCollectionModal from '../components/ImportCollectionModal';
-import ModDetailsModal from '../components/ModDetailsModal';
-import ImportProfileDialog from '../components/profiles/ImportProfileDialog';
-import {
-backfillGameBananaFileId,
-browseMods,
-downloadMod,
-getGamebananaCategories,
-getGamebananaSections,
-getModDetails,
-getSubmitterLinks,
-isGameRunningModLockError,
-} from '../lib/api';
-import { getActiveDeadlockPath,shouldBlurNsfw } from '../lib/appSettings';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { parseGameBananaImportHandoff } from '../lib/browserImportHandoff';
-import { browseRemoteFilters } from '../lib/browseFilters';
-import { categorySubtreeIds } from '../lib/heroFilter';
+import { CARD_SIZE_MAX, CARD_SIZE_MIN, readPref, writePref } from '../lib/uiPrefs';
+import ResultSummary from '../components/common/ResultSummary';
 import {
-getVisibleDownloadQueue,
-isDownloadRequestPending,
-isModDownloadPending,
-releaseDownloadRequest,
-requestDownload,
-useDownloadQueueActivity,
-} from '../lib/downloadActivity';
-import { findCategoryByName,inferHeroFromTitle } from '../lib/lockerUtils';
-import { CARD_SIZE_MAX,CARD_SIZE_MIN,readPref,writePref } from '../lib/uiPrefs';
-import { decideFileDownload,replaceableFilesFor,summarizeUpdateScope } from '../lib/updateActions';
-import { mergeSourceFileIds } from '../lib/updateCheck';
-import { classifyModFiles } from '../lib/updateFileMatch';
-import { usePrefersReducedMotion } from '../lib/usePrefersReducedMotion';
+  Search,
+  Check,
+  Loader2,
+  Eye,
+  EyeClosed,
+  EyeDashed,
+  EyeOff,
+  X,
+  RefreshCw,
+  LayoutGrid,
+  Grid3x3,
+  Grid2x2,
+  AlertTriangle,
+  Funnel,
+  ArrowDownUp,
+  Library,
+  ChevronDown,
+  ChevronRight,
+  UsersRound,
+  Maximize2,
+  PanelRight,
+} from 'lucide-react';
+import {
+  browseMods,
+  getModDetails,
+  getSubmitterLinks,
+  downloadMod,
+  getGamebananaSections,
+  backfillGameBananaFileId,
+  isGameRunningModLockError,
+} from '../lib/api';
+import { getActiveDeadlockPath, shouldBlurNsfw } from '../lib/appSettings';
 import { useStableCallback } from '../lib/useStableCallback';
-import { visibleInstalledMods } from '../lib/visibleMods';
-import type { BrowseArtistRef,BrowseLayout,BrowseTimeRange } from '../stores/appStore';
+import { hideCreatorNow } from '../lib/hiddenContent';
+import { browseNsfwFilter, browseRemoteFilters, type BrowseContentMode } from '../lib/browseFilters';
+import { heroCategoryIdsForName } from '../lib/heroNames';
+import { categorySubtreeIds } from '../lib/heroFilter';
+import { categoryModelForSection } from '../lib/categoryPaths';
+import { useCategoryStore } from '../stores/categoryStore';
 import {
-useAppStore,
-} from '../stores/appStore';
-import { useCursorPackStore } from '../stores/cursorPackStore';
-import { showToast } from '../stores/toastStore';
+  isModDownloadPending,
+  getVisibleDownloadQueue,
+  isDownloadRequestPending,
+  releaseDownloadRequest,
+  requestDownload,
+  useDownloadQueueActivity,
+} from '../lib/downloadActivity';
 import type {
-GameBananaArtistLink,
-GameBananaCategoryNode,
-GameBananaFile,
-GameBananaItemRef,
-GameBananaMod,
-GameBananaModDetails,
-GameBananaSection,
+  GameBananaMod,
+  GameBananaModDetails,
+  GameBananaFile,
+  GameBananaSection,
+  GameBananaCategoryNode,
+  GameBananaArtistLink,
+  GameBananaItemRef,
 } from '../types/gamebanana';
-import { getPrimaryFile,isModOutdated } from '../types/gamebanana';
-import type { HiddenCreator,HiddenMod,NsfwContentMode } from '../types/mod';
-import { useElasticOverscroll } from '../lib/useElasticOverscroll';
+import { getPrimaryFile, isModOutdated } from '../types/gamebanana';
+import {
+  useAppStore,
+} from '../stores/appStore';
+import type { BrowseTimeRange, BrowseArtistRef, BrowseSortOption as SortOption } from '../stores/appStore';
+import type { NsfwContentMode, HiddenCreator, HiddenMod } from '../types/mod';
+import BrowseFileQuickPicker from '../components/BrowseFileQuickPicker';
+import { HeroSelect } from '../components/common/HeroSelect';
+import { DropdownSelect, Input } from '../components/common/forms';
+import { AnchoredPopover } from '../components/common/AnchoredPopover';
+import { Button, CheckboxMark, ViewOptionControl } from '../components/common/ui';
+import { ConfirmModal, EmptyState } from '../components/common/PageComponents';
+import ModDetailsModal from '../components/ModDetailsModal';
+import { checkQuickInstallRequirements } from '../stores/requirementsStore';
+import { HiddenCreatorsModal, HiddenModsModal } from '../components/HiddenContentManager';
+import ImportCollectionModal from '../components/ImportCollectionModal';
+import ImportProfileDialog from '../components/profiles/ImportProfileDialog';
+import { inferHeroFromTitle, findCategoryByName, canonicalHeroName } from '../lib/lockerUtils';
+import { classifyModFiles } from '../lib/updateFileMatch';
+import { decideFileDownload, replaceableFilesFor, summarizeUpdateScope } from '../lib/updateActions';
+import { mergeSourceInstalls } from '../lib/updateCheck';
+import { visibleInstalledMods } from '../lib/visibleMods';
+import { showToast } from '../stores/toastStore';
+import { useCursorPackStore } from '../stores/cursorPackStore';
+import { BrowseArtistBanner } from '../components/browse/BrowseArtistBanner';
+import { BrowseErrorDescription } from '../components/browse/BrowseErrorDescription';
+import { ModCardSkeleton } from '../components/browse/BrowseModCard';
+import { BrowseLoadMore, BrowseVirtualGrid } from '../components/browse/BrowseVirtualGrid';
+import { BrowseSectionPicker } from '../components/browse/BrowseSectionPicker';
+import { BROWSE_REQUEST_SIZE, browseCacheIsFresh, browsePageHasMore, completeBrowseRowCount, mergeBrowseMods, browseModKey, browseModSection } from '../lib/browseSections';
+import {
+  estimateBrowseRowHeight,
+  getReadableCardGridGap,
+  getReadableCardTargetWidth,
+  type BrowseCardDesign,
+} from '../components/browse/cardGeometry';
+import { usePrefersReducedMotion } from '../components/browse/cardUtils';
 
-const DEFAULT_PER_PAGE = 36;
+const EMPTY_CATEGORIES: GameBananaCategoryNode[] = [];
 // Row count below which the local catalog mirror is treated as unusable. A
 // part-synced catalog returns misleadingly thin results, so the filters that
 // depend on it stay disabled until it is worth querying.
@@ -117,7 +122,6 @@ function traceBrowse(message: string): void {
   } catch { /* tracing must never break the page */ }
 }
 
-type SortOption = 'default' | 'popular' | 'recent' | 'updated' | 'views' | 'name';
 // Where a clicked mod's details open: the centered overlay (default) or a
 // docked right-side panel that lets the user keep browsing the grid. Persisted
 // like the other Browse view preferences (card design/size).
@@ -132,6 +136,8 @@ const SECTION_WHITELIST = new Set(['Mod', 'Sound', 'Wip']);
 // GameBanana numbers Mods, Sounds and WiPs separately, so a hidden mod is
 // identified by section + id.
 const hiddenModKey = (section: string, id: number) => `${section}:${id}`;
+const BROWSE_MENU_SECTIONS_CLASS =
+  'space-y-3 [&>div:not(:last-child)]:border-b [&>div:not(:last-child)]:border-border [&>div:not(:last-child)]:pb-3';
 // Below this window width the docked sidebar would crush the grid, so we force
 // the centered modal regardless of the saved preference.
 const BROWSE_SIDEBAR_MIN_WINDOW_WIDTH = 760;
@@ -223,6 +229,9 @@ type BrowseResultCacheEntry = {
   hasMore: boolean;
   totalCount: number;
   scrollTop: number;
+  fetchedAt: number;
+  source: 'local' | 'remote' | undefined;
+  sessionStamp: string | undefined;
 };
 
 type QueuedDownloadState = {
@@ -261,10 +270,10 @@ function clampBrowseCardSizeMultiplier(value: number): number {
 }
 
 // Card size is one shared preference, not one per grid: this and Installed
-// drive the same control over the same kind of grid, and tuning it here used
-// to leave Installed untouched. uiPrefs reads either page's old key.
+// drive the same control over the same kind of grid. uiPrefs reads either
+// page's old key.
 function readBrowseCardSizeMultiplier(): number {
-  return readPref('cardSize');
+  return clampBrowseCardSizeMultiplier(readPref('cardSize'));
 }
 
 function getResponsiveBrowseCardSize(metrics: BrowseViewportMetrics, multiplier: number): number {
@@ -280,52 +289,6 @@ function getResponsiveBrowseCardSize(metrics: BrowseViewportMetrics, multiplier:
 
 
 
-function dedupeModsById(mods: GameBananaMod[]): GameBananaMod[] {
-  const seen = new Set<number>();
-  return mods.filter((mod) => {
-    if (seen.has(mod.id)) return false;
-    seen.add(mod.id);
-    return true;
-  });
-}
-
-function appendUniqueModsById(previous: GameBananaMod[], next: GameBananaMod[]): GameBananaMod[] {
-  if (next.length === 0) return previous;
-
-  const seen = new Set(previous.map((mod) => mod.id));
-  const uniqueNext = next.filter((mod) => {
-    if (seen.has(mod.id)) return false;
-    seen.add(mod.id);
-    return true;
-  });
-
-  return uniqueNext.length === 0 ? previous : [...previous, ...uniqueNext];
-}
-
-
-
-
-// Render an error string with any embedded https:// URLs as clickable links.
-function renderErrorWithLinks(text: string): React.ReactNode {
-  const parts = text.split(/(https?:\/\/[^\s)]+)/g);
-  return parts.map((part, i) => {
-    if (/^https?:\/\//.test(part)) {
-      return (
-        <a
-          key={i}
-          href={part}
-          target="_blank"
-          rel="noreferrer noopener"
-          className="underline text-accent hover:text-accent-hover"
-        >
-          {part}
-        </a>
-      );
-    }
-    return <span key={i}>{part}</span>;
-  });
-}
-
 const USER_CANCELLED_MESSAGES = new Set(['Cancelled by user', 'CANCELLED_BY_USER', 'User cancelled multi-VPK pick']);
 
 // `error` only renders over an empty grid, so a failed install or details
@@ -339,72 +302,8 @@ function toastModActionError(err: unknown) {
   showToast(detail, { tone: 'error', duration: 7000 });
 }
 
-function BrowseViewOptionControl<T extends string>({
-  label,
-  value,
-  options,
-  onChange,
-  disabled = false,
-}: {
-  label: string;
-  value: T;
-  options: readonly { value: T; label: React.ReactNode; icon?: LucideIcon }[];
-  onChange: (value: T) => void;
-  disabled?: boolean;
-}) {
-  const refs = useRef<(HTMLButtonElement | null)[]>([]);
-
-  const move = (from: number, dir: -1 | 1) => {
-    if (disabled) return;
-    const next = (from + dir + options.length) % options.length;
-    onChange(options[next].value);
-    refs.current[next]?.focus();
-  };
-
-  return (
-    // A group of pressed buttons, not a tablist: these pick a layout, a card
-    // design, or an NSFW mode, and none of them reveals a panel. A `role="tab"`
-    // promises an `aria-controls` target that does not exist here, so it says
-    // the wrong thing to a screen reader. See the shell rule in
-    // docs/design-overhaul-brief.md. Arrow-key movement is kept: it is useful
-    // on a segmented control whether or not the control is a tablist.
-    <div className="flex items-center rounded-lg border border-border bg-bg-secondary p-[3px]" role="group" aria-label={label}>
-      {options.map((option, i) => {
-        const Icon = option.icon;
-        const active = option.value === value;
-        return (
-          <button
-            key={option.value}
-            ref={(el) => { refs.current[i] = el; }}
-            type="button"
-            aria-pressed={active}
-            disabled={disabled}
-            onClick={() => !disabled && onChange(option.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-                e.preventDefault();
-                move(i, 1);
-              } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-                e.preventDefault();
-                move(i, -1);
-              }
-            }}
-            className={`flex h-7 min-w-0 flex-1 items-center justify-center gap-1 rounded-md px-2 text-xs font-medium transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-default ${
-              active
-                ? 'bg-bg-tertiary text-text-primary'
-                : 'text-text-secondary hover:text-text-primary'
-            }`}
-          >
-            {Icon && <Icon className="h-3.5 w-3.5 flex-shrink-0" />}
-            <span className="min-w-0 translate-y-px truncate">{option.label}</span>
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
 export default function Browse() {
+  const addedRadioName = useId();
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -424,7 +323,7 @@ export default function Browse() {
   // Absorbed merge sources and Locker artifacts are not installs of their own:
   // update state and replacements run over the same visible set as Installed.
   const visibleMods = useMemo(() => visibleInstalledMods(installedMods), [installedMods]);
-  const mergedFileIds = useMemo(() => mergeSourceFileIds(visibleMods), [visibleMods]);
+  const mergedInstalls = useMemo(() => mergeSourceInstalls(visibleMods), [visibleMods]);
   const soundVolume = useAppStore((s) => s.soundVolume);
   const setSoundVolume = useAppStore((s) => s.setSoundVolume);
   const browseUi = useAppStore((s) => s.browseUi);
@@ -447,7 +346,10 @@ export default function Browse() {
   );
   // Filter inputs are mirrored from the store so they survive page nav.
   // `setBrowseUi({...})` is the write path; reads come straight from `browseUi`.
-  const { search, layout, sort, section, addedWithin, addedFrom, addedTo, heroCategoryId, categoryId, submitter, hiddenCreatorOverrideId } = browseUi;
+  const { search, sort, section, selectedSections, addedWithin, addedFrom, addedTo, onlyNsfw, heroCategoryId, extendedHeroMatching, categoryId, submitter, hiddenCreatorOverrideId } = browseUi;
+  const heroMatchingMode = typeof heroCategoryId === 'number' && extendedHeroMatching;
+  const sectionStamp = selectedSections.slice().sort().join(',');
+  const combinedFeed = selectedSections.length > 1;
   // Artist mode: the grid is scoped to one submitter's mods and Browse shows an
   // artist banner instead of the normal search/filter header.
   const artistMode = !!submitter;
@@ -455,9 +357,7 @@ export default function Browse() {
   const [browseViewportMetrics, setBrowseViewportMetrics] = useState<BrowseViewportMetrics>(DEFAULT_BROWSE_VIEWPORT_METRICS);
   const [browseCardSizeMultiplier, setBrowseCardSizeMultiplierState] = useState(readBrowseCardSizeMultiplier);
   const browseCardSize = getResponsiveBrowseCardSize(browseViewportMetrics, browseCardSizeMultiplier);
-  const viewMode: ViewMode = layout === 'list' ? 'list' : 'grid';
   const setSearch = useCallback((v: string) => setBrowseUi({ search: v }), [setBrowseUi]);
-  const setLayout = useCallback((v: BrowseLayout) => setBrowseUi({ layout: v }), [setBrowseUi]);
   const setSort = useCallback((v: SortOption) => setBrowseUi({ sort: v }), [setBrowseUi]);
   const setSection = useCallback((v: string) => setBrowseUi({ section: v }), [setBrowseUi]);
   const setAddedWithin = useCallback((v: BrowseTimeRange) => setBrowseUi({ addedWithin: v }), [setBrowseUi]);
@@ -465,19 +365,25 @@ export default function Browse() {
   const setAddedTo = useCallback((v: string) => setBrowseUi({ addedTo: v }), [setBrowseUi]);
   const setHeroCategoryId = useCallback((v: number | 'all' | 'none') => setBrowseUi({ heroCategoryId: v }), [setBrowseUi]);
   const setCategoryId = useCallback((v: number | 'all') => setBrowseUi({ categoryId: v }), [setBrowseUi]);
+  const clearBrowseFilters = useCallback(() => setBrowseUi({
+    heroCategoryId: 'all', categoryId: 'all', onlyNsfw: false,
+    addedWithin: 'all', addedFrom: '', addedTo: '',
+  }), [setBrowseUi]);
   const setBrowseCardSizeMultiplier = useCallback((nextMultiplier: number) => {
     const clampedMultiplier = clampBrowseCardSizeMultiplier(nextMultiplier);
     setBrowseCardSizeMultiplierState(clampedMultiplier);
     writePref('cardSize', clampedMultiplier);
   }, []);
-  // Mirrors the Settings control: both write the one app-wide setting.
+  // Show, Blur and Hide mirror Settings. Only narrows this Browse session.
   const nsfwContentMode: NsfwContentMode = settings?.nsfwContentMode ?? 'blur';
-  const browseBlurNsfwPreviews = shouldBlurNsfw(settings);
-  const nsfw = nsfwContentMode === 'hide' ? 'sfw' : 'all';
-  const setNsfwContentMode = useCallback((mode: NsfwContentMode) => {
-    if (!settings) return;
-    void saveSettings({ ...settings, nsfwContentMode: mode });
-  }, [saveSettings, settings]);
+  const browseBlurNsfwPreviews = !onlyNsfw && shouldBlurNsfw(settings);
+  const nsfw = browseNsfwFilter(nsfwContentMode, onlyNsfw);
+  const setBrowseContentMode = useCallback((mode: BrowseContentMode) => {
+    setBrowseUi({ onlyNsfw: mode === 'only' });
+    if (mode !== 'only' && settings && mode !== nsfwContentMode) {
+      void saveSettings({ ...settings, nsfwContentMode: mode });
+    }
+  }, [saveSettings, setBrowseUi, settings, nsfwContentMode]);
   const setBrowseHideOutdated = useCallback((checked: boolean) => {
     if (!settings) return;
     void saveSettings({ ...settings, hideOutdatedMods: checked });
@@ -486,60 +392,52 @@ export default function Browse() {
   // wipe loaded results or scroll position. The cache stamp encodes current
   // filters; if filters changed in between (impossible today since they only
   // change on Browse, but defensive) we ignore the stale cache.
-  const initialFilterStamp = `${browseUi.section}|${browseUi.search}|${browseUi.sort}|${browseUi.categoryId}|${browseUi.heroCategoryId}|${nsfw}|${browseUi.addedWithin}|${browseUi.addedFrom}|${browseUi.addedTo}|${browseUi.submitter?.id ?? ''}|${browseUi.hiddenCreatorOverrideId ?? ''}|${hiddenCreatorsStamp}`;
-  const initialCache = browseSession && browseSession.stamp === initialFilterStamp
+  const initialFilterStamp = `${browseUi.selectedSections.slice().sort().join(',')}|${browseUi.search}|${browseUi.sort}|${browseUi.categoryId}|${browseUi.heroCategoryId}|${heroMatchingMode}|${nsfw}|${browseUi.addedWithin}|${browseUi.addedFrom}|${browseUi.addedTo}|${browseUi.submitter?.id ?? ''}|${browseUi.hiddenCreatorOverrideId ?? ''}|${hiddenCreatorsStamp}`;
+  const initialCache = browseSession && browseSession.source && browseSession.stamp === initialFilterStamp && browseCacheIsFresh(browseSession.fetchedAt)
     ? browseSession
     : null;
 
   const [mods, setMods] = useState<GameBananaMod[]>(
     () => (initialCache?.mods as GameBananaMod[] | undefined) ?? []
   );
-  const [favoriteModIds, setFavoriteModIds] = useState<Set<number>>(new Set());
-  const [savedFileIds, setSavedFileIds] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(() => initialCache?.page ?? 1);
   const [_totalCount, setTotalCount] = useState(() => initialCache?.totalCount ?? 0);
   const searchSummaryId = useId();
-  const perPage = DEFAULT_PER_PAGE; // Fixed value for infinite scroll
+  const perPage = BROWSE_REQUEST_SIZE; // Keep network pages stable while the grid buffers partial rows.
   const [sections, setSections] = useState<GameBananaSection[]>([]);
-  const [categories, setCategories] = useState<GameBananaCategoryNode[]>([]);
-  const [categoriesSection, setCategoriesSection] = useState<string | null>(null);
-  // Hero list comes from the Mod section's category tree (Mod -> Skins -> heroes).
-  // Cached separately so hero filtering still works on the Sound tab, where the
-  // current section's category tree has no Skins parent.
-  const [modCategories, setModCategories] = useState<GameBananaCategoryNode[]>([]);
+  const categoryTrees = useCategoryStore((state) => state.treesByModel);
+  const loadCategoryTree = useCategoryStore((state) => state.load);
+  const categoryModel = categoryModelForSection(section);
+  const categories = categoryTrees[categoryModel] ?? EMPTY_CATEGORIES;
+  const categoriesSection = categoryTrees[categoryModel] ? section : null;
+  const modCategories = categoryTrees.ModCategory ?? EMPTY_CATEGORIES;
   const [selectedMod, setSelectedMod] = useState<GameBananaModDetails | null>(null);
   // Section of the open details item. Usually matches the browse tab, but
   // description/changelog links can jump to a Sound/Wip/Mod from another tab;
   // downloads and comments must use this, not the grid's current section.
   const [selectedDetailsSection, setSelectedDetailsSection] = useState(section);
   const [selectedModDates, setSelectedModDates] = useState<{ dateAdded: number; dateModified: number } | null>(null);
-  const [modalNavigation, setModalNavigation] = useState<{ direction: ModDetailsNavigationDirection; label: string } | null>(null);
-  const modalNavigationRequestRef = useRef(0);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [hasMore, setHasMore] = useState(() => initialCache?.hasMore ?? true);
-  // A page>1 (or stale-results) fetch failure routes here instead of `error`
-  // so the already-loaded grid stays on screen and only the load-more row
-  // surfaces the failure. `error` stays reserved for the no-results case.
-  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
-  // Set when a browse fetch fails. Freezes the infinite-scroll observer so it
-  // stops auto-advancing the page into an API that's already refusing requests.
-  // Without this, a rate-limited fetch + auto-retry looped, flashing the grid
-  // between results and the error state (issue #99). Lifted on filter change,
-  // refresh, or an explicit retry.
-  const [autoLoadPaused, setAutoLoadPaused] = useState(false);
-
+  // Saved (bookmarked) items, keyed `${section}:${id}` because a browse list can
+  // mix sections and GameBanana numbers each section separately.
+  const [favoriteModKeys, setFavoriteModKeys] = useState<Set<string>>(new Set());
+  const [savedFileIds, setSavedFileIds] = useState<Set<number>>(new Set());
   useEffect(() => {
     let cancelled = false;
-    void window.electronAPI.getFavoriteModIds(mods.map((mod) => mod.id), section)
-      .then((ids) => {
-        if (!cancelled) setFavoriteModIds(new Set(ids));
+    const bySection = new Map<string, number[]>();
+    for (const mod of mods) {
+      const modSection = browseModSection(mod);
+      bySection.set(modSection, [...(bySection.get(modSection) ?? []), mod.id]);
+    }
+    void Promise.all([...bySection].map(async ([modSection, ids]) =>
+      (await window.electronAPI.getFavoriteModIds(ids, modSection)).map((id) => `${modSection}:${id}`)))
+      .then((keys) => {
+        if (!cancelled) setFavoriteModKeys(new Set(keys.flat()));
       })
       .catch((err) => console.warn('Failed to load saved mods:', err));
     return () => { cancelled = true; };
-  }, [mods, section]);
-
+  }, [mods]);
   useEffect(() => {
     let cancelled = false;
     if (!selectedMod) {
@@ -557,6 +455,21 @@ export default function Browse() {
       .catch((err) => console.warn('Failed to load saved file variants:', err));
     return () => { cancelled = true; };
   }, [selectedDetailsSection, selectedMod]);
+  const [modalNavigation, setModalNavigation] = useState<{ direction: ModDetailsNavigationDirection; label: string } | null>(null);
+  const modalNavigationRequestRef = useRef(0);
+  useEffect(() => () => { modalNavigationRequestRef.current += 1; }, []);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(() => initialCache?.hasMore ?? true);
+  // A page>1 (or stale-results) fetch failure routes here instead of `error`
+  // so the already-loaded grid stays on screen and only the load-more row
+  // surfaces the failure. `error` stays reserved for the no-results case.
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
+  // Set when a browse fetch fails. Freezes the infinite-scroll observer so it
+  // stops auto-advancing the page into an API that's already refusing requests.
+  // Without this, a rate-limited fetch + auto-retry looped, flashing the grid
+  // between results and the error state (issue #99). Lifted on filter change,
+  // refresh, or an explicit retry.
+  const [autoLoadPaused, setAutoLoadPaused] = useState(false);
 
   // Last fetch's identity stamp. Value-comparison gate: if the next call to
   // fetchMods/searchLocal would target the same (page + filters), skip it.
@@ -565,7 +478,7 @@ export default function Browse() {
   // double effect run in dev — the second setup compares stamps and short-
   // circuits, instead of consuming a one-shot skip flag.
   const lastFetchedStampRef = useRef<string | null>(
-    initialCache ? `${initialCache.page}|${browseUi.search}|${browseUi.sort}|${browseUi.section}|${browseUi.categoryId}|${browseUi.heroCategoryId}|${nsfw}|${browseUi.addedWithin}|${browseUi.addedFrom}|${browseUi.addedTo}|${browseUi.submitter?.id ?? ''}|${browseUi.hiddenCreatorOverrideId ?? ''}|${hiddenCreatorsStamp}` : null
+    initialCache ? `${initialCache.page}|${browseUi.search}|${browseUi.sort}|${browseUi.selectedSections.slice().sort().join(',')}|${browseUi.categoryId}|${browseUi.heroCategoryId}|${heroMatchingMode}|${nsfw}|${browseUi.addedWithin}|${browseUi.addedFrom}|${browseUi.addedTo}|${browseUi.submitter?.id ?? ''}|${browseUi.hiddenCreatorOverrideId ?? ''}|${hiddenCreatorsStamp}` : null
   );
   // Monotonic guard for browse/search requests. Filter changes and newer
   // requests invalidate older responses so they cannot append stale pages into
@@ -578,10 +491,6 @@ export default function Browse() {
   const pendingScrollTopRef = useRef<number | null>(initialCache?.scrollTop ?? null);
   // The outer scroll container — same element with `h-full overflow-y-auto`.
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
-  // Section tabs (Mods / Sounds / Wip), so arrow-key movement can follow focus.
-  const sectionTabRefs = useRef<(HTMLButtonElement | null)[]>([]);
-
-  useElasticOverscroll(scrollContainerRef);
   // The virtualized grid's relative wrapper (the div sized to getTotalSize()).
   // Used by the scroll anchor below to translate scrollTop into item space.
   const gridWrapRef = useRef<HTMLDivElement | null>(null);
@@ -603,10 +512,14 @@ export default function Browse() {
   // effect falls back to the API path. Resets whenever filter inputs change.
   const [localSearchFailed, setLocalSearchFailed] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [refreshIconSpinning, setRefreshIconSpinning] = useState(false);
+  const manualRefreshRef = useRef(false);
+  const refreshPreparingRef = useRef(false);
   const [refreshKey, setRefreshKey] = useState(0);
   // Multi-file quick-install picker anchored to a card's Install button (#209).
   const [filePicker, setFilePicker] = useState<{
     details: GameBananaModDetails;
+    section: string;
     files: GameBananaFile[];
     anchor: HTMLElement;
     dates: { dateAdded: number; dateModified: number };
@@ -623,15 +536,11 @@ export default function Browse() {
     ? { modId: currentDownload.modId, fileId: currentDownload.fileId }
     : null;
   const downloadQueue = visibleDownloads.queue;
-  const [playingModId, setPlayingModId] = useState<number | null>(null);
-  const observerRef = useRef<IntersectionObserver | null>(null);
-  const loadMoreRef = useRef<HTMLDivElement>(null);
+  const [playingModId, setPlayingModId] = useState<string | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const filtersRef = useRef<HTMLDivElement>(null);
   const [collectionModalOpen, setCollectionModalOpen] = useState(false);
-  const [importProfileOpen, setImportProfileOpen] = useState(false);
-  const [importMenuOpen, setImportMenuOpen] = useState(false);
-  const importMenuRef = useRef<HTMLDivElement>(null);
+  const [importProfileInput, setImportProfileInput] = useState<string | null>(null);
   const [viewMenuOpen, setViewMenuOpen] = useState(false);
   const viewMenuRef = useRef<HTMLDivElement>(null);
   const [hiddenCreatorsOpen, setHiddenCreatorsOpen] = useState(false);
@@ -741,7 +650,6 @@ export default function Browse() {
   // alone would read every click inside the panel as an outside click.
   const closeFilters = useCallback(() => setFiltersOpen(false), [setFiltersOpen]);
 
-  const closeImportMenu = useCallback(() => setImportMenuOpen(false), [setImportMenuOpen]);
 
   // Same as the filters panel: dismissal is AnchoredPopover's job now.
   const closeViewMenu = useCallback(() => setViewMenuOpen(false), [setViewMenuOpen]);
@@ -764,15 +672,26 @@ export default function Browse() {
   // then. Fetching before the answer arrives would always open remote and
   // then need a corrective second request. Gate the first fetch on this.
   const [catalogChecked, setCatalogChecked] = useState(false);
+  // A combined feed is served only from the local catalog, so a section can
+  // join one only after its full sync has finished. The total row count is no
+  // gate: Mods sync first and cross LOCAL_CACHE_MIN_ROWS on their own, and
+  // WiPs hover around that threshold even when fully mirrored.
+  const [syncedSections, setSyncedSections] = useState<string[]>([]);
 
   const refreshLocalCacheState = useCallback(async (reason: string) => {
     try {
-      const count = await window.electronAPI.getLocalModCount();
+      const [count, status] = await Promise.all([
+        window.electronAPI.getLocalModCount(),
+        window.electronAPI.getSyncStatus(),
+      ]);
       const ready = count >= LOCAL_CACHE_MIN_ROWS;
+      const synced = Object.keys(status).filter((key) => (status[key]?.lastSync ?? 0) > 0);
       setHasLocalCache(ready);
-      traceBrowse(`catalog check (${reason}): count=${count} threshold=${LOCAL_CACHE_MIN_ROWS} ready=${ready}`);
+      setSyncedSections((prev) => (prev.join() === synced.join() ? prev : synced));
+      traceBrowse(`catalog check (${reason}): count=${count} threshold=${LOCAL_CACHE_MIN_ROWS} ready=${ready} synced=${synced.join(',')}`);
     } catch (err) {
       setHasLocalCache(false);
+      setSyncedSections([]);
       traceBrowse(`catalog check (${reason}) failed: ${String(err)}`);
     } finally {
       setCatalogChecked(true);
@@ -859,10 +778,16 @@ export default function Browse() {
   const selectedHeroNode = heroCategoryId !== 'all' && skinsCategory?.children
     ? skinsCategory.children.find((child) => child.id === heroCategoryId)
     : undefined;
-  const selectedHeroName = selectedHeroNode?.name;
+  const selectedHeroName = selectedHeroNode ? canonicalHeroName(selectedHeroNode.name) : undefined;
   const selectedHeroCategoryIds = useMemo(
-    () => (selectedHeroNode ? categorySubtreeIds(selectedHeroNode) : undefined),
-    [selectedHeroNode]
+    () => {
+      if (!selectedHeroNode || !selectedHeroName) return undefined;
+      if (!heroMatchingMode) return sectionStamp.split(',').includes('Mod') ? { Mod: categorySubtreeIds(selectedHeroNode) } : {};
+      return Object.fromEntries(sectionStamp.split(',').map(selectedSection => [
+        selectedSection, heroCategoryIdsForName(categoryTrees[categoryModelForSection(selectedSection)] ?? EMPTY_CATEGORIES, selectedHeroName),
+      ]));
+    },
+    [selectedHeroNode, selectedHeroName, heroMatchingMode, sectionStamp, categoryTrees]
   );
 
   // Debounce the search input: every keystroke previously fired a full FTS5
@@ -897,7 +822,7 @@ export default function Browse() {
   // Category and hero names resolve asynchronously with their category trees.
   // Keep both in the request identity so an early id-only local query cannot
   // suppress the corrected name-based query when either tree arrives.
-  const fetchFilterStamp = `${effectiveSearch}|${sort}|${section}|${effectiveCategoryId}|${effectiveCategoryName ?? ''}|${heroCategoryId}|${selectedHeroName ?? ''}|${nsfw}|${addedWithin}|${customAddedFrom ?? ''}|${customAddedTo ?? ''}|${perPage}|${submitter?.id ?? ''}|${hiddenCreatorOverrideId ?? ''}|${hiddenCreatorsStamp}`;
+  const fetchFilterStamp = `${effectiveSearch}|${sort}|${sectionStamp}|${effectiveCategoryId}|${effectiveCategoryName ?? ''}|${heroCategoryId}|${heroMatchingMode}|${selectedHeroName ?? ''}|${JSON.stringify(selectedHeroCategoryIds)}|${nsfw}|${addedWithin}|${customAddedFrom ?? ''}|${customAddedTo ?? ''}|${perPage}|${submitter?.id ?? ''}|${hiddenCreatorOverrideId ?? ''}|${hiddenCreatorsStamp}`;
   const browseResultsCacheRef = useRef<Map<string, BrowseResultCacheEntry>>(new Map());
   const browseScrollCacheRef = useRef<Map<string, number>>(new Map());
   const activeFetchFilterStampRef = useRef(fetchFilterStamp);
@@ -907,15 +832,17 @@ export default function Browse() {
   // useCallback dep (that would self-trigger). Also doubles as the source
   // for the unmount-time cache save.
   const modsRef = useRef<GameBananaMod[]>(mods);
+  // Cache only completed pages so leaving during a fetch cannot skip its results.
   const pageRef = useRef<number>(page);
+  const fetchedAtRef = useRef(initialCache?.fetchedAt ?? 0);
+  const resultSourceRef = useRef(initialCache?.source);
+  const loadedSessionStampRef = useRef(initialCache?.stamp);
+  const querySessionStamp = `${sectionStamp}|${effectiveSearch}|${sort}|${categoryId}|${heroCategoryId}|${heroMatchingMode}|${nsfw}|${addedWithin}|${addedFrom}|${addedTo}|${submitter?.id ?? ''}|${hiddenCreatorOverrideId ?? ''}|${hiddenCreatorsStamp}`;
   const hasMoreRef = useRef<boolean>(hasMore);
   const totalCountRef = useRef<number>(_totalCount);
   useEffect(() => {
     modsRef.current = mods;
   }, [mods]);
-  useEffect(() => {
-    pageRef.current = page;
-  }, [page]);
   useEffect(() => {
     hasMoreRef.current = hasMore;
   }, [hasMore]);
@@ -937,6 +864,9 @@ export default function Browse() {
       hasMore: hasMoreRef.current,
       totalCount: totalCountRef.current,
       scrollTop,
+      fetchedAt: fetchedAtRef.current,
+      source: resultSourceRef.current,
+      sessionStamp: loadedSessionStampRef.current,
     });
     browseScrollCacheRef.current.set(stamp, scrollTop);
   }, []);
@@ -949,6 +879,9 @@ export default function Browse() {
       hasMore,
       totalCount: _totalCount,
       scrollTop: initialCache.scrollTop,
+      fetchedAt: initialCache.fetchedAt ?? 0,
+      source: initialCache.source,
+      sessionStamp: initialCache.stamp,
     });
     browseScrollCacheRef.current.set(fetchFilterStamp, initialCache.scrollTop);
     activeFetchFilterStampRef.current = fetchFilterStamp;
@@ -1057,15 +990,10 @@ export default function Browse() {
   // since the closure captures at first render.
   useEffect(() => {
     return () => {
-      const ui = useAppStore.getState().browseUi;
-      const liveSettings = useAppStore.getState().settings;
-      const liveHiddenCreators = liveSettings?.hiddenCreators ?? [];
-      const liveNsfw = liveSettings?.nsfwContentMode === 'hide' ? 'sfw' : 'all';
-      const stamp = `${ui.section}|${ui.search}|${ui.sort}|${ui.categoryId}|${ui.heroCategoryId}|${liveNsfw}|${ui.addedWithin}|${ui.addedFrom}|${ui.addedTo}|${ui.submitter?.id ?? ''}|${ui.hiddenCreatorOverrideId ?? ''}|${hiddenCreatorIdsStamp(liveHiddenCreators)}`;
       const cachedMods = modsRef.current;
       // Don't cache an empty state — would just bypass the next fetch
       // unhelpfully. Clear instead so the next mount starts fresh.
-      if (cachedMods.length === 0) {
+      if (cachedMods.length === 0 || !loadedSessionStampRef.current) {
         setBrowseSession(null);
         return;
       }
@@ -1078,7 +1006,9 @@ export default function Browse() {
         hasMore: hasMoreRef.current,
         totalCount: totalCountRef.current,
         scrollTop,
-        stamp,
+        fetchedAt: fetchedAtRef.current,
+        source: resultSourceRef.current,
+        stamp: loadedSessionStampRef.current,
       });
     };
   }, [setBrowseSession]);
@@ -1091,6 +1021,7 @@ export default function Browse() {
     // Artist mode is a GameBanana-only filter (Generic_Submitter); the local
     // catalog mirror has no submitter column, so always go remote.
     if (submitter) return false;
+    if (combinedFeed) return true;
     const hasSearchQuery = debouncedSearch.trim().length > 0;
     const hasHeroFilter = heroCategoryId !== 'all';
     // NSFW and recency filters only the local catalog mirror can satisfy: the
@@ -1101,7 +1032,7 @@ export default function Browse() {
     // come from the local mirror (which sorts name COLLATE NOCASE ASC).
     const needsLocalSort = sort === 'name';
     return (hasSearchQuery || hasHeroFilter || hasContentFilter || needsLocalSort) && hasLocalCache && !localSearchFailed;
-  }, [submitter, debouncedSearch, heroCategoryId, nsfw, addedWithin, sort, hiddenCreatorIds.length, hasLocalCache, localSearchFailed]);
+  }, [combinedFeed, submitter, debouncedSearch, heroCategoryId, nsfw, addedWithin, sort, hiddenCreatorIds.length, hasLocalCache, localSearchFailed]);
 
   // Mirror of the routing decision for callbacks that outlive a render (the
   // sync-completion listener below subscribes once and must read the *current*
@@ -1141,7 +1072,14 @@ export default function Browse() {
     );
   }, [useLocalSearch, section, debouncedSearch, heroCategoryId, nsfw, addedWithin, sort, submitter, hasLocalCache, localSearchFailed]);
 
+  const finishRefresh = useStableCallback(() => {
+    manualRefreshRef.current = false;
+    setSyncing(false);
+    if (prefersReducedMotion) setRefreshIconSpinning(false);
+  });
+
   const fetchMods = useCallback(async () => {
+    if (refreshPreparingRef.current) return;
     // Don't fetch from API if we're using local search
     if (useLocalSearch) return;
     if (restoredCacheSkipStampRef.current === fetchFilterStamp) {
@@ -1200,7 +1138,7 @@ export default function Browse() {
       if (response.records.length > 0) {
         try {
           const ids = response.records.map(m => m.id);
-          const nsfwStatus = await window.electronAPI.getModsNsfwStatus(ids);
+          const nsfwStatus = await window.electronAPI.getModsNsfwStatus(ids, section);
           enrichedRecords = response.records.map(mod => ({
             ...mod,
             nsfw: nsfwStatus[mod.id] ?? mod.nsfw ?? false,
@@ -1211,25 +1149,12 @@ export default function Browse() {
         }
       }
 
-      // Remote fallback paths cannot express a negative submitter filter in
-      // GameBanana's API. Filter defensively here; normal browsing routes to
-      // the local catalog above so pagination remains full and accurate. Only
-      // trusted entry points may deliberately reveal one hidden artist.
-      if (!allowHiddenSubmitter) {
-        enrichedRecords = enrichedRecords.filter(
-          (mod) => !mod.submitter?.id || !hiddenCreatorIdSet.has(mod.submitter.id)
-        );
-      }
-
       if (requestGeneration !== requestGenerationRef.current || lastFetchedStampRef.current !== stamp) {
         return;
       }
 
-      const nextMods =
-        page === 1
-          ? dedupeModsById(enrichedRecords)
-          : appendUniqueModsById(modsRef.current, enrichedRecords);
-      const nextHasMore = response.records.length === perPage && page * perPage < response.totalCount;
+      const nextMods = mergeBrowseMods(page === 1 ? [] : modsRef.current, enrichedRecords, sort);
+      const nextHasMore = browsePageHasMore(response, page, perPage);
 
       setMods(nextMods);
       setTotalCount(response.totalCount);
@@ -1238,6 +1163,9 @@ export default function Browse() {
       pageRef.current = page;
       totalCountRef.current = response.totalCount;
       hasMoreRef.current = nextHasMore;
+      fetchedAtRef.current = Date.now();
+      resultSourceRef.current = 'remote';
+      loadedSessionStampRef.current = querySessionStamp;
       const cachedScrollTop = browseScrollCacheRef.current.get(fetchFilterStamp) ?? latestScrollTopRef.current;
       browseResultsCacheRef.current.set(fetchFilterStamp, {
         mods: nextMods,
@@ -1245,6 +1173,9 @@ export default function Browse() {
         hasMore: nextHasMore,
         totalCount: response.totalCount,
         scrollTop: cachedScrollTop,
+        fetchedAt: fetchedAtRef.current,
+        source: 'remote',
+        sessionStamp: querySessionStamp,
       });
       browseScrollCacheRef.current.set(fetchFilterStamp, cachedScrollTop);
     } catch (err) {
@@ -1266,6 +1197,7 @@ export default function Browse() {
       if (requestGeneration === requestGenerationRef.current && lastFetchedStampRef.current === stamp) {
         setLoading(false);
         setLoadingMore(false);
+        finishRefresh();
       }
     }
   }, [
@@ -1280,12 +1212,13 @@ export default function Browse() {
     fetchFilterStamp,
     useLocalSearch,
     submitter,
-    allowHiddenSubmitter,
-    hiddenCreatorIdSet,
+    querySessionStamp,
+    finishRefresh,
   ]);
 
   // Local search function using SQLite cache
   const searchLocal = useCallback(async () => {
+    if (refreshPreparingRef.current) return;
     if (restoredCacheSkipStampRef.current === fetchFilterStamp) {
       restoredCacheSkipStampRef.current = null;
       return;
@@ -1328,15 +1261,16 @@ export default function Browse() {
 
       const result = await window.electronAPI.searchLocalMods({
         query: effectiveSearch.trim() || undefined,
-        section: section,
+        section: combinedFeed ? undefined : section,
+        sections: combinedFeed ? selectedSections : undefined,
         categoryId: effectiveCategoryId,
         // The cached rows have no category id, only a root category name; see
         // rootCategoryNameById. Ignored when a hero is selected.
         categoryName: effectiveCategoryName,
-        // Mod skins match the hero's category. Sound and Wip have no hero
-        // categories, so they can only match the title.
-        heroCategoryIds: section === 'Mod' ? selectedHeroCategoryIds : undefined,
-        heroName: section === 'Mod' ? undefined : selectedHeroName,
+        // Match hero branches in each section's tree or a name in any title.
+        heroCategoryIds: selectedHeroCategoryIds,
+        heroName: selectedHeroName,
+        extendedHeroMatching: heroMatchingMode,
         sortBy: sortMap[sort] || 'relevance',
         nsfw,
         addedWithin,
@@ -1350,6 +1284,7 @@ export default function Browse() {
       // Convert CachedMod to GameBananaMod format
       const convertedMods: GameBananaMod[] = result.mods.map(m => ({
         id: m.id,
+        section: m.section,
         name: m.name,
         profileUrl: m.profileUrl,
         dateAdded: m.dateAdded,
@@ -1358,7 +1293,10 @@ export default function Browse() {
         likeCount: m.likeCount,
         viewCount: m.viewCount,
         nsfw: m.isNsfw,
-        rootCategory: m.categoryId ? { id: m.categoryId, name: m.categoryName || '' } : undefined,
+        rootCategory: m.categoryId || m.categoryName
+          ? { id: m.categoryId ?? undefined, name: m.categoryName ?? '' }
+          : undefined,
+        subCategory: m.subCategoryId ? { id: m.subCategoryId, name: '' } : undefined,
         submitter: m.submitterName ? { id: m.submitterId || 0, name: m.submitterName } : undefined,
         previewMedia: (() => {
           let images: { baseUrl: string; file: string; file530: string }[] | undefined;
@@ -1382,11 +1320,8 @@ export default function Browse() {
         return;
       }
 
-      const nextMods =
-        page === 1
-          ? dedupeModsById(convertedMods)
-          : appendUniqueModsById(modsRef.current, convertedMods);
-      const nextHasMore = convertedMods.length === perPage && page * perPage < result.totalCount;
+      const nextMods = mergeBrowseMods(page === 1 ? [] : modsRef.current, convertedMods, sort);
+      const nextHasMore = browsePageHasMore({ records: convertedMods, totalCount: result.totalCount, perPage }, page);
 
       setMods(nextMods);
       setTotalCount(result.totalCount);
@@ -1395,6 +1330,9 @@ export default function Browse() {
       pageRef.current = page;
       totalCountRef.current = result.totalCount;
       hasMoreRef.current = nextHasMore;
+      fetchedAtRef.current = Date.now();
+      resultSourceRef.current = 'local';
+      loadedSessionStampRef.current = querySessionStamp;
       const cachedScrollTop = browseScrollCacheRef.current.get(fetchFilterStamp) ?? latestScrollTopRef.current;
       browseResultsCacheRef.current.set(fetchFilterStamp, {
         mods: nextMods,
@@ -1402,22 +1340,32 @@ export default function Browse() {
         hasMore: nextHasMore,
         totalCount: result.totalCount,
         scrollTop: cachedScrollTop,
+        fetchedAt: fetchedAtRef.current,
+        source: 'local',
+        sessionStamp: querySessionStamp,
       });
       browseScrollCacheRef.current.set(fetchFilterStamp, cachedScrollTop);
     } catch (err) {
       if (requestGeneration !== requestGenerationRef.current || lastFetchedStampRef.current !== stamp) {
         return;
       }
-      console.error('Local search failed, falling back to API:', err);
-      lastFetchedStampRef.current = null;
-      setLocalSearchFailed(true);
+      console.error('Local search failed:', err);
+      if (combinedFeed) {
+        if (modsRef.current.length) setLoadMoreError(String(err));
+        else setError(String(err));
+        setAutoLoadPaused(true);
+      } else {
+        lastFetchedStampRef.current = null;
+        setLocalSearchFailed(true);
+      }
     } finally {
       if (requestGeneration === requestGenerationRef.current && lastFetchedStampRef.current === stamp) {
         setLoading(false);
         setLoadingMore(false);
+        finishRefresh();
       }
     }
-  }, [page, effectiveSearch, section, sort, perPage, effectiveCategoryId, effectiveCategoryName, selectedHeroName, selectedHeroCategoryIds, nsfw, addedWithin, customAddedFrom, customAddedTo, hiddenCreatorIds, fetchFilterStamp]);
+  }, [page, effectiveSearch, section, selectedSections, combinedFeed, sort, perPage, effectiveCategoryId, effectiveCategoryName, selectedHeroName, selectedHeroCategoryIds, heroMatchingMode, nsfw, addedWithin, customAddedFrom, customAddedTo, hiddenCreatorIds, fetchFilterStamp, querySessionStamp, finishRefresh]);
 
   // Value-compare gate for the filter-reset: remember what filters last
   // triggered a reset; only reset when the new combination is actually
@@ -1437,7 +1385,11 @@ export default function Browse() {
     lastFetchedStampRef.current = null;
 
     const cached = browseResultsCacheRef.current.get(current);
-    if (cached) {
+    if (cached && !manualRefreshRef.current && browseCacheIsFresh(cached.fetchedAt) && cached.source === (useLocalSearch ? 'local' : 'remote')) {
+      fetchedAtRef.current = cached.fetchedAt;
+      resultSourceRef.current = cached.source;
+      loadedSessionStampRef.current = cached.sessionStamp;
+      pageRef.current = cached.page;
       pendingPageResetStampRef.current = null;
       setMods(cached.mods);
       setPage(cached.page);
@@ -1460,6 +1412,10 @@ export default function Browse() {
       return;
     }
 
+    fetchedAtRef.current = 0;
+    pageRef.current = 1;
+    latestScrollTopRef.current = 0;
+    if (scrollContainerRef.current) scrollContainerRef.current.scrollTop = 0;
     if (page !== 1) {
       pendingPageResetStampRef.current = current;
     }
@@ -1472,21 +1428,16 @@ export default function Browse() {
     // auto-pagination for the fresh result set.
     setLoadMoreError(null);
     setAutoLoadPaused(false);
-  }, [cacheCurrentBrowseResults, fetchFilterStamp, page]);
+  }, [cacheCurrentBrowseResults, fetchFilterStamp, page, useLocalSearch]);
 
   useEffect(() => {
-    let active = true;
-    getGamebananaCategories('ModCategory')
-      .then((data) => {
-        if (active) setModCategories(data);
-      })
-      .catch(() => {
-        // Hero filter just won't be available; not fatal.
+    const models = new Set(['ModCategory', ...sectionStamp.split(',').map(categoryModelForSection)]);
+    for (const model of models) {
+      void loadCategoryTree(model).catch(() => {
+        // Offline without a cached tree: retain the supplied category labels.
       });
-    return () => {
-      active = false;
-    };
-  }, []);
+    }
+  }, [sectionStamp, loadCategoryTree]);
 
   useEffect(() => {
     let active = true;
@@ -1522,57 +1473,28 @@ export default function Browse() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // The store switches filters with the section. Category loading must never
-  // reset them, including a selection made while this request is in flight.
+  // A backend change can alter page size and ordering without changing filters.
+  // Restart before the fetch effect runs so those pages cannot be mixed. A
+  // restored cache already identifies its source and can keep its position.
+  const lastRoutedLocalRef = useRef<'local' | 'remote' | undefined>(initialCache?.source);
   useEffect(() => {
-    let active = true;
-    const selected = sections.find((entry) => entry.modelName === section);
-    if (!selected) {
-      setCategories([]);
-      setCategoriesSection(null);
-      return () => {
-        active = false;
-      };
-    }
-
-    const loadCategories = async () => {
-      try {
-        const data = await getGamebananaCategories(selected.categoryModelName);
-        if (!active) return;
-        setCategories(data);
-        setCategoriesSection(section);
-      } catch (err) {
-        if (active) {
-          setError(String(err));
-        }
-      }
-    };
-
-    loadCategories();
-
-    return () => {
-      active = false;
-    };
-  }, [sections, section]);
-
-  // fetchMods and searchLocal share `lastFetchedStampRef`, and its key
-  // (`page` + fetchFilterStamp) describes the FILTERS only, not which backend
-  // answered them. So when the catalog becomes usable mid-session the fetch
-  // effect below re-runs, calls searchLocal instead of fetchMods, and the
-  // shared gate sees an identical stamp and early-returns: the grid keeps the
-  // remote, default-ordered results and the local mirror is never queried
-  // until the user happens to touch a filter. Worse, the route trace would
-  // report `route=local` over remote data, which is exactly backwards in the
-  // state the tracing exists to explain. Dropping the stamp on a routing flip
-  // lets the pending query re-run against the backend that can actually
-  // serve it. Declared before the fetch effect so it clears the gate first.
-  const lastRoutedLocalRef = useRef(useLocalSearch);
-  useEffect(() => {
-    if (lastRoutedLocalRef.current === useLocalSearch) return;
-    lastRoutedLocalRef.current = useLocalSearch;
+    if (!catalogChecked) return;
+    const source = useLocalSearch ? 'local' : 'remote';
+    const previous = lastRoutedLocalRef.current;
+    lastRoutedLocalRef.current = source;
+    if (!previous || previous === source) return;
+    if (restoredCacheSkipStampRef.current === fetchFilterStamp) return;
+    requestGenerationRef.current += 1;
+    fetchedAtRef.current = 0;
     lastFetchedStampRef.current = null;
-    traceBrowse(`routing flipped to ${useLocalSearch ? 'local' : 'remote'}; re-running current query`);
-  }, [useLocalSearch]);
+    restoredCacheSkipStampRef.current = null;
+    browseResultsCacheRef.current.delete(fetchFilterStamp);
+    if (page !== 1) pendingPageResetStampRef.current = fetchFilterStamp;
+    setPage(1);
+    setAutoLoadPaused(false);
+    setLoadMoreError(null);
+    traceBrowse(`routing flipped to ${source}; restarting pagination`);
+  }, [useLocalSearch, catalogChecked, fetchFilterStamp, page]);
 
   // A finished catalog sync writes new rows straight into mods-cache.db, but
   // the grid keeps whatever it fetched at mount: the fetch effect below only
@@ -1600,7 +1522,9 @@ export default function Browse() {
       // Only the section on screen needs a live re-query; the others refetch
       // when the user switches to them. Sections sync one at a time, so this is
       // what keeps a three-section sync from firing three redundant queries.
-      if (data.section !== section) return;
+      if (!useAppStore.getState().browseUi.selectedSections.includes(data.section)) return;
+      fetchedAtRef.current = 0;
+      if (manualRefreshRef.current) return;
       if (!useLocalSearchRef.current) return;
       if (pageRef.current !== 1) return;
       traceBrowse(`catalog sync finished (${data.section}); re-running current query`);
@@ -1651,33 +1575,6 @@ export default function Browse() {
     void loadCursorPacks();
   }, [loadCursorPacks]);
 
-  // Infinite scroll observer
-  // Infinite scroll observer
-  useEffect(() => {
-    if (observerRef.current) observerRef.current.disconnect();
-
-    observerRef.current = new IntersectionObserver(
-      (entries) => {
-        // Load more when reaching bottom and not already loading. autoLoadPaused
-        // gates this after a fetch failure so a refusing API isn't hammered in a
-        // loop (the sentinel re-enters view when the grid shrinks).
-        if (entries[0].isIntersecting && hasMore && !loading && !loadingMore && !autoLoadPaused) {
-          setPage(prev => prev + 1);
-        }
-      },
-      // Rooted on the grid's own scroller: with the viewport as root its
-      // overflow clip swallowed the margin, so the next page only started at
-      // the very end. A screen of lead time lets it land before it is needed.
-      { root: scrollContainerRef.current, threshold: 0, rootMargin: '0px 0px 900px 0px' }
-    );
-
-    if (loadMoreRef.current) {
-      observerRef.current.observe(loadMoreRef.current);
-    }
-
-    return () => observerRef.current?.disconnect();
-  }, [hasMore, loading, loadingMore, autoLoadPaused]);
-
   // Background fetch download counts for visible mods (using global cache with TTL)
   // DISABLED: This makes N API calls per page load which is very slow and risks rate limiting.
   // Download counts are now only fetched when the modal is opened (via handleModClick).
@@ -1725,27 +1622,36 @@ export default function Browse() {
   };
 
   const handleRefresh = async () => {
+    if (manualRefreshRef.current) return;
+    manualRefreshRef.current = true;
+    refreshPreparingRef.current = true;
     setSyncing(true);
+    setRefreshIconSpinning(true);
+    requestGenerationRef.current += 1;
+    fetchedAtRef.current = 0;
     try {
-      // Sync current section from GameBanana API to local DB
-      await window.electronAPI.syncSection(section);
-      // Reset state and force re-fetch
-      setMods([]);
+      // Remote results already fetch a fresh page. Catalog-backed filters need
+      // only the selected section heads, rather than a full mirror download.
+      if (useLocalSearch) await window.electronAPI.refreshCatalogHead(selectedSections);
+      refreshPreparingRef.current = false;
+      browseResultsCacheRef.current.clear();
+      browseScrollCacheRef.current.clear();
+      latestScrollTopRef.current = 0;
+      if (scrollContainerRef.current) scrollContainerRef.current.scrollTop = 0;
       setHasMore(true);
       setPage(1);
+      setLoadingMore(true);
       setError(null);
       setLoadMoreError(null);
       setAutoLoadPaused(false);
-      browseResultsCacheRef.current.delete(fetchFilterStamp);
-      browseScrollCacheRef.current.delete(fetchFilterStamp);
-      requestGenerationRef.current += 1;
       lastFetchedStampRef.current = null;
       pendingPageResetStampRef.current = null;
+      restoredCacheSkipStampRef.current = null;
       setRefreshKey(k => k + 1);
     } catch (err) {
       showToast(String(err), { tone: 'error', duration: 7000 });
-    } finally {
-      setSyncing(false);
+      refreshPreparingRef.current = false;
+      finishRefresh();
     }
   };
 
@@ -1763,17 +1669,92 @@ export default function Browse() {
     setRefreshKey((k) => k + 1);
   }, []);
 
-  const handleToggleSaved = useStableCallback(async (modId: number, detailsSection: string = selectedDetailsSection) => {
-    const saved = !favoriteModIds.has(modId);
-    await window.electronAPI.setFavoriteMod(modId, detailsSection, saved);
-    if (detailsSection === section) {
-      setFavoriteModIds((current) => {
-        const next = new Set(current);
-        if (saved) next.add(modId);
-        else next.delete(modId);
-        return next;
-      });
+  const applyLoadedModDetails = async (
+    mod: GameBananaMod,
+    details: GameBananaModDetails,
+    detailsSection: string = section,
+  ) => {
+    setSelectedMod(details);
+    setSelectedDetailsSection(detailsSection);
+    setSelectedModDates({ dateAdded: mod.dateAdded, dateModified: mod.dateModified });
+
+    // Update the mods array with the correct nsfw flag from details
+    // This ensures grid cards show blur after clicking once
+    if (details.nsfw !== mod.nsfw) {
+      setMods(prev => prev.map(m =>
+        browseModKey(m) === browseModKey(mod) ? { ...m, nsfw: details.nsfw } : m
+      ));
+
+      // Also update the local cache so future browses show correct status
+      try {
+        await window.electronAPI.updateModNsfw(mod.id, details.nsfw, detailsSection);
+      } catch (cacheErr) {
+        console.warn('Failed to update NSFW cache:', cacheErr);
+      }
     }
+
+    // Cache the download count from mod details (sum across all files)
+    if (details.files && details.files.length > 0) {
+      const totalDownloads = details.files.reduce((sum, f) => sum + (f.downloadCount || 0), 0);
+      try {
+        await window.electronAPI.updateModDownloadCount(mod.id, totalDownloads, detailsSection);
+        // Update local state so the card shows the count immediately
+        setMods(prev => prev.map(m =>
+          browseModKey(m) === browseModKey(mod) ? { ...m, downloadCount: totalDownloads } : m
+        ));
+      } catch (cacheErr) {
+        console.warn('Failed to cache download count:', cacheErr);
+      }
+    }
+  };
+
+  const handleModClick = useStableCallback(async (mod: GameBananaMod) => {
+    const requestId = ++modalNavigationRequestRef.current;
+    setModalNavigation(null);
+    try {
+      const details = await getModDetails(mod.id, browseModSection(mod), { includeSubmitter: true });
+      if (modalNavigationRequestRef.current !== requestId) return;
+      await applyLoadedModDetails(mod, details, browseModSection(mod));
+    } catch (err) {
+      if (modalNavigationRequestRef.current === requestId) toastModActionError(err);
+    }
+  });
+
+  const handleNavigateMod = async (mod: GameBananaMod, direction: ModDetailsNavigationDirection): Promise<void> => {
+    if (modalNavigation) return;
+
+    const requestId = modalNavigationRequestRef.current + 1;
+    modalNavigationRequestRef.current = requestId;
+    setModalNavigation({ direction, label: mod.name });
+
+    try {
+      const details = await getModDetails(mod.id, browseModSection(mod), { includeSubmitter: true });
+      if (modalNavigationRequestRef.current !== requestId) return;
+      await applyLoadedModDetails(mod, details, browseModSection(mod));
+    } catch (err) {
+      if (modalNavigationRequestRef.current === requestId) {
+        toastModActionError(err);
+      }
+    } finally {
+      if (modalNavigationRequestRef.current === requestId) {
+        setModalNavigation(null);
+      }
+    }
+  };
+
+  // Open a GameBanana item linked from description/changelog/comments in the
+  // same details surface (no external browser). Uses the URL's section so a
+  // Sound link works even while the Mods tab is selected.
+  const handleToggleSaved = useStableCallback(async (modId: number, detailsSection: string = selectedDetailsSection) => {
+    const key = `${detailsSection}:${modId}`;
+    const saved = !favoriteModKeys.has(key);
+    await window.electronAPI.setFavoriteMod(modId, detailsSection, saved);
+    setFavoriteModKeys((current) => {
+      const next = new Set(current);
+      if (saved) next.add(key);
+      else next.delete(key);
+      return next;
+    });
   });
 
   const handleToggleSavedFile = useStableCallback(async (file: GameBananaFile) => {
@@ -1798,79 +1779,6 @@ export default function Browse() {
     });
   });
 
-  const applyLoadedModDetails = async (
-    mod: GameBananaMod,
-    details: GameBananaModDetails,
-    detailsSection: string = section,
-  ) => {
-    setSelectedMod(details);
-    setSelectedDetailsSection(detailsSection);
-    setSelectedModDates({ dateAdded: mod.dateAdded, dateModified: mod.dateModified });
-
-    // Update the mods array with the correct nsfw flag from details
-    // This ensures grid cards show blur after clicking once
-    if (details.nsfw !== mod.nsfw) {
-      setMods(prev => prev.map(m =>
-        m.id === mod.id ? { ...m, nsfw: details.nsfw } : m
-      ));
-
-      // Also update the local cache so future browses show correct status
-      try {
-        await window.electronAPI.updateModNsfw(mod.id, details.nsfw);
-      } catch (cacheErr) {
-        console.warn('Failed to update NSFW cache:', cacheErr);
-      }
-    }
-
-    // Cache the download count from mod details (sum across all files)
-    if (details.files && details.files.length > 0) {
-      const totalDownloads = details.files.reduce((sum, f) => sum + (f.downloadCount || 0), 0);
-      try {
-        await window.electronAPI.updateModDownloadCount(mod.id, totalDownloads);
-        // Update local state so the card shows the count immediately
-        setMods(prev => prev.map(m =>
-          m.id === mod.id ? { ...m, downloadCount: totalDownloads } : m
-        ));
-      } catch (cacheErr) {
-        console.warn('Failed to cache download count:', cacheErr);
-      }
-    }
-  };
-
-  const handleModClick = useStableCallback(async (mod: GameBananaMod) => {
-    try {
-      const details = await getModDetails(mod.id, section, { includeSubmitter: true });
-      await applyLoadedModDetails(mod, details, section);
-    } catch (err) {
-      toastModActionError(err);
-    }
-  });
-
-  const handleNavigateMod = async (mod: GameBananaMod, direction: ModDetailsNavigationDirection): Promise<void> => {
-    if (modalNavigation) return;
-
-    const requestId = modalNavigationRequestRef.current + 1;
-    modalNavigationRequestRef.current = requestId;
-    setModalNavigation({ direction, label: mod.name });
-
-    try {
-      const details = await getModDetails(mod.id, section, { includeSubmitter: true });
-      if (modalNavigationRequestRef.current !== requestId) return;
-      await applyLoadedModDetails(mod, details, section);
-    } catch (err) {
-      if (modalNavigationRequestRef.current === requestId) {
-        toastModActionError(err);
-      }
-    } finally {
-      if (modalNavigationRequestRef.current === requestId) {
-        setModalNavigation(null);
-      }
-    }
-  };
-
-  // Open a GameBanana item linked from description/changelog/comments in the
-  // same details surface (no external browser). Uses the URL's section so a
-  // Sound link works even while the Mods tab is selected.
   const handleOpenGameBananaItem = useStableCallback(async (item: GameBananaItemRef) => {
     if (selectedMod && item.id === selectedMod.id && item.section === selectedDetailsSection) {
       return;
@@ -1889,7 +1797,7 @@ export default function Browse() {
       // Dates may not be in the current grid (cross-section / off-page link).
       // Prefer cache when present so the meta row still has something useful.
       try {
-        const cached = await window.electronAPI.getCachedMod(item.id);
+        const cached = await window.electronAPI.getCachedMod(item.id, item.section);
         if (modalNavigationRequestRef.current !== requestId) return;
         setSelectedModDates(
           cached
@@ -1931,7 +1839,7 @@ export default function Browse() {
       selectedMod?.id ?? -1,
       selectedMod?.files ?? [],
       visibleMods,
-      mergedFileIds,
+      mergedInstalls,
       settings?.autoMatchRemainingFiles ?? true,
     );
     const summary = summarizeUpdateScope(classification);
@@ -1942,7 +1850,7 @@ export default function Browse() {
       updateFileIds: new Set(summary.targets.keys()),
       replaceableFiles: replaceableFilesFor(summary.needsPick, visibleMods),
     };
-  }, [selectedMod, visibleMods, mergedFileIds, settings?.autoMatchRemainingFiles]);
+  }, [selectedMod, visibleMods, mergedInstalls, settings?.autoMatchRemainingFiles]);
 
   // Stable identity (useStableCallback) so the memoized ModDetailsModal does
   // not re-render every time this large component does (e.g. on every
@@ -1983,10 +1891,10 @@ export default function Browse() {
 
   // Kick off the actual download of one specific file. Shared by the single-file
   // quick install and the multi-file picker so both behave identically.
-  const runDownload = async (modId: number, file: GameBananaFile) => {
+  const runDownload = async (modId: number, file: GameBananaFile, itemSection: string) => {
     if (!requestDownload({ modId, fileId: file.id, fileName: file.fileName })) return;
     try {
-      await downloadMod(modId, file.id, file.fileName, section, effectiveCategoryId);
+      await downloadMod(modId, file.id, file.fileName, itemSection, combinedFeed ? undefined : effectiveCategoryId);
     } catch (err) {
       toastModActionError(err);
     } finally {
@@ -2004,7 +1912,7 @@ export default function Browse() {
       // Fetch mod details to get the first file. Include the submitter up front
       // so the picker's "View all files" link can open the details panel (which
       // shows the artist card) without a second round-trip against the limiter.
-      const details = await getModDetails(mod.id, section, { includeSubmitter: true });
+      const details = await getModDetails(mod.id, browseModSection(mod), { includeSubmitter: true });
       if (!details.files || details.files.length === 0) {
         showToast(t('browse.errors.noDownloadableFiles'), { tone: 'error', duration: 7000 });
         return;
@@ -2016,6 +1924,11 @@ export default function Browse() {
       const liveFiles = details.files.filter((f) => !f.isArchived);
       const installable = liveFiles.length > 0 ? liveFiles : details.files;
 
+      if (!await checkQuickInstallRequirements({ id: mod.id, section, name: details.name,
+        requirements: details.requirements ?? { status: 'unavailable', checkedAt: Date.now() },
+      }, useAppStore.getState().mods)) return;
+      if (getActiveDeadlockPath(useAppStore.getState().settings) !== activeDeadlockPath) return;
+
       // When a mod has more than one installable file (different versions,
       // variant builds, etc.) we used to silently pick whichever had the
       // highest download count. Forum feedback flagged that, so surface a
@@ -2023,16 +1936,16 @@ export default function Browse() {
       // user choose. Fall back to the details modal if we have no anchor.
       if (installable.length > 1) {
         if (anchor) {
-          setFilePicker({ details, files: installable, anchor, dates: { dateAdded: mod.dateAdded, dateModified: mod.dateModified } });
+          setFilePicker({ details, section: browseModSection(mod), files: installable, anchor, dates: { dateAdded: mod.dateAdded, dateModified: mod.dateModified } });
         } else {
           setSelectedMod(details);
-          setSelectedDetailsSection(section);
+          setSelectedDetailsSection(browseModSection(mod));
           setSelectedModDates({ dateAdded: mod.dateAdded, dateModified: mod.dateModified });
         }
         return;
       }
 
-      await runDownload(mod.id, getPrimaryFile(installable));
+      await runDownload(mod.id, getPrimaryFile(installable), browseModSection(mod));
     } catch (err) {
       toastModActionError(err);
     }
@@ -2072,8 +1985,10 @@ export default function Browse() {
       }
     }
 
-    return Array.from(byLabel.values()).sort((a, b) => a.label.localeCompare(b.label));
-  }, [categories, categoriesSection, section, heroOptions]);
+    return Array.from(byLabel.values()).sort((a, b) =>
+      gameBananaCategoryLabel(a.label, t).localeCompare(gameBananaCategoryLabel(b.label, t))
+    );
+  }, [categories, categoriesSection, section, heroOptions, t]);
 
   const installedIds = useMemo(() => {
     const ids = new Set<number>();
@@ -2089,19 +2004,28 @@ export default function Browse() {
     return ids;
   }, [installedMods, cursorPacks]);
 
+  const installedItemKeys = useMemo(() => {
+    const keys = new Set(installedMods.filter((mod) => typeof mod.gameBananaId === 'number')
+      .map((mod) => `${mod.sourceSection ?? 'Mod'}:${mod.gameBananaId}`));
+    for (const pack of cursorPacks) {
+      if (typeof pack.gameBananaId === 'number') keys.add(`Mod:${pack.gameBananaId}`);
+    }
+    return keys;
+  }, [installedMods, cursorPacks]);
+
   // Per-card lookup so each ModCard knows the local mod's id + enabled state.
   // Drives the inline "Enable" affordance: once a download finishes, the
   // top-right of the card flips from a downloading spinner into either a
   // green ✓ (already enabled) or a yellow Enable pill (still disabled).
   const installedByGbId = useMemo(() => {
-    const map = new Map<number, { id: string; enabled: boolean }>();
+    const map = new Map<string, { id: string; enabled: boolean }>();
     for (const mod of installedMods) {
       if (typeof mod.gameBananaId !== 'number') continue;
       // If a user has multiple variants of the same GB mod installed, prefer
       // the enabled one — that's the relevant state to show.
-      const existing = map.get(mod.gameBananaId);
+      const existing = map.get(`${mod.sourceSection ?? 'Mod'}:${mod.gameBananaId}`);
       if (!existing || (mod.enabled && !existing.enabled)) {
-        map.set(mod.gameBananaId, { id: mod.id, enabled: mod.enabled });
+        map.set(`${mod.sourceSection ?? 'Mod'}:${mod.gameBananaId}`, { id: mod.id, enabled: mod.enabled });
       }
     }
     return map;
@@ -2224,9 +2148,17 @@ export default function Browse() {
     };
   }, [selectedMod, installedMods, loadMods]);
 
-  // Just use all loaded mods - infinite scroll handles pagination.
+  const readableCardTargetWidth = getReadableCardTargetWidth(browseCardSize);
+  const gridGap = browseCardDesign === 'readable' ? getReadableCardGridGap(readableCardTargetWidth) : 12;
+  const columnMinWidth = browseCardDesign === 'readable' ? readableCardTargetWidth : browseCardSize;
+  const contentWidth = Math.max(columnMinWidth, browseViewportMetrics.containerWidth - 32);
+  const virtualColumnCount = Math.max(1, Math.floor((contentWidth + gridGap) / (columnMinWidth + gridGap)));
+  const virtualColumnWidth = Math.floor((contentWidth - gridGap * (virtualColumnCount - 1)) / virtualColumnCount);
+  const virtualCardHeight = estimateBrowseRowHeight(virtualColumnWidth, browseCardDesign);
+  const virtualRowHeight = virtualCardHeight + gridGap;
+  // Keep all fetched records; only complete filtered rows are revealed below.
   // Hide outdated mods if the user has opted in.
-  const displayMods = useMemo(() => {
+  const filteredMods = useMemo(() => {
     let nextMods = !allowHiddenSubmitter && hiddenCreatorIdSet.size > 0
       ? mods.filter((mod) => !mod.submitter?.id || !hiddenCreatorIdSet.has(mod.submitter.id))
       : mods;
@@ -2234,35 +2166,37 @@ export default function Browse() {
     // empties a page, and keeping it out of the fetch stamp means hiding a mod
     // does not refetch the grid or lose the scroll position.
     if (hiddenModKeys.size > 0) {
-      nextMods = nextMods.filter((m) => !hiddenModKeys.has(hiddenModKey(section, m.id)));
+      nextMods = nextMods.filter((m) => !hiddenModKeys.has(hiddenModKey(browseModSection(m), m.id)));
     }
     if (settings?.hideOutdatedMods) {
       nextMods = nextMods.filter((m) => !m.dateModified || !isModOutdated(m.dateModified));
     }
     // "(No hero)" Sound filter: GameBanana Sound categories don't carry hero
     // metadata, so hero association is inferred from the title.
-    if (section === 'Sound' && heroCategoryId === 'none') {
+    if (!combinedFeed && section === 'Sound' && heroCategoryId === 'none') {
       nextMods = nextMods.filter((m) => inferHeroFromTitle(m.name) === null);
     }
-    // Hide mode is only enforced server-side by the local-search path. The
+    // Content filtering is only enforced server-side by the local-search path. The
     // remote paths (artist mode, and the no-local-cache fallback) return
     // unfiltered records, so enforce it here too. Local results already match,
     // so re-filtering them is a no-op.
-    if (nsfw === 'sfw') {
-      nextMods = nextMods.filter((m) => !m.nsfw);
+    if (nsfw !== 'all') {
+      nextMods = nextMods.filter((m) => Boolean(m.nsfw) === (nsfw === 'nsfw'));
     }
 
     return nextMods;
-  }, [mods, settings?.hideOutdatedMods, section, heroCategoryId, nsfw, hiddenCreatorIdSet, hiddenModKeys, allowHiddenSubmitter]);
+  }, [mods, settings?.hideOutdatedMods, section, combinedFeed, heroCategoryId, nsfw, hiddenCreatorIdSet, hiddenModKeys, allowHiddenSubmitter]);
+  const displayMods = useMemo(() => {
+    const count = completeBrowseRowCount(filteredMods.length, virtualColumnCount, hasMore && !autoLoadPaused);
+    return count === filteredMods.length ? filteredMods : filteredMods.slice(0, count);
+  }, [filteredMods, virtualColumnCount, hasMore, autoLoadPaused]);
   // Client-side filters (Hide mode, hidden creators/mods, outdated) can empty a
   // remote page entirely. The sentinel sits below the fold then, so page on
   // until something survives or the results run out.
   const pagingPastFilteredPage = displayMods.length === 0 && mods.length > 0 && hasMore && !autoLoadPaused;
-  useEffect(() => {
-    if (pagingPastFilteredPage && !loading && !loadingMore) setPage((prev) => prev + 1);
-  }, [pagingPastFilteredPage, loading, loadingMore]);
+  const loadNextPage = useStableCallback(() => setPage(prev => prev + 1));
   const selectedModIndex = selectedMod
-    ? displayMods.findIndex((mod) => mod.id === selectedMod.id)
+    ? displayMods.findIndex((mod) => mod.id === selectedMod.id && browseModSection(mod) === selectedDetailsSection)
     : -1;
   const previousSelectedMod = selectedModIndex > 0 ? displayMods[selectedModIndex - 1] : undefined;
   const nextSelectedMod =
@@ -2334,10 +2268,33 @@ export default function Browse() {
   const viewArtist = useStableCallback((artist: BrowseArtistRef) => {
     if (!artist?.id) return;
     closeSelectedMod();
-    setBrowseUi({ submitter: artist });
+    setBrowseUi({ submitter: artist, section: selectedDetailsSection });
     scrollContainerRef.current?.scrollTo({ top: 0 });
   });
-  const clearArtist = () => setBrowseUi({ submitter: undefined });
+  const clearArtist = useStableCallback(() => setBrowseUi({ submitter: undefined }));
+
+  // Like mod details, creator view consumes either side mouse button before
+  // Chromium can navigate away to a different app tab. Details keep priority.
+  useEffect(() => {
+    if (!artistMode || selectedMod) return;
+    const isSideButton = (event: MouseEvent) => event.button === 3 || event.button === 4;
+    const suppressNavigation = (event: MouseEvent) => {
+      if (isSideButton(event)) event.preventDefault();
+    };
+    const leaveArtist = (event: MouseEvent) => {
+      if (!isSideButton(event)) return;
+      event.preventDefault();
+      clearArtist();
+    };
+    window.addEventListener('mousedown', suppressNavigation);
+    window.addEventListener('auxclick', suppressNavigation);
+    window.addEventListener('mouseup', leaveArtist);
+    return () => {
+      window.removeEventListener('mousedown', suppressNavigation);
+      window.removeEventListener('auxclick', suppressNavigation);
+      window.removeEventListener('mouseup', leaveArtist);
+    };
+  }, [artistMode, selectedMod, clearArtist]);
 
   const updateHiddenCreators = useStableCallback(async (
     updater: (current: HiddenCreator[]) => HiddenCreator[]
@@ -2360,9 +2317,12 @@ export default function Browse() {
     if (!creator) return;
     setCreatorToHide(null);
 
+    const hidden = hideCreatorNow(creator, selectedMod && {
+      id: selectedMod.id, name: selectedMod.name, section: selectedDetailsSection, submitterId: selectedMod.submitter?.id,
+    });
     await updateHiddenCreators((current) => [
       ...current.filter((entry) => entry.id !== creator.id),
-      creator,
+      hidden,
     ]);
     if (selectedMod?.submitter?.id === creator.id) closeSelectedMod();
     if (submitter?.id === creator.id) clearArtist();
@@ -2399,7 +2359,7 @@ export default function Browse() {
   // The details modal knows only id + name; the section is whichever one it
   // was opened in, which differs from the grid's for a cross-section link.
   const hideMod = useStableCallback(async ({ id, name }: { id: number; name: string }) => {
-    const mod: HiddenMod = { id, name, section: selectedDetailsSection };
+    const mod: HiddenMod = { id, name, section: selectedDetailsSection, hiddenAt: Date.now() };
     if (!id || hiddenModKeys.has(hiddenModKey(mod.section, id))) return;
     if (selectedMod?.id === id) closeSelectedMod();
     await updateHiddenMods((current) => [...withoutHiddenMod(mod)(current), mod]);
@@ -2431,35 +2391,6 @@ export default function Browse() {
     }
   }, [submitter?.id, hiddenCreatorIdSet, allowHiddenSubmitter, setBrowseUi]);
 
-  const readableCardTargetWidth = getReadableCardTargetWidth(browseCardSize);
-  const gridGap =
-    layout === 'list'
-      ? 12
-      : browseCardDesign === 'readable'
-        ? getReadableCardGridGap(readableCardTargetWidth)
-        : 12;
-  const columnMinWidth =
-    layout === 'list'
-      ? Math.max(1, browseViewportMetrics.containerWidth - 32)
-      : browseCardDesign === 'readable'
-        ? readableCardTargetWidth
-        : browseCardSize;
-  const contentWidth = Math.max(columnMinWidth, browseViewportMetrics.containerWidth - 32);
-  const virtualColumnCount =
-    layout === 'list'
-      ? 1
-      : Math.max(1, Math.floor((contentWidth + gridGap) / (columnMinWidth + gridGap)));
-  const virtualColumnWidth =
-    layout === 'list'
-      ? contentWidth
-      : Math.floor((contentWidth - gridGap * (virtualColumnCount - 1)) / virtualColumnCount);
-  const virtualCardHeight = estimateBrowseRowHeight(
-    virtualColumnWidth,
-    layout,
-    browseCardDesign,
-    section
-  );
-  const virtualRowHeight = virtualCardHeight + gridGap;
   // Scroll anchor: when the grid's geometry changes (column count or row
   // height, e.g. the details sidebar opening/closing or a window resize),
   // the same scrollTop suddenly points at different mods and the view appears
@@ -2511,7 +2442,7 @@ export default function Browse() {
         onChangeView={setBrowseDetailsView}
         mod={selectedMod}
         section={selectedDetailsSection}
-        installed={installedIds.has(selectedMod.id)}
+        installed={installedItemKeys.has(`${selectedDetailsSection}:${selectedMod.id}`)}
         updateAvailable={selectedUpdate.flagged}
         updateFileIds={selectedUpdate.updateFileIds}
         archivedByAuthor={selectedUpdate.archived}
@@ -2521,7 +2452,7 @@ export default function Browse() {
         installedFileStates={installedFileStates}
         onEnableFile={toggleMod}
         hideNsfwPreviews={browseBlurNsfwPreviews}
-        saved={favoriteModIds.has(selectedMod.id)}
+        saved={favoriteModKeys.has(`${selectedDetailsSection}:${selectedMod.id}`)}
         onToggleSaved={() => { void handleToggleSaved(selectedMod.id); }}
         savedFileIds={savedFileIds}
         onToggleSavedFile={(file) => { void handleToggleSavedFile(file); }}
@@ -2554,18 +2485,13 @@ export default function Browse() {
           start/stop never re-renders this (large) component. */}
       <div className="flex-1 min-w-0 h-full overflow-y-auto" ref={scrollContainerRef}>
       {/* Header: artist banner in artist mode, otherwise the search/filter row. */}
-      {/* Solid by default. A solid bg-primary band would read as a flat patch
-          over an active background glow, so only then does it go translucent.
-          The transparent-sidebar option repaints the same fixed app background
-          inside the band. That preserves the corner glow at its viewport
-          position while hiding content that scrolls beneath the sticky header. */}
+      {/* Match Installed's translucent toolbar and fixed app background when
+          the transparent-sidebar option is enabled. */}
       <div
-        className={`sticky top-0 z-40 p-4 border-b border-border ${
+        className={`sticky top-0 z-40 px-4 py-3 sm:px-6 border-b border-border ${
           settings?.sidebarTransparent
             ? 'app-background-fixed'
-            : settings?.backgroundGradient
-              ? 'bg-bg-primary/80 backdrop-blur-md'
-              : 'bg-bg-primary'
+            : 'bg-bg-primary/95 backdrop-blur supports-[backdrop-filter]:bg-bg-primary/80'
         }`}
       >
         {artistMode && submitter ? (
@@ -2651,75 +2577,26 @@ export default function Browse() {
               />
             </div>
 
-            {/* Import menu: GameBanana content or portable profile. */}
-            <div className="relative flex-shrink-0" ref={importMenuRef}>
-              <button
-                type="button"
-                onClick={() => setImportMenuOpen((v) => !v)}
-                aria-haspopup="menu"
-                aria-expanded={importMenuOpen}
-                className="h-10 flex items-center justify-center gap-1 pl-2.5 pr-1.5 bg-bg-secondary hover:bg-bg-tertiary border border-border text-text-secondary hover:text-text-primary rounded-lg transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-                title={t('profiles.actions.import')}
-              >
-                <Library className="w-5 h-5" />
-                <ChevronDown className="w-3.5 h-3.5 opacity-70" />
-              </button>
-
-              <AnchoredPopover
-                open={importMenuOpen}
-                onClose={closeImportMenu}
-                anchorRef={importMenuRef}
-                width={256}
-                role="menu"
-                ariaLabel={t('profiles.actions.import')}
-                className="p-1"
-              >
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setImportMenuOpen(false);
-                    setCollectionModalOpen(true);
-                  }}
-                  className="w-full flex items-center gap-3 px-3 py-2 text-left text-sm text-text-primary hover:bg-bg-tertiary rounded-md transition-colors cursor-pointer"
-                >
-                  <Library className="w-4 h-4 text-text-secondary shrink-0" />
-                  <div className="flex flex-col min-w-0">
-                    <span>{t('browse.import.gamebanana')}</span>
-                    <span className="text-2xs text-text-secondary truncate">{t('browse.import.gamebananaHint')}</span>
-                  </div>
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setImportMenuOpen(false);
-                    setImportProfileOpen(true);
-                  }}
-                  className="w-full flex items-center gap-3 px-3 py-2 text-left text-sm text-text-primary hover:bg-bg-tertiary rounded-md transition-colors cursor-pointer"
-                >
-                  <Upload className="w-4 h-4 text-text-secondary shrink-0" />
-                  <div className="flex flex-col min-w-0">
-                    <span>{t('browse.import.grimoireProfile')}</span>
-                    <span className="text-2xs text-text-secondary truncate">{t('browse.import.grimoireProfileHint')}</span>
-                  </div>
-                </button>
-              </AnchoredPopover>
-            </div>
-
             {/* Refresh Icon Button */}
             <button
               type="button"
               onClick={handleRefresh}
               disabled={syncing}
-              className="h-10 w-10 flex-shrink-0 flex items-center justify-center bg-bg-secondary hover:bg-bg-tertiary border border-border text-text-secondary hover:text-text-primary rounded-lg transition-colors disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
+              className="h-10 w-10 flex-shrink-0 flex items-center justify-center bg-bg-secondary hover:bg-bg-tertiary border border-border text-text-primary rounded-lg transition-colors disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
               title={t('browse.refreshFromGameBanana')}
             >
-              {syncing ? (
-                <Loader2 className="w-5 h-5 animate-spin" />
-              ) : (
-                <RefreshCw className="w-5 h-5" />
-              )}
+              <RefreshCw className={`w-5 h-5 ${refreshIconSpinning ? 'browse-refresh-spin' : ''}`}
+                onAnimationIteration={() => { if (!syncing) setRefreshIconSpinning(false); }} />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setCollectionModalOpen(true)}
+              className="h-10 w-10 flex-shrink-0 flex items-center justify-center bg-bg-secondary hover:bg-bg-tertiary border border-border text-text-primary rounded-lg transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              title={t('profiles.actions.import')}
+              aria-label={t('profiles.actions.import')}
+            >
+              <Library className="w-5 h-5" aria-hidden />
             </button>
 
             <div className="relative flex-shrink-0" ref={viewMenuRef}>
@@ -2728,12 +2605,12 @@ export default function Browse() {
                 onClick={() => setViewMenuOpen((v) => !v)}
                 aria-haspopup="dialog"
                 aria-expanded={viewMenuOpen}
-                className="flex h-10 items-center gap-2 rounded-lg border border-border bg-bg-secondary px-3 text-sm text-text-primary transition-colors hover:bg-bg-tertiary focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                className="flex h-10 items-center gap-2 rounded-lg border border-border bg-bg-secondary px-3 text-sm text-text-primary transition-colors hover:bg-bg-tertiary cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                 title={t('browse.viewOptions.title')}
               >
-                <LayoutGrid className="h-4 w-4 text-text-secondary" />
+                <LayoutGrid className="h-4 w-4" />
                 <span className="@max-[760px]:hidden">{t('common.view')}</span>
-                <ChevronDown className="h-3.5 w-3.5 text-text-secondary" />
+                <ChevronDown className="h-3.5 w-3.5" />
               </button>
 
               <AnchoredPopover
@@ -2744,63 +2621,46 @@ export default function Browse() {
                 ariaLabel={t('browse.viewOptions.title')}
                 className="p-3"
               >
-                <div className="space-y-4">
-                  <div>
-                    <div className="mb-2 text-xs font-medium text-text-secondary">{t('browse.viewOptions.layout')}</div>
-                    <BrowseViewOptionControl<BrowseLayout>
-                      label={t('browse.viewOptions.layout')}
-                      value={layout}
-                      onChange={setLayout}
-                      options={[
-                        { value: 'grid', label: t('browse.viewOptions.grid'), icon: LayoutGrid },
-                        { value: 'list', label: t('browse.viewOptions.list'), icon: List },
-                      ]}
-                    />
-                  </div>
+                <div className={BROWSE_MENU_SECTIONS_CLASS}>
+                  <div className="space-y-3">
+                    <div>
+                      <div className="mb-1.5 text-xs font-medium text-text-secondary">{t('browse.viewOptions.cardSize')}</div>
+                      <div className="flex items-center gap-2">
+                        <Grid3x3 className="h-5 w-5 flex-shrink-0 text-text-secondary" aria-hidden="true" />
+                        <input
+                          type="range"
+                          min={BROWSE_CARD_SIZE_MULTIPLIER_MIN}
+                          max={BROWSE_CARD_SIZE_MULTIPLIER_MAX}
+                          step={BROWSE_CARD_SIZE_MULTIPLIER_STEP}
+                          value={browseCardSizeMultiplier}
 
-                  <div className={layout === 'list' ? 'opacity-45' : ''}>
-                    <div className="mb-2 flex items-center justify-between gap-3">
-                      <span className="text-xs font-medium text-text-secondary">{t('browse.viewOptions.cardSize')}</span>
-                      <span className="inline-flex items-center gap-1 text-2xs text-text-tertiary">
-                        <Grid3x3 className="h-3.5 w-3.5" />
-                        {t('browse.viewOptions.gridOnly')}
-                      </span>
+                          onChange={(e) => setBrowseCardSizeMultiplier(Number(e.currentTarget.value))}
+                          aria-label={t('browse.viewOptions.cardSize')}
+                          aria-valuetext={`${browseCardSizeMultiplier.toFixed(2)}x card size`}
+                          className="h-1.5 min-w-0 flex-1 cursor-pointer accent-accent disabled:cursor-default"
+                        />
+                        <Grid2x2 className="h-5 w-5 flex-shrink-0 text-text-secondary" aria-hidden="true" />
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Grid3x3 className="h-4 w-4 flex-shrink-0 text-text-secondary" aria-hidden="true" />
-                      <input
-                        type="range"
-                        min={BROWSE_CARD_SIZE_MULTIPLIER_MIN}
-                        max={BROWSE_CARD_SIZE_MULTIPLIER_MAX}
-                        step={BROWSE_CARD_SIZE_MULTIPLIER_STEP}
-                        value={browseCardSizeMultiplier}
-                        disabled={layout === 'list'}
-                        onChange={(e) => setBrowseCardSizeMultiplier(Number(e.currentTarget.value))}
-                        aria-label={t('browse.viewOptions.cardSize')}
-                        aria-valuetext={`${browseCardSizeMultiplier.toFixed(2)}x card size`}
-                        className="h-1.5 min-w-0 flex-1 cursor-pointer accent-accent disabled:cursor-default"
+
+                    <div>
+                      <div className="mb-1.5 text-xs font-medium text-text-secondary">{t('browse.viewOptions.cardStyle')}</div>
+                      <ViewOptionControl<BrowseCardDesign>
+
+                        label={t('browse.viewOptions.cardDesign')}
+                        value={browseCardDesign}
+                        onChange={setBrowseCardDesign}
+                        options={[
+                          { value: 'readable', label: t('browse.cardStyle.default') },
+                          { value: 'classic', label: t('browse.cardStyle.classic') },
+                        ]}
                       />
-                      <LayoutGrid className="h-5 w-5 flex-shrink-0 text-text-secondary" aria-hidden="true" />
                     </div>
                   </div>
 
-                  <div className={layout === 'list' ? 'opacity-45' : ''}>
-                    <div className="mb-2 text-xs font-medium text-text-secondary">{t('browse.viewOptions.cardStyle')}</div>
-                    <BrowseViewOptionControl<BrowseCardDesign>
-                      disabled={layout === 'list'}
-                      label={t('browse.viewOptions.cardDesign')}
-                      value={browseCardDesign}
-                      onChange={setBrowseCardDesign}
-                      options={[
-                        { value: 'readable', label: t('browse.cardStyle.default') },
-                        { value: 'classic', label: t('browse.cardStyle.classic') },
-                      ]}
-                    />
-                  </div>
-
                   <div>
-                    <div className="mb-2 text-xs font-medium text-text-secondary">{t('browse.viewOptions.detailsView')}</div>
-                    <BrowseViewOptionControl<BrowseDetailsView>
+                    <div className="mb-1.5 text-xs font-medium text-text-secondary">{t('browse.viewOptions.detailsView')}</div>
+                    <ViewOptionControl<BrowseDetailsView>
                       label={t('browse.viewOptions.modDetailsView')}
                       value={browseDetailsView}
                       onChange={setBrowseDetailsView}
@@ -2811,107 +2671,27 @@ export default function Browse() {
                     />
                   </div>
 
-                  <div>
-                    <div className="mb-2 text-xs font-medium text-text-secondary">{t('browse.viewOptions.outdatedContent')}</div>
-                    <BrowseViewOptionControl<'show' | 'hide'>
-                      label={t('browse.viewOptions.outdatedContent')}
-                      value={(settings?.hideOutdatedMods ?? false) ? 'hide' : 'show'}
-                      onChange={(mode) => setBrowseHideOutdated(mode === 'hide')}
-                      options={[
-                        { value: 'show', label: t('browse.viewOptions.show'), icon: Eye },
-                        { value: 'hide', label: t('browse.viewOptions.hide'), icon: EyeOff },
-                      ]}
-                    />
-                  </div>
-
-                  <div className="space-y-1 border-t border-border pt-3">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      icon={EyeOff}
-                      onClick={() => {
-                        setViewMenuOpen(false);
-                        setHiddenCreatorsOpen(true);
-                      }}
-                      className="w-full justify-start px-2 text-text-primary"
-                    >
-                      <span className="min-w-0 flex-1 truncate text-left">{t('hiddenCreators.manage')}</span>
-                      <span className="rounded-full bg-bg-tertiary px-2 py-0.5 text-2xs font-semibold text-text-secondary">
-                        {hiddenCreators.length}
-                      </span>
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      icon={EyeOff}
-                      onClick={() => {
-                        setViewMenuOpen(false);
-                        setHiddenModsOpen(true);
-                      }}
-                      className="w-full justify-start px-2 text-text-primary"
-                    >
-                      <span className="min-w-0 flex-1 truncate text-left">{t('hiddenMods.manage')}</span>
-                      <span className="rounded-full bg-bg-tertiary px-2 py-0.5 text-2xs font-semibold text-text-secondary">
-                        {hiddenMods.length}
-                      </span>
-                    </Button>
-                  </div>
                 </div>
               </AnchoredPopover>
             </div>
 
-            {/* Section toggle: Mods vs Sounds as icon buttons */}
             {sections.length > 1 && (
-              <div className="flex flex-shrink-0 items-center h-10 rounded-lg border border-border bg-bg-secondary p-1" role="tablist" aria-label={t('browse.section.label')}>
-                {sections.map((entry, i) => {
-                  const Icon =
-                    entry.modelName === 'Sound'
-                      ? Music
-                      : entry.modelName === 'Wip'
-                        ? Construction
-                        : Package;
-                  const active = section === entry.modelName;
-                  return (
-                    <button
-                      key={entry.modelName}
-                      ref={(el) => { sectionTabRefs.current[i] = el; }}
-                      type="button"
-                      role="tab"
-                      id={`browse-section-tab-${entry.modelName}`}
-                      aria-controls="browse-section-panel"
-                      aria-selected={active}
-                      tabIndex={active ? 0 : -1}
-                      onKeyDown={(e) => {
-                        const dir = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
-                        if (!dir) return;
-                        e.preventDefault();
-                        const next = (i + dir + sections.length) % sections.length;
-                        setSection(sections[next].modelName);
-                        sectionTabRefs.current[next]?.focus();
-                      }}
-                      onClick={() => setSection(entry.modelName)}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 @max-[980px]:px-2.5 rounded-md transition-colors cursor-pointer ${
-                        active
-                          ? 'bg-bg-tertiary text-text-primary'
-                          : 'text-text-secondary hover:text-text-primary'
-                      }`}
-                      title={entry.pluralTitle}
-                    >
-                      <Icon className="w-4 h-4" />
-                      {/* The three section labels are the widest thing in the
-                          toolbar; they are the first to go when it tightens.
-                          The icon plus the title tooltip carries the meaning. */}
-                      <span className="text-sm @max-[980px]:hidden">{entry.pluralTitle}</span>
-                    </button>
-                  );
-                })}
-              </div>
+              <BrowseSectionPicker
+                sections={sections}
+                selected={selectedSections}
+                canCombine={sections.every((entry) => syncedSections.includes(entry.modelName))}
+                onChange={(next) => setBrowseUi({ selectedSections: next })}
+              />
             )}
 
             {/* A-Z has no apiv11 sort token, so it can only come from the local
                 mirror. Offering it against a cold catalog meant picking it
                 silently returned default order. Mark it unavailable instead. */}
-            <DynamicSelect
+            <DropdownSelect
+              ariaLabel={t('installed.filters.sort')}
+              variant="toolbar"
+              size="lg"
+              icon={ArrowDownUp}
               value={sort}
               onChange={(val) => setSort(val as SortOption)}
               options={[
@@ -2938,10 +2718,7 @@ export default function Browse() {
                 which meant a cold catalog could remove the control entirely
                 rather than explain itself. */}
             {(() => {
-              const filterCount =
-                (heroCategoryId !== 'all' ? 1 : 0) +
-                (categoryId !== 'all' ? 1 : 0) +
-                (addedWithin !== 'all' ? 1 : 0);
+              const hasActiveFilters = heroCategoryId !== 'all' || categoryId !== 'all' || onlyNsfw || addedWithin !== 'all';
               return (
                 <div className="relative flex-shrink-0" ref={filtersRef}>
                   <button
@@ -2950,19 +2727,11 @@ export default function Browse() {
                     aria-haspopup="dialog"
                     aria-expanded={filtersOpen}
                     title={t('browse.filters.title')}
-                    className={`flex items-center h-10 gap-2 px-3 rounded-lg border text-sm transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
-                      filterCount > 0
-                        ? 'bg-accent/10 border-accent/40 text-accent hover:bg-accent/20'
-                        : 'bg-bg-secondary border-border text-text-primary hover:bg-bg-tertiary'
-                    }`}
+                    className={`flex h-10 items-center gap-2 rounded-lg border px-3 text-sm text-text-primary transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${hasActiveFilters ? 'border-accent/40 bg-accent/10 hover:border-accent/60 hover:bg-accent/20' : 'border-border bg-bg-secondary hover:bg-bg-tertiary'}`}
                   >
-                    <SlidersHorizontal className="w-4 h-4" />
-                    <span>{t('browse.filters.title')}</span>
-                    {filterCount > 0 && (
-                      <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-accent text-black text-2xs font-semibold flex items-center justify-center">
-                        {filterCount}
-                      </span>
-                    )}
+                    <Funnel className="w-4 h-4" />
+                    <span className="@max-[760px]:hidden">{t('browse.filters.title')}</span>
+                    <ChevronDown className="h-3.5 w-3.5" />
                   </button>
 
                   <AnchoredPopover
@@ -2971,99 +2740,155 @@ export default function Browse() {
                     anchorRef={filtersRef}
                     width={288}
                     ariaLabel={t('browse.filters.title')}
-                    className="p-4"
+                    className="p-3"
                   >
-                    <div className="flex items-center justify-between mb-3">
-                      <h4 className="text-sm font-semibold text-text-primary">{t('browse.filters.title')}</h4>
-                      {filterCount > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setHeroCategoryId('all');
-                            setCategoryId('all');
-                            setAddedWithin('all');
-                            setAddedFrom('');
-                            setAddedTo('');
-                          }}
-                          className="text-xs text-text-secondary hover:text-accent cursor-pointer"
-                        >
-                          {t('browse.filters.clearAll')}
-                        </button>
-                      )}
-                    </div>
-
-                    <div className="space-y-3">
-                      {heroOptions.length > 0 && (
+                    <div className={BROWSE_MENU_SECTIONS_CLASS}>
+                      {(heroOptions.length > 0 || hasActiveFilters) && (
                         <div className="block">
-                          <span className="block text-xs font-medium text-text-secondary mb-1.5">{t('browse.filters.hero')}</span>
-                          <HeroSelect
-                            ariaLabel="Filter by hero"
-                            value={String(heroCategoryId)}
-                            placeholder={t('browse.filters.allHeroes')}
-                            onChange={(v) => {
-                              if (v === 'all') setHeroCategoryId('all');
-                              else if (v === 'none') setHeroCategoryId('none');
-                              else setHeroCategoryId(Number(v));
-                            }}
-                            options={[
-                              ...(section === 'Sound'
-                                ? [{ value: 'none', label: t('browse.filters.noHero'), muted: true }]
-                                : []),
-                              ...heroOptions.map((hero) => ({
-                                value: String(hero.id),
-                                label: hero.label,
-                                heroName: hero.label,
-                              })),
-                            ]}
-                            search={{
-                              ariaLabel: t('browse.filters.searchHeroesAria'),
-                              placeholder: t('browse.filters.heroFilterPlaceholder'),
-                              getEmptyMessage: (query) =>
-                                t('browse.filters.noHeroesMatch', { query }),
-                              clearLabel: t('browse.filters.clearHeroSearch'),
-                              scope: t('browse.filters.heroSearchScope'),
-                              getResultCount: (visible, total) =>
-                                t('browse.filters.heroResultCount', { visible, total }),
-                            }}
-                          />
+                          <div className="mb-1.5 flex items-center justify-between">
+                            {heroOptions.length > 0 && (
+                              <span className="text-xs font-medium text-text-secondary">{t('browse.filters.hero')}</span>
+                            )}
+                            {hasActiveFilters && (
+                              <button
+                                type="button"
+                                onClick={clearBrowseFilters}
+                                className="ml-auto text-xs text-text-secondary hover:text-accent cursor-pointer"
+                              >
+                                {t('browse.filters.clearAll')}
+                              </button>
+                            )}
+                          </div>
+                          {heroOptions.length > 0 && (
+                            <div className="space-y-1.5">
+                            <HeroSelect
+                              ariaLabel={t('browse.filters.filterByHero')}
+                              value={String(heroCategoryId)}
+                              placeholder={t('browse.filters.allHeroes')}
+                              onChange={(v) => {
+                                if (v === 'all') setHeroCategoryId('all');
+                                else if (v === 'none') setHeroCategoryId('none');
+                                else setHeroCategoryId(Number(v));
+                              }}
+                              options={[
+                                ...(!combinedFeed && section === 'Sound'
+                                  ? [{ value: 'none', label: t('browse.filters.noHero'), muted: true }]
+                                  : []),
+                                ...heroOptions.map((hero) => ({
+                                  value: String(hero.id),
+                                  label: hero.label,
+                                  heroName: hero.label,
+                                })),
+                              ]}
+                              search={{
+                                ariaLabel: t('browse.filters.searchHeroesAria'),
+                                placeholder: t('browse.filters.filterPlaceholder'),
+                                getEmptyMessage: (query) =>
+                                  t('browse.filters.noOptionsMatch', { query }),
+                                clearLabel: t('browse.filters.clearSearch'),
+                              }}
+                            />
+                            <button type="button" role="checkbox" aria-checked={extendedHeroMatching}
+                              title={t('browse.filters.extendedHeroMatchingDescription')}
+                              onClick={() => setBrowseUi({ extendedHeroMatching: !extendedHeroMatching })}
+                              disabled={!hasLocalCache || localSearchFailed || !!submitter}
+                              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-text-secondary transition-colors hover:bg-hl/5 hover:text-text-primary cursor-pointer disabled:cursor-not-allowed disabled:opacity-50">
+                              <CheckboxMark checked={extendedHeroMatching} variant="menu" tone="white" />
+                              <span className="flex-1 truncate">{t('browse.filters.extendedHeroMatching')}</span>
+                            </button>
+                            </div>
+                          )}
                         </div>
                       )}
 
-                      {categoryOptions.length > 0 && (
+                      {!combinedFeed && categoryOptions.length > 0 && (
                         <div className="block">
                           <span className="block text-xs font-medium text-text-secondary mb-1.5">{t('browse.filters.category')}</span>
-                          <Select
-                            aria-label={t('browse.filters.filterByCategory')}
+                          <DropdownSelect
+                            ariaLabel={t('browse.filters.filterByCategory')}
                             value={String(categoryId)}
-                            onChange={(e) => setCategoryId(e.target.value === 'all' ? 'all' : Number(e.target.value))}
+                            onChange={(value) => setCategoryId(value === 'all' ? 'all' : Number(value))}
                             disabled={heroCategoryId !== 'all'}
-                          >
-                            <option value="all">{t('browse.filters.allCategories')}</option>
-                            {categoryOptions.map((cat) => (
-                              <option key={cat.id} value={String(cat.id)}>{cat.label}</option>
-                            ))}
-                          </Select>
+                            options={[
+                              { value: 'all', label: t('browse.filters.allCategories') },
+                              ...categoryOptions.map((cat) => ({ value: String(cat.id), label: gameBananaCategoryLabel(cat.label, t) })),
+                            ]}
+                            search={{
+                              ariaLabel: t('browse.filters.searchCategoriesAria'),
+                              placeholder: t('browse.filters.filterPlaceholder'),
+                              getEmptyMessage: (query) => t('browse.filters.noOptionsMatch', { query }),
+                              clearLabel: t('browse.filters.clearSearch'),
+                            }}
+                          />
                           {heroCategoryId !== 'all' && (
                             <span className="block text-2xs text-text-tertiary mt-1">{t('browse.filters.heroOverridesCategories')}</span>
                           )}
                         </div>
                       )}
 
-                      {/* Not a session filter: this is the app-wide NSFW
-                          setting, shared with Settings > Privacy & Content, so
-                          it isn't counted or reset by Clear all. */}
-                      <div className="block">
-                        <span className="block text-xs font-medium text-text-secondary mb-1.5">{t('browse.filters.content')}</span>
-                        <BrowseViewOptionControl<NsfwContentMode>
-                          label={t('browse.viewOptions.nsfwContent')}
-                          value={nsfwContentMode}
-                          onChange={setNsfwContentMode}
-                          options={[
-                            { value: 'show', label: t('browse.viewOptions.show'), icon: Eye },
-                            { value: 'blur', label: t('browse.viewOptions.blur'), icon: EyeClosed },
-                            { value: 'hide', label: t('browse.viewOptions.hide'), icon: EyeOff },
-                          ]}
-                        />
+                      {/* Show, Blur and Hide share the app-wide preference.
+                          Only is a session filter, counted and cleared above. */}
+                      <div className="space-y-3">
+                        <div className="block">
+                          <span className="block text-xs font-medium text-text-secondary mb-1.5">{t('browse.viewOptions.nsfwContent')}</span>
+                          <ViewOptionControl<BrowseContentMode>
+                            label={t('browse.viewOptions.nsfwContent')}
+                            value={onlyNsfw ? 'only' : nsfwContentMode}
+                            onChange={setBrowseContentMode}
+                            options={[
+                              { value: 'show', label: t('browse.viewOptions.show'), icon: Eye },
+                              { value: 'blur', label: t('browse.viewOptions.blur'), icon: EyeClosed },
+                              { value: 'hide', label: t('browse.viewOptions.hide'), icon: EyeOff },
+                              { value: 'only', label: t('browse.viewOptions.only'), icon: EyeDashed },
+                            ]}
+                          />
+                        </div>
+
+                        <div className="block">
+                          <span className="block text-xs font-medium text-text-secondary mb-1.5">{t('browse.viewOptions.outdatedContent')}</span>
+                          <ViewOptionControl<'show' | 'hide'>
+                            label={t('browse.viewOptions.outdatedContent')}
+                            value={(settings?.hideOutdatedMods ?? false) ? 'hide' : 'show'}
+                            onChange={(mode) => setBrowseHideOutdated(mode === 'hide')}
+                            options={[
+                              { value: 'show', label: t('browse.viewOptions.show'), icon: Eye },
+                              { value: 'hide', label: t('browse.viewOptions.hide'), icon: EyeOff },
+                            ]}
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            icon={UsersRound}
+                            title={t('hiddenCreators.manage')}
+                            onClick={() => {
+                              setFiltersOpen(false);
+                              setHiddenCreatorsOpen(true);
+                            }}
+                            className="w-full justify-start !px-2 !text-xs"
+                          >
+                            <span className="min-w-0 flex-1 truncate text-left">{t('hiddenCreators.manage')}</span>
+                            <span className="text-2xs tabular-nums text-text-tertiary">{hiddenCreators.length}</span>
+                            <ChevronRight className="h-3.5 w-3.5 flex-shrink-0 text-text-tertiary" aria-hidden="true" />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            icon={EyeOff}
+                            title={t('hiddenMods.manage')}
+                            onClick={() => {
+                              setFiltersOpen(false);
+                              setHiddenModsOpen(true);
+                            }}
+                            className="w-full justify-start !px-2 !text-xs"
+                          >
+                            <span className="min-w-0 flex-1 truncate text-left">{t('hiddenMods.manage')}</span>
+                            <span className="text-2xs tabular-nums text-text-tertiary">{hiddenMods.length}</span>
+                            <ChevronRight className="h-3.5 w-3.5 flex-shrink-0 text-text-tertiary" aria-hidden="true" />
+                          </Button>
+                        </div>
                       </div>
 
                       {/* Recency can only be answered by the local catalog
@@ -3071,53 +2896,60 @@ export default function Browse() {
                           catalog, so a cold cache looked like "the filters
                           are missing/broken" with no explanation. Render it
                           disabled and say why. */}
-                      {!hasLocalCache && (
-                        <p className="rounded-md border border-border bg-bg-tertiary px-2 py-1.5 text-2xs text-text-secondary">
-                          {catalogSyncing
-                            ? t('browse.filters.catalogSyncing')
-                            : t('browse.filters.catalogUnavailable')}
-                        </p>
-                      )}
-
                       <div className="block">
                         <span className="block text-xs font-medium text-text-secondary mb-1.5">{t('browse.filters.added')}</span>
-                        <Select
-                          aria-label={t('browse.filters.filterByDateAdded')}
-                          value={addedWithin}
-                          disabled={!hasLocalCache}
-                          onChange={(e) => setAddedWithin(e.target.value as BrowseTimeRange)}
-                        >
-                          <option value="all">{t('browse.filters.anyTime')}</option>
-                          <option value="today">{t('browse.filters.today')}</option>
-                          <option value="week">{t('browse.filters.thisWeek')}</option>
-                          <option value="month">{t('browse.filters.thisMonth')}</option>
-                          <option value="custom">{t('browse.filters.customRange')}</option>
-                        </Select>
+                        <div role="radiogroup" aria-label={t('browse.filters.filterByDateAdded')}
+                          className="space-y-1 rounded-lg border border-border bg-bg-secondary p-1">
+                          {[
+                            { value: 'all', label: t('browse.filters.anyTime') },
+                            { value: 'today', label: t('browse.filters.today') },
+                            { value: 'week', label: t('browse.filters.thisWeek') },
+                            { value: 'month', label: t('browse.filters.thisMonth') },
+                            { value: 'custom', label: t('browse.filters.customRange') },
+                          ].map(option => <label key={option.value}
+                            className={`flex h-8 items-center justify-between gap-3 rounded-md px-2 text-xs has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-accent ${hasLocalCache ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'} ${addedWithin === option.value ? 'bg-bg-tertiary text-text-primary' : 'text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'}`}>
+                            <input type="radio" className="sr-only" name={addedRadioName} value={option.value}
+                              checked={addedWithin === option.value} disabled={!hasLocalCache}
+                              onChange={() => setAddedWithin(option.value as BrowseTimeRange)} />
+                            <span>{option.label}</span>
+                            {addedWithin === option.value && <Check className="h-3.5 w-3.5 shrink-0" aria-hidden />}
+                          </label>)}
+                        </div>
+                        {!hasLocalCache && (
+                          <p className="mt-2 rounded-md border border-border bg-bg-tertiary px-2 py-1.5 text-2xs text-text-secondary">
+                            {catalogSyncing
+                              ? t('browse.filters.catalogSyncing')
+                              : t('browse.filters.catalogUnavailable')}
+                          </p>
+                        )}
                         {addedWithin === 'custom' && (
                           <div className="mt-2 grid grid-cols-2 gap-2">
-                            <label className="block">
-                              <span className="block text-2xs text-text-tertiary mb-1">{t('browse.filters.from')}</span>
-                              <input
+                            <label className="block min-w-0">
+                              <span className="block text-xs font-medium text-text-secondary mb-1.5">{t('browse.filters.from')}</span>
+                              <Input
                                 type="date"
+                                inputSize="sm"
                                 value={addedFrom}
                                 max={addedTo || undefined}
                                 onChange={(e) => setAddedFrom(e.target.value)}
-                                className="w-full px-2 py-1.5 bg-bg-tertiary border border-border rounded-md text-xs text-text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-accent cursor-pointer"
+                                className="h-9 min-w-0 !px-2 !text-xs cursor-pointer"
                               />
                             </label>
-                            <label className="block">
-                              <span className="block text-2xs text-text-tertiary mb-1">{t('browse.filters.to')}</span>
-                              <input
+                            <label className="block min-w-0">
+                              <span className="block text-xs font-medium text-text-secondary mb-1.5">{t('browse.filters.to')}</span>
+                              <Input
                                 type="date"
+                                inputSize="sm"
                                 value={addedTo}
                                 min={addedFrom || undefined}
                                 onChange={(e) => setAddedTo(e.target.value)}
-                                className="w-full px-2 py-1.5 bg-bg-tertiary border border-border rounded-md text-xs text-text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-accent cursor-pointer"
+                                className="h-9 min-w-0 !px-2 !text-xs cursor-pointer"
                               />
                             </label>
                           </div>
                         )}
                       </div>
+
                     </div>
                   </AnchoredPopover>
                 </div>
@@ -3128,18 +2960,12 @@ export default function Browse() {
         )}
       </div>
 
-      {/* Main Content. This is the panel the Mods/Sounds/Wip section tablist
-          above selects, so it carries the tabpanel wiring: one panel id per
-          section, labelled by the tab that selected it. */}
-      <div
-        role="tabpanel"
-        id="browse-section-panel"
-        aria-labelledby={`browse-section-tab-${section}`}
-        className="relative z-0 flex-1 p-4"
-      >
+      {/* Main Content */}
+      <div className="relative z-0 flex-1 p-4">
         {(() => {
           const hasActiveFilters =
             search.trim().length > 0 ||
+            onlyNsfw ||
             heroCategoryId !== 'all' ||
             categoryId !== 'all' ||
             sort !== 'default' ||
@@ -3161,8 +2987,8 @@ export default function Browse() {
                 aria-busy="true"
                 aria-live="polite"
               >
-                {Array.from({ length: Math.min(DEFAULT_PER_PAGE, virtualColumnCount * 6) }).map((_, i) => (
-                  <ModCardSkeleton key={i} viewMode={viewMode} cardDesign={browseCardDesign} height={virtualCardHeight} index={i} />
+                {Array.from({ length: Math.min(completeBrowseRowCount(perPage, virtualColumnCount, true) || virtualColumnCount, virtualColumnCount * 6) }).map((_, i) => (
+                  <ModCardSkeleton key={i} cardDesign={browseCardDesign} height={virtualCardHeight} index={i} />
                 ))}
               </div>
             );
@@ -3177,7 +3003,7 @@ export default function Browse() {
                 <EmptyState
                   icon={AlertTriangle}
                   title={t('browse.empty.couldntLoadMods')}
-                  description={renderErrorWithLinks(error)}
+                  description={<BrowseErrorDescription error={error} />}
                   variant="error"
                   action={<Button onClick={handleRetryFetch}>{t('common.actions.retry')}</Button>}
                 />
@@ -3186,19 +3012,15 @@ export default function Browse() {
             return (
               <EmptyState
                 icon={Search}
-                title={hasActiveFilters ? 'No mods match your filters' : 'No mods found'}
-                description={hasActiveFilters ? 'Try widening your search or clearing filters.' : undefined}
+                title={hasActiveFilters ? t('browse.empty.noModsMatch') : t('browse.empty.noModsFound')}
+                description={hasActiveFilters ? t('browse.empty.widenSearch') : undefined}
                 action={
                   hasActiveFilters ? (
                     <Button
                       onClick={() => {
                         setSearch('');
-                        setHeroCategoryId('all');
-                        setCategoryId('all');
                         setSort('default');
-                        setAddedWithin('all');
-                        setAddedFrom('');
-                        setAddedTo('');
+                        clearBrowseFilters();
                       }}
                     >
                       {t('browse.filters.clearFilters')}
@@ -3213,16 +3035,14 @@ export default function Browse() {
               mods={displayMods}
               scrollRef={scrollContainerRef}
               gridRef={gridWrapRef}
+              initialScrollOffset={initialCache?.scrollTop ?? 0}
               columnCount={virtualColumnCount}
               columnWidth={virtualColumnWidth}
               cardHeight={virtualCardHeight}
               gridGap={gridGap}
-              layout={layout}
-              viewMode={viewMode}
               cardDesign={browseCardDesign}
               cardSize={browseCardSize}
-              section={section}
-              installedIds={installedIds}
+              installedIds={installedItemKeys}
               installedByGbId={installedByGbId}
               queuedByModId={queuedByModId}
               downloadingModId={downloading?.modId}
@@ -3240,26 +3060,22 @@ export default function Browse() {
           );
         })()}
         {/* Infinite Scroll Trigger */}
-        <div ref={loadMoreRef} className="flex items-center justify-center p-4">
-          {loadingMore && (
-            <div className="flex items-center gap-2 text-text-secondary">
-              <Loader2 className="w-5 h-5 animate-spin" />
-              <span className="text-sm">{t('browse.loadMore.loadingMore')}</span>
-            </div>
-          )}
+        <BrowseLoadMore scrollRef={scrollContainerRef} hasMore={hasMore} loading={loading || loadingMore}
+          paused={autoLoadPaused || syncing || !catalogChecked || mods.length === 0} needsMore={pagingPastFilteredPage} queryKey={fetchFilterStamp} onLoadMore={loadNextPage}>
           {loadMoreError && !loadingMore && (
             <div className="flex flex-col items-center gap-2 text-center max-w-md">
               <div className="flex items-center gap-2 text-text-secondary">
-                <AlertTriangle className="w-4 h-4 text-yellow-400 shrink-0" />
-                <span className="text-sm">{t('browse.loadMore.couldntLoadMore')} {renderErrorWithLinks(loadMoreError)}</span>
+                <AlertTriangle className="w-4 h-4 text-state-warning shrink-0" />
+                <span className="text-sm">{t('browse.loadMore.couldntLoadMore')}</span>
               </div>
+              <BrowseErrorDescription error={loadMoreError} />
               <Button onClick={handleRetryFetch} variant="secondary" size="sm">{t('common.actions.retry')}</Button>
             </div>
           )}
           {!hasMore && !loadMoreError && mods.length > 0 && !loadingMore && (
             <span className="text-sm text-text-secondary">{t('browse.loadMore.noMore')}</span>
           )}
-        </div>
+        </BrowseLoadMore>
       </div>
 
       {/* Mod details: centered modal (portals to body). The sidebar variant is
@@ -3275,11 +3091,11 @@ export default function Browse() {
           onPick={(file) => {
             const modId = filePicker.details.id;
             setFilePicker(null);
-            void runDownload(modId, file);
+            void runDownload(modId, file, filePicker.section);
           }}
           onViewAll={() => {
             setSelectedMod(filePicker.details);
-            setSelectedDetailsSection(section);
+            setSelectedDetailsSection(filePicker.section);
             setSelectedModDates(filePicker.dates);
             setFilePicker(null);
           }}
@@ -3294,14 +3110,16 @@ export default function Browse() {
           queuedIds={queuedModIds}
           activeDeadlockPath={activeDeadlockPath}
           onClose={() => setCollectionModalOpen(false)}
+          onImportProfile={input => { setCollectionModalOpen(false); setImportProfileInput(input); }}
         />
       )}
 
-      {importProfileOpen && (
+      {importProfileInput !== null && (
         <ImportProfileDialog
           activeDeadlockPath={activeDeadlockPath}
           hideNsfwPreviews={browseBlurNsfwPreviews}
-          onClose={() => setImportProfileOpen(false)}
+          initialInput={importProfileInput}
+          onClose={() => setImportProfileInput(null)}
           onImported={() => { void loadMods(); }}
         />
       )}

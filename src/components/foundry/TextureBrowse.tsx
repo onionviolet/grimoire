@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { z } from 'zod';
+import { useFoundryDraft } from '../../lib/useFoundryDraft';
 import { ImageIcon, Search, Loader2, AlertTriangle, Users, Box, Sparkles, Upload } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useConfirm } from '../common/confirmContext';
@@ -50,16 +52,19 @@ const LIMIT = 400;
 export default function TextureBrowse({ heroes, heroNames, hero, onStage }: TextureBrowseProps) {
   const { t } = useTranslation();
   const confirm = useConfirm();
-  const [category, setCategory] = useState<TextureCategory>('hero-model');
+  const draftKey = `textures:${hero ?? 'catalog'}`;
+  const [category, setCategory] = useFoundryDraft<TextureCategory>(`${draftKey}:category`, z.enum(['hero-model', 'ability-vfx']), 'hero-model');
   // The embedder's hero is the default, not a suggestion the panel may drop.
-  const [heroFilter, setHeroFilter] = useState(hero ?? '');
-  const [search, setSearch] = useState('');
+  const [heroFilter, setHeroFilter] = useFoundryDraft(`${draftKey}:hero`, z.string().max(100), hero ?? '');
+  const [search, setSearch] = useFoundryDraft(`${draftKey}:search`, z.string().max(512), '');
   const [items, setItems] = useState<TextureEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [truncated, setTruncated] = useState(false);
   const [lightbox, setLightbox] = useState<TextureGridItem | null>(null);
   const [stagingPath, setStagingPath] = useState<string | null>(null);
+  // Only the latest request may land: a slow earlier search must not overwrite a newer one.
+  const requestRevision = useRef(0);
 
   // Same staging contract as the Library grid: inspect the exact entry paths
   // first, block on an unreadable VPK, and only ever layer a new replacement
@@ -114,6 +119,7 @@ export default function TextureBrowse({ heroes, heroNames, hero, onStage }: Text
 
   const load = useCallback(
     async (cat: TextureCategory, hero: string, term: string) => {
+      const revision = ++requestRevision.current;
       setLoading(true);
       setError(null);
       try {
@@ -123,14 +129,16 @@ export default function TextureBrowse({ heroes, heroNames, hero, onStage }: Text
           search: term.trim() || undefined,
           limit: LIMIT,
         });
+        if (revision !== requestRevision.current) return;
         setItems(rows);
         setTruncated(rows.length >= LIMIT);
       } catch (e) {
+        if (revision !== requestRevision.current) return;
         setError(e instanceof Error ? e.message : String(e));
         setItems([]);
         setTruncated(false);
       } finally {
-        setLoading(false);
+        if (revision === requestRevision.current) setLoading(false);
       }
     },
     [],
@@ -145,7 +153,7 @@ export default function TextureBrowse({ heroes, heroNames, hero, onStage }: Text
       return;
     }
     const handle = setTimeout(() => void load(category, heroFilter, search), 250);
-    return () => clearTimeout(handle);
+    return () => { clearTimeout(handle); requestRevision.current += 1; };
   }, [category, heroFilter, search, ready, load]);
 
   return (

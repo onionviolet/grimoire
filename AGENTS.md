@@ -79,9 +79,10 @@ Single maintainer. Part of the `grimoire-workspace` monorepo-ish root; sibling r
 ## Commands
 
 ```bash
-pnpm install                                     # postinstall fetches the pinned vpkmerge binary
-pnpm exec electron-rebuild -f -w better-sqlite3  # rebuild the native module (after any install that touched it)
-pnpm dev                                         # electron-vite with HMR
+pnpm install                                     # postinstall fetches Electron and the pinned vpkmerge binary
+pnpm dev                                         # predev auto-rebuilds better-sqlite3 for Electron, then runs electron-vite with HMR
+pnpm rebuild:electron                            # force-rebuild better-sqlite3 for Electron's ABI
+pnpm rebuild:node                                # build better-sqlite3 for plain Node (for SQLite vitest suites)
 pnpm typecheck                                   # tsc -b: covers src/ AND electron/
 pnpm lint
 pnpm test                                        # vitest run (node env, no DOM)
@@ -109,9 +110,9 @@ Heavy VPK/model/texture/sound work shells out to the bundled `vpkmerge` CLI (`re
 ## Hard rules
 
 - **No em-dashes**, anywhere: UI strings, comments, docs, commit messages. Use a colon, period or parens.
-- **No telemetry.** No analytics, usage pings or heartbeats. On its own the app only talks to services the user chose: GitHub for the app update check (which has a setting) and GameBanana for the catalog refresh, the Installed mod update check and mod thumbnails. Everything else waits for a click or an opt-in. Every request is listed on the privacy guide page (`docs/guide/privacy.md`, published at grimoiremods.com/docs/privacy), so a new one needs an entry there. One that sends user data somewhere the user didn't choose also needs an off switch: SignPath's signing terms require it.
+- **No telemetry.** No analytics, usage pings or heartbeats. On its own the app only talks to services the user chose: GitHub for the app update check (which has a setting) and GameBanana for the catalog refresh, the Installed mod update check and mod thumbnails. Everything else waits for a click or an opt-in. Every request is listed on the privacy guide page (`src/content/docs/privacy.md` in `../grimoire-site`, published at grimoiremods.com/docs/privacy), so a new one needs an entry there. One that sends user data somewhere the user didn't choose also needs an off switch.
 - **Main process owns secrets.** API keys and the social session token (stored via `safeStorage`) never reach the renderer. The main process attaches auth headers itself.
-- **Wire-format types come from `@grimoire/social-types`** (`../grimoire-social/packages/social-types/`). Never redeclare them here. Social routes are `/v1/*`, additive only; breaking changes go to `/v2/`.
+- **Wire-format types come from `@grimoire/social-types`** (published as a compiled release tarball from `Slush97/grimoire-social` and pinned in `package.json`). Never redeclare them here. Social routes are `/v1/*`, additive only; breaking changes go to `/v2/`.
 - **External APIs go through a rate limiter** in `electron/main/services/rateLimiter.ts` (GameBanana, deadlock-api, Steam community, GitHub). New integrations reuse that pattern.
 - **The portable profile format is Grimoire-only.** Don't claim compatibility with other mod managers in copy.
 - **Visible strings are i18n keys** (see below). Never hardcode user-facing copy.
@@ -122,24 +123,24 @@ Read `docs/ui-conventions.md` before any renderer UI work. The short version:
 
 - Reuse the primitives in `src/components/common/` (`ui.tsx`, `forms.tsx`, `PageComponents.tsx`, `Modal.tsx`, `menu.tsx`, `ToastStack.tsx`) before writing markup.
 - Colors come from the tokens in `src/index.css` `@theme`, never raw hex or raw Tailwind palette colors.
-- **The accent color is user-chosen at runtime** (`src/lib/accentColor.ts` rewrites `--color-accent*`; OLED mode swaps the surface tokens). Orange `#f97316` is only the default. Always use `accent`/`accent-hover`/`accent-foreground` utilities and never design around a specific hue.
+- **The accent color is user-chosen at runtime** (`src/lib/accentColor.ts` rewrites `--color-accent*`), and so is the theme: dark, OLED or light (`src/lib/theme.ts`; each swaps the surface and ink tokens). Orange `#f97316` is only the default. Always use `accent`/`accent-hover`/`accent-foreground` utilities and never design around a specific hue.
 - The z-index ladder is documented at the top of `src/index.css`. Don't invent new z values.
 
 ## i18n
 
 `src/locales/en/translation.json` is the source of truth and the only catalog translators see (via Weblate). It must contain only keys actually referenced by `t()`/`<Tx>`. `src/locales/unwired-en.json` is an English-only to-do list of hardcoded strings still to be wired. It is never bundled or translated.
 
-After any catalog change run `pnpm i18n:manifest`, or CI and pre-push fail. Translations come back on `translations/<lang>` branches and only reach users once merged to `main`, because the app fetches the manifest and catalogs from `raw.githubusercontent.com/Slush97/grimoire/main` on demand. Full flow: `docs/localization.md`.
+After any catalog change run `pnpm i18n:manifest`, or CI and pre-push fail. Translations come back on `translations/<lang>` branches. The app reads the manifest from `raw.githubusercontent.com/Slush97/grimoire/main`, but every catalog in the repo at build time is bundled, and a bundled language only updates with a release. Only a language added after the release is downloaded and refreshed from `main`. Full flow: `docs/localization.md`.
 
 ## Gotchas that have shipped bugs
 
 - **New main-process runtime deps must be bundled.** `build.externalizeDeps` leaves prod deps as bare imports, and `electron-builder.yml` strips `node_modules` except an explicit native allowlist. Add the package to the `exclude` list in `electron.vite.config.ts`, or every packaged user crashes on launch. After `pnpm build`, `grep -c 'Could not resolve "' dist/main/index.js` must print `0`.
-- **`@grimoire/social-types` stays in `devDependencies`.** It is bundled at build time. As a prod dep, `@electron/rebuild` trips over its out-of-root symlink.
+- **`@grimoire/social-types` stays in `devDependencies`.** It is bundled into `dist/` at build time via `electron.vite.config.ts` (`externalizeDeps.exclude`), so `electron-builder.yml` does not need to allowlist it in `app.asar`.
 - **Tests run on Node 24 in CI** with no DOM. Node provides a global `navigator`, but `window` and `document` are still unavailable. Renderer modules that access DOM APIs at import time can fail every test that transitively imports them. Watch the test count, not just pass/fail.
 - **The CSP only applies to packaged builds.** `pnpm dev` has none, so "works in dev, broken packaged" bugs (especially 3D previews over `grimoire-hero:`/`grimoire-soul:`/`blob:`) usually mean the `connect-src` in `electron/main/index.ts` needs updating.
 - **vpkmerge version coupling.** A feature that needs a new vpkmerge flag or subcommand requires a vpkmerge release first, then a bump of the version + 3 sha256s in `scripts/fetch-vpkmerge.mjs`. `pnpm dev` hides the break when a locally built binary sits in `resources/vpkmerge/`.
 - **Mod mutations are serialized.** Enable/disable/reorder share an in-process lock (`withModMutationLock` / `runExclusiveModMutation` in `electron/main/services/mods.ts`) because racing `pakNN` slot writes clobbered VPKs. Route new mutating operations through it.
-- **pnpm-workspace.yaml is gitignored but load-bearing.** It holds `packages: ['../grimoire-social/packages/*']`. CI pins pnpm 10. Local pnpm 11 also needs `blockExoticSubdeps: false` and `allowBuilds.better-sqlite3: false`. Never commit a lockfile regenerated from a git worktree: the social-types link path is relative and dangles everywhere else.
+- **pnpm 12 is pinned in `package.json`.** `engines.pnpm` rejects other versions locally and `pnpm/action-setup` reads `devEngines.packageManager` in CI. Keep `onFail: "ignore"`: any other value makes pnpm write a second YAML document into `pnpm-lock.yaml`, GitHub's dependency graph reads only the first, and Dependabot silently loses every dependency and marks open alerts fixed. Keep the version free of `>`, `<` and `^`, because the action passes it through `cmd.exe` unquoted on Windows. `pnpm-workspace.yaml` is tracked: it holds the `allowBuilds` list, and `better-sqlite3` stays `false` there because its install script deletes the binary on a failed build.
 
 ## Read before touching
 

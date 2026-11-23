@@ -43,18 +43,6 @@ jobs:
         with:
           path: grimoire
 
-      # pnpm-lock.yaml resolves @grimoire/social-types to
-      # link:../grimoire-social/packages/social-types. Without this sibling
-      # checkout the link dangles: pnpm install still exits 0, and the build
-      # then fails on unresolved social imports.
-      # scripts/check-sibling-repos.mjs (preinstall) enforces the layout.
-      - name: Checkout grimoire-social (sibling for shared types)
-        uses: actions/checkout@v6
-        with:
-          repository: Slush97/grimoire-social
-          path: grimoire-social
-          ref: main
-
       # Foundry's global-sound catalog and icon replacement path depend on
       # unreleased vpkmerge work from this fork.  Keep this SHA pinned: a
       # release must be reproducible and must not silently change merely
@@ -83,13 +71,6 @@ jobs:
           node-version: 24
           cache: pnpm
           cache-dependency-path: grimoire/pnpm-lock.yaml
-
-      # @grimoire/social-types declares zod as a peer dependency; the symlinked
-      # workspace package needs its own node_modules so the import resolves
-      # from the Electron build.
-      - name: Install grimoire-social deps (for the shared workspace package)
-        working-directory: grimoire-social
-        run: pnpm install --frozen-lockfile
 
       - name: Install dependencies
         working-directory: grimoire

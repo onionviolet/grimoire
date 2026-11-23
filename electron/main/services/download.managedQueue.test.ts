@@ -6,6 +6,7 @@ import { join } from 'path';
 import type { BrowserWindow } from 'electron';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DownloadModArgs } from '../../../src/types/electron';
+import { buildCategoryPaths, type CategoryPaths } from '../../../src/lib/categoryPaths';
 
 const harness = vi.hoisted(() => ({
     userData: '',
@@ -18,6 +19,8 @@ const harness = vi.hoisted(() => ({
     scanMods: vi.fn(),
     extractArchive: vi.fn(),
     assertVpkSafety: vi.fn(),
+    categoryPaths: undefined as CategoryPaths | undefined,
+    groupMetadata: {} as Record<string, { gameBananaId: number; localGroupId: string; localImport: boolean; modName: string }>,
     copying: false,
     settings: { autoEnableDownloads: true, autoDisableSiblingVariants: true },
 }));
@@ -28,8 +31,7 @@ vi.mock('electron', () => ({
         static getAllWindows() { return [{ webContents: { send: harness.send } }]; }
     },
 }));
-vi.mock('@grimoire/social-types/heroes', () => ({ inferHeroFromTitle: () => null }));
-vi.mock('./gamebanana', () => ({ fetchModDetails: harness.fetchModDetails }));
+vi.mock('./gamebanana', () => ({ fetchModDetails: harness.fetchModDetails, readCachedCategoryPaths: () => harness.categoryPaths }));
 vi.mock('./deadlock', async (importOriginal) => ({
     ...(await importOriginal<typeof import('./deadlock')>()),
     getDisabledPath: () => harness.disabledPath,
@@ -42,6 +44,7 @@ vi.mock('./devMods', () => ({ isCopyingModsToDev: () => harness.copying }));
 vi.mock('./metadata', async (importOriginal) => ({
     ...(await importOriginal<typeof import('./metadata')>()),
     getModMetadata: () => undefined,
+    loadMetadata: () => harness.groupMetadata,
     setModMetadataWithHash: harness.setModMetadataWithHash,
 }));
 vi.mock('./mods', async (importOriginal) => ({
@@ -113,6 +116,20 @@ function queuedJobId(modId: number): string {
     const item = getDownloadQueue().find((queued) => queued.modId === modId);
     if (!item?.jobId) throw new Error(`Queued fixture ${modId} has no job ID`);
     return item.jobId;
+}
+
+function heroVoiceVpk(codename: string): Buffer {
+    const entry = Buffer.alloc(18);
+    entry.writeUInt16LE(0x7fff, 6);
+    entry.writeUInt16LE(0xffff, 16);
+    const tree = Buffer.concat([
+        Buffer.from(`vsnd_c\0sounds/vo/${codename}\0line\0`), entry, Buffer.from('\0\0\0'),
+    ]);
+    const header = Buffer.alloc(28);
+    header.writeUInt32LE(0x55aa1234);
+    header.writeUInt32LE(2, 4);
+    header.writeUInt32LE(tree.length, 8);
+    return Buffer.concat([header, tree]);
 }
 
 describe('managed download FIFO', () => {
@@ -191,11 +208,65 @@ describe('managed download FIFO', () => {
         harness.extractArchive.mockReset();
         harness.assertVpkSafety.mockReset().mockResolvedValue(undefined);
         harness.copying = false;
+        harness.groupMetadata = {};
+        harness.categoryPaths = undefined;
     });
 
     afterAll(async () => {
         await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
         await fs.rm(root, { recursive: true, force: true });
+    });
+
+    it.each(['Sound', 'Wip', 'Mod'])('detects each replacement VPK separately when updating a %s archive', async (section) => {
+        if (section === 'Mod') harness.categoryPaths = buildCategoryPaths([{ id: 10, name: 'HUD', itemCount: 0,
+            children: [{ id: 12, name: 'Custom widgets', itemCount: 0 }] }]);
+        harness.fetchModDetails.mockResolvedValue({
+            name: 'Seven collection',
+            category: section === 'Mod' ? { id: 12, name: 'Custom widgets' } : undefined,
+            files: [{ id: 95, fileName: 'voices.zip', description: 'Yamato', downloadUrl: `${harness.baseUrl}/95`, fileSize: SMALL_VPK.length }],
+        });
+        harness.extractArchive.mockImplementation(async (_archive: string, workDir: string) => {
+            return Promise.all(['haze', 'wraith'].map(async codename => {
+                const path = join(workDir, `${codename}.vpk`);
+                await fs.writeFile(path, heroVoiceVpk(codename));
+                return { path, fileName: `${codename}.vpk` };
+            }));
+        });
+        harness.send.mockImplementation((channel, data) => {
+            if (channel === 'multi-vpk-pick') queueMicrotask(() => {
+                resolveMultiVpkPick(data.requestId, { selected: data.vpkFileNames });
+            });
+        });
+        await enqueueManagedDownload('/game', {
+            ...args(95), fileName: 'voices.zip', section, replacementModIds: ['previous-version'],
+        }, mainWindow, { afterInstall: async () => {} });
+
+        expect(harness.setModMetadataWithHash).toHaveBeenCalledTimes(2);
+        expect(harness.setModMetadataWithHash.mock.calls.map(([, metadata]) => metadata.heroDetection?.heroes).sort())
+            .toEqual([['Haze'], ['Wraith']]);
+        expect(harness.setModMetadataWithHash.mock.calls.every(([, metadata]) => metadata.heroDetection?.source === 'vpk'))
+            .toBe(true);
+    });
+
+    it('saves textual hero detection for a newly downloaded skin without a hero category', async () => {
+        harness.fetchModDetails.mockResolvedValue({
+            name: 'Haze outfit', category: { id: 33295, name: 'Skins' },
+            files: [{ id: 96, fileName: 'outfit.vpk', description: 'Ivy variant', downloadUrl: `${harness.baseUrl}/96`, fileSize: SMALL_VPK.length }],
+        });
+        await enqueueManagedDownload('/game', { ...args(96), fileName: 'outfit.vpk', section: 'Mod' }, mainWindow,
+            { afterInstall: async () => {} });
+        expect(harness.setModMetadataWithHash).toHaveBeenCalledOnce();
+        expect(harness.setModMetadataWithHash.mock.calls[0][1]).toMatchObject({
+            categoryId: 33295, categoryName: 'Skins', heroDetection: { heroes: ['Ivy'], source: 'description' },
+        });
+    });
+
+    it('keeps newly downloaded files in a normal mod group with custom attachments', async () => {
+        harness.groupMetadata = { original: { gameBananaId: 97, localGroupId: 'mixed', localImport: false, modName: 'Parent' } };
+        await enqueueManagedDownload('/game', args(97), mainWindow, { afterInstall: async () => {} });
+        expect(harness.setModMetadataWithHash.mock.calls[0][1]).toMatchObject({
+            gameBananaId: 97, localGroupId: 'mixed', localImport: false, modName: 'Parent',
+        });
     });
 
     it('refuses ordinary, one-click, and managed jobs during developer library replacement', async () => {

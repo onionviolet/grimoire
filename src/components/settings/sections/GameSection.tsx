@@ -1,3 +1,4 @@
+import { FilterItem, FilterDivider } from '../../common/FilteredContent';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Check, X, FolderOpen, RefreshCw, Wrench, FileText, HardDrive, Loader2 } from 'lucide-react';
@@ -68,7 +69,12 @@ export default function GameSection() {
       try {
         const status = await getGameinfoStatus();
         if (!active) return;
-        setGameinfoStatus(status.message);
+        setGameinfoStatus(
+          status.reason === 'ok' ? t('settings.gameinfo.statusOk')
+            : status.reason === 'boot-paths-missing' ? t('settings.gameinfo.statusBootPathsMissing')
+            : status.reason === 'language-paths-missing' ? t('settings.gameinfo.statusLanguagePathsMissing')
+            : status.message
+        );
         setGameinfoConfigured(status.configured);
         setGameinfoMissing(status.missing);
         setGameinfoCandidates(status.candidates);
@@ -84,7 +90,7 @@ export default function GameSection() {
     return () => {
       active = false;
     };
-  }, [activeDeadlockPath]);
+  }, [activeDeadlockPath, t]);
 
   const handleBrowse = async () => {
     if (isDevMode) return;
@@ -174,9 +180,9 @@ export default function GameSection() {
 
   return (
     <>
-      <Card title={<Tx k="settings.sections.gameConfiguration" fallback="Game Configuration" />} icon={HardDrive}>
+      <Card id="settings-game-settings-sections-gameConfiguration-card" title={<Tx k="settings.sections.gameConfiguration" fallback="Game Configuration" />} icon={HardDrive}>
         <div className="space-y-6">
-          <div>
+          <FilterItem id="settings-game-path">
             <div className="flex justify-between items-center mb-2">
               <label className="text-sm font-medium text-text-primary">
                 <Tx k="settings.gamePath.label" fallback="Deadlock Installation Path" />
@@ -245,11 +251,11 @@ export default function GameSection() {
                 />
               )}
             </p>
-          </div>
+          </FilterItem>
 
-          <div className="h-px bg-hl/5" />
+          <FilterDivider className="h-px bg-hl/5" />
 
-          <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
+          <FilterItem id="settings-gameinfo" className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
             <div>
               <div className="font-medium flex items-center gap-2">
                 <Tx k="settings.gameinfo.title" fallback="gameinfo.gi Status" />
@@ -320,11 +326,11 @@ export default function GameSection() {
                 </Button>
               </div>
             )}
-          </div>
+          </FilterItem>
 
           {activeDeadlockPath && (
             <>
-              <div className="h-px bg-hl/5" />
+              <FilterDivider className="h-px bg-hl/5" />
               <AutoexecSection gamePath={activeDeadlockPath} />
               <div className="h-px bg-hl/5" />
               {/* HUD and gameplay ConVars written into gameinfo.gi. They used
@@ -387,7 +393,7 @@ function AutoexecSection({ gamePath }: { gamePath: string }) {
   };
 
   return (
-    <div className="flex justify-between items-start gap-4">
+    <FilterItem id="settings-autoexec" className="flex justify-between items-start gap-4">
       <div>
         <h4 className="font-medium text-sm flex items-center gap-2">
           <Tx k="settings.autoexec.title" fallback="Autoexec Configuration" />
@@ -425,6 +431,6 @@ function AutoexecSection({ gamePath }: { gamePath: string }) {
           <Tx k="settings.autoexec.createFile" fallback="Create File" />
         </Button>
       )}
-    </div>
+    </FilterItem>
   );
 }

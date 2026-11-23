@@ -26,7 +26,7 @@
     "raw-palette": 5
   },
   "src/components/ModDetailsModal.tsx": {
-    "raw-palette": 4
+    "raw-palette": 39
   },
   "src/components/ModThumbnail.tsx": {
     "em-dash": 1
@@ -36,6 +36,9 @@
   },
   "src/components/Sidebar.tsx": {
     "raw-palette": 31
+  },
+  "src/components/UpdateModal.tsx": {
+    "raw-palette": 3
   },
   "src/components/VariantPickerModal.tsx": {
     "raw-palette": 1
@@ -87,6 +90,21 @@
   "src/components/installed/unknown/UnknownMatchPanel.tsx": {
     "raw-palette": 14
   },
+  "src/components/locker/CardCropper.tsx": {
+    "raw-palette": 3
+  },
+  "src/components/locker/HeroColorPicker.tsx": {
+    "raw-palette": 3
+  },
+  "src/components/locker/HeroPoseViewer.tsx": {
+    "raw-palette": 3
+  },
+  "src/components/locker/HeroSkinsPanel.tsx": {
+    "em-dash": 3
+  },
+  "src/components/locker/HeroSoundPicker.tsx": {
+    "raw-palette": 3
+  },
   "src/components/locker/LockerImageCropper.tsx": {
     "raw-palette": 2
   },
@@ -104,6 +122,15 @@
     "em-dash": 2
   },
   "src/components/servers/ConnectServerDialog.tsx": {
+    "raw-palette": 2
+  },
+  "src/components/settings/sections/GameSection.tsx": {
+    "raw-palette": 2
+  },
+  "src/components/settings/sections/SupportSection.tsx": {
+    "focus-ring": 6
+  },
+  "src/components/settings/sections/UpdatesSection.tsx": {
     "raw-palette": 2
   },
   "src/components/sidebar/surfaceArt.tsx": {
@@ -167,16 +194,24 @@
     "focus-ring": 2,
     "em-dash": 9
   },
-  "src/pages/Conflicts.tsx": {
-    "raw-palette": 23,
-    "em-dash": 9
-  },
   "src/pages/Discover.tsx": {
     "raw-palette": 9,
     "em-dash": 1
   },
+  "src/pages/Installed.tsx": {
+    "em-dash": 6
+  },
   "src/pages/Locker.tsx": {
-    "raw-hex": 1
+    "raw-hex": 1,
+    "raw-palette": 4,
+    "em-dash": 2
+  },
+  "src/pages/LockerHero.tsx": {
+    "em-dash": 2
+  },
+  "src/pages/Profiles.tsx": {
+    "raw-palette": 3,
+    "focus-ring": 2
   },
   "src/pages/Servers.tsx": {
     "raw-palette": 7

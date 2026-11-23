@@ -9,9 +9,10 @@ import { extractArchive, isArchive, checkOneClickOptOut, scanSuspiciousFiles, re
 import { getCursorPacks, installCursorArchive, setActiveCursorPack, type CursorPackSource } from './cursorPacks';
 import { buildVpkIndexBySize } from './vpkVariantIndex';
 import { randomUUID } from 'crypto';
-import { setModMetadataWithHash, getModMetadata } from './metadata';
-import { inferHeroFromTitle } from '@grimoire/social-types/heroes';
-import { fetchModDetails, type GameBananaModDetails } from './gamebanana';
+import { setModMetadataWithHash, getModMetadata, loadMetadata, type ModMetadata } from './metadata';
+import { detectModHeroes, isModHeroDetectionEligible } from './modHeroDetection';
+import { fetchModDetails, readCachedCategoryPaths, type GameBananaModDetails } from './gamebanana';
+import type { CategoryPaths } from '../../../src/lib/categoryPaths';
 import { makeDisabledFileName, scanMods, disableMod, enableMod, generateModId, runExclusiveModMutation } from './mods';
 import { imprintFreshlyInstalled, imprintOneMod } from './imprintMods';
 import { validateDownloadUrl, validateFileSize } from './security';
@@ -28,8 +29,16 @@ import { downloadCachedArchive } from './downloadCache';
 import { getDownloadJobs, saveDownloadJob, updateDownloadJob } from './downloadJobs';
 import type { DownloadJobState } from '../../../src/types/downloadJobs';
 export { getDownloadJobs } from './downloadJobs';
-import { getVpkLabels, inferHeroFromVpk } from './vpk';
-import type { LockerHeroSource } from '../../../src/types/mod';
+import { getVpkLabels } from './vpk';
+/** Preserve user grouping when another original file of a submission is downloaded. */
+function inheritDownloadedGroup(metadata: ModMetadata): ModMetadata {
+    const owner = Object.values(loadMetadata()).find(member => member.localImport === false
+        && member.localGroupId && member.gameBananaId === metadata.gameBananaId
+        && (member.sourceSection ?? 'Mod') === (metadata.sourceSection ?? 'Mod'));
+    return owner ? { ...metadata, localGroupId: owner.localGroupId, localImport: false,
+        modName: owner.modName || metadata.modName } : metadata;
+}
+
 // DownloadModArgs is single-sourced in src/types/electron.ts; re-exported
 // because ipc/gamebanana.ts imports it from this service.
 import type { DownloadModArgs, DownloadQueueItem } from '../../../src/types/electron';
@@ -114,28 +123,19 @@ function normalizePathForCompare(filePath: string): string {
     return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
 }
 
-/**
- * Per-VPK lockerHero stamp. Skin downloads ride on their GameBanana
- * categoryId so this is a no-op for them. For Sound mods we prefer the
- * caller's title-inferred lockerHero (cheap, already computed), and only
- * fall back to cracking the VPK open when title inference missed.
- * Sound mods with creative titles ("King Vondicta", "Low Honor kills...")
- * still tag correctly because the underlying paths reference Source 2
- * codenames like `hornet` / `inferno` / `synth`.
- */
-function stampVpkLockerHero<T extends { lockerHero?: string; lockerHeroSource?: LockerHeroSource }>(
-    base: T,
-    section: string | undefined,
-    vpkPath: string
-): T {
-    if (base.lockerHero || section !== 'Sound') return base;
-    try {
-        const vpkHero = inferHeroFromVpk(vpkPath);
-        if (vpkHero) return { ...base, lockerHero: vpkHero, lockerHeroSource: 'download-vpk' };
-    } catch (err) {
-        console.warn(`[download] VPK hero inference failed for ${vpkPath}:`, err);
-    }
-    return base;
+/** Detect from each installed payload, after its original archive path is known. */
+function readHeroCategoryPaths(metadata: ModMetadata): CategoryPaths | undefined {
+    return metadata.categoryId !== undefined && (metadata.sourceSection ?? 'Mod') === 'Mod'
+        ? readCachedCategoryPaths() : undefined;
+}
+
+function stampVpkHeroDetection<T extends ModMetadata>(base: T, vpkPath: string, categoryPaths?: CategoryPaths): T {
+    if (!isModHeroDetectionEligible(base, categoryPaths)) return base;
+    const stat = statSync(vpkPath);
+    const heroDetection = detectModHeroes({
+        path: vpkPath, size: stat.size, installedAt: stat.mtime.toISOString(),
+    }, base, categoryPaths);
+    return heroDetection ? { ...base, heroDetection } : base;
 }
 
 async function moveFileWithoutOverwrite(sourcePath: string, destinationPath: string): Promise<void> {
@@ -816,7 +816,7 @@ async function disableSiblingVariants(
         if (installedSet.has(m.fileName)) return false;
         const meta = getModMetadata(m.metaKey);
         return (
-            meta?.gameBananaId === modId &&
+            meta?.localImport !== true && meta?.gameBananaId === modId &&
             (fileId === undefined || meta?.gameBananaFileId !== fileId)
         );
     });
@@ -984,14 +984,6 @@ async function executeDownload(
     // meaningful label even when the description is empty.
     const sourceFileNameStem = stripArchiveExtension(fileName);
 
-    // Auto-tag Sound mods with their hero so they show up in the per-hero
-    // Locker view. Sound mods don't have hero categoryIds on GameBanana, so the
-    // mod title is the only signal we have. Skin downloads keep their explicit
-    // categoryId and don't need this fallback.
-    const lockerHero =
-        section === 'Sound' ? inferHeroFromTitle(details.name) ?? undefined : undefined;
-    const lockerHeroSource: LockerHeroSource | undefined = lockerHero ? 'download-title' : undefined;
-
     const metadata = {
         modName: details.name,  // Store the actual mod name from GameBanana
         author: details.submitter?.name,  // GameBanana submitter, for the imprint
@@ -1006,8 +998,6 @@ async function executeDownload(
         isArchived: selectedFile?.isArchived ?? false,
         fileDescription: fileDescription && fileDescription.length > 0 ? fileDescription : undefined,
         sourceFileName: sourceFileNameStem.length > 0 ? sourceFileNameStem : undefined,
-        lockerHero,
-        lockerHeroSource,
     };
 
     let installedVpks: string[] = [];
@@ -1175,15 +1165,15 @@ async function executeDownload(
 
     // Save metadata for each installed VPK
     console.log(`[downloadMod] Saving metadata for ${installedVpks.length} VPKs`);
+    const heroCategoryPaths = readHeroCategoryPaths(metadata);
     for (const vpkFileName of installedVpks) {
         console.log(`[downloadMod] Saving metadata for: ${vpkFileName}`);
         const vpkPath = join(targetPath, vpkFileName);
-        const base = stampVpkLockerHero(metadata, section, vpkPath);
         const variantLabel = variantByFile.get(vpkFileName);
         const vpkIndex = vpkIndexByFile.get(vpkFileName);
         const archiveVpkPath = archivePathByFile.get(vpkFileName);
-        const perVpkMetadata = { ...base, variantLabel, vpkIndex, archiveVpkPath };
-        await setModMetadataWithHash(vpkFileName, perVpkMetadata, vpkPath);
+        const perVpkMetadata = stampVpkHeroDetection({ ...metadata, variantLabel, vpkIndex, archiveVpkPath }, vpkPath, heroCategoryPaths);
+        await setModMetadataWithHash(vpkFileName, inheritDownloadedGroup(perVpkMetadata), vpkPath);
     }
 
     // Opt-in self-identifying embed (path B). Imprint each freshly installed VPK in
@@ -1504,8 +1494,6 @@ async function executeOneClickDownload(
         matchedFile?.fileName ?? responseFilename ?? fileName
     );
     const oneClickModName = enriched?.name ?? fileName.replace(/\.(zip|7z|rar|vpk)$/i, '');
-    const oneClickLockerHero =
-        section === 'Sound' ? inferHeroFromTitle(oneClickModName) ?? undefined : undefined;
     const metadata = {
         modName: oneClickModName,
         author: enriched?.submitter?.name,  // GameBanana submitter, for the imprint
@@ -1523,8 +1511,6 @@ async function executeOneClickDownload(
                 ? oneClickFileDescription
                 : undefined,
         sourceFileName: oneClickSourceFileName.length > 0 ? oneClickSourceFileName : undefined,
-        lockerHero: oneClickLockerHero,
-        lockerHeroSource: (oneClickLockerHero ? 'download-title' : undefined) as LockerHeroSource | undefined,
     };
 
     let installedVpks: string[] = [];
@@ -1668,14 +1654,14 @@ async function executeOneClickDownload(
         installedVpks = renamed.map((r) => r.fileName);
     }
 
+    const heroCategoryPaths = readHeroCategoryPaths(metadata);
     for (const vpkFileName of installedVpks) {
         const vpkPath = join(targetPath, vpkFileName);
-        const base = stampVpkLockerHero(metadata, section, vpkPath);
         const variantLabel = variantByFile.get(vpkFileName);
         const vpkIndex = vpkIndexByFile.get(vpkFileName);
         const archiveVpkPath = archivePathByFile.get(vpkFileName);
-        const perVpkMetadata = { ...base, variantLabel, vpkIndex, archiveVpkPath };
-        await setModMetadataWithHash(vpkFileName, perVpkMetadata, vpkPath);
+        const perVpkMetadata = stampVpkHeroDetection({ ...metadata, variantLabel, vpkIndex, archiveVpkPath }, vpkPath, heroCategoryPaths);
+        await setModMetadataWithHash(vpkFileName, inheritDownloadedGroup(perVpkMetadata), vpkPath);
     }
 
     // Opt-in self-identifying embed (path B). Same as executeDownload: imprint each
@@ -1758,7 +1744,7 @@ export async function installForgeVpk(
         await assertVpkSafety(stagedPath, { allowUntrusted: true, context: 'installation', name: forge.name });
 
         // SoundForge output is hero voice/ability audio, so classify it as a
-        // Sound mod: that is what makes stampVpkLockerHero run its VPK-tree
+        // Sound mod: that is what makes stampVpkHeroDetection run its VPK-tree
         // hero inference below and file the mod under the right hero in the
         // Locker. Other forge types have no equivalent signal.
         const section = forge.type === 'sound' ? 'Sound' : 'Mod';
@@ -1770,8 +1756,6 @@ export async function installForgeVpk(
             // keyed off the forgeInstall block below. Grimoire never fetches a
             // remote image on the strength of an install request.
             sourceSection: section,
-            lockerHero: undefined as string | undefined,
-            lockerHeroSource: undefined as LockerHeroSource | undefined,
             forgeInstall: {
                 name: forge.name,
                 author: forge.author,
@@ -1791,10 +1775,10 @@ export async function installForgeVpk(
                 forge.name
             );
             const names = renamed.map((entry) => entry.fileName);
+            const heroCategoryPaths = readHeroCategoryPaths(metadata);
             for (const name of names) {
                 const vpkPath = join(targetPath, name);
-                const base = stampVpkLockerHero(metadata, section, vpkPath);
-                await setModMetadataWithHash(name, base, vpkPath);
+                await setModMetadataWithHash(name, stampVpkHeroDetection(inheritDownloadedGroup(metadata), vpkPath, heroCategoryPaths), vpkPath);
             }
             return names;
         });

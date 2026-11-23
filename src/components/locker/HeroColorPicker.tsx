@@ -1,5 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useFoundryDraft } from '../../lib/useFoundryDraft';
+import { heroColorDraftSchema } from '../../lib/effectDraftSchema';
 import { useTranslation } from 'react-i18next';
+import { SegmentedControl } from '../common/ui';
 import {
   Palette,
   Loader2,
@@ -38,7 +41,7 @@ import {
   parseGradientSpec,
   type GStop,
 } from '../../lib/abilityColorPreview';
-import { TRIPPY_ANIMATION_LABELS as ANIMATION_LABELS, TRIPPY_STYLE_LABELS } from '../../lib/trippy';
+import { TRIPPY_ANIMATION_LABEL_KEYS, TRIPPY_STYLE_LABEL_KEYS } from '../../lib/trippy';
 import TrippyPatternPicker from './TrippyPatternPicker';
 import { recolorApplyConsequence, type RecolorApplyConsequence } from './recolorApplyConsequence';
 import AssetSourcesPanel from '../foundry/AssetSourcesPanel';
@@ -168,32 +171,34 @@ export default function HeroColorPicker({ heroName, onAppliedChange, onStage, st
   // AssetSourcesPanel renders) replaces this array, invalidating every held
   // disclosure.
   const mods = useAppStore((s) => s.mods);
+  const [draft, setDraft] = useFoundryDraft(`effects:${heroName}:abilities`, heroColorDraftSchema.nullable(), null);
+  const restored = useRef(draft);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // The target currently applied in-game (null when none), and the live picks.
   const [activeHue, setActiveHue] = useState<number | null>(null);
   const [activeSaturation, setActiveSaturation] = useState<number | null>(null);
   const [activeBrightness, setActiveBrightness] = useState<number | null>(null);
-  const [hue, setHue] = useState(DEFAULT_HUE);
-  const [saturation, setSaturation] = useState(DEFAULT_SCALE);
-  const [brightness, setBrightness] = useState(DEFAULT_SCALE);
+  const [hue, setHue] = useState(draft?.hue ?? DEFAULT_HUE);
+  const [saturation, setSaturation] = useState(draft?.saturation ?? DEFAULT_SCALE);
+  const [brightness, setBrightness] = useState(draft?.brightness ?? DEFAULT_SCALE);
   // Recolor mode: a single picked color, the rainbow prism, or a custom
   // gradient. All three share the one-per-hero slot.
-  const [mode, setMode] = useState<ColorMode>('hue');
-  const [animated, setAnimated] = useState(false);
+  const [mode, setMode] = useState<ColorMode>(draft?.mode ?? 'hue');
+  const [animated, setAnimated] = useState(draft?.animated ?? false);
   // Gradient mode: the chosen preset name (or 'custom') and the custom editor stops.
-  const [gradientPreset, setGradientPreset] = useState<string>(GRADIENT_PRESETS[0].name);
-  const [customStops, setCustomStops] = useState<GStop[]>(DEFAULT_CUSTOM_STOPS);
+  const [gradientPreset, setGradientPreset] = useState<string>(draft?.gradientPreset ?? GRADIENT_PRESETS[0].name);
+  const [customStops, setCustomStops] = useState<GStop[]>(draft?.customStops ?? DEFAULT_CUSTOM_STOPS);
   // Trippy mode: a procedural pattern paint over the same slot (style + strength
   // + phase, plus how the particles animate at runtime and which sets to touch).
-  const [trippyStyle, setTrippyStyle] = useState<TrippyStyleName>(TRIPPY_DEFAULTS.style);
-  const [trippyIntensity, setTrippyIntensity] = useState(TRIPPY_DEFAULTS.intensity);
-  const [trippyPhase, setTrippyPhase] = useState(TRIPPY_DEFAULTS.phase);
+  const [trippyStyle, setTrippyStyle] = useState<TrippyStyleName>(draft?.trippyStyle ?? TRIPPY_DEFAULTS.style);
+  const [trippyIntensity, setTrippyIntensity] = useState(draft?.trippyIntensity ?? TRIPPY_DEFAULTS.intensity);
+  const [trippyPhase, setTrippyPhase] = useState(draft?.trippyPhase ?? TRIPPY_DEFAULTS.phase);
   const [trippyAnimStyle, setTrippyAnimStyle] = useState<TrippyAnimationStyle>(
-    TRIPPY_DEFAULTS.animationStyle,
+    draft?.trippyAnimStyle ?? TRIPPY_DEFAULTS.animationStyle,
   );
-  const [trippyAnimIntensity, setTrippyAnimIntensity] = useState(TRIPPY_DEFAULTS.animationIntensity);
-  const [trippyTargets, setTrippyTargets] = useState<TrippyVfxTargets>(TRIPPY_DEFAULTS.targets);
+  const [trippyAnimIntensity, setTrippyAnimIntensity] = useState(draft?.trippyAnimIntensity ?? TRIPPY_DEFAULTS.animationIntensity);
+  const [trippyTargets, setTrippyTargets] = useState<TrippyVfxTargets>(draft?.trippyTargets ?? TRIPPY_DEFAULTS.targets);
   // What's applied in-game: the mode (null = nothing; 'trippy' is read-only
   // here), its animated flag, gradient, and the trippy params when applicable.
   const [activeMode, setActiveMode] = useState<ColorMode | 'trippy' | null>(null);
@@ -236,16 +241,18 @@ export default function HeroColorPicker({ heroName, onAppliedChange, onStage, st
     setPreviewUrl(null);
     setPreviewFailed(false);
     setPreviewUnavailable(false);
-    setMode('hue');
-    setAnimated(false);
-    setGradientPreset(GRADIENT_PRESETS[0].name);
-    setCustomStops(DEFAULT_CUSTOM_STOPS);
-    setTrippyStyle(TRIPPY_DEFAULTS.style);
-    setTrippyIntensity(TRIPPY_DEFAULTS.intensity);
-    setTrippyPhase(TRIPPY_DEFAULTS.phase);
-    setTrippyAnimStyle(TRIPPY_DEFAULTS.animationStyle);
-    setTrippyAnimIntensity(TRIPPY_DEFAULTS.animationIntensity);
-    setTrippyTargets(TRIPPY_DEFAULTS.targets);
+    if (!restored.current) {
+      setMode('hue');
+      setAnimated(false);
+      setGradientPreset(GRADIENT_PRESETS[0].name);
+      setCustomStops(DEFAULT_CUSTOM_STOPS);
+      setTrippyStyle(TRIPPY_DEFAULTS.style);
+      setTrippyIntensity(TRIPPY_DEFAULTS.intensity);
+      setTrippyPhase(TRIPPY_DEFAULTS.phase);
+      setTrippyAnimStyle(TRIPPY_DEFAULTS.animationStyle);
+      setTrippyAnimIntensity(TRIPPY_DEFAULTS.animationIntensity);
+      setTrippyTargets(TRIPPY_DEFAULTS.targets);
+    }
     Promise.all([
       getActiveHeroColor(heroName),
       getGameRunningStatus().catch(() => ({ running: false })),
@@ -260,7 +267,7 @@ export default function HeroColorPicker({ heroName, onAppliedChange, onStage, st
         setActiveAnimated(active?.animated ?? false);
         setActiveGradient(active?.gradient ?? null);
         setActiveTrippy(activeM === 'trippy' ? (active?.trippy ?? null) : null);
-        if (active && (activeM === 'prism' || activeM === 'gradient')) {
+        if (!restored.current && active && (activeM === 'prism' || activeM === 'gradient')) {
           setMode(activeM);
           setAnimated(active.animated ?? false);
           setHue(active.hue);
@@ -271,7 +278,7 @@ export default function HeroColorPicker({ heroName, onAppliedChange, onStage, st
             setGradientPreset(parsed.preset);
             setCustomStops(parsed.stops);
           }
-        } else if (active && activeM === 'trippy') {
+        } else if (!restored.current && active && activeM === 'trippy') {
           // Trippy holds the slot: reflect its params so the picker reads back.
           setMode('trippy');
           const t = active.trippy ?? TRIPPY_DEFAULTS;
@@ -281,7 +288,7 @@ export default function HeroColorPicker({ heroName, onAppliedChange, onStage, st
           setTrippyAnimStyle(t.animationStyle);
           setTrippyAnimIntensity(t.animationIntensity);
           setTrippyTargets(t.targets);
-        } else if (active) {
+        } else if (!restored.current && active) {
           setHue(active.hue);
           setSaturation(active.saturation);
           setBrightness(active.brightness);
@@ -299,6 +306,11 @@ export default function HeroColorPicker({ heroName, onAppliedChange, onStage, st
     };
   }, [heroName]);
 
+  useLayoutEffect(() => {
+    if (!loading) setDraft({ hue, saturation, brightness, mode, animated, gradientPreset, customStops,
+      trippyStyle, trippyIntensity, trippyPhase, trippyAnimStyle, trippyAnimIntensity, trippyTargets });
+  }, [loading, hue, saturation, brightness, mode, animated, gradientPreset, customStops,
+    trippyStyle, trippyIntensity, trippyPhase, trippyAnimStyle, trippyAnimIntensity, trippyTargets, setDraft]);
   const applied = activeMode !== null;
   useEffect(() => {
     onAppliedChange?.(applied);
@@ -553,7 +565,7 @@ export default function HeroColorPicker({ heroName, onAppliedChange, onStage, st
   const gradientLabel =
     gradientPreset === 'custom'
       ? t('locker.colors.custom')
-      : (GRADIENT_PRESETS.find((g) => g.name === gradientPreset)?.label ?? gradientPreset);
+      : t(GRADIENT_PRESETS.find((g) => g.name === gradientPreset)?.labelKey ?? gradientPreset);
   const spectrumDirty =
     activeAnimated !== animated ||
     activeHue !== hue ||
@@ -613,15 +625,15 @@ export default function HeroColorPicker({ heroName, onAppliedChange, onStage, st
         ? t('locker.colors.applied.gradient', {
             label:
               activeGradient && GRADIENT_PRESETS.some((g) => g.name === activeGradient)
-                ? (GRADIENT_PRESETS.find((g) => g.name === activeGradient)?.label ??
-                  t('locker.colors.modes.gradient'))
+                ? t(GRADIENT_PRESETS.find((g) => g.name === activeGradient)?.labelKey ??
+                  'locker.colors.modes.gradient')
                 : t('locker.colors.custom'),
             animated: animatedSuffix(activeAnimated),
           })
         : activeMode === 'trippy'
           ? t('locker.colors.applied.trippy', {
-              style: activeTrippy ? TRIPPY_STYLE_LABELS[activeTrippy.style] : '',
-              animation: activeTrippy ? ANIMATION_LABELS[activeTrippy.animationStyle] : '',
+              style: activeTrippy ? t(TRIPPY_STYLE_LABEL_KEYS[activeTrippy.style]) : '',
+              animation: activeTrippy ? t(TRIPPY_ANIMATION_LABEL_KEYS[activeTrippy.animationStyle]) : '',
               targets: activeTrippy?.targets ?? '',
             })
           : t('locker.colors.applied.single', {
@@ -631,20 +643,6 @@ export default function HeroColorPicker({ heroName, onAppliedChange, onStage, st
             });
 
   const swatchCss = approxSwatch(hue, saturation, brightness);
-
-  const modeBtn = (selected: boolean) =>
-    `flex items-center gap-1.5 rounded px-2.5 py-1 font-medium transition-colors disabled:cursor-not-allowed ${
-      selected
-        ? 'border border-accent/40 bg-accent/10 text-text-primary'
-        : 'border border-transparent text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
-    }`;
-
-  const segBtn = (selected: boolean) =>
-    `rounded px-2.5 py-1 text-xs font-medium transition-colors disabled:cursor-not-allowed ${
-      selected
-        ? 'border border-accent/40 bg-accent/10 text-text-primary'
-        : 'border border-transparent text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
-    }`;
 
   if (loading) {
     return (
@@ -669,41 +667,16 @@ export default function HeroColorPicker({ heroName, onAppliedChange, onStage, st
         {t('locker.colors.intro', { hero: heroName })}
       </p>
 
-      {/* Mode toggle: three looks over the same one-per-hero slot. */}
-      <div className="inline-flex flex-wrap rounded-md border border-border p-0.5 text-xs">
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => setMode('hue')}
-          className={modeBtn(mode === 'hue')}
-        >
-          <Palette className="h-3.5 w-3.5" /> {t('locker.colors.modes.singleColor')}
-        </button>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => setMode('prism')}
-          className={modeBtn(mode === 'prism')}
-        >
-          <Sparkles className="h-3.5 w-3.5" /> {t('locker.colors.modes.rainbow')}
-        </button>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => setMode('gradient')}
-          className={modeBtn(mode === 'gradient')}
-        >
-          <Blend className="h-3.5 w-3.5" /> {t('locker.colors.modes.gradient')}
-        </button>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => setMode('trippy')}
-          className={modeBtn(mode === 'trippy')}
-        >
-          <Waves className="h-3.5 w-3.5" /> {t('locker.colors.modes.trippy')}
-        </button>
-      </div>
+      <SegmentedControl variant="joined" size="sm" value={mode} onChange={setMode} disabled={busy}
+        label={t('locker.hero.effects')} options={[
+          { value: 'hue', label: <><Palette className="h-3.5 w-3.5" />{t('locker.colors.modes.singleColor')}</> },
+          { value: 'prism', label: <><Sparkles className="h-3.5 w-3.5" />{t('locker.colors.modes.rainbow')}</> },
+          { value: 'gradient', label: <><Blend className="h-3.5 w-3.5" />{t('locker.colors.modes.gradient')}</> },
+          { value: 'trippy', label: <><Waves className="h-3.5 w-3.5" />{t('locker.colors.modes.trippy')}</> },
+        ]} />
+
+      <div key={mode} className="space-y-3 animate-slide-in-left">
+      {mode === 'hue' && <p className="text-xs text-text-secondary">{t('locker.colors.hueHint')}</p>}
 
       {mode !== 'trippy' && (
       <>
@@ -910,14 +883,14 @@ export default function HeroColorPicker({ heroName, onAppliedChange, onStage, st
                     type="button"
                     disabled={busy}
                     onClick={() => setGradientPreset(g.name)}
-                    title={g.label}
+                    title={t(g.labelKey)}
                     className={`h-7 w-10 rounded border transition-transform hover:scale-105 disabled:cursor-not-allowed ${
                       gradientPreset === g.name
                         ? 'border-text-primary ring-2 ring-accent/60'
                         : 'border-border'
                     }`}
                     style={{ background: gradientCss(g.stops, hue, saturation, brightness) }}
-                    aria-label={g.label}
+                    aria-label={t(g.labelKey)}
                   />
                 ))}
                 <button
@@ -1000,10 +973,10 @@ export default function HeroColorPicker({ heroName, onAppliedChange, onStage, st
             busy={busy}
             summary={
               <>
-                {TRIPPY_STYLE_LABELS[trippyStyle]}
+                {t(TRIPPY_STYLE_LABEL_KEYS[trippyStyle])}
                 <span className="text-text-secondary">
                   {' '}
-                  · {pct(trippyIntensity)}% · {ANIMATION_LABELS[trippyAnimStyle]}
+                  · {pct(trippyIntensity)}% · {t(TRIPPY_ANIMATION_LABEL_KEYS[trippyAnimStyle])}
                 </span>
               </>
             }
@@ -1028,19 +1001,8 @@ export default function HeroColorPicker({ heroName, onAppliedChange, onStage, st
             <span className="text-2xs font-medium text-text-secondary">
               {t('locker.colors.animation')}
             </span>
-            <div className="inline-flex rounded-md border border-border p-0.5 text-xs">
-              {TRIPPY_ANIMATION_STYLES.map((a) => (
-                <button
-                  key={a}
-                  type="button"
-                  disabled={busy}
-                  onClick={() => setTrippyAnimStyle(a)}
-                  className={segBtn(trippyAnimStyle === a)}
-                >
-                  {ANIMATION_LABELS[a]}
-                </button>
-              ))}
-            </div>
+            <SegmentedControl variant="joined" size="sm" value={trippyAnimStyle} onChange={setTrippyAnimStyle} disabled={busy}
+              label={t('locker.colors.animation')} options={TRIPPY_ANIMATION_STYLES.map(value => ({ value, label: t(TRIPPY_ANIMATION_LABEL_KEYS[value]) }))} />
           </div>
           {trippyAnimStyle !== 'off' && (
             <p className="text-2xs text-text-secondary/70">
@@ -1073,23 +1035,10 @@ export default function HeroColorPicker({ heroName, onAppliedChange, onStage, st
             <span className="text-2xs font-medium text-text-secondary">
               {t('locker.colors.paint')}
             </span>
-            <div className="inline-flex rounded-md border border-border p-0.5 text-xs">
-              {(['all', 'abilities', 'weapons'] as const).map((tgt) => (
-                <button
-                  key={tgt}
-                  type="button"
-                  disabled={busy}
-                  onClick={() => setTrippyTargets(tgt)}
-                  className={segBtn(trippyTargets === tgt)}
-                >
-                  {tgt === 'all'
-                    ? t('locker.colors.targets.all')
-                    : tgt === 'abilities'
-                      ? t('locker.colors.targets.abilities')
-                      : t('locker.colors.targets.weapons')}
-                </button>
-              ))}
-            </div>
+            <SegmentedControl variant="joined" size="sm" value={trippyTargets} onChange={setTrippyTargets} disabled={busy}
+              label={t('locker.colors.paint')} options={(['all', 'abilities', 'weapons'] as const).map(value => ({ value,
+                label: t(value === 'all' ? 'locker.colors.targets.all' : value === 'abilities' ? 'locker.colors.targets.abilities' : 'locker.colors.targets.weapons'),
+              }))} />
           </div>
 
           <p className="text-2xs text-text-secondary/80">
@@ -1224,6 +1173,7 @@ export default function HeroColorPicker({ heroName, onAppliedChange, onStage, st
           </span>
         </div>
       )}
+      </div>
     </div>
   );
 }

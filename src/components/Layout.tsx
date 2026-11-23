@@ -1,17 +1,17 @@
 import { Loader2 } from 'lucide-react';
-import { Suspense,useEffect,useRef,useState } from 'react';
+import { Suspense,useEffect,useState } from 'react';
 import { Trans,useTranslation } from 'react-i18next';
 import { Outlet,useLocation,useNavigate } from 'react-router-dom';
 import { applyAccentColor } from '../lib/accentColor';
 import type { ImportCustomModResult } from '../lib/api';
 import { getSettings } from '../lib/api';
 import { getDownloadQueueActivitySnapshot } from '../lib/downloadActivity';
-import { useElasticOverscroll } from '../lib/useElasticOverscroll';
 import { getActiveDeadlockPath } from '../lib/appSettings';
-import { applyOledMode } from '../lib/applyOledMode';
+import { applyTheme } from '../lib/applyTheme';
 import { applyBackgroundGradient } from '../lib/backgroundGradient';
 import { useBrowserToolDownloadHandoff } from '../lib/useBrowserToolDownloadHandoff';
 import { useAppStore } from '../stores/appStore';
+import { useCategoryStore } from '../stores/categoryStore';
 import { useGameinfoStore } from '../stores/gameinfoStore';
 import { listenForModUpdates,useModUpdatesStore } from '../stores/modUpdatesStore';
 import { showToast } from '../stores/toastStore';
@@ -36,6 +36,9 @@ import VpkImpostorBanner from './VpkImpostorBanner';
 import WelcomeModal from './WelcomeModal';
 import { ConfirmModal } from './common/PageComponents';
 import { ToastStack } from './common/ToastStack';
+import { RequirementsHost } from './requirements/RequirementsHost';
+import { InstalledIssuesController } from './installed/InstalledIssuesController';
+import { LockerViewerHost } from './locker/LockerViewerHost';
 
 export default function Layout() {
   const { t } = useTranslation();
@@ -45,10 +48,6 @@ export default function Layout() {
   // Keyed on the top-level route only, so sub-routes (/locker/<hero>, /settings/<section>)
   // swap content in place instead of remounting the whole page.
   const outletKey = location.pathname.split('/')[1];
-  // Flow pages (Settings, Profiles, Discover...) scroll here; pages that own a
-  // scroller never overflow this one, so only theirs bounces.
-  const outletScrollRef = useRef<HTMLDivElement | null>(null);
-  useElasticOverscroll(outletScrollRef);
   const [showWelcome, setShowWelcome] = useState(false);
   const [loading, setLoading] = useState(true);
   // Normal one-click download progress is handled by DownloadQueueIndicator.
@@ -71,7 +70,7 @@ export default function Layout() {
   // even when the user has picked a different accent.
   const accentColor = useAppStore((s) => s.settings?.accentColor);
   const backgroundGradient = useAppStore((s) => s.settings?.backgroundGradient);
-  const oledMode = useAppStore((s) => s.settings?.oledMode);
+  const theme = useAppStore((s) => s.settings?.theme);
   const loadStoreSettings = useAppStore((s) => s.loadSettings);
   const loadAppearanceImages = useAppStore((s) => s.loadAppearanceImages);
   const activeDeadlockPath = useAppStore((s) => getActiveDeadlockPath(s.settings));
@@ -96,19 +95,27 @@ export default function Layout() {
       void state.loadMods({ silent: state.modsLoaded });
     }
   }, [activeDeadlockPath]);
+  useEffect(() => window.electronAPI.onGamebananaCategoriesChanged((model) => {
+    const categories = useCategoryStore.getState();
+    void categories.load(model, { afterCurrent: true }).catch(() => {});
+    const state = useAppStore.getState();
+    if (getActiveDeadlockPath(state.settings)) {
+      void state.loadMods({ afterCurrent: true, silent: true });
+    }
+  }), []);
   useEffect(() => {
     applyAccentColor(accentColor);
   }, [accentColor]);
   useEffect(() => {
     applyBackgroundGradient(backgroundGradient);
   }, [backgroundGradient]);
-  // main.tsx seeds the OLED attribute from the preload before first paint, so
+  // main.tsx seeds the theme attribute from the preload before first paint, so
   // hold off until settings actually arrive: applying the undefined value here
   // would strip the seed and reintroduce the startup flash.
   useEffect(() => {
-    if (oledMode === undefined) return;
-    applyOledMode(oledMode);
-  }, [oledMode]);
+    if (theme === undefined) return;
+    applyTheme(theme);
+  }, [theme]);
 
   useEffect(() => {
     const checkFirstRun = async () => {
@@ -330,6 +337,7 @@ export default function Layout() {
       {/* Headless: drives opt-in Discord Rich Presence from the active route. */}
       <DiscordPresence />
       <CrashAdvisoryHost />
+      <LockerViewerHost />
       <Sidebar />
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <GameinfoBanner />
@@ -337,7 +345,7 @@ export default function Layout() {
         <VpkImpostorBanner />
         <ModSafetyBanner />
         <Suspense fallback={null}>
-          <div key={outletKey} ref={outletScrollRef} className="min-h-0 flex-1 overflow-auto animate-fade-in [scrollbar-gutter:stable]">
+          <div key={outletKey} data-app-content-viewport className="min-h-0 flex-1 overflow-auto animate-fade-in [scrollbar-gutter:stable]">
             <Outlet />
           </div>
         </Suspense>
@@ -429,6 +437,8 @@ export default function Layout() {
           onSubmittingChange={setBatchImportBusy}
         />
       )}
+      <InstalledIssuesController />
+      <RequirementsHost />
       {showWelcome && <WelcomeModal onComplete={handleSetupComplete} />}
     </div>
   );

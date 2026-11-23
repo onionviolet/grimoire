@@ -14,6 +14,8 @@ const USE_RIGGED_PREVIEW: boolean = false;
 export interface HeroPoseDevFlags {
   unified: boolean;
   celV2: boolean;
+  /** Game-faithful Citadel NPR lighting; off restores the classic preview look. */
+  citadel?: boolean;
   cloth: boolean;
   /** Play the hero's own animated clip on a skinned rig, without cloth. */
   rigged?: boolean;
@@ -27,6 +29,7 @@ export interface HeroPoseDevFlags {
 export interface HeroPoseRenderFeatures {
   unifiedEnabled: boolean;
   celV2Enabled: boolean;
+  citadelEnabled: boolean;
   clothPreviewEnabled: boolean;
   bloomEnabled: boolean;
   riggedPreviewEnabled: boolean;
@@ -50,6 +53,7 @@ export function resolveHeroPoseRenderFeatures(
   return {
     unifiedEnabled,
     celV2Enabled: flags.celV2,
+    citadelEnabled: flags.citadel !== false,
     clothPreviewEnabled,
     bloomEnabled: flags.bloom,
     // Cloth implies rigged (a sim needs a skeleton to hang off), but the

@@ -1,0 +1,94 @@
+import type { SkinColorAdjustments, SkinPartEdit, SkinPartRegion } from '../types/skinEditor';
+
+export const ORIGINAL_SKIN_COLOR: SkinColorAdjustments = { hue: 0, saturation: 1, brightness: 1 };
+
+export function hasColorAdjustments(value: SkinColorAdjustments | undefined): boolean {
+  return !!value && (value.hue !== 0 || value.saturation !== 1 || value.brightness !== 1);
+}
+
+/** Whether an area changes colors, which bake into the color texture. */
+export function hasRegionLook(region: SkinPartRegion): boolean {
+  return !!region.paint || (region.pattern?.intensity ?? 0) > 0 || hasColorAdjustments(region.adjustments);
+}
+
+/** Whether an area changes anything: its colors, its shine or its glow. */
+export function hasRegionEdit(region: SkinPartRegion): boolean {
+  return hasRegionLook(region) || !!region.finish || !!region.glow || !!region.surface;
+}
+
+/**
+ * Paint, shine and glow are separate layers: an area competes only with areas of its own kind, so
+ * painting shine or glow never wipes the paint under it.
+ */
+export type RegionKind = 'look' | 'shine' | 'glow' | 'clear';
+export function regionKind(region: SkinPartRegion): RegionKind {
+  return hasRegionLook(region) ? 'look' : region.glow ? 'glow' : region.finish ? 'shine' : region.surface ? 'clear' : 'look';
+}
+
+/** A see-through area. */
+export function isClearRegion(region: SkinPartRegion): boolean {
+  return regionKind(region) === 'clear';
+}
+
+export function isFinishRegion(region: SkinPartRegion): boolean {
+  return regionKind(region) === 'shine';
+}
+
+export function isGlowRegion(region: SkinPartRegion): boolean {
+  return regionKind(region) === 'glow';
+}
+
+/** Whether the part looks different. A region that only selects an area changes nothing yet. */
+export function hasSkinPartEdit(edit: SkinPartEdit): boolean {
+  return edit.hidden || edit.tint !== null || !!edit.finish || !!edit.surface || !!edit.glow || (edit.pattern?.intensity ?? 0) > 0 || hasColorAdjustments(edit.adjustments)
+    || !!edit.regions?.some(hasRegionEdit);
+}
+
+/** Whether the edit list keeps this entry: unedited regions stay so a selection is never lost. */
+export function keepSkinPartEdit(edit: SkinPartEdit): boolean {
+  return hasSkinPartEdit(edit) || !!edit.regions?.length;
+}
+
+/** Paint the entire color texture while keeping some of its light and dark detail. */
+const luminanceAt = (pixels: Uint8ClampedArray | Uint8Array, i: number) => (0.2126 * pixels[i] + 0.7152 * pixels[i + 1] + 0.0722 * pixels[i + 2]) / 255;
+
+/** Mean luminance of the texels being painted: all of them, or weighted by an area mask (one byte per texel). */
+export function meanLuminance(pixels: Uint8ClampedArray | Uint8Array, mask?: Uint8Array): number {
+  let sum = 0, total = 0;
+  for (let i = 0; i < pixels.length; i += 4) {
+    const weight = mask ? mask[i / 4] / 255 : 1;
+    sum += luminanceAt(pixels, i) * weight; total += weight;
+  }
+  return total > 0 ? sum / total : 0.5;
+}
+
+/**
+ * Paint with `hex` while keeping the texture's light and dark detail. Detail is relative to `mean`
+ * (the painted texels' mean luminance), so the painted area averages to the picked color even on a
+ * dark texture. vpkmerge's `repaint_material_pixels` uses the same formula, so preview and export match.
+ */
+export function repaintSkinPixels(pixels: Uint8ClampedArray | Uint8Array, hex: string, mean = meanLuminance(pixels)): void {
+  const target = [1, 3, 5].map((index) => Number.parseInt(hex.slice(index, index + 2), 16));
+  for (let i = 0; i < pixels.length; i += 4) {
+    const shade = Math.min(1.5, Math.max(0.5, 1 + 0.5 * (luminanceAt(pixels, i) - mean)));
+    for (let channel = 0; channel < 3; channel++) pixels[i + channel] = Math.min(255, Math.round(target[channel] * shade));
+  }
+}
+
+export function adjustSkinPixels(pixels: Uint8ClampedArray | Uint8Array, value: SkinColorAdjustments): void {
+  if (!hasColorAdjustments(value)) return;
+  for (let i = 0; i < pixels.length; i += 4) {
+    const r = pixels[i] / 255, g = pixels[i + 1] / 255, b = pixels[i + 2] / 255;
+    const peak = Math.max(r, g, b), delta = peak - Math.min(r, g, b);
+    let hue = delta === 0 ? 0 : peak === r ? (g - b) / delta : peak === g ? (b - r) / delta + 2 : (r - g) / delta + 4;
+    hue = ((hue / 6 + value.hue / 360) % 1 + 1) % 1;
+    const saturation = Math.min(1, (peak === 0 ? 0 : delta / peak) * value.saturation);
+    const brightness = Math.min(1, peak * value.brightness);
+    const chroma = brightness * saturation;
+    const x = chroma * (1 - Math.abs(hue * 6 % 2 - 1));
+    const m = brightness - chroma;
+    const rgb = hue < 1 / 6 ? [chroma, x, 0] : hue < 2 / 6 ? [x, chroma, 0] : hue < 3 / 6 ? [0, chroma, x]
+      : hue < 4 / 6 ? [0, x, chroma] : hue < 5 / 6 ? [x, 0, chroma] : [chroma, 0, x];
+    for (let channel = 0; channel < 3; channel++) pixels[i + channel] = Math.round((rgb[channel] + m) * 255);
+  }
+}

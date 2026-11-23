@@ -1,18 +1,25 @@
+import { profileShuffleSchema, type ProfileShuffle } from '../lib/profileShuffle';
 import { create } from 'zustand';
+import type { BrowseSortOption } from '../lib/browseSections';
 import type { Mod, AppSettings, AppearanceSurface, DeleteModEntry, DeleteModsProgress, EditLocalModArgs, GlobalModType } from '../types/mod';
 import type { ImportCustomModArgs, ImportCustomModResult, LocalVariantGroupTarget } from '../types/electron';
-import { getActiveDeadlockPath } from '../lib/appSettings';
+import { getActiveDeadlockPath, getInstallationScope } from '../lib/appSettings';
 import { readPref, writePref } from '../lib/uiPrefs';
+import { useInstalledTagsStore } from './installedTagsStore';
 import { setDateFormat } from '../lib/dateFormat';
 import i18n, { applyLanguagePreference } from '../i18n';
 import * as api from '../lib/api';
+import { isGameRunningModLockError, isModLoadedInGame } from '../lib/modLocks';
 import { showToast } from './toastStore';
-import { buildHeroList, getLockerSkinKey } from '../lib/lockerUtils';
+import { buildHeroList, getLockerSkinKey, modLoadOrder, type HeroCategory } from '../lib/lockerUtils';
 import { invalidateAssetClaims } from '../lib/inspectedAssetClaims';
 import { modPreferenceKey } from '../lib/disabledModPrefs';
 import { pathDedupeKey } from '../lib/customModImport';
 import { acknowledgeDownloadCompletions, getPendingDownloadCompletions } from '../lib/downloadActivity';
 import { modRestoreKey, planSoloByKeys, planRestore } from '../lib/soloRestore';
+import { reconcileMods } from '../lib/reconcileMods';
+import { installedModRequirements, modRequirementRefs, requiredModClosure } from '../lib/modRequirements';
+import { requestRequirementToggle, useRequirementsStore, type RequirementToggleChoice, type RequirementToggleSession } from './requirementsStore';
 import {
   SHUFFLE_ON_LAUNCH_KEY,
   SHUFFLE_INCLUDE_VANILLA_KEY,
@@ -43,6 +50,7 @@ import {
   type StableKeyMigrationPlan,
 } from '../lib/stableKeyMigration';
 import { migrateLockerImageSurface } from '../lib/lockerImageMigration';
+import type { BrowseSections } from '../lib/browseSections';
 
 // Cache entry with timestamp for TTL support
 interface CacheEntry<T> {
@@ -60,6 +68,12 @@ const DOWNLOAD_COUNTS_TTL = 60 * 60 * 1000;
 // resolving late and clobbering a just-completed mutation with a stale scan
 // (the "added a custom mod but can't act on it until I refresh" bug).
 let modsGeneration = 0;
+
+/** Retire reads taken before a successful mod write, including writes published
+ * by another store. A late scan must not restore old filename/slot identities. */
+export function invalidateModsReads(): void {
+  modsGeneration++;
+}
 
 // A download completion event and the renderer action that awaited that same
 // download can both request a rescan in the same instant. Share the scan while
@@ -87,25 +101,47 @@ function enqueueToggle<T>(fn: () => Promise<T>): Promise<T> {
   return run;
 }
 
-// Reuse existing Mod object (and array) identities when a rescan returns
-// unchanged data. Silent refreshes fire on every Installed mount and on
-// window focus; without this each one replaced the whole list, and every
-// downstream effect keyed on `mods` re-fired, re-rendering the full card
-// grid several times per navigation. Items are compared by JSON since both
-// sides come through the same IPC serializer (stable shape and key order).
-function reconcileMods(prev: Mod[], next: Mod[]): Mod[] {
-  const prevById = new Map(prev.map((m) => [m.id, m]));
-  let unchanged = prev.length === next.length;
-  const merged = next.map((m, i) => {
-    const old = prevById.get(m.id);
-    if (old && JSON.stringify(old) === JSON.stringify(m)) {
-      if (unchanged && prev[i] !== old) unchanged = false;
-      return old;
+/** Review outside the mutation queue so dependency checkboxes can still write. */
+async function reviewModToggle(mod: Mod, enabled: boolean, readMods: () => Mod[], session?: RequirementToggleSession): Promise<{
+  choice: RequirementToggleChoice; changes: { key: string; enabled: boolean }[];
+}> {
+  const key = modRestoreKey(mod);
+  const cancelled = { choice: 'cancel' as const, changes: [] };
+  if (typeof window !== 'undefined' && typeof window.electronAPI?.getModRequirements === 'function') {
+    await useRequirementsStore.getState().load(readMods().flatMap(modRequirementRefs));
+  }
+  const reviewMods = readMods();
+  const current = reviewMods.find(mod => modRestoreKey(mod) === key);
+  if (!current) return cancelled;
+  const direction = enabled ? 'dependencies' : 'dependents';
+  const relatedKeys = requiredModClosure(current.id, reviewMods, useRequirementsStore.getState().snapshots, direction)
+    .map(id => reviewMods.find(mod => mod.id === id)!).map(modRestoreKey);
+  const choice = await requestRequirementToggle(current, enabled, reviewMods, useAppStore.getState().settings?.promptOptionalRequirements ?? false, session);
+  if (choice === 'cancel') return cancelled;
+  const mods = readMods();
+  const target = mods.find(mod => modRestoreKey(mod) === key);
+  if (!target) return cancelled;
+  const keys = new Set([key]);
+  if (choice === 'all') {
+    for (const related of relatedKeys) keys.add(related);
+    for (const id of requiredModClosure(target.id, mods, useRequirementsStore.getState().snapshots, direction)) {
+      const related = mods.find(mod => mod.id === id);
+      if (related) keys.add(modRestoreKey(related));
     }
-    unchanged = false;
-    return m;
-  });
-  return unchanged ? prev : merged;
+  }
+  const changes = new Map([...keys].map(key => [key, enabled]));
+  if (choice === 'all' && enabled) {
+    for (const owner of mods.filter(mod => keys.has(modRestoreKey(mod)))) {
+      for (const { item, matches } of installedModRequirements(owner, mods, useRequirementsStore.getState().snapshots)) {
+        if (item.importance !== 'required' || item.state !== 'off') continue;
+        for (const match of matches) {
+          const incompatible = mods.find(mod => mod.id === match.modId);
+          if (incompatible && !keys.has(modRestoreKey(incompatible))) changes.set(modRestoreKey(incompatible), false);
+        }
+      }
+    }
+  }
+  return { choice, changes: [...changes].map(([key, enabled]) => ({ key, enabled })) };
 }
 
 function formerStandalonePreferenceKey(mod: Mod): string[] {
@@ -202,25 +238,28 @@ async function migrateLockerImagePreferences(
 // Browse-page UI state. Kept in the store (not local component state) so it
 // survives navigation away from /browse and back — user complaint: search
 // query, view mode, and filters all reset when switching pages.
-export type BrowseSortOption = 'default' | 'popular' | 'recent' | 'updated' | 'views' | 'name';
-export type BrowseLayout = 'grid' | 'list';
+export type { BrowseSortOption } from '../lib/browseSections';
 
 export type BrowseTimeRange = 'all' | 'today' | 'week' | 'month' | 'custom';
 export interface BrowseUiState {
   search: string;
-  layout: BrowseLayout;
   sort: BrowseSortOption;
   section: string;
+  selectedSections: BrowseSections;
   // Recency window. Routes browsing through the local catalog mirror (see
   // useLocalSearch in Browse.tsx). addedFrom/addedTo are 'YYYY-MM-DD' inputs
   // used only when addedWithin === 'custom'.
   addedWithin: BrowseTimeRange;
   addedFrom: string;
   addedTo: string;
+  // Only narrows Browse; Show, Blur and Hide remain app-wide preferences.
+  onlyNsfw: boolean;
   // 'none' is a Sound-only pseudo-hero: "show me sound mods whose title
   // doesn't resolve to any known hero" (item sounds, UI, music, etc.).
   // For Mod section it collapses to 'all' since every Skin lives under a hero.
   heroCategoryId: number | 'all' | 'none';
+  // Matching preference, independent of active filters and Clear all.
+  extendedHeroMatching: boolean;
   categoryId: number | 'all';
   // Category ids belong to their section. Remember them for this session only.
   categoryIdsBySection: Partial<Record<string, number | 'all'>>;
@@ -243,13 +282,10 @@ export interface BrowseArtistRef {
   kofiUrl?: string;
 }
 
-// layout + sort behave like preferences, so they live in the uiPrefs registry
+// sort behaves like a preference, so it lives in the uiPrefs registry
 // (key names, defaults, codecs, and the legacy-key migration all in one place).
 // The rest of BrowseUiState is session-only: search queries and filters
 // shouldn't follow across launches.
-function readPersistedLayout(): BrowseLayout {
-  return readPref('browseLayout');
-}
 
 function readPersistedSort(): BrowseSortOption {
   return readPref('browseSort');
@@ -261,13 +297,15 @@ function readPersistedSoundVolume(): number {
 
 const DEFAULT_BROWSE_UI: BrowseUiState = {
   search: '',
-  layout: readPersistedLayout(),
   sort: readPersistedSort(),
   section: 'Mod',
+  selectedSections: ['Mod'],
   addedWithin: 'all',
   addedFrom: '',
   addedTo: '',
+  onlyNsfw: false,
   heroCategoryId: 'all',
+  extendedHeroMatching: false,
   categoryId: 'all',
   categoryIdsBySection: {},
   soundNoHero: false,
@@ -286,6 +324,9 @@ export interface BrowseSessionCache {
   hasMore: boolean;
   totalCount: number;
   scrollTop: number;
+  /** Time of the last successful query, not the time the tab was closed. */
+  fetchedAt?: number;
+  source?: 'local' | 'remote';
   /** Stamp of the filter state these mods belong to. If any filter changes
    *  while Browse is unmounted (impossible today, but defensive), we'll
    *  refetch instead of restoring stale results. */
@@ -300,6 +341,7 @@ interface AppState {
 
   // Mods
   mods: Mod[];
+  loadedGameModIds: ReadonlySet<string>;
   modsLoaded: boolean;
   modsLoading: boolean;
   modsError: string | null;
@@ -424,17 +466,25 @@ interface AppState {
    *  in-flight scan cannot be reused. Use `{ afterCurrent: true }` for queued
    *  writes to wait for the current scan and share one fresh follow-up. */
   loadMods: (opts?: { silent?: boolean; force?: boolean; afterCurrent?: boolean }) => Promise<void>;
+  setLoadedGameModIds: (ids: readonly string[]) => void;
   /** Returns false when the toggle was blocked (e.g. the 99-enabled cap), so
    *  batch callers can stop early. */
-  toggleMod: (modId: string) => Promise<boolean>;
+  toggleMod: (modId: string, session?: RequirementToggleSession) => Promise<boolean>;
+  /** Apply explicit states after a requirements review, resolving renamed files
+   *  from their stable keys once earlier mutations have completed. */
+  setModEnabledStates: (changes: readonly { key: string; enabled: boolean }[]) => Promise<boolean>;
+  swapMods: (replacementKey: string, outgoingKeys: readonly string[], session?: RequirementToggleSession) => Promise<'swapped' | 'blocked' | 'cancelled' | 'failed'>;
   clearModsNotice: () => void;
   deleteMod: (mod: DeleteModEntry) => Promise<void>;
   /** Deletes the ids as one locked main-process batch, with a progress tick
    *  per removed mod. Never throws. */
   deleteMods: (mods: readonly DeleteModEntry[], onProgress?: (progress: DeleteModsProgress) => void) => Promise<void>;
+  setModPriorityFolder: (modId: string, priority: boolean) => Promise<void>;
   setModPriority: (modId: string, priority: number) => Promise<void>;
   swapModPriority: (modIdA: string, modIdB: string) => Promise<void>;
   reorderMods: (orderedIds: string[]) => Promise<void>;
+  captureProfileShuffle: () => ProfileShuffle | undefined;
+  restoreProfileShuffle: (shuffle: unknown) => void;
   setShuffleOnLaunch: (enabled: boolean) => void;
   toggleShuffleIncluded: (skinKey: string) => void;
   /** Add or remove many shuffle keys at once (bulk category action). */
@@ -459,6 +509,8 @@ interface AppState {
   /** Drop the solo-restore snapshot without touching enablement. */
   clearSoloRestore: () => void;
   editLocalMod: (modId: string, args: EditLocalModArgs) => Promise<void>;
+  setLocalModGallery: (modId: string, images: string[]) => Promise<void>;
+  setModsNsfw: (modIds: string[], nsfw: boolean) => Promise<void>;
   /** Group local mods as variants of one mod, or take them back out. Resolves
    *  with the group they now share (null after a clear). */
   setLocalVariantGroup: (
@@ -467,9 +519,7 @@ interface AppState {
   ) => Promise<string | null>;
   setModLockerHero: (modId: string, heroName: string | null) => Promise<void>;
   setModGlobalType: (modId: string, globalType: GlobalModType | null) => Promise<void>;
-  /** Mark a mod Global (priority root) or clear it. Moves the VPK, so it goes
-   *  through the toggle queue like every other folder mutation. */
-  setModPriorityFolder: (modId: string, priority: boolean) => Promise<void>;
+  setModTags: (modId: string, tags: Mod['tagOverrides'] | null) => Promise<void>;
   setVariantLabel: (modId: string, label: string) => Promise<void>;
   /** Batch local import. Resolves with one result per source, in request order. */
   importCustomMods: (items: ImportCustomModArgs[]) => Promise<ImportCustomModResult[]>;
@@ -525,20 +575,15 @@ interface AppState {
 // path (enable, reorder/compact, local import, merge). We surface it as a
 // transient toast instead of the full-page modsError screen. Match on the
 // cap-agnostic tail so a future MAX_ADDON_FOLDERS bump doesn't break detection.
-const ENABLE_CAP_NOTICE =
-  'You can have at most 990 mods enabled at once. Disable one to make room.';
+const enableCapNotice = (): string => i18n.t('installed.status.enableCap');
 const isEnableCapError = (err: unknown): boolean => /mods enabled at once/.test(String(err));
-const GAME_RUNNING_NOTICE = 'Game is running';
-const VANILLA_WINDOW_NOTICE = 'Vanilla launch in progress';
-const isGameRunningModLockError = (err: unknown): boolean =>
-  String(err).includes(GAME_RUNNING_NOTICE) || String(err).includes(VANILLA_WINDOW_NOTICE);
-
 export const useAppStore = create<AppState>((set, get) => ({
   // Initial state
   settings: null,
   settingsLoading: false,
   settingsError: null,
   mods: [],
+  loadedGameModIds: new Set(),
   modsLoaded: false,
   modsLoading: false,
   modsError: null,
@@ -569,6 +614,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   lockerModThumbnails: {},
   lockerThumbHideHeroName: {},
   appearanceImages: {},
+
+  setLoadedGameModIds: (ids) => {
+    const next = new Set(ids);
+    const previous = get().loadedGameModIds;
+    if (next.size !== previous.size || [...next].some((id) => !previous.has(id))) {
+      set({ loadedGameModIds: next });
+    }
+  },
 
   // Load settings from backend
   loadSettings: async () => {
@@ -850,50 +903,154 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // Toggle mod enabled/disabled. Runs through enqueueToggle so concurrent
   // clicks resolve in order and each sees the previous one's renamed id.
-  toggleMod: (modId: string) => enqueueToggle(async () => {
-    const mod = get().mods.find((m) => m.id === modId);
-    if (!mod) return false;
+  toggleMod: async (modId: string, session) => {
+    const initial = get().mods.find(mod => mod.id === modId);
+    if (!initial) return false;
+    const key = modRestoreKey(initial);
+    const review = await reviewModToggle(initial, !initial.enabled, () => get().mods, session);
+    if (review.choice === 'cancel') return false;
+    if (review.choice === 'all' || review.choice === 'only') return get().setModEnabledStates(review.changes);
+    return enqueueToggle(async () => {
+      const mod = get().mods.find(candidate => modRestoreKey(candidate) === key);
+      if (!mod) return false;
+      const modId = mod.id;
 
+      try {
+        const updatedMod = mod.enabled
+          ? await api.disableMod(modId)
+          : await api.enableMod(modId);
+
+        invalidateModsReads();
+        set({
+          mods: get().mods.map((m) => (m.id === modId ? updatedMod : m)),
+        });
+        const outdated = updatedMod.enabled ? updatedMod.outdatedVdata?.[0] : undefined;
+        if (outdated) {
+          showToast(
+            i18n.t('installed.outdatedData.enabledToast', { name: updatedMod.name, count: outdated.missing, file: outdated.entry }),
+            { tone: 'warning', duration: 10000 }
+          );
+        }
+        return true;
+      } catch (err) {
+        // The 99-enabled cap is an expected, recoverable outcome - surface it as
+        // a transient notice (toast) instead of the full-page modsError screen.
+        if (isEnableCapError(err)) {
+          set({ modsNotice: enableCapNotice() });
+          return false;
+        }
+        if (isGameRunningModLockError(err)) {
+          return false;
+        }
+        // Stale id: a mod's id is its filename, which an enable/disable changes.
+        // When toggles for the same card fire faster than the store resyncs (the
+        // main process now serializes mutations, so the second runs after the file
+        // already moved), the second carries a dead id and the move throws "Mod not
+        // found". The desired state is whatever the folder already reflects, so
+        // resync silently instead of dropping the whole page to the error screen.
+        if (/Mod not found|MOD_SAFETY_/.test(String(err))) {
+          get().loadMods({ silent: true, force: true });
+          return false;
+        }
+        set({ modsError: String(err) });
+        return false;
+      }
+    });
+  },
+
+  setModEnabledStates: changes => enqueueToggle(async () => {
+    const desired = new Map(changes.map(change => [change.key, change.enabled]));
+    const mods = get().mods;
+    const matches = mods.filter(mod => desired.has(modRestoreKey(mod)));
+    const missing = [...desired.keys()].some(key => !matches.some(mod => modRestoreKey(mod) === key));
+    const enable = matches.filter(mod => !mod.enabled && desired.get(modRestoreKey(mod))).map(mod => mod.id);
+    const disable = matches.filter(mod => mod.enabled && !desired.get(modRestoreKey(mod))).map(mod => mod.id);
+    if (!enable.length && !disable.length) return !missing;
     try {
-      const updatedMod = mod.enabled
-        ? await api.disableMod(modId)
-        : await api.enableMod(modId);
-
-      set({
-        mods: get().mods.map((m) => (m.id === modId ? updatedMod : m)),
+      const { mods: updated, failures } = await api.applyModToggleBatch(enable, disable);
+      invalidateModsReads();
+      set(state => {
+        const mods = reconcileMods(state.mods, updated);
+        return mods === state.mods ? state : { mods };
       });
-      const outdated = updatedMod.enabled ? updatedMod.outdatedVdata?.[0] : undefined;
-      if (outdated) {
-        showToast(
-          i18n.t('installed.outdatedData.enabledToast', { name: updatedMod.name, count: outdated.missing, file: outdated.entry }),
-          { tone: 'warning', duration: 10000 }
-        );
+      const enabledKeys = new Set(matches.filter(mod => !mod.enabled && desired.get(modRestoreKey(mod))).map(modRestoreKey));
+      for (const mod of updated) {
+        const outdated = mod.enabled && enabledKeys.has(modRestoreKey(mod)) ? mod.outdatedVdata?.[0] : undefined;
+        if (outdated) showToast(i18n.t('installed.outdatedData.enabledToast', { name: mod.name, count: outdated.missing, file: outdated.entry }),
+          { tone: 'warning', duration: 10000 });
       }
-      return true;
-    } catch (err) {
-      // The 99-enabled cap is an expected, recoverable outcome - surface it as
-      // a transient notice (toast) instead of the full-page modsError screen.
-      if (isEnableCapError(err)) {
-        set({ modsNotice: ENABLE_CAP_NOTICE });
-        return false;
-      }
-      if (isGameRunningModLockError(err)) {
-        return false;
-      }
-      // Stale id: a mod's id is its filename, which an enable/disable changes.
-      // When toggles for the same card fire faster than the store resyncs (the
-      // main process now serializes mutations, so the second runs after the file
-      // already moved), the second carries a dead id and the move throws "Mod not
-      // found". The desired state is whatever the folder already reflects, so
-      // resync silently instead of dropping the whole page to the error screen.
-      if (/Mod not found|MOD_SAFETY_/.test(String(err))) {
-        get().loadMods({ silent: true, force: true });
-        return false;
-      }
-      set({ modsError: String(err) });
+      if (failures.length) showToast(failures.join('\n'), { tone: 'error' });
+      return !missing && failures.length === 0;
+    } catch (error) {
+      if (isEnableCapError(error)) set({ modsNotice: enableCapNotice() });
+      else if (!isGameRunningModLockError(error)) showToast(String(error), { tone: 'error' });
+      void get().loadMods({ silent: true, force: true });
       return false;
     }
   }),
+
+  swapMods: async (replacementKey, outgoingKeys, session) => {
+    const stale = () => {
+      showToast(i18n.t('installed.swap.unavailable'), { tone: 'warning' });
+      return 'failed' as const;
+    };
+    const mods = get().mods;
+    const replacement = mods.find(mod => modRestoreKey(mod) === replacementKey && !mod.enabled);
+    const outgoing = mods.filter(mod => outgoingKeys.includes(modRestoreKey(mod)) && mod.enabled);
+    if (!replacement || !outgoing.length || outgoingKeys.includes(replacementKey)) return stale();
+    const locked = () => get().mods.some(mod => outgoingKeys.includes(modRestoreKey(mod)) && isModLoadedInGame(mod, get().loadedGameModIds));
+    if (locked()) {
+      showToast(i18n.t('common.gameRunningWarning'), { tone: 'warning' });
+      return 'blocked';
+    }
+    const incomingReview = await reviewModToggle(replacement, true, () => get().mods, session);
+    if (incomingReview.choice === 'cancel') return 'cancelled';
+    const changes = new Map(incomingReview.changes.map(change => [change.key, change.enabled]));
+    for (const source of outgoing) {
+      const review = await reviewModToggle(source, false, () => get().mods);
+      if (review.choice === 'cancel') return 'cancelled';
+      for (const change of review.changes) {
+        if (changes.has(change.key) && changes.get(change.key) !== change.enabled) {
+          showToast(i18n.t('installed.swap.requirementConflict'), { tone: 'warning' });
+          return 'cancelled';
+        }
+        changes.set(change.key, change.enabled);
+      }
+    }
+    return enqueueToggle(async () => {
+      if (locked()) {
+        showToast(i18n.t('common.gameRunningWarning'), { tone: 'warning' });
+        return 'blocked';
+      }
+      const mods = get().mods;
+      if ([...changes.keys()].some(key => !mods.some(mod => modRestoreKey(mod) === key))) return stale();
+      const replacement = mods.find(mod => modRestoreKey(mod) === replacementKey && !mod.enabled);
+      const anchor = mods.filter(mod => mod.enabled && outgoingKeys.includes(modRestoreKey(mod)))
+        .sort((a, b) => modLoadOrder(a) - modLoadOrder(b))[0];
+      if (!replacement || !anchor) return stale();
+      const enable = mods.filter(mod => changes.get(modRestoreKey(mod)) === true).map(mod => mod.id);
+      const disable = mods.filter(mod => changes.get(modRestoreKey(mod)) === false).map(mod => mod.id);
+      try {
+        const updated = await api.swapMods(enable, disable, { incomingId: replacement.id, outgoingId: anchor.id });
+        invalidateModsReads();
+        set(state => ({ mods: reconcileMods(state.mods, updated) }));
+        for (const mod of updated) {
+          if (!mod.enabled || !mod.outdatedVdata?.[0] || mods.some(previous => previous.enabled && modRestoreKey(previous) === modRestoreKey(mod))) continue;
+          const outdated = mod.outdatedVdata[0];
+          showToast(i18n.t('installed.outdatedData.enabledToast', { name: mod.name, count: outdated.missing, file: outdated.entry }), { tone: 'warning', duration: 10000 });
+        }
+        return 'swapped';
+      } catch (error) {
+        invalidateModsReads();
+        await get().loadMods({ silent: true, force: true });
+        if (isGameRunningModLockError(error)) return 'blocked';
+        if (String(error).includes('MOD_SWAP_STALE')) return stale();
+        if (isEnableCapError(error)) set({ modsNotice: enableCapNotice() });
+        else showToast(String(error), { tone: 'error' });
+        return 'failed';
+      }
+    });
+  },
 
   clearModsNotice: () => set({ modsNotice: null }),
 
@@ -906,6 +1063,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         await get().loadMods({ silent: true, force: true });
         return;
       }
+      invalidateModsReads();
       set({ mods: get().mods.filter((m) => m.id !== mod.id) });
     } catch (err) {
       if (isGameRunningModLockError(err)) {
@@ -922,6 +1080,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       const { skipped } = await api.deleteMods(mods, onProgress);
       const removed = new Set(mods.map((m) => m.id));
       for (const id of skipped) removed.delete(id);
+      invalidateModsReads();
       set({ mods: get().mods.filter((m) => !removed.has(m.id)) });
       if (skipped.length > 0) await get().loadMods({ silent: true, force: true });
     } catch (err) {
@@ -932,9 +1091,39 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   // Set mod priority
+  setModPriorityFolder: async (modId: string, priority: boolean) => {
+    await enqueueToggle(async () => {
+      try {
+        const updated = await api.setModPriorityFolder(modId, priority);
+        const mods = get().mods.map((m) => (m.id === modId ? updated : m));
+        // Pinning retires the mod's shuffle opt-in. Its card swaps the toggle
+        // for the always-on pin, so a key left behind would be invisible yet
+        // still counted, and unpinning would put the mod back in the shuffle
+        // without the user asking. Unpinning does not restore it: opting back
+        // in is one click on a control that is visible again.
+        const prunedPool = priority
+          ? prunePoolKeysForMod(get().shuffleIncluded, updated, mods)
+          : null;
+        if (prunedPool) {
+          writeStoredShuffleIncluded(prunedPool);
+          set({ mods, shuffleIncluded: prunedPool });
+        } else {
+          set({ mods });
+        }
+      } catch (err) {
+        // Reconcile any partial batch progress, then preserve the rejection for
+        // the initiating surface. The picker and card menus own contextual
+        // errors; swallowing here made them close as if a failed move worked.
+        await get().loadMods({ silent: true, force: true });
+        throw err;
+      }
+    });
+  },
+
   setModPriority: async (modId: string, priority: number) => {
     try {
       const updatedMod = await api.setModPriority(modId, priority);
+      invalidateModsReads();
       set({
         mods: get()
           .mods.map((m) => (m.id === modId ? updatedMod : m))
@@ -950,9 +1139,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   swapModPriority: async (modIdA: string, modIdB: string) => {
     try {
       const updated = await api.swapModPriority(modIdA, modIdB);
-      set({ mods: updated });
+      invalidateModsReads();
+      set((state) => {
+        const mods = reconcileMods(state.mods, updated);
+        return mods === state.mods ? state : { mods };
+      });
     } catch (err) {
-      if (isEnableCapError(err)) { set({ modsNotice: ENABLE_CAP_NOTICE }); return; }
+      if (isEnableCapError(err)) { set({ modsNotice: enableCapNotice() }); return; }
       if (isGameRunningModLockError(err)) return;
       set({ modsError: String(err) });
     }
@@ -963,12 +1156,49 @@ export const useAppStore = create<AppState>((set, get) => ({
   reorderMods: async (orderedIds: string[]) => {
     try {
       const updated = await api.reorderMods(orderedIds);
-      set({ mods: updated });
+      invalidateModsReads();
+      set((state) => {
+        const mods = reconcileMods(state.mods, updated);
+        return mods === state.mods ? state : { mods };
+      });
     } catch (err) {
-      if (isEnableCapError(err)) { set({ modsNotice: ENABLE_CAP_NOTICE }); }
+      if (isEnableCapError(err)) { set({ modsNotice: enableCapNotice() }); }
       else if (!isGameRunningModLockError(err)) { set({ modsError: String(err) }); }
       get().loadMods({ force: true });
     }
+  },
+
+  // An empty pool with shuffle off is "never used shuffle", not a choice worth
+  // saving: applying that snapshot later would wipe a pool built since, with no
+  // undo. Returning undefined stores nothing, so the profile acts like a legacy
+  // one and leaves the live pool alone.
+  captureProfileShuffle: () => {
+    const { shuffleOnLaunch, shuffleIncluded, shuffleVariants } = get();
+    if (!shuffleOnLaunch && shuffleIncluded.size === 0) return undefined;
+    return {
+      onLaunch: shuffleOnLaunch,
+      included: [...shuffleIncluded],
+      variants: [...shuffleVariants],
+    };
+  },
+
+  restoreProfileShuffle: (value) => {
+    const result = profileShuffleSchema.safeParse(value);
+    if (!result.success) return;
+    const shuffle = result.data;
+    // A snapshot can include legacy priority-root mods. Those mods have no
+    // shuffle opt-in, so their keys must not
+    // come back through here.
+    const { mods } = get();
+    let included = new Set(shuffle.included);
+    for (const mod of mods) {
+      if (mod.priorityMod) included = prunePoolKeysForMod(included, mod, mods) ?? included;
+    }
+    const variants = new Map(shuffle.variants);
+    try { localStorage.setItem(SHUFFLE_ON_LAUNCH_KEY, String(shuffle.onLaunch)); } catch { /* ignore */ }
+    writeStoredShuffleIncluded(included);
+    writeStoredShuffleVariants(variants);
+    set({ shuffleOnLaunch: shuffle.onLaunch, shuffleIncluded: included, shuffleVariants: variants });
   },
 
   setShuffleOnLaunch: (enabled: boolean) => {
@@ -1050,7 +1280,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   runLaunchShuffle: async (): Promise<{ failures: number }> => {
     const { shuffleOnLaunch, shuffleIncluded, soundShuffleIncluded, cardShuffleIncluded, foundryShuffleIncluded } = get();
     if (!shuffleOnLaunch || (shuffleIncluded.size === 0 && soundShuffleIncluded.size === 0 && cardShuffleIncluded.size === 0 && foundryShuffleIncluded.size === 0)) return { failures: 0 };
-    let heroList: { id: number; name: string }[] = [];
+    let heroList: HeroCategory[] = [];
     try {
       heroList = buildHeroList(await api.getGamebananaCategories('ModCategory'));
     } catch {
@@ -1084,7 +1314,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       try {
         if (enableIds.length || disableIds.length) {
           const applied = await api.applyModToggleBatch(enableIds, disableIds);
-          set({ mods: applied.mods });
+          invalidateModsReads();
+          set((state) => {
+            const mods = reconcileMods(state.mods, applied.mods);
+            return mods === state.mods ? state : { mods };
+          });
           failures += applied.failures.length;
         }
         // Card sources may be disabled: applying copies their portrait entries
@@ -1099,7 +1333,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         }
         return { failures };
       } catch (err) {
-        if (isEnableCapError(err)) { set({ modsNotice: ENABLE_CAP_NOTICE }); }
+        if (isEnableCapError(err)) { set({ modsNotice: enableCapNotice() }); }
         else if (!isGameRunningModLockError(err)) { set({ modsError: String(err) }); }
         get().loadMods({ force: true });
         return { failures: failures + enableIds.length + disableIds.length + cardChoices.length };
@@ -1122,14 +1356,15 @@ export const useAppStore = create<AppState>((set, get) => ({
     const keys = get().soloRestore?.keys ?? mods.filter((m) => m.enabled).map(modRestoreKey);
     try {
       const { mods: updated, failures } = await api.applyModToggleBatch(enable, disable);
-      set({ mods: updated, soloRestore: { keys, label } });
+      invalidateModsReads();
+      set((state) => ({ mods: reconcileMods(state.mods, updated), soloRestore: { keys, label } }));
       // Only enables pass the safety gate, so any safety failure is a target.
       if (failures.some((failure) => failure.includes('MOD_SAFETY_'))) {
         return { applied: true, failures: failures.length, reason: 'safety' };
       }
       return { applied: true, failures: failures.length };
     } catch (err) {
-      if (isEnableCapError(err)) { set({ modsNotice: ENABLE_CAP_NOTICE }); }
+      if (isEnableCapError(err)) { set({ modsNotice: enableCapNotice() }); }
       else if (!isGameRunningModLockError(err)) { set({ modsError: String(err) }); }
       get().loadMods({ force: true });
       // The game-running lock is swallowed silently everywhere else (background
@@ -1154,10 +1389,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
     try {
       const { mods: updated, failures } = await api.applyModToggleBatch(enable, disable);
-      set({ mods: updated, soloRestore: failures.length === 0 ? null : snap });
+      invalidateModsReads();
+      set((state) => ({
+        mods: reconcileMods(state.mods, updated),
+        soloRestore: failures.length === 0 ? null : snap,
+      }));
       return { failures: failures.length };
     } catch (err) {
-      if (isEnableCapError(err)) { set({ modsNotice: ENABLE_CAP_NOTICE }); }
+      if (isEnableCapError(err)) { set({ modsNotice: enableCapNotice() }); }
       else if (!isGameRunningModLockError(err)) { set({ modsError: String(err) }); }
       get().loadMods({ force: true });
       return { failures: enable.length + disable.length };
@@ -1167,25 +1406,64 @@ export const useAppStore = create<AppState>((set, get) => ({
   clearSoloRestore: () => set({ soloRestore: null }),
 
   editLocalMod: async (modId: string, args: EditLocalModArgs) => {
+    const scope = getInstallationScope(get().settings);
     const updated = await api.editLocalMod(modId, args);
+    if (scope !== getInstallationScope(get().settings)) return;
     // Renaming a member of a local variant group renames the whole group in
     // main, so mirror that here instead of leaving the siblings on their old
     // name until the next scan (the group card title reads from whichever
     // member is primary).
     const groupId = updated.localGroupId;
+    const sharedArtwork = updated.hasLocalGallery || get().mods.find(mod => mod.id === modId)?.hasLocalGallery;
+    invalidateModsReads();
     set({
       mods: get().mods.map((m) => {
         if (m.id === modId) return updated;
-        if (!groupId || m.localGroupId !== groupId || m.name === updated.name) return m;
-        return { ...m, name: updated.name };
+        if (!groupId || m.localGroupId !== groupId) return m;
+        return { ...m, name: updated.name, nsfw: updated.nsfw, ...(sharedArtwork ? {
+          thumbnailUrl: updated.thumbnailUrl, hasLocalGallery: updated.hasLocalGallery,
+        } : {}) };
       }),
     });
   },
 
+  setModsNsfw: async (modIds, nsfw) => {
+    const scope = getInstallationScope(get().settings);
+    const mods = await api.setModsNsfw(modIds, nsfw);
+    if (scope !== getInstallationScope(get().settings)) return;
+    invalidateModsReads();
+    set({ mods });
+  },
+
+  setLocalModGallery: async (modId, images) => {
+    const target = get().mods.find(mod => mod.id === modId);
+    if (!target) throw new Error('Local mod not found');
+    const scope = getInstallationScope(get().settings);
+    const groupId = target.localGroupId ?? await get().setLocalVariantGroup([modId], { mode: 'mint' });
+    if (!groupId || scope !== getInstallationScope(get().settings)) throw new Error('The active installation changed');
+    let mods: Mod[];
+    try { mods = await api.setLocalModGallery(groupId, images); }
+    catch (error) {
+      const members = get().mods.filter(mod => mod.localGroupId === groupId);
+      if (!target.localGroupId && scope === getInstallationScope(get().settings)
+        && members.length === 1 && members[0].id === modId && !members[0].hasLocalGallery) {
+        await get().setLocalVariantGroup([modId], { mode: 'clear' }).catch(rollbackError =>
+          console.error('Failed to undo artwork grouping', rollbackError));
+      }
+      throw error;
+    }
+    if (scope !== getInstallationScope(get().settings)) return;
+    invalidateModsReads();
+    set({ mods });
+  },
+
   setLocalVariantGroup: async (modIds, target) => {
+    const tagScope = getInstallationScope(get().settings);
     try {
       const before = get().mods;
       const { groupId, mods } = await api.setLocalVariantGroup(modIds, target);
+      if (tagScope !== getInstallationScope(get().settings)) return groupId;
+      if (tagScope) useInstalledTagsStore.getState().regroup(tagScope, before, mods);
       const plans = stablePreferencePlans(before, mods);
       const migrated = migrateStoredStableKeyPreferences(
         plans.preferencePlan,
@@ -1194,7 +1472,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       // The handler returns the full list (memberships and the unified name can
       // touch mods outside `modIds`), so adopt it wholesale and bump the
       // generation like every other whole-list mutation.
-      modsGeneration++;
+      invalidateModsReads();
       set({
         mods,
         shuffleIncluded: migrated.shuffleIncluded,
@@ -1202,6 +1480,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       });
       try {
         await migrateLockerImagePreferences(lockerImagePlan(before, mods));
+        if (tagScope !== getInstallationScope(get().settings)) return groupId;
         // The maps may already be loaded when grouping is invoked from Locker.
         // Refreshing is cheap compared with the image copies and keeps all
         // mounted surfaces on the canonical key immediately.
@@ -1220,61 +1499,37 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
       return groupId;
     } catch (err) {
-      set({ modsError: String(err) });
+      if (tagScope === getInstallationScope(get().settings)) set({ modsError: String(err) });
       throw err;
     }
   },
 
   setModLockerHero: async (modId: string, heroName: string | null) => {
     const updated = await api.setModLockerHero(modId, heroName);
+    invalidateModsReads();
     set({
       mods: get().mods.map((m) => (m.id === modId ? updated : m)),
     });
+  },
+
+  setModTags: async (modId, tags) => {
+    const updated = await api.setModTags(modId, tags);
+    invalidateModsReads();
+    set({ mods: get().mods.map(mod => mod.id === modId ? updated : mod) });
   },
 
   setModGlobalType: async (modId: string, globalType: GlobalModType | null) => {
     const updated = await api.setModGlobalType(modId, globalType);
+    invalidateModsReads();
     set({
       mods: get().mods.map((m) => (m.id === modId ? updated : m)),
-    });
-  },
-
-  // Marking a mod Global renames its VPK into citadel/grimoire, which changes
-  // its id (ids derive from the filename). Route through enqueueToggle so the
-  // move can't interleave with a Locker/Installed toggle and work off a stale
-  // id, the same hazard documented on the mutation queue in mods.ts.
-  setModPriorityFolder: async (modId: string, priority: boolean) => {
-    await enqueueToggle(async () => {
-      try {
-        const updated = await api.setModPriorityFolder(modId, priority);
-        const mods = get().mods.map((m) => (m.id === modId ? updated : m));
-        // Pinning retires the mod's shuffle opt-in. Its card swaps the toggle
-        // for the always-on pin, so a key left behind would be invisible yet
-        // still counted, and unpinning would put the mod back in the shuffle
-        // without the user asking. Unpinning does not restore it: opting back
-        // in is one click on a control that is visible again.
-        const prunedPool = priority
-          ? prunePoolKeysForMod(get().shuffleIncluded, updated, mods)
-          : null;
-        if (prunedPool) {
-          writeStoredShuffleIncluded(prunedPool);
-          set({ mods, shuffleIncluded: prunedPool });
-        } else {
-          set({ mods });
-        }
-      } catch (err) {
-        // Reconcile any partial batch progress, then preserve the rejection for
-        // the initiating surface. The picker and card menus own contextual
-        // errors; swallowing here made them close as if a failed move worked.
-        await get().loadMods({ silent: true, force: true });
-        throw err;
-      }
     });
   },
 
   setVariantLabel: async (modId: string, label: string) => {
     try {
       const updated = await api.setVariantLabel(modId, label);
+      invalidateModsReads();
       set({
         mods: get().mods.map((m) => (m.id === modId ? updated : m)),
       });
@@ -1284,23 +1539,37 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   importCustomMods: async (items) => {
+    const tagScope = getInstallationScope(get().settings);
     try {
-      const { mods, results } = await api.importCustomMods(items);
+      const { mods, results } = await api.importCustomMods(items.map(({ customTagIds: _tags, ...item }) => item));
       // Same generation bump as the single import: whatever landed must not be
       // overwritten by a scan taken before the copies finished.
-      modsGeneration++;
+      const sameInstallation = tagScope === getInstallationScope(get().settings);
+      if (!sameInstallation) return results;
+      invalidateModsReads();
       set({ mods });
+      if (tagScope && sameInstallation) {
+        results.forEach((result, index) => {
+          if (!result.ok) return;
+          const imported = mods.filter(mod => result.importedModIds?.includes(mod.id));
+          for (const tagId of items[index]?.customTagIds ?? []) {
+            useInstalledTagsStore.getState().setForMods(tagScope, tagId, imported, true);
+          }
+        });
+      }
       // Per-source failures come back in `results`, not as a throw, so the cap
       // check runs over them. The dialog shows each failed row inline; the
       // notice is what explains the cap itself (which no row-level message can).
       if (results.some((r) => !r.ok && isEnableCapError(r.error))) {
-        set({ modsNotice: ENABLE_CAP_NOTICE });
+        set({ modsNotice: enableCapNotice() });
       }
       return results;
     } catch (err) {
       // A throw here means the whole batch never ran (no game path, empty list).
-      if (isEnableCapError(err)) { set({ modsNotice: ENABLE_CAP_NOTICE }); }
-      else { set({ modsError: String(err) }); }
+      if (tagScope === getInstallationScope(get().settings)) {
+        if (isEnableCapError(err)) set({ modsNotice: enableCapNotice() });
+        else set({ modsError: String(err) });
+      }
       throw err;
     }
   },
@@ -1345,11 +1614,22 @@ export const useAppStore = create<AppState>((set, get) => ({
   setBrowseUi: (partial: Partial<BrowseUiState>) => {
     const current = get().browseUi;
     const next = { ...current, ...partial };
-    if (next.section !== current.section) {
+    if (partial.selectedSections) {
+      next.section = partial.selectedSections[0];
+    } else if (partial.section !== undefined || partial.submitter) {
+      next.selectedSections = [next.section];
+    }
+    if (current.selectedSections.length === 1 && (
+      next.section !== current.section || next.selectedSections.length > 1
+    )) {
       next.categoryIdsBySection = {
         ...current.categoryIdsBySection,
         [current.section]: current.categoryId,
       };
+    }
+    if (next.section !== current.section || (
+      current.selectedSections.length > 1 && next.selectedSections.length === 1
+    )) {
       next.categoryId = partial.categoryId ?? next.categoryIdsBySection[next.section] ?? 'all';
       next.heroCategoryId = partial.heroCategoryId ?? (
         next.section === 'Sound' && current.soundNoHero
@@ -1363,6 +1643,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (next.section !== 'Sound' && next.heroCategoryId === 'none') {
       next.heroCategoryId = 'all';
     }
+    if (next.selectedSections.length > 1) {
+      next.categoryId = 'all';
+      if (next.heroCategoryId === 'none') next.heroCategoryId = 'all';
+    }
     // An override belongs to the exact navigation that supplied it. Any
     // ordinary submitter change must drop it so a later Installed/Browse link
     // cannot accidentally reveal a creator the user chose to hide.
@@ -1373,7 +1657,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       next.hiddenCreatorOverrideId = undefined;
     }
     set({ browseUi: next });
-    if (partial.layout !== undefined) writePref('browseLayout', partial.layout);
     if (partial.sort !== undefined) writePref('browseSort', partial.sort);
   },
 

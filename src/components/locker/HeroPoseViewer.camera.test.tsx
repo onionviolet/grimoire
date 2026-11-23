@@ -4,6 +4,8 @@ import { useFrame, useThree, type RootState } from '@react-three/fiber';
 import * as THREE from 'three';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { Controls } from './HeroPoseViewer';
+import { MovementClock } from '../../lib/movementClock';
+import { movementFrame, MOVEMENT_DISTANCE } from '../../lib/movementMotion';
 
 vi.mock('@react-three/drei', async () => {
   const { forwardRef, useImperativeHandle, useMemo } = await import('react');
@@ -26,6 +28,92 @@ beforeAll(() => {
 });
 
 describe('hero preview camera fitting', () => {
+  it('consumes zoom wheel input before the parent model picker can raycast it', async () => {
+    const model = new THREE.Mesh(new THREE.BoxGeometry(1, 2, 1), new THREE.MeshStandardMaterial());
+    let state!: RootState;
+    let wheel: EventListener | undefined;
+    function Figure() {
+      const current = useThree();
+      useLayoutEffect(() => {
+        state = current;
+        Object.assign(current.gl.domElement, { setAttribute: vi.fn(),
+          addEventListener: (type: string, handler: EventListener) => { if (type === 'wheel') wheel = handler; },
+          removeEventListener: vi.fn(),
+        });
+      }, [current]);
+      return <><primitive object={model} /><Controls interaction={{ current: { dragging: false, paused: true } }}
+        reset={0} label="camera" model={model} fitKey="hero" /></>;
+    }
+    const renderer = await ReactThreeTestRenderer.create(<Figure />);
+    try {
+      await renderer.advanceFrames(1, 1 / 60);
+      const before = state.camera.position.length();
+      const event = Object.assign(new Event('wheel', { bubbles: true, cancelable: true }), { deltaY: -120, deltaMode: 0 });
+      vi.spyOn(event, 'preventDefault');
+      vi.spyOn(event, 'stopPropagation');
+      wheel!(event);
+      expect(state.camera.position.length()).toBeLessThan(before);
+      expect(event.preventDefault).toHaveBeenCalledOnce();
+      expect(event.stopPropagation).toHaveBeenCalledOnce();
+    } finally { await renderer.unmount(); }
+  });
+  it('fits the whole dash path when reset at either end, including in a narrow preview', async () => {
+    const model = new THREE.Mesh(new THREE.BoxGeometry(1, 2, .5), new THREE.MeshStandardMaterial());
+    const clock = { current: 0 };
+    let state!: RootState;
+    function Figure({ reset }: { reset: number }) {
+      const current = useThree();
+      useLayoutEffect(() => { state = current; Object.assign(current.gl.domElement, { setAttribute: vi.fn() }); }, [current]);
+      const frame = movementFrame('dash', clock.current, true);
+      return <MovementClock.Provider value={clock}>
+        <group position={[frame.distance - MOVEMENT_DISTANCE / 2, 0, 0]}><primitive object={model} /></group>
+        <Controls interaction={{ current: { dragging: false, paused: true } }} reset={reset} label="camera" model={model} fitKey="dash"
+          movement={{ kind: 'dash', loop: true }} />
+      </MovementClock.Provider>;
+    }
+    const renderer = await ReactThreeTestRenderer.create(<Figure reset={0} />, { width: 600, height: 700 });
+    for (const [reset, time] of [0, .9, 2.4].entries()) {
+      clock.current = time;
+      await renderer.update(<Figure reset={reset} />);
+      await renderer.advanceFrames(1, 1 / 60);
+      const home = state.camera.userData.previewHome as { target: number[] };
+      expect(home.target[0]).toBeCloseTo(0);
+      state.camera.updateMatrixWorld();
+      for (const x of [-MOVEMENT_DISTANCE / 2 - .5, MOVEMENT_DISTANCE / 2 + .5]) {
+        for (const y of [-1, 1]) {
+          const projected = new THREE.Vector3(x, y, .25).project(state.camera);
+          expect(Math.abs(projected.x)).toBeLessThan(.95);
+          expect(Math.abs(projected.y)).toBeLessThan(.95);
+        }
+      }
+    }
+    await renderer.unmount();
+  });
+
+  it('restores a saved camera for each model and still refits after Reset view', async () => {
+    const model = new THREE.Mesh(new THREE.BoxGeometry(1, 2, 1), new THREE.MeshStandardMaterial());
+    const next = new THREE.Mesh(new THREE.BoxGeometry(1, 2, 1), new THREE.MeshStandardMaterial());
+    let state!: RootState;
+    function Figure({ reset, shown = model }: { reset: number; shown?: THREE.Mesh }) {
+      const current = useThree();
+      useLayoutEffect(() => {
+        state = current;
+        Object.assign(current.gl.domElement, { setAttribute: vi.fn() });
+      }, [current]);
+      return <><primitive object={shown} /><Controls interaction={{ current: { dragging: false, paused: true } }}
+        reset={reset} label="camera" model={shown} fitKey="hero" readSavedView={() => ({ position: [2, 1, 4], target: [0, 0.1, 0] })} /></>;
+    }
+    const renderer = await ReactThreeTestRenderer.create(<Figure reset={0} />);
+    await renderer.advanceFrames(1, 1 / 60);
+    expect(state.camera.position.toArray()).toEqual([2, 1, 4]);
+    await renderer.update(<Figure reset={1} />);
+    await renderer.advanceFrames(1, 1 / 60);
+    expect(state.camera.position.toArray()).not.toEqual([2, 1, 4]);
+    await renderer.update(<Figure reset={1} shown={next} />);
+    await renderer.advanceFrames(1, 1 / 60);
+    expect(state.camera.position.toArray()).toEqual([2, 1, 4]);
+    await renderer.unmount();
+  });
   it.each(['static', 'skinned'])('fits the first %s pose and refits when the canvas narrows', async (kind) => {
     const model = new THREE.Group();
     const geometry = new THREE.BoxGeometry(80, 100, 20);

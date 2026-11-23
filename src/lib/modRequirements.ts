@@ -1,0 +1,190 @@
+import { parseGameBananaItemUrl, type GameBananaItemRef, type ModRequirement, type ModRequirementSnapshot, type ModRequirementSource } from '../types/gamebanana';
+import type { Mod } from '../types/mod';
+
+export type RequirementSource = ModRequirementSource | { localModId: string; name: string; requirements: ModRequirementSnapshot };
+export type RequirementRef = GameBananaItemRef | Pick<Extract<RequirementSource, { localModId: string }>, 'localModId'>;
+export const requirementKey = (item: RequirementRef): string => 'localModId' in item ? `local:${item.localModId}` : `${item.section}:${item.id}`;
+
+export function skinRequirementSource(mod: Pick<Mod, 'id' | 'name' | 'skinEdit'>, mods: readonly RequirementMod[]): RequirementSource | null {
+  if (!mod.skinEdit?.sources.length) return null;
+  return { localModId: mod.id, name: mod.name, requirements: { status: 'loaded', checkedAt: 0,
+    items: [...new Set(mod.skinEdit.sources)].map(sha256 => {
+      const base = mods.find(candidate => candidate.sha256 === sha256);
+      return { name: base?.name ?? sha256.slice(0, 12), sha256, importance: 'required', state: 'on',
+        url: base?.gameBananaId ? `https://gamebanana.com/${base.sourceSection === 'Sound' ? 'sounds' : base.sourceSection === 'Wip' ? 'wips' : 'mods'}/${base.gameBananaId}` : undefined };
+    }) } };
+}
+
+export function requirementSnapshot(source: RequirementRef, mods: readonly Mod[], snapshots: Readonly<Record<string, ModRequirementSnapshot>>): ModRequirementSnapshot | undefined {
+  if (!('localModId' in source)) return snapshots[requirementKey(source)];
+  const mod = mods.find(candidate => candidate.id === source.localModId);
+  return mod ? skinRequirementSource(mod, mods)?.requirements : undefined;
+}
+
+export function requirementOwners(source: RequirementRef, mods: readonly Mod[]): Mod[] {
+  return mods.filter(mod => 'localModId' in source ? mod.id === source.localModId
+    : modRequirementRefs(mod).some(ref => requirementKey(ref) === requirementKey(source)));
+}
+
+export function inferRequirementImportance(name: string): Exclude<ModRequirement['importance'], 'unknown'> {
+  if (/\boptional\b/i.test(name)) return 'optional';
+  if (/\brecommended\b/i.test(name)) return 'recommended';
+  return 'required';
+}
+
+export function parseRequirements(raw: unknown, checkedAt = Date.now()): ModRequirementSnapshot {
+  if (raw === null) return { status: 'loaded', checkedAt, items: [] };
+  if (!Array.isArray(raw)) return { status: 'unavailable', checkedAt };
+  const items: ModRequirement[] = [];
+  for (const row of raw) {
+    if (!Array.isArray(row) || ![2, 4, 6].includes(row.length) || !row.every(v => typeof v === 'string')) {
+      return { status: 'unavailable', checkedAt };
+    }
+    const name = row[0].trim();
+    if (!name) return { status: 'unavailable', checkedAt };
+    let url: string | undefined;
+    try {
+      const parsed = new URL(row[1]);
+      if (['https:', 'http:'].includes(parsed.protocol) && !parsed.username && !parsed.password) url = parsed.href;
+    } catch { /* Text-only requirements have no URL. */ }
+    // The simple [name, url] form has no importance label. Authors can put
+    // Optional or Recommended in the name; otherwise assume Required.
+    if (row.length === 2) {
+      items.push({ name, url, state: 'on', importance: inferRequirementImportance(name) });
+      continue;
+    }
+    // Raw rows put importance before state; ProfilePage returns labeled state
+    // and importance columns interleaved with their colors.
+    const state = row[row.length === 6 ? 2 : 3].trim().toLowerCase();
+    const importance = row[row.length === 6 ? 4 : 2].trim().toLowerCase();
+    items.push({ name, url,
+      state: ['1', '7', 'on', 'enabled', 'installed', 'present'].includes(state) ? 'on' : ['off', 'disabled'].includes(state) ? 'off' : 'unknown',
+      importance: ['1', 'required'].includes(importance) ? 'required'
+        : ['2', 'recommended'].includes(importance) ? 'recommended'
+          : importance === 'optional' ? 'optional' : 'unknown',
+    });
+  }
+  return { status: 'loaded', checkedAt, items };
+}
+
+export interface RequirementMatch { modId: string; name: string; enabled: boolean }
+export type RequirementMod = Pick<Mod, 'id' | 'name' | 'enabled' | 'gameBananaId' | 'sourceSection' | 'merged' | 'sha256' | 'skinEdit'>;
+export type RequirementState = 'enabled' | 'disabled' | 'missing' | 'met' | 'manual' | 'optional';
+export function matchRequirement(item: ModRequirement, mods: readonly RequirementMod[]): { state: RequirementState; matches: RequirementMatch[] } {
+  // Authors fill requirements with credits, notes and off-site tools, so only a
+  // GameBanana item marked Required is checked. An unrecognised state label is
+  // read as On, the usual meaning for a required mod.
+  const target = item.importance === 'required' && item.url ? parseGameBananaItemUrl(item.url) : null;
+  if (!target && !item.sha256) return { state: 'optional', matches: [] };
+  const matches: RequirementMatch[] = [];
+  for (const mod of mods) {
+    const identities = [{ id: mod.gameBananaId, section: mod.sourceSection ?? 'Mod' },
+      ...(mod.merged?.sources ?? []).map(s => ({ id: s.gameBananaId, section: s.section ?? 'Mod' }))];
+    if (item.sha256 ? mod.sha256 === item.sha256 : target && identities.some(s => s.id === target.id && s.section === target.section)) {
+      matches.push({ modId: mod.id, name: mod.name, enabled: mod.enabled });
+    }
+  }
+  const enabled = matches.some(m => m.enabled);
+  if (item.state === 'off') return { state: enabled ? 'manual' : 'met', matches };
+  return { state: enabled ? 'enabled' : matches.length ? 'disabled' : 'missing', matches };
+}
+
+export function hasRequirementIssues(snapshot: ModRequirementSnapshot | undefined, mods: readonly Mod[]): boolean {
+  if (!snapshot) return false;
+  if (snapshot.status === 'unavailable') return false;
+  return snapshot.items.some(item => ['disabled', 'missing', 'manual'].includes(matchRequirement(item, mods).state));
+}
+
+/** Issues for a mod that is already installed. One that is off can't be broken
+ *  by what it needs, the same rule requirementOrderIssues follows. Installs use
+ *  hasRequirementIssues, since the new mod arrives enabled. */
+export function hasInstalledRequirementIssues(mod: Pick<Mod, 'enabled'>, snapshot: ModRequirementSnapshot | undefined, mods: readonly Mod[]): boolean {
+  return mod.enabled && hasRequirementIssues(snapshot, mods);
+}
+
+export function modRequirementRefs(mod: Pick<Mod, 'gameBananaId' | 'sourceSection' | 'merged'>): GameBananaItemRef[] {
+  return [
+    ...(mod.gameBananaId ? [{ id: mod.gameBananaId, section: mod.sourceSection ?? 'Mod' }] : []),
+    ...(mod.merged?.sources ?? []).flatMap(s => s.gameBananaId ? [{ id: s.gameBananaId, section: s.section ?? 'Mod' }] : []),
+  ].filter(target => ['Mod', 'Sound', 'Wip'].includes(target.section));
+}
+
+export interface InstalledModRequirement { item: ModRequirement; matches: RequirementMatch[] }
+
+/** Include optional entries for management without making them blockers. */
+export function installedModRequirements(
+  mod: RequirementMod,
+  mods: readonly Mod[],
+  snapshots: Readonly<Record<string, ModRequirementSnapshot>>,
+): InstalledModRequirement[] {
+  const local = skinRequirementSource(mod, mods)?.requirements;
+  const sources = [...(local ? [local] : []), ...modRequirementRefs(mod).map(ref => snapshots[requirementKey(ref)])];
+  const rows = new Map<string, InstalledModRequirement>();
+  for (const source of sources) {
+    if (source?.status !== 'loaded') continue;
+    for (const item of source.items) {
+      const target = item.url ? parseGameBananaItemUrl(item.url) : null;
+      const identity = item.sha256 ? `sha256:${item.sha256}` : target ? requirementKey(target) : item.url ?? item.name;
+      const key = JSON.stringify([identity, item.importance, item.state]);
+      if (!rows.has(key)) rows.set(key, { item, matches: matchRequirement({ ...item, importance: 'required' }, mods).matches });
+    }
+  }
+  return [...rows.values()];
+}
+
+/** Resolve required changes against the current inventory, including cycles and
+ * alternative installed files that already satisfy the same listing. */
+export function requiredModClosure(
+  modId: string,
+  mods: readonly Mod[],
+  snapshots: Readonly<Record<string, ModRequirementSnapshot>>,
+  direction: 'dependencies' | 'dependents',
+): string[] {
+  const byId = new Map(mods.map(mod => [mod.id, mod]));
+  if (!byId.has(modId)) return [];
+  const selected = new Set([modId]);
+  const rows = new Map<string, InstalledModRequirement[]>();
+  const required = (mod: Mod) => {
+    let result = rows.get(mod.id);
+    if (!result) {
+      result = installedModRequirements(mod, mods, snapshots).filter(({ item }) => item.importance === 'required' && item.state !== 'off');
+      rows.set(mod.id, result);
+    }
+    return result;
+  };
+  if (direction === 'dependencies') {
+    const queue = [modId];
+    for (let index = 0; index < queue.length; index++) {
+      const mod = byId.get(queue[index])!;
+      for (const { matches } of required(mod)) {
+        // A merged archive can already contain both the owner and its base.
+        if (matches.some(match => match.modId === mod.id)) continue;
+        const enabled = matches.filter(match => match.enabled);
+        const candidates = enabled.length ? enabled : matches.slice(0, 1);
+        for (const match of candidates) {
+          if (selected.has(match.modId)) continue;
+          selected.add(match.modId);
+          queue.push(match.modId);
+        }
+      }
+    }
+  } else {
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const mod of mods) {
+        if (!mod.enabled || selected.has(mod.id)) continue;
+        const losesRequirement = required(mod).some(({ matches }) => {
+          const enabled = matches.filter(match => match.enabled);
+          return enabled.some(match => selected.has(match.modId)) && enabled.every(match => selected.has(match.modId));
+        });
+        if (losesRequirement) {
+          selected.add(mod.id);
+          changed = true;
+        }
+      }
+    }
+  }
+  selected.delete(modId);
+  return [...selected];
+}

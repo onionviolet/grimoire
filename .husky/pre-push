@@ -1,7 +1,7 @@
 # Mirror CI's "i18n catalog + manifest" gate so a missing key or a stale
 # manifest.json never reaches a push (and a red CI run). Both checks are
 # sub-second and need no build. See AGENTS.md and docs/localization.md for the i18n workflow.
-pnpm i18n:check
+node scripts/check-i18n.mjs
 node scripts/gen-locale-manifest.mjs --check
 
 # Mojibake guard. v1.26.1 shipped 77 cp1252-round-tripped sequences because the

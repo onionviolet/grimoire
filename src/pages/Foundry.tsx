@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { z } from 'zod';
 import { useScrollRestore } from '../lib/useScrollRestore';
+import { useFoundryDraft } from '../lib/useFoundryDraft';
+import { skinEditLinkSchema } from '../lib/skinEditSchema';
+import { movementFxLinkSchema } from '../lib/movementFx';
+import { getFoundryHeroNeighbors, orderFoundryHeroes } from '../lib/foundryHeroNavigation';
 import {
   Hammer,
   Library,
@@ -57,6 +62,7 @@ const SUBTOOLS = [
 ] as const;
 
 type SubtoolId = (typeof SUBTOOLS)[number]['id'];
+const SUBTOOL_IDS = SUBTOOLS.map((tool) => tool.id) as [SubtoolId, ...SubtoolId[]];
 type Mode = 'heroes' | 'catalog';
 
 /** Where "make a new one" lands for the shelf the user is looking at. The
@@ -84,14 +90,21 @@ export default function Foundry() {
   const { t } = useTranslation();
   const location = useLocation();
   const navigate = useNavigate();
+  // A Locker "edit this skin" link and a Mechanics link arrive as router state.
+  const linkState: unknown = location.state;
+  const skinLink = skinEditLinkSchema.safeParse(linkState);
+  const movementLink = movementFxLinkSchema.safeParse(linkState);
   const settings = useAppStore((s) => s.settings);
   const hasGamePath = Boolean(settings?.deadlockPath || (settings?.devMode && settings?.devDeadlockPath));
 
   // Hero-first is the primary Foundry experience: pick a hero, edit everything.
   // The Catalog (tool-first) mode keeps the original asset-browse rail.
-  const [mode, setMode] = useState<Mode>('heroes');
-  const [selectedHero, setSelectedHero] = useState<HeroInfo | null>(null);
-  const [active, setActive] = useState<SubtoolId>('library');
+  // Remembered across visits, so leaving Foundry and coming back returns to
+  // the same hero and tool.
+  const [mode, setMode] = useFoundryDraft<Mode>('page:mode', z.enum(['heroes', 'catalog']), 'heroes');
+  const [selectedCode, setSelectedCode] = useFoundryDraft('page:hero', z.string().max(100).nullable(), null);
+  const [active, setActive] = useFoundryDraft<SubtoolId>('page:tool', z.enum(SUBTOOL_IDS), 'library');
+  const [heroQuery, setHeroQuery] = useFoundryDraft('page:query', z.string().max(512), '');
   const [heroes, setHeroes] = useState<HeroInfo[]>([]);
   const [nonStandardReport, setNonStandardReport] = useState<import('../types/foundry').NonStandardReport | null>(null);
   const [scanningNonStandard, setScanningNonStandard] = useState(false);
@@ -193,14 +206,30 @@ export default function Foundry() {
     if (linkedTool) navigate('/foundry', { replace: true });
   }, [linkedTool, navigate]);
 
-  const workshopHero = selectedHero ?? linkedHero;
+  const skinLinkedHero = skinLink.success ? heroes.find((hero) => hero.name === skinLink.data.heroName) : undefined;
+  const selectedHero = heroes.find((hero) => hero.codename === selectedCode);
+  // A link always wins over the remembered hero, or a stale draft would open
+  // the wrong workshop. A Mechanics link with no hero opens the first one.
+  const workshopHero =
+    skinLinkedHero ?? linkedHero ?? selectedHero ?? (movementLink.success ? heroes[0] : undefined);
+  const hasHeroLink = Boolean(skinLinkedHero || linkedHero || movementLink.success);
   const activeTool: SubtoolId = linkedTool ?? active;
   const toolScrollRef = useScrollRestore<HTMLDivElement>(`foundry:${activeTool}`, [activeTool]);
-  const activeMode: Mode = linkedHero ? 'heroes' : linkedTool ? 'catalog' : mode;
+  const activeMode: Mode = hasHeroLink ? 'heroes' : linkedTool ? 'catalog' : mode;
+  const clearHeroLink = useCallback(() => {
+    if (hasHeroLink) navigate('/foundry', { replace: true, state: null });
+  }, [hasHeroLink, navigate]);
+  const pickHero = useCallback((hero: HeroInfo) => {
+    setSelectedCode(hero.codename);
+    clearHeroLink();
+  }, [setSelectedCode, clearHeroLink]);
   const leaveWorkshop = useCallback(() => {
-    setSelectedHero(null);
-    if (linkedHero) navigate('/foundry', { replace: true });
-  }, [linkedHero, navigate]);
+    setSelectedCode(null);
+    setMode('heroes');
+    clearHeroLink();
+  }, [setSelectedCode, setMode, clearHeroLink]);
+  const orderedHeroes = useMemo(() => orderFoundryHeroes(heroes, heroQuery), [heroes, heroQuery]);
+  const neighbors = getFoundryHeroNeighbors(orderedHeroes, workshopHero?.codename ?? '');
 
   const heroNames = useMemo(() => {
     const map = new Map<string, string>();
@@ -239,11 +268,18 @@ export default function Foundry() {
   if (activeMode === 'heroes' && workshopHero) {
     return (
       <HeroWorkshop
+        // A new link remounts the workshop so it opens on what the link names.
+        key={skinLink.success || movementLink.success ? location.key : 'workshop'}
         hero={workshopHero}
+        previous={neighbors.previous}
+        next={neighbors.next}
+        onNavigate={pickHero}
+        skinSources={skinLink.success && skinLink.data.heroName === workshopHero.name ? skinLink.data.skinSources : undefined}
         heroNames={heroNames}
         // Only meaningful alongside `?hero=`: a deep link opens a specific
         // hero's workshop on a specific section (the Locker links portraits).
-        initialSection={new URLSearchParams(location.search).get('section') ?? undefined}
+        // A Mechanics link from Installed opens on Mechanics.
+        initialSection={movementLink.success ? 'mechanics' : new URLSearchParams(location.search).get('section') ?? undefined}
         // The Locker links a specific portrait family, not just the section.
         initialFamilyKey={new URLSearchParams(location.search).get('family') ?? undefined}
         onBack={leaveWorkshop}
@@ -310,7 +346,7 @@ export default function Foundry() {
             </div>
           }
         />
-        <FoundryHeroGrid heroes={heroes} onPick={setSelectedHero} />
+        <FoundryHeroGrid heroes={heroes} onPick={pickHero} query={heroQuery} onQueryChange={setHeroQuery} />
         {nonStandardReport && <NonStandardReportView report={nonStandardReport} />}
       </PageLayout>
     );

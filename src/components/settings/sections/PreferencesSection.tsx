@@ -1,3 +1,4 @@
+import { FilterDivider } from '../../common/FilteredContent';
 import { useEffect, useState } from 'react';
 import { Download, SlidersHorizontal, Wrench } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -6,6 +7,7 @@ import { Card, Toggle } from '../../common/ui';
 import Tx from '../../translation/Tx';
 import type { AppSettings } from '../../../types/mod';
 import type { ForgeBridgeStatus } from '../../../types/electron';
+import { IGNORE_OVERLAP_SETTING_ID } from '../settingsHighlight';
 
 // General preferences, mod installation and updates, and external integrations.
 export default function PreferencesSection() {
@@ -36,36 +38,63 @@ export default function PreferencesSection() {
 
   return (
     <>
-      <Card title={<Tx k="settings.sections.preferences" fallback="Preferences" />} icon={SlidersHorizontal}>
+      <Card id="settings-preferences-settings-sections-preferences-card" title={<Tx k="settings.sections.preferences" fallback="Preferences" />} icon={SlidersHorizontal}>
         <div className="space-y-6">
-          <Toggle
+          <Toggle id="settings-preferences-settings-preferences-expandLocker-toggle"
             checked={settings?.lockerCardsExpandedByDefault ?? false}
             onChange={(checked) => update({ lockerCardsExpandedByDefault: checked })}
             label={<Tx k="settings.preferences.expandLocker" fallback="Expand Locker cards by default" />}
             description={<Tx k="settings.toggles.expandLocker" fallback="Start Locker list view with hero cards expanded." />}
           />
 
-          <div className="h-px bg-hl/5" />
+          <FilterDivider className="h-px bg-hl/5" />
 
-          <Toggle
+          <Toggle id="settings-preferences-settings-preferences-groupClickOpensDetails-toggle"
+            checked={settings?.installedGroupClickOpensDetails ?? false}
+            onChange={(checked) => update({ installedGroupClickOpensDetails: checked })}
+            label={t('settings.preferences.groupClickOpensDetails')}
+            description={t('settings.toggles.groupClickOpensDetails')}
+          />
+
+          <FilterDivider className="h-px bg-hl/5" />
+
+          <Toggle id="settings-preferences-settings-preferences-confirmProfileUpdate-toggle"
             checked={settings?.confirmProfileUpdate ?? true}
             onChange={(checked) => update({ confirmProfileUpdate: checked })}
             label={<Tx k="settings.preferences.confirmProfileUpdate" fallback="Confirm before updating a profile" />}
             description={<Tx k="settings.toggles.confirmProfileUpdate" fallback="Confirm before overwriting a profile's saved mods. Off overwrites immediately." />}
           />
 
-          <div className="h-px bg-hl/5" />
+          <FilterDivider className="h-px bg-hl/5" />
 
-          <Toggle
-            checked={settings?.ignoreConflictsByDefault ?? false}
-            onChange={(checked) => update({ ignoreConflictsByDefault: checked })}
-            label={<Tx k="settings.preferences.ignoreConflicts" fallback="Ignore conflicts by default" />}
-            description={<Tx k="settings.toggles.ignoreConflicts" fallback="Hide all conflicts from the Conflicts page. Off shows them." />}
+          <Toggle id="settings-preferences-settings-preferences-promptOptionalRequirements-toggle"
+            checked={settings?.promptOptionalRequirements ?? false}
+            onChange={(checked) => update({ promptOptionalRequirements: checked })}
+            label={t('settings.preferences.promptOptionalRequirements')}
+            description={t('settings.toggles.promptOptionalRequirements')}
           />
 
-          <div className="h-px bg-hl/5" />
+          <FilterDivider className="h-px bg-hl/5" />
 
-          <Toggle
+          <Toggle id="settings-preferences-settings-preferences-cycleTagFilters-toggle"
+            checked={settings?.cycleTagFilters ?? false}
+            onChange={(checked) => update({ cycleTagFilters: checked })}
+            label={t('settings.preferences.cycleTagFilters')}
+            description={t('settings.toggles.cycleTagFilters')}
+          />
+
+          <FilterDivider className="h-px bg-hl/5" />
+
+          <Toggle id={IGNORE_OVERLAP_SETTING_ID}
+            checked={settings?.ignoreConflictsByDefault ?? false}
+            onChange={(checked) => update({ ignoreConflictsByDefault: checked })}
+            label={<Tx k="settings.preferences.ignoreOverlap" fallback="Ignore overlap by default" />}
+            description={<Tx k="settings.toggles.ignoreOverlap" fallback="Hide every overlap from the Overlap page. Off shows them." />}
+          />
+
+          <FilterDivider className="h-px bg-hl/5" />
+
+          <Toggle id="settings-preferences-settings-preferences-keepModBackups-toggle"
             checked={settings?.keepModBackups ?? false}
             onChange={(checked) => update({ keepModBackups: checked })}
             label={<Tx k="settings.preferences.keepModBackups" fallback="Keep removed mod files for 24 hours" />}
@@ -74,45 +103,45 @@ export default function PreferencesSection() {
         </div>
       </Card>
 
-      <Card title={t('settings.sections.installationAndUpdates')} icon={Download}>
+      <Card id="settings-preferences-settings-sections-installationAndUpdates-card" title={t('settings.sections.installationAndUpdates')} icon={Download}>
         <div className="space-y-6">
-          <Toggle
+          <Toggle id="settings-preferences-settings-preferences-switchVariants-toggle"
             checked={settings?.autoDisableSiblingVariants ?? true}
             onChange={(checked) => update({ autoDisableSiblingVariants: checked })}
             label={<Tx k="settings.preferences.switchVariants" fallback="Switch variants instead of stacking them" />}
             description={<Tx k="settings.toggles.switchVariants" fallback="Installing a new variant disables the old one. Off keeps both active. Updates always replace the old file." />}
           />
 
-          <div className="h-px bg-hl/5" />
+          <FilterDivider className="h-px bg-hl/5" />
 
-          <Toggle
+          <Toggle id="settings-preferences-settings-preferences-enableAfterDownload-toggle"
             checked={settings?.autoEnableDownloads ?? false}
             onChange={(checked) => update({ autoEnableDownloads: checked })}
             label={<Tx k="settings.preferences.enableAfterDownload" fallback="Enable mods after download" />}
             description={<Tx k="settings.toggles.enableAfterDownload" fallback="Enable mods as soon as they finish downloading. Stays disabled if no slot is free." />}
           />
 
-          <div className="h-px bg-hl/5" />
+          <FilterDivider className="h-px bg-hl/5" />
 
-          <Toggle
+          <Toggle id="settings-preferences-settings-preferences-autoMatchRemainingFiles-toggle"
             checked={settings?.autoMatchRemainingFiles ?? true}
             onChange={(checked) => update({ autoMatchRemainingFiles: checked })}
             label={<Tx k="settings.preferences.autoMatchRemainingFiles" fallback="Match remaining update files automatically" />}
             description={<Tx k="settings.toggles.autoMatchRemainingFiles" fallback="After matching names and descriptions, pair one unmatched installed file with one remaining new upload. This can replace a different variant. Turn off to choose these replacements yourself." />}
           />
 
-          <div className="h-px bg-hl/5" />
+          <FilterDivider className="h-px bg-hl/5" />
 
-          <Toggle
+          <Toggle id="settings-preferences-settings-preferences-skipModReplacementConfirmation-toggle"
             checked={settings?.skipModReplacementConfirmation ?? false}
             onChange={(checked) => update({ skipModReplacementConfirmation: checked })}
             label={t('settings.preferences.skipModReplacementConfirmation')}
             description={t('settings.toggles.skipModReplacementConfirmation')}
           />
 
-          <div className="h-px bg-hl/5" />
+          <FilterDivider className="h-px bg-hl/5" />
 
-          <Toggle
+          <Toggle id="settings-preferences-settings-preferences-swapManualReplacementActions-toggle"
             checked={settings?.swapManualReplacementActions ?? true}
             onChange={(checked) => update({ swapManualReplacementActions: checked })}
             label={t('settings.preferences.swapManualReplacementActions')}
@@ -121,9 +150,9 @@ export default function PreferencesSection() {
         </div>
       </Card>
 
-      <Card title={t('settings.sections.integrations')} icon={Wrench}>
+      <Card id="settings-preferences-settings-sections-integrations-card" title={t('settings.sections.integrations')} icon={Wrench}>
         <div className="space-y-6">
-          <Toggle
+          <Toggle id="settings-preferences-forge-settings-toggleLabel-toggle"
             checked={forgeEnabled}
             onChange={(checked) => update({ forgeLocalInstallEnabled: checked })}
             label={<Tx k="forge.settings.toggleLabel" fallback="Allow DeadlockForge 1-click installs" />}
@@ -144,9 +173,9 @@ export default function PreferencesSection() {
             }
           />
 
-          <div className="h-px bg-hl/5" />
+          <FilterDivider className="h-px bg-hl/5" />
 
-          <Toggle
+          <Toggle id="settings-preferences-settings-preferences-discordRpc-toggle"
             checked={settings?.discordRpcEnabled ?? false}
             onChange={(checked) => update({ discordRpcEnabled: checked })}
             label={<Tx k="settings.preferences.discordRpc" fallback="Discord Rich Presence" />}

@@ -1,3 +1,5 @@
+import type { AppTheme } from '../lib/theme';
+
 export interface MergedModSource {
   /** Filename of the source VPK after the merge: typically in `.disabled/`
    *  because mergeMods disables sources to free their priority slots. May
@@ -343,6 +345,7 @@ export const TRIPPY_STYLES = [
   'halftone',
   'lava',
   'vaporwave',
+  'moo',
 ] as const;
 export type TrippyStyleName = (typeof TRIPPY_STYLES)[number];
 
@@ -360,6 +363,9 @@ export type TrippyVfxTargets = 'all' | 'abilities' | 'weapons';
 /** Request for one animated trippy preview sprite (vpkmerge trippy-preview).
  *  Pure pattern generation: hero-independent and cheap (no VPK read). */
 export interface TrippySpriteOptions {
+  colors?: string[];
+  /** Moo density multiplier, 0.25..8. Omitted means 1x. */
+  scale?: number;
   style: TrippyStyleName;
   /** Pattern phase / hue offset, normalized 0..1. */
   phase: number;
@@ -450,20 +456,40 @@ export interface ApplyTrippySkinResult {
 
 /**
  * Global (non-hero) cosmetic mod types the Locker groups on a second axis,
- * alongside the per-hero piles. Most are derived from the VPK file tree by
- * `classifyGlobalModType` (electron/main/services/vpk.ts), since GameBanana's
- * category labels are unreliable for them. 'announcer' is path-classified from
- * `sounds/mods/` (global SFX / announcer frameworks like QOL Lock) but is ALSO
- * derived from the GameBanana "Announcer" category for sound packs whose VPK is
- * just `sounds/`. The other exception is 'killstreak-music': a Sound mod's VPK
- * is just `sounds/`, so it can't be path-classified, and is instead derived
- * from the GameBanana "Killstreak Music" category (cat 5895) by
- * `getEffectiveGlobalType` in the renderer (src/lib/lockerUtils.ts). Shared
- * here so the classifier (main) and the Locker grouping/UI (renderer) agree on
- * the union.
+ * alongside the per-hero piles. Linked submissions derive their General
+ * destination from GameBanana category ancestry. Explicit manual assignments
+ * and previously classified local files retain their chosen destination.
  */
-export type GlobalModType = 'soul-container' | 'spirit-urn' | 'hideout' | 'icons' | 'hud' | 'announcer' | 'killstreak-music' | 'effects';
+export type GlobalModType = 'hidden-king' | 'archmother' | 'patron' | 'sinner' | 'boxes' | 'sounds' | 'soul-container' | 'spirit-urn' | 'hideout' | 'icons' | 'hud' | 'announcer' | 'killstreak-music' | 'effects' | 'animations' | 'maps';
+
+/** Asset-only result, independent of editable tags and category metadata. */
+export interface InstalledPropDetection {
+  version: number;
+  size: number;
+  modifiedAt: string;
+  sha256?: string;
+  types: GlobalModType[];
+}
+
+/** Asset-only result: heroes whose previewed body model the payload changes. */
+export interface InstalledBodyModelDetection {
+  version: number;
+  size: number;
+  modifiedAt: string;
+  sha256?: string;
+  heroes: string[];
+}
 export type LockerHeroSource = 'manual' | 'title' | 'vpk' | 'download-title' | 'download-vpk';
+
+/** Cached automatic hero matches for one installed payload. */
+export interface InstalledHeroDetection {
+  version: number;
+  heroes: string[];
+  source: 'vpk' | 'description' | 'file' | 'name';
+  size: number;
+  modifiedAt: string;
+  inputs: string;
+}
 
 /** Deadlock ability slot. 1-3 are the signature abilities; 4 is the ultimate. */
 export type AbilitySlot = 1 | 2 | 3 | 4;
@@ -650,6 +676,12 @@ export interface StaleModel {
   attachments: string[];
 }
 
+/** User selections overlay detected tags without replacing category metadata. */
+export interface ModTagOverrides {
+  base?: string[];
+  heroes?: string[];
+}
+
 export interface Mod {
   safety?: import('./modSafety').ModSafetySnapshot;
   outdatedVdata?: OutdatedVdata[];
@@ -669,6 +701,8 @@ export interface Mod {
   description?: string;
   thumbnailUrl?: string;
   audioUrl?: string;
+  /** Runtime marker for a managed gallery, including an explicitly empty one. */
+  hasLocalGallery?: boolean;
   gameBananaId?: number;
   gameBananaFileId?: number;
   vpkIndex?: number;
@@ -685,24 +719,29 @@ export interface Mod {
   variantLabel?: string;
   fileDescription?: string;
   sourceFileName?: string;
-  /** Opaque id linking several locally imported VPKs as variants of one mod.
-   *  The local analogue of gameBananaId for grouping only: no provenance, no
-   *  meaning outside this install. Undefined for GameBanana mods and for
-   *  standalone local imports. See variantGroupKey in src/lib/variantGroups.ts. */
+  /** User-defined variant group, including mixed downloaded and imported files.
+   *  Group membership is independent of GameBanana provenance and import origin. */
   localGroupId?: string;
-  /** Hero this mod belongs to in the Locker, by canonical hero name. Set
-   *  automatically at download time for Sound mods (inferHeroFromTitle) or
-   *  manually via the Locker's "Tag hero" affordance. Takes precedence over
-   *  categoryId when grouping mods into hero piles. */
+  /** Import origin, independent of embedded GameBanana identity. Legacy entries infer it. */
+  localImport?: boolean;
+  /** Explicit hero choice, preserved local identity, or a single-hero hint
+   *  for existing consumers. The full effective set is in lockerHeroes. */
   lockerHero?: string;
   /** Where lockerHero came from. Missing means legacy/inferred metadata. */
   lockerHeroSource?: LockerHeroSource;
-  /** Global (non-hero) cosmetic category this mod belongs to in the Locker,
-   *  classified from its VPK file tree (see GlobalModType). Mutually exclusive
-   *  with hero content: the classifier returns null for hero skins/abilities,
-   *  so a mod with a globalType set is never also a hero cosmetic. Undefined
-   *  for hero mods and for anything that matched no global signal. */
+  /** Effective hero identities, including multi-hero Sound, WiP, and HUD files. */
+  lockerHeroes?: string[];
+  tagOverrides?: ModTagOverrides;
+  /** Runtime defaults before tagOverrides, used for reset indicators. Not persisted. */
+  detectedTags?: { heroes: string[]; globalType?: GlobalModType };
+  /** Effective General destination from category ancestry, a manual override,
+   *  or a preserved legacy local classification. */
   globalType?: GlobalModType;
+  propTypes?: GlobalModType[];
+  /** Heroes whose body model this file's own assets change. Gates the hero 3D preview. */
+  bodyModelHeroes?: string[];
+  /** Explicit user classification, retained independently of automatic tags. */
+  globalTypeSource?: 'manual';
   /** Set when this mod was produced by mergeMods. Carries the unroll payload
    *  (share code + source list). */
   merged?: MergedModInfo;
@@ -740,6 +779,9 @@ export interface Mod {
    * A build may carry several parts of mixed kinds; the exact write set is
    * recorded so the change's real runtime winner can be resolved. */
   foundryBuild?: FoundryBuildInfo;
+  /** Set on a Door Stuck skin-editor overlay: its hero, sources and edits. */
+  skinEdit?: import('./skinEditor').SkinEditRecord;
+  movementFx?: import('../lib/movementFx').MovementFxChoice;
   /** User opted out of the "update available" flag for this mod. Persisted
    *  in metadata; toggled from the mod details modal. */
   ignoreUpdates?: boolean;
@@ -770,6 +812,12 @@ export interface DeleteModsProgress {
 // What a delete names: ids are reused slot paths, so size + installedAt prove
 // the mod at the id is still the one that was picked.
 export type DeleteModEntry = Pick<Mod, 'id' | 'size' | 'installedAt'>;
+
+export interface ModSwapPlacement {
+  /** Selected pair that transfers its slot, apart from any requirement toggles. */
+  incomingId: string;
+  outgoingId: string;
+}
 
 export interface DeleteModsResult {
   /** Ids whose mod was gone or had changed since it was picked. Nothing was deleted for them. */
@@ -1176,6 +1224,8 @@ export interface PeekImprintResult {
   gamebananaId?: number;
   gamebananaFileId?: number;
   author?: string;
+  /** The label the imprint recorded for this file among its mod's files. */
+  variantLabel?: string;
   /** The recognized submission's art, from the local catalog mirror. */
   thumbnailUrl?: string;
   kind: 'mod' | 'merge';
@@ -1223,6 +1273,13 @@ export interface AppearanceBg {
 export interface HiddenCreator {
   id: number;
   name: string;
+  /** When the user hid them, in ms since the epoch. Entries hidden before this
+   *  was recorded have none. */
+  hiddenAt?: number;
+  /** The user's own reminder of why. */
+  note?: string;
+  /** The mod whose details the creator was hidden from, when there was one. */
+  fromMod?: { id: number; name: string; section: string };
 }
 
 /** A single GameBanana submission the user has hidden from Browse. GameBanana
@@ -1233,7 +1290,14 @@ export interface HiddenMod {
   name: string;
   /** GameBanana model name: "Mod", "Sound" or "Wip". */
   section: string;
+  /** When the user hid it, in ms since the epoch. */
+  hiddenAt?: number;
+  /** The user's own reminder of why. */
+  note?: string;
 }
+
+/** Longest note kept for a hidden creator or mod. */
+export const HIDDEN_NOTE_MAX_LENGTH = 140;
 
 export interface AppSettings {
   deadlockPath: string | null;
@@ -1256,6 +1320,10 @@ export interface AppSettings {
   /** How mods marked NSFW are shown app-wide. `hide` also drops them from
    *  Browse; surfaces that can't drop a mod (Installed, Locker) blur instead. */
   nsfwContentMode: NsfwContentMode;
+  /** Reveal blurred mod thumbnails while their card is hovered. Off by default. */
+  revealNsfwOnHover: boolean;
+  /** Keep Browse's 18+ tags visible without hovering over the card. */
+  browseAlwaysShowNsfwTag: boolean;
   /** Hide GameBanana mods flagged as outdated in Browse. */
   hideOutdatedMods: boolean;
   /** GameBanana submitters whose Mods, Sounds, and WiPs are excluded from
@@ -1266,6 +1334,9 @@ export interface AppSettings {
   hiddenMods: HiddenMod[];
   /** Open Locker list-view hero cards expanded on first load. */
   lockerCardsExpandedByDefault: boolean;
+  /** Clicking a multi-file GameBanana card on Installed opens its mod page
+   *  instead of the file picker. */
+  installedGroupClickOpensDetails: boolean;
   /** Installing a different file of an already-enabled mod disables the
    *  prior variant (not about updates). */
   autoDisableSiblingVariants: boolean;
@@ -1293,10 +1364,17 @@ export interface AppSettings {
   steamLaunchOptionsManaged: boolean;
   /** Currently active profile. */
   activeProfileId: string | null;
+  /** The profile whose Locker effects last failed to apply. The Locker then holds a mix of two
+   *  profiles, so its edits don't save into this one until an apply succeeds or it is updated. */
+  lockerUnappliedProfileId: string | null;
   /** Ask for confirmation before "Update" overwrites a profile with the current
    *  mod set. On by default: Update sits next to Apply and overwriting is easy to
    *  trigger by accident, with no undo. Turn off to overwrite immediately. */
   confirmProfileUpdate: boolean;
+  /** Show the enable confirmation for optional and recommended requirements too. */
+  promptOptionalRequirements: boolean;
+  /** Cycle Installed tag filters through included, excluded, and unselected. */
+  cycleTagFilters: boolean;
   experimentalStats: boolean;
   experimentalCrosshair: boolean;
   /** Opt-in preview of known ability clips, sound and effect recolors. */
@@ -1323,6 +1401,10 @@ export interface AppSettings {
    *  since Valve closed the CEF file:// read it was built against. When off,
    *  every safety gate passes without reading the archive. */
   experimentalModSafety: boolean;
+  /** Opt-in: the 3D viewer opens on the hideout once its scene cache is built
+   *  for the current game, and the cache builds in the background for every
+   *  player. A hero's own scene choice still wins. Off by default. */
+  experimentalHideoutDefault: boolean;
   /** First-run setup completed. */
   hasCompletedSetup: boolean;
   /** Mod pairs the user has dismissed in the Conflicts page. New entries use
@@ -1352,8 +1434,11 @@ export interface AppSettings {
   /** UI accent color (hex, e.g. "#f97316"). Used to theme buttons, links, and
    *  focus rings throughout the app. */
   accentColor: string;
-  /** Use true black for the app canvas and near-black neutral surfaces. */
-  oledMode: boolean;
+  /** Surface palette: the default dark, true-black OLED, or light. */
+  theme: AppTheme;
+  /** Accent colors the user picked themselves, kept as swatches beside the
+   *  presets (oldest first, at most MAX_CUSTOM_SWATCHES). */
+  customAccentColors?: string[];
   /** Hero render used as the active sidebar highlight background.
    *  @deprecated Superseded by `appearanceBackgrounds.activeTab`. Kept as a
    *  legacy compat read so existing installs keep their chosen highlight; the
@@ -1370,6 +1455,9 @@ export interface AppSettings {
    *  (top-left, bottom-right) rather than a preset id, so a custom pick and a
    *  preset are the same shape. Null/absent leaves the flat background. */
   backgroundGradient?: { from: string; to: string } | null;
+  /** Background glows the user made themselves, kept as swatches beside the
+   *  presets (oldest first, at most MAX_CUSTOM_SWATCHES). */
+  customBackgroundGradients?: { from: string; to: string }[];
   /** Drop the sidebar's own panel background so it sits flush with the page
    *  background instead of reading as a separate dark grey column. The divider,
    *  nav art, and launch buttons are unaffected. Off by default. */

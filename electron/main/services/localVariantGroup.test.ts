@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import {
-  assertCompatibleLocalVariantClassifications,
   planLocalVariantGroup,
   resolveLocalVariantGroupProfile,
   type LocalVariantGroupMember,
@@ -19,6 +18,25 @@ function member(over: Partial<LocalVariantGroupMember> & { id: string }): LocalV
 const mint = () => 'minted-uuid';
 
 describe('planLocalVariantGroup', () => {
+  it('rejects different downloaded submissions, including existing destination members', () => {
+    const all = [
+      member({ id: 'gb', gameBananaId: 42, localImport: false, localGroupId: 'g' }),
+      member({ id: 'other', gameBananaId: 43, localImport: false }),
+      member({ id: 'local', localImport: true, gameBananaId: 99 }),
+    ];
+    expect(() => planLocalVariantGroup(all, ['gb', 'other', 'local'], { mode: 'mint' }, mint)).toThrow('different GameBanana');
+    expect(() => planLocalVariantGroup(all, ['other', 'local'], { mode: 'join', groupId: 'g' }, mint)).toThrow('different GameBanana');
+    const crossSection = [all[0], { ...all[1], gameBananaId: 42, sourceSection: 'Sound' }, all[2]];
+    expect(() => planLocalVariantGroup(crossSection, ['gb', 'other', 'local'], { mode: 'mint' }, mint)).toThrow('different GameBanana');
+    expect(() => planLocalVariantGroup(all, ['gb', 'local'], { mode: 'mint' }, mint)).not.toThrow();
+    expect(() => planLocalVariantGroup(all, ['gb'], { mode: 'clear' }, mint)).not.toThrow();
+  });
+
+  it('allows Add variant to seed one submission before its local files are imported', () => {
+    const all = [member({ id: 'a', gameBananaId: 42 }), member({ id: 'b', gameBananaId: 42 })];
+    expect(() => planLocalVariantGroup(all, ['a', 'b'], { mode: 'mint' }, mint)).not.toThrow();
+    expect(() => planLocalVariantGroup(all, ['a'], { mode: 'mint' }, mint)).not.toThrow();
+  });
   it('mints a group and unifies the name on the first mod', () => {
     const all = [member({ id: 'a', name: 'Red Geist' }), member({ id: 'b', name: 'Blue Geist' })];
     const plan = planLocalVariantGroup(all, ['a', 'b'], { mode: 'mint' }, mint);
@@ -42,11 +60,14 @@ describe('planLocalVariantGroup', () => {
     ]);
   });
 
-  it('rejects a GameBanana mod', () => {
-    const all = [member({ id: 'a' }), member({ id: 'gb', name: 'Store Skin', gameBananaId: 42 })];
-    expect(() => planLocalVariantGroup(all, ['a', 'gb'], { mode: 'mint' }, mint)).toThrow(
-      /Only local mods/
-    );
+  it('groups a normal mod with local files without copying its provenance to them', () => {
+    const all = [member({ id: 'local' }), member({ id: 'gb', name: 'Store Skin', gameBananaId: 42 })];
+    const plan = planLocalVariantGroup(all, ['local', 'gb'], { mode: 'mint' }, mint);
+    expect(plan.writes).toEqual([
+      { id: 'local', metaKey: 'local.vpk', localGroupId: 'minted-uuid', localImport: true, modName: 'Store Skin' },
+      { id: 'gb', metaKey: 'gb.vpk', localGroupId: 'minted-uuid', localImport: false, modName: undefined },
+    ]);
+    expect(all[0].gameBananaId).toBeUndefined();
   });
 
   it('keeps an adopted GameBanana identity editable inside an explicit local group', () => {
@@ -160,81 +181,46 @@ describe('planLocalVariantGroup', () => {
     expect(plan.writes).toEqual([]);
   });
 
-  it('propagates a known Locker hero to an unclassified group member', () => {
+  it('groups mixed CompLock components without rewriting any per-file classification', () => {
     const all = [
-      member({
-        id: 'a',
-        lockerHero: 'Lady Geist',
-        lockerHeroSource: 'manual',
-        globalType: null,
-        globalTypeClassifierVersion: 3,
-      }),
+      member({ id: 'map', name: 'CompLock', globalType: 'maps', globalTypeSource: 'manual' }),
+      member({ id: 'particles', lockerHero: 'Ivy', lockerHeroSource: 'manual', resolvedHeroes: ['Ivy'] }),
+      member({ id: 'outlines', globalType: 'hud', resolvedHeroes: [], resolvedGlobalType: 'hud' }),
+      member({ id: 'sound', resolvedHeroes: ['Haze', 'Wraith'] }),
+      member({ id: 'unknown', globalType: null, globalTypeSource: 'manual' }),
+    ];
+    const before = structuredClone(all);
+    const plan = planLocalVariantGroup(all, all.map(file => file.id), { mode: 'mint' }, mint);
+    expect(plan.writes).toEqual(all.map(file => ({
+      id: file.id, metaKey: file.metaKey, localGroupId: 'minted-uuid',
+      modName: file.name === 'CompLock' ? undefined : 'CompLock',
+    })));
+    expect(all).toEqual(before);
+    expect(resolveLocalVariantGroupProfile(all)).toEqual({ priorityMod: false });
+  });
+
+  it('adds a differently classified file to an already mixed group without changing existing members', () => {
+    const all = [
+      member({ id: 'a', name: 'CompLock', localGroupId: 'g', lockerHero: 'Ivy', lockerHeroSource: 'manual' }),
+      member({ id: 'b', name: 'CompLock', localGroupId: 'g', globalType: 'hud', globalTypeSource: 'manual' }),
+      member({ id: 'lowdetailmap', globalType: 'maps', resolvedHeroes: [] }),
+    ];
+    expect(planLocalVariantGroup(all, ['lowdetailmap'], { mode: 'join', groupId: 'g' }, mint).writes)
+      .toEqual([{ id: 'lowdetailmap', metaKey: 'lowdetailmap.vpk', localGroupId: 'g', modName: 'CompLock' }]);
+  });
+
+  it('does not give an unclassified incoming file a peer’s manual assignment', () => {
+    const all = [
+      member({ id: 'a', name: 'Pack', localGroupId: 'g', lockerHero: 'Ivy', lockerHeroSource: 'manual' }),
       member({ id: 'b' }),
     ];
-    const plan = planLocalVariantGroup(all, ['a', 'b'], { mode: 'mint' }, mint);
-    expect(plan.writes[1].classification).toEqual({
-      lockerHero: 'Lady Geist',
-      lockerHeroSource: 'manual',
-      lockerHeroVpkChecked: undefined,
-      globalType: null,
-      globalTypeClassifierVersion: 3,
-    });
+    expect(planLocalVariantGroup(all, ['b'], { mode: 'join', groupId: 'g' }, mint).writes)
+      .toEqual([{ id: 'b', metaKey: 'b.vpk', localGroupId: 'g', modName: 'Pack' }]);
   });
 
-  it('rejects conflicting Locker classifications before producing writes', () => {
-    const all = [
-      member({ id: 'a', lockerHero: 'Lady Geist' }),
-      member({ id: 'b', lockerHero: 'Ivy' }),
-    ];
-    expect(() => planLocalVariantGroup(all, ['a', 'b'], { mode: 'mint' }, mint))
-      .toThrow(/same Locker hero or Global classification/);
-  });
-
-  it('rejects mixed priority-root placement', () => {
+  it('rejects mixed priority-root placement without moving files', () => {
     const all = [member({ id: 'a', priorityMod: true }), member({ id: 'b' })];
     expect(() => planLocalVariantGroup(all, ['a', 'b'], { mode: 'mint' }, mint))
       .toThrow(/same Global priority-folder setting/);
-  });
-
-  it('resolves a stable Global profile for add-to-group imports', () => {
-    expect(resolveLocalVariantGroupProfile([
-      member({
-        id: 'a',
-        localGroupId: 'g',
-        globalType: 'hud',
-        globalTypeClassifierVersion: 4,
-        priorityMod: true,
-      }),
-      member({ id: 'b', localGroupId: 'g', priorityMod: true }),
-    ])).toEqual({
-      priorityMod: true,
-      classification: {
-        globalType: 'hud',
-        globalTypeClassifierVersion: 4,
-        lockerHero: undefined,
-        lockerHeroSource: undefined,
-        lockerHeroVpkChecked: undefined,
-      },
-    });
-  });
-});
-
-describe('assertCompatibleLocalVariantClassifications', () => {
-  it('rejects a definite imported classification that conflicts with the group', () => {
-    expect(() =>
-      assertCompatibleLocalVariantClassifications(
-        { lockerHero: 'Lady Geist', globalType: null },
-        { lockerHero: 'Ivy', globalType: null },
-      )
-    ).toThrow(/same Locker hero or Global classification/);
-  });
-
-  it('allows an unclassified imported VPK to inherit the established profile', () => {
-    expect(() =>
-      assertCompatibleLocalVariantClassifications(
-        { lockerHero: 'Lady Geist', globalType: null },
-        { lockerHero: undefined, globalType: null },
-      )
-    ).not.toThrow();
   });
 });

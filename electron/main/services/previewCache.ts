@@ -15,6 +15,7 @@
  *   - soul-models        -> soulContainerModels.ts (modelDir)
  *   - portrait-cache     -> heroPortraits.ts (getHeroPortraits)
  *   - locker-card-thumbs -> heroCards.ts (getAppliedCardThumbnails)
+ *   - animation-previews -> animationModPreview.ts
  */
 import { promises as fs } from 'fs';
 import { join } from 'path';
@@ -22,9 +23,11 @@ import { app } from 'electron';
 
 const PREVIEW_CACHE_DIRS = [
     'hero-poses',
+    'viewer-scenes',
     'soul-models',
     'portrait-cache',
     'locker-card-thumbs',
+    'animation-previews',
 ] as const;
 
 /** Recursively sum the byte size of a directory tree. A missing directory (the

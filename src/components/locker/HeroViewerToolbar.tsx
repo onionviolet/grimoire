@@ -8,22 +8,30 @@ import { ViewerFullscreenButton } from './ViewerFullscreenButton';
 import type { ViewerGifControls } from '../../lib/useViewerGif';
 import { clampAnimationTime, groupHeroClips, heroClipLabel, type HeroPlaybackProgress } from '../../lib/heroViewerPlayback';
 
-export type HeroViewerScene = 'midtown' | 'studio' | 'transparent';
+export type HeroViewerScene = 'midtown' | 'studio' | 'transparent' | 'hideout';
 
 interface Props {
   heroName?: string;
   animated: boolean;
+  actionPreview?: boolean;
   clips: string[];
   clip: string;
   paused: boolean;
   speed: number;
   progressRef: RefObject<HeroPlaybackProgress>;
+  /** Holds the timeline while the screen still shows the previous model, so both agree. */
+  frozen?: boolean;
   onSeek: (value: number) => void;
   spinPaused: boolean;
   cloth: boolean;
   bloom: boolean;
   particles: boolean;
+  /** The faithful Source 2 particle runtime in place of the curated overlay. */
+  sourceParticles: boolean;
+  fullResolutionFog: boolean;
   scene: HeroViewerScene;
+  wireframe: boolean;
+  onWireframe: (value: boolean) => void;
   status: string | null;
   backdropControls?: ReactNode;
   onAnimated: (value: boolean) => void;
@@ -34,6 +42,8 @@ interface Props {
   onCloth: (value: boolean) => void;
   onBloom: (value: boolean) => void;
   onParticles: (value: boolean) => void;
+  onSourceParticles: (value: boolean) => void;
+  onFullResolutionFog: (value: boolean) => void;
   onScene: (value: HeroViewerScene) => void;
   onReset: () => void;
   onScreenshot: () => void;
@@ -41,20 +51,29 @@ interface Props {
   gifAvailable: boolean;
   gif: ViewerGifControls;
   onGif: () => void;
+  /** Out of sight and out of reach while the loader stands in for the preview: nothing here acts on a loader. */
+  hidden?: boolean;
 }
 
-function AnimationTimeline({ progressRef, onSeek }: Pick<Props, 'progressRef' | 'onSeek'>) {
+function AnimationTimeline({ progressRef, frozen = false, onSeek }: Pick<Props, 'progressRef' | 'frozen' | 'onSeek'>) {
   const { t } = useTranslation();
   const [position, setPosition] = useState<HeroPlaybackProgress>({ time: 0, duration: 0 });
   useEffect(() => {
     // Only this small control samples playback, keeping React out of the scene's
     // per-frame animation path. Unmounting the controls stops the timer.
-    const timer = window.setInterval(() => {
+    if (frozen) return;
+    const sample = () => {
       const { time, duration } = progressRef.current;
       setPosition((old) => old.time === time && old.duration === duration ? old : { time, duration });
-    }, 100);
-    return () => window.clearInterval(timer);
-  }, [progressRef]);
+    };
+    // At once on release, so the timeline turns over with the model rather than a tick later
+    const first = requestAnimationFrame(sample);
+    const timer = window.setInterval(sample, 100);
+    return () => {
+      cancelAnimationFrame(first);
+      window.clearInterval(timer);
+    };
+  }, [progressRef, frozen]);
   return (
     <div className="flex items-center gap-2">
       <input type="range" min={0} max={position.duration || 1} step={0.01}
@@ -85,12 +104,12 @@ export function HeroViewerToolbar(p: Props) {
     other: t('locker.pose.clipGroups.other'),
   };
   return (
-    <div className="pointer-events-none absolute bottom-3 left-3 right-3 z-10 flex flex-col items-start gap-2">
+    <div inert={p.hidden} className={`pointer-events-none absolute bottom-3 left-3 right-3 z-10 flex flex-col items-start gap-2 transition-opacity duration-200 ${p.hidden ? 'invisible opacity-0' : ''}`}>
       {open && (
         <div id={panelId} className="pointer-events-auto max-h-80 w-64 max-w-full overflow-y-auto rounded-sm border border-hl/10 bg-bg-secondary/95 p-3 shadow-lg backdrop-blur-sm">
           <div className="space-y-3">
-            <Toggle label={t('locker.pose.animated')} checked={p.animated} onChange={p.onAnimated} />
-            {p.clips.length > 0 && (
+            {!p.actionPreview && <Toggle label={t('locker.pose.animated')} checked={p.animated} onChange={p.onAnimated} />}
+            {!p.actionPreview && p.clips.length > 0 && (
               <label className="block space-y-1 text-xs text-text-secondary">
                 <span>{t('locker.pose.animation')}</span>
                 <Select inputSize="sm" value={p.clip} onChange={(e) => p.onClip(e.target.value)}>
@@ -110,10 +129,14 @@ export function HeroViewerToolbar(p: Props) {
             </label>
             <label className="block space-y-1 text-xs text-text-secondary">
               <span>{t('locker.pose.scene')}</span>
-              <Select inputSize="sm" value={p.scene} onChange={(e) => p.onScene(e.target.value as HeroViewerScene)}>
+              <Select inputSize="sm" value={p.scene} onChange={(e) => {
+                const value = e.target.value;
+                if (value === 'midtown' || value === 'studio' || value === 'transparent' || value === 'hideout') p.onScene(value);
+              }}>
                 <option value="midtown">{t('locker.pose.midtown')}</option>
                 <option value="studio">{t('locker.pose.studio')}</option>
                 <option value="transparent">{t('locker.pose.transparent')}</option>
+                <option value="hideout">{t('locker.pose.hideout')}</option>
               </Select>
             </label>
             {p.backdropControls}
@@ -121,15 +144,18 @@ export function HeroViewerToolbar(p: Props) {
             <Toggle label={t('locker.pose.physics')} checked={p.cloth} onChange={p.onCloth} />
             <Toggle label={t('locker.pose.bloom')} checked={p.bloom} onChange={p.onBloom} />
             <Toggle label={t('locker.pose.particles')} checked={p.particles} onChange={p.onParticles} />
+            <Toggle label={t('locker.pose.sourceParticles')} checked={p.sourceParticles} disabled={!p.particles} onChange={p.onSourceParticles} />
+            {p.scene === 'hideout' && <Toggle label={t('locker.pose.fullResolutionFog')} checked={p.fullResolutionFog} onChange={p.onFullResolutionFog} />}
+            <Toggle label={t('locker.pose.wireframe')} checked={p.wireframe} onChange={p.onWireframe} />
           </div>
         </div>
       )}
       {p.gif.capture && <ViewerGifReview gif={p.gif} />}
       {p.status && <p role="status" className="pointer-events-auto max-w-64 rounded-sm bg-bg-secondary/95 px-3 py-2 text-xs text-text-secondary">{p.status}</p>}
       <div className="pointer-events-auto w-80 max-w-full rounded-sm border border-hl/10 bg-bg-secondary/95 backdrop-blur-sm">
-        {p.animated && p.clips.length > 0 && (
+        {p.animated && !p.actionPreview && p.clips.length > 0 && (
           <div className="px-2 pt-1">
-            <AnimationTimeline progressRef={p.progressRef} onSeek={p.onSeek} />
+            <AnimationTimeline progressRef={p.progressRef} frozen={p.frozen} onSeek={p.onSeek} />
           </div>
         )}
         <div className="flex flex-nowrap items-center justify-between gap-1 p-1">
@@ -139,7 +165,7 @@ export function HeroViewerToolbar(p: Props) {
         <IconButton size="sm" icon={RotateCcw} label={t('locker.pose.resetView')} onClick={p.onReset} />
         <IconButton size="sm" icon={Camera} label={t('locker.pose.screenshot')} onClick={p.onScreenshot} />
         <IconButton size="sm" icon={p.gif.recording ? Square : Film} label={p.gif.recording ? t('locker.pose.stopGif') : t('locker.pose.recordGif')} aria-pressed={p.gif.recording} disabled={!p.gifAvailable || p.gif.status === 'encoding' || p.gif.status === 'review'} className="aria-pressed:border-accent aria-pressed:bg-accent/15 aria-pressed:text-accent" onClick={p.onGif} />
-        <IconButton size="sm" icon={X} label={t('locker.pose.cancelGif')} disabled={p.gif.status === 'idle'} onClick={p.gif.cancel} />
+        {p.gif.status !== 'idle' && <IconButton size="sm" icon={X} label={t('locker.pose.cancelGif')} onClick={p.gif.cancel} />}
         <ViewerFullscreenButton onRequest={p.onFullscreen} />
         </div>
       </div>

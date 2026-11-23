@@ -1,3 +1,4 @@
+import { profileShuffleSchema } from '../../../src/lib/profileShuffle';
 import { ipcMain } from 'electron';
 import { loadSettings, saveSettings, getActiveDeadlockPath } from '../services/settings';
 import {
@@ -21,6 +22,8 @@ import {
     createProfileFromPortable,
 } from '../services/portableProfile';
 import { listProfileRecoveryPoints, previewProfileRecovery, restoreProfileRecovery } from '../services/profileRecovery';
+import { applyProfileLocker, currentProfileLocker, releaseLockerHold } from '../services/profileLocker';
+import { writeSnapshot } from '../services/snapshots';
 import type {
     PortableProfile,
     PortableResolvedMod,
@@ -32,12 +35,12 @@ ipcMain.handle('get-profiles', (): Profile[] => {
 });
 
 // create-profile
-ipcMain.handle('create-profile', async (_, name: string, crosshairSettings?: ProfileCrosshairSettings): Promise<Profile> => {
+ipcMain.handle('create-profile', async (_, name: string, crosshairSettings?: ProfileCrosshairSettings, shuffle?: unknown): Promise<Profile> => {
     const deadlockPath = getActiveDeadlockPath();
     if (!deadlockPath) {
         throw new Error('No Deadlock path configured');
     }
-    const profile = await createProfile(deadlockPath, name, crosshairSettings);
+    const profile = await createProfile(deadlockPath, name, crosshairSettings, profileShuffleSchema.optional().parse(shuffle), currentProfileLocker());
 
     // Set as active profile
     const settings = loadSettings();
@@ -64,12 +67,14 @@ ipcMain.handle(
 );
 
 // update-profile
-ipcMain.handle('update-profile', async (_, profileId: string, crosshairSettings?: ProfileCrosshairSettings): Promise<Profile> => {
+ipcMain.handle('update-profile', async (_, profileId: string, crosshairSettings?: ProfileCrosshairSettings, shuffle?: unknown): Promise<Profile> => {
     const deadlockPath = getActiveDeadlockPath();
     if (!deadlockPath) {
         throw new Error('No Deadlock path configured');
     }
-    return await updateProfile(deadlockPath, profileId, crosshairSettings);
+    const profile = await updateProfile(deadlockPath, profileId, crosshairSettings, profileShuffleSchema.optional().parse(shuffle), currentProfileLocker());
+    releaseLockerHold(profileId);
+    return profile;
 });
 
 // apply-profile
@@ -85,7 +90,21 @@ ipcMain.handle('apply-profile', async (_, profileId: string, reviewToken?: strin
         throw new Error('No Deadlock path configured');
     }
 
+    // Capture a recovery snapshot before applyProfile rewrites enable/disable
+    // state across every installed mod. Failure is non-fatal: a snapshot bug
+    // must never block the apply the user just clicked.
+    try {
+        await writeSnapshot(deadlockPath, 'pre-apply-profile');
+    } catch (err) {
+        console.warn('[ApplyProfile] failed to capture pre-apply snapshot:', err);
+    }
+
+    // applyProfile journals the apply and sets the active profile itself.
     const result = await applyProfile(deadlockPath, profileId, reviewToken, mappings);
+    // Locker effects are rebuilt in the main process only; no IPC Locker edit
+    // runs here, so the newly active profile's saved effects are not overwritten.
+    const lockerError = await applyProfileLocker(deadlockPath, profileId, result.profile.locker);
+    if (lockerError) result.lockerError = lockerError;
 
     return result;
 });

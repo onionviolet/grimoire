@@ -1,10 +1,11 @@
+import { isAttachedLocalVariant } from '../../../src/lib/localVariantEligibility';
 import type { DownloadModArgs } from '../../../src/types/electron';
 import type { GameBananaModDetails } from '../../../src/types/gamebanana';
 import type { Mod } from '../../../src/types/mod';
 import type { ChooseModUpdateReplacementArgs, ModUpdateState } from '../../../src/types/modUpdates';
 import { classifyModFiles } from '../../../src/lib/updateFileMatch';
 import { resolveUpdateRun } from '../../../src/lib/updateActions';
-import { mergeSourceFileIds } from '../../../src/lib/updateCheck';
+import { mergeSourceFileIds, mergeSourceInstalls } from '../../../src/lib/updateCheck';
 import { visibleInstalledMods } from '../../../src/lib/visibleMods';
 
 export interface ModUpdateContext {
@@ -168,7 +169,7 @@ export function createModUpdateController(deps: Dependencies) {
         try {
             await prepare(async () => {
                 const installed = visibleInstalledMods(await deps.mods(assertContext().deadlockPath));
-                const targets = installed.filter(mod => selected.has(mod.id) && !mod.ignoreUpdates && typeof mod.gameBananaId === 'number');
+                const targets = installed.filter(mod => selected.has(mod.id) && !isAttachedLocalVariant(mod, installed) && !mod.ignoreUpdates && typeof mod.gameBananaId === 'number');
                 const bySubmission = new Map<string, Mod[]>();
                 for (const mod of targets) {
                     const key = `${mod.sourceSection ?? 'Mod'}:${mod.gameBananaId}`;
@@ -176,7 +177,8 @@ export function createModUpdateController(deps: Dependencies) {
                     entries.push(mod);
                     bySubmission.set(key, entries);
                 }
-                const automatic: Array<{ group: UpdateGroup; args: DownloadModArgs; sources: string[]; promote: boolean }> = [];
+                const enabledIds = new Set(targets.filter(mod => mod.enabled).map(mod => mod.id));
+                const automatic: Array<{ group: UpdateGroup; args: DownloadModArgs; sources: string[]; promote: boolean; enabled: boolean }> = [];
                 const autoMatch = deps.autoMatchRemainingFiles();
                 for (const [key, selectedMods] of bySubmission) {
                     const modId = selectedMods[0].gameBananaId!;
@@ -191,7 +193,7 @@ export function createModUpdateController(deps: Dependencies) {
                         selectedMods.forEach(mod => group.expected.set(mod.id, { ...mod }));
                         groups.set(group.id, group);
                         const scope = installed.filter(mod => (mod.sourceSection ?? 'Mod') === section);
-                        const classification = classifyModFiles(modId, details.files ?? [], scope, mergeSourceFileIds(scope), autoMatch);
+                        const classification = classifyModFiles(modId, details.files ?? [], scope, mergeSourceInstalls(scope), autoMatch);
                         const destinations = new Map<number, { sources: string[]; promote: boolean }>();
                         for (const step of resolveUpdateRun(classification, selectedMods)) {
                             if (step.kind === 'needs-pick') {
@@ -205,15 +207,20 @@ export function createModUpdateController(deps: Dependencies) {
                         }
                         for (const [fileId, job] of destinations) {
                             const file = details.files!.find(file => file.id === fileId)!;
-                            automatic.push({ group, sources: job.sources, promote: job.promote, args: {
-                                modId, fileId, fileName: file.fileName, modName: details.name, section,
-                                categoryId: selectedMods[0].categoryId, isReplacement: true,
-                            } });
+                            automatic.push({
+                                group, sources: job.sources, promote: job.promote,
+                                enabled: job.sources.some(id => enabledIds.has(id)),
+                                args: {
+                                    modId, fileId, fileName: file.fileName, modName: details.name, section,
+                                    categoryId: selectedMods[0].categoryId, isReplacement: true,
+                                },
+                            });
                         }
                     } catch (error) { fail(modId, selectedMods[0].name, error); }
                 }
                 // A single recovery point covers automatic jobs and later manual choices.
                 if (automatic.length > 0 || hasPending()) await snapshot();
+                automatic.sort((a, b) => Number(b.enabled) - Number(a.enabled));
                 for (const job of automatic) {
                     try { enqueue(job.group, job.args, job.sources, job.promote, installed.filter(mod => job.sources.includes(mod.id))); }
                     catch (error) { fail(job.group.modId, job.group.modName, error); }
@@ -253,7 +260,7 @@ export function createModUpdateController(deps: Dependencies) {
                 const installed = visibleInstalledMods(await deps.mods(path));
                 if (choice.cancelled) return;
                 if (group.removed) throw new Error('This replacement request was removed.');
-                if (installed.some(mod => mod.gameBananaId === group.modId && mod.gameBananaFileId === newFileId && (mod.sourceSection ?? 'Mod') === group.section) || mergeSourceFileIds(installed).has(newFileId)) {
+                if (installed.some(mod => mod.localImport !== true && mod.gameBananaId === group.modId && mod.gameBananaFileId === newFileId && (mod.sourceSection ?? 'Mod') === group.section) || mergeSourceFileIds(installed).has(newFileId)) {
                     throw new Error('This replacement file is already installed.');
                 }
                 if (!sources.every(id => installed.some(mod => mod.id === id))) throw new Error('The file being replaced has changed.');

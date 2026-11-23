@@ -39,10 +39,12 @@ const apiMock = vi.hoisted(() => ({
 
 vi.mock('../lib/api', () => apiMock);
 
+// A distinct name per id: the store resolves a toggle through modRestoreKey
+// (name and size for a local mod), so fixtures sharing one name would alias.
 function mod(overrides: Partial<Mod>): Mod {
   return {
     id: 'mod-1',
-    name: 'A mod',
+    name: `Mod ${overrides.id ?? 'mod-1'}`,
     fileName: 'pak01_dir.vpk',
     path: 'C:/game/addons/pak01_dir.vpk',
     metaKey: 'pak01_dir.vpk',

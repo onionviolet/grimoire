@@ -7,56 +7,21 @@ Thanks for your interest in contributing.
 Requirements:
 
 - [Node.js](https://nodejs.org/) 24+
-- [pnpm](https://pnpm.io/) 10+ (pnpm 9 mis-links the out-of-root workspace package below)
+- [pnpm](https://pnpm.io/) 12 (`package.json` rejects other versions)
 - [Git](https://git-scm.com/)
 
 With Nix, `flake.nix` provides all of the above via `nix develop`. On NixOS
 also enable `programs.nix-ld.enable = true;` (the dev workflow runs
-npm-fetched binaries: Electron, vpkmerge, 7za). Setup is the same as below,
-inside the shell:
+npm-fetched binaries: Electron, vpkmerge, 7za).
 
 ```bash
-cd grimoire-social && nix develop -c pnpm install
-cd ../grimoire && nix develop
+git clone https://github.com/onionviolet/grimoire.git
+cd grimoire
 pnpm install
-pnpm exec electron-rebuild -f -w better-sqlite3
 pnpm dev
 ```
 
-Grimoire shares its wire-format types with its companion service,
-[grimoire-social](https://github.com/Slush97/grimoire-social) (also open source),
-through the `@grimoire/social-types` workspace package. `pnpm-workspace.yaml`
-resolves it from `../grimoire-social/packages/social-types`, so **the two repos
-have to sit side by side**, and grimoire-social needs its own install. Cloning
-grimoire alone fails with `ERR_PNPM_WORKSPACE_PKG_NOT_FOUND`.
-
-```bash
-git clone https://github.com/Slush97/grimoire.git
-git clone https://github.com/Slush97/grimoire-social.git
-
-cd grimoire-social
-pnpm install
-
-cd ../grimoire
-pnpm install
-pnpm exec electron-rebuild -f -w better-sqlite3
-pnpm dev
-```
-
-The layout `pnpm install` expects:
-
-```
-parent/
-├── grimoire/          # this repo
-└── grimoire-social/   # sibling, with its own `pnpm install` run
-```
-
-`grimoire-social` needs its own install because the shared package declares
-`zod` as a peer dependency and resolves it from its own `node_modules`.
-
-If the sibling is missing, `preinstall` (`pnpm check-siblings`) fails with the
-clone command. Skipping that check leaves you with a `pnpm install` that
-reports success and a `pnpm typecheck` that fails with unresolved-module errors.
+`pnpm dev` automatically rebuilds `better-sqlite3` against Electron's ABI on first run (and whenever Electron changes). You can also trigger native rebuilds manually with `pnpm rebuild:electron` or `pnpm rebuild:node` (the latter is only needed if you want to run the SQLite unit tests under plain Node).
 
 `pnpm dev` needs nothing else: the social client falls back to
 `http://localhost:8787` (wrangler dev) when `GRIMOIRE_SOCIAL_BASE_URL` is unset,
@@ -67,6 +32,24 @@ URL, so pass one if you're producing installers locally:
 ```bash
 GRIMOIRE_SOCIAL_BASE_URL=https://example.invalid pnpm package:linux
 ```
+
+### Working on `@grimoire/social-types` locally
+
+Shared wire-format schemas and the hero roster are published as compiled release tarballs from [grimoire-social](https://github.com/Slush97/grimoire-social) and pinned in `package.json`, so normal `grimoire` development does not require cloning `grimoire-social`.
+
+If you are editing both repos together, build the types package in `grimoire-social` (`pnpm build:types`) and temporarily link it into `grimoire`:
+
+```bash
+pnpm link ../grimoire-social/packages/social-types
+```
+
+When you are done, remove the local link and restore the pinned release tarball:
+
+```bash
+pnpm unlink @grimoire/social-types
+```
+
+`pnpm link` adds an override to `pnpm-workspace.yaml` and updates `pnpm-lock.yaml`, so run `pnpm unlink` (not just `pnpm install`) and verify `git status` is clean before committing.
 
 ## Code style
 

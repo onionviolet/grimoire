@@ -154,7 +154,7 @@ describe('the accessors the main process derives its tables from', () => {
     expect(particleCodenameForHero('Fathom')).toBeNull();
     expect(particleCodenameForHero('Not A Hero')).toBeNull();
     const withRecipe = HERO_CODENAMES.filter((hero) => hero.particle);
-    expect(withRecipe).toHaveLength(38);
+    expect(withRecipe).toHaveLength(44);
   });
 
   it('reports a body model only when it diverges from the panorama codename', () => {

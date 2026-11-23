@@ -27,6 +27,8 @@
  * saved by a shipped build.
  */
 
+import { isModListIcon, type ModListIcon } from './modListIcons';
+
 export const MOD_LISTS_KEY = 'installedModLists';
 
 /** Defensive clamp so pathological stored data can't blow out the filter UI. */
@@ -36,7 +38,8 @@ export interface ModList {
   /** Opaque, stable across renames. Filter selections reference this. */
   id: string;
   name: string;
-  /** modPreferenceKey values. */
+  icon?: ModListIcon;
+  /** modPreferenceKey values, in this list's display order. */
   keys: string[];
 }
 
@@ -87,12 +90,12 @@ function normalizeList(value: unknown, taken: Set<string>): ModList | null {
     : [];
 
   taken.add(id);
-  return { id, name, keys };
+  return { id, name, keys, ...(isModListIcon(raw.icon) ? { icon: raw.icon } : {}) };
 }
 
-export function readStoredModLists(): ModList[] {
+export function readStoredModLists(storageKey = MOD_LISTS_KEY): ModList[] {
   try {
-    const stored = localStorage.getItem(MOD_LISTS_KEY);
+    const stored = localStorage.getItem(storageKey);
     if (!stored) return [];
     const parsed: unknown = JSON.parse(stored);
     if (!Array.isArray(parsed)) return [];
@@ -105,9 +108,9 @@ export function readStoredModLists(): ModList[] {
   }
 }
 
-export function writeStoredModLists(lists: readonly ModList[]): void {
+export function writeStoredModLists(lists: readonly ModList[], storageKey = MOD_LISTS_KEY): void {
   try {
-    localStorage.setItem(MOD_LISTS_KEY, JSON.stringify(lists));
+    localStorage.setItem(storageKey, JSON.stringify(lists));
   } catch {
     // Lists remain usable for this session when storage is unavailable.
   }
@@ -123,17 +126,23 @@ export function writeStoredModLists(lists: readonly ModList[]): void {
  */
 export function createList(
   lists: readonly ModList[],
-  rawName: string
+  rawName: string,
+  initialKeys: readonly string[] = [],
 ): { lists: ModList[]; id: string | null } {
   const name = normalizeName(rawName);
   if (!name) return { lists: [...lists], id: null };
 
   const token = nameToken(name);
   const existing = lists.find((list) => nameToken(list.name) === token);
-  if (existing) return { lists: [...lists], id: existing.id };
+  if (existing) {
+    return {
+      lists: initialKeys.reduce((next, key) => addListMembership(next, existing.id, key), [...lists]),
+      id: existing.id,
+    };
+  }
 
   const id = uniqueListId(name, new Set(lists.map((list) => list.id)));
-  return { lists: [...lists, { id, name, keys: [] }], id };
+  return { lists: [...lists, { id, name, keys: [...new Set(initialKeys.filter(Boolean))] }], id };
 }
 
 /**
@@ -169,6 +178,21 @@ export function renameList(
 
 export function deleteList(lists: readonly ModList[], id: string): ModList[] {
   return lists.filter((list) => list.id !== id);
+}
+
+/** Move a list to another list's position without changing its contents. */
+export function reorderList(lists: readonly ModList[], id: string, overId: string): ModList[] {
+  const from = lists.findIndex((list) => list.id === id);
+  const to = lists.findIndex((list) => list.id === overId);
+  const next = [...lists];
+  if (from < 0 || to < 0 || from === to) return next;
+  const [moved] = next.splice(from, 1);
+  next.splice(to, 0, moved);
+  return next;
+}
+
+export function setListIcon(lists: readonly ModList[], id: string, icon: ModListIcon): ModList[] {
+  return lists.map((list) => list.id === id ? { ...list, icon } : list);
 }
 
 /**
@@ -207,6 +231,46 @@ export function toggleListMembership(
       keys: has ? list.keys.filter((key) => key !== prefKey) : [...list.keys, prefKey],
     };
   });
+}
+
+/** Set membership explicitly so a repeated drop or checkbox event is harmless. */
+export function setListMembership(lists: readonly ModList[], id: string, prefKey: string, member: boolean): ModList[] {
+  if (member) return addListMembership(lists, id, prefKey);
+  return lists.map((list) => list.id === id && list.keys.includes(prefKey)
+    ? { ...list, keys: list.keys.filter((key) => key !== prefKey) }
+    : list);
+}
+
+/** A null destination means unlisted, so every membership for the key is removed. */
+export function moveListMembership(lists: readonly ModList[], { key, fromListId, toListId, beforeKey }: {
+  key: string;
+  fromListId: string | null;
+  toListId: string | null;
+  beforeKey?: string | null;
+}): ModList[] {
+  if (!key || (fromListId === toListId && beforeKey === undefined)) return [...lists];
+  if (toListId !== null && !lists.some((list) => list.id === toListId)) return [...lists];
+  if (fromListId !== null && !lists.some((list) => list.id === fromListId && list.keys.includes(key))) return [...lists];
+  if (fromListId === null && lists.some((list) => list.keys.includes(key))) return [...lists];
+  return lists.map((list) => {
+    const member = list.keys.includes(key);
+    if (list.id === toListId) return beforeKey !== undefined
+      ? { ...list, keys: positionListKey(list.keys, key, beforeKey) }
+      : member ? list : { ...list, keys: [...list.keys, key] };
+    if (member && (toListId === null || list.id === fromListId)) {
+      return { ...list, keys: list.keys.filter((value) => value !== key) };
+    }
+    return list;
+  });
+}
+
+/** Insert before a stable member key, or append. Hidden and orphaned keys keep their order. */
+export function positionListKey(keys: readonly string[], key: string, beforeKey: string | null): string[] {
+  if (!key || beforeKey === key) return [...keys];
+  const next = keys.filter(value => value !== key);
+  const index = beforeKey === null ? -1 : next.indexOf(beforeKey);
+  next.splice(index < 0 ? next.length : index, 0, key);
+  return next;
 }
 
 /**

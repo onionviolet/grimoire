@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { z } from 'zod';
+import { useFoundryDraft } from '../../lib/useFoundryDraft';
 import { Library, Loader2, AlertTriangle, Users } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useConfirm } from '../common/confirmContext';
@@ -65,11 +67,12 @@ export default function LibraryBrowse({
 }: LibraryBrowseProps) {
   const { t } = useTranslation();
   const confirm = useConfirm();
-  const [category, setCategory] = useState<TextureCategory>(initialCategory);
+  const draftKey = `library:${hero ?? 'catalog'}:${initialCategory}`;
+  const [category, setCategory] = useFoundryDraft<TextureCategory>(`${draftKey}:category`, z.enum(['ability-icon', 'item-icon', 'hero-image']), initialCategory);
   const [items, setItems] = useState<TextureGridItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useFoundryDraft(`${draftKey}:search`, z.string().max(512), '');
   // Hero context is given, not defaulted: an embedded browse that forgets its
   // hero shows another hero's art inside this hero's workshop.
   const defaultHeroFilter = hero ? `${HERO_SCOPE_PREFIX}${hero}` : 'all';
@@ -120,17 +123,23 @@ export default function LibraryBrowse({
     }
   }, [items, heroNames, onStage, t, confirm]);
 
+  // Only the latest category request may land: switching fast must not show
+  // an older category's grid under the newer label.
+  const requestRevision = useRef(0);
   const loadCategory = useCallback(async (cat: TextureCategory) => {
+    const revision = ++requestRevision.current;
     setLoading(true);
     setError(null);
     try {
       const grid = await foundryThumbnails(cat);
+      if (revision !== requestRevision.current) return;
       setItems(grid);
     } catch (e) {
+      if (revision !== requestRevision.current) return;
       setError(e instanceof Error ? e.message : String(e));
       setItems([]);
     } finally {
-      setLoading(false);
+      if (revision === requestRevision.current) setLoading(false);
     }
   }, []);
 
@@ -139,6 +148,7 @@ export default function LibraryBrowse({
     // carry over. It returns to the embedding hero's scope, not to all heroes.
     setHeroFilter(defaultHeroFilter);
     void loadCategory(category);
+    return () => { requestRevision.current += 1; };
   }, [category, loadCategory, defaultHeroFilter]);
 
   // Hero dropdown is scoped to the codenames actually present in this category.

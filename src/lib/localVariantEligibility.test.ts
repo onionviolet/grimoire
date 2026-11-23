@@ -28,6 +28,10 @@ const merged: MergedModInfo = {
 };
 
 describe('canJoinLocalVariantGroup', () => {
+  it('keeps file origin independent of grouping and embedded GameBanana identity', () => {
+    expect(canJoinLocalVariantGroup(mod({ id: 'remote', gameBananaId: 42, localGroupId: 'mixed', localImport: false }))).toBe(false);
+    expect(canJoinLocalVariantGroup(mod({ id: 'imported', gameBananaId: 42, localImport: true }))).toBe(true);
+  });
   it('accepts ordinary local mods', () => {
     expect(canJoinLocalVariantGroup(mod({ id: 'local' }))).toBe(true);
   });
@@ -54,6 +58,19 @@ describe('canJoinLocalVariantGroup', () => {
 });
 
 describe('localVariantSelectionEligibility', () => {
+  it('allows at most one downloaded submission and requires local attachments', () => {
+    const gb = mod({ id: 'gb', gameBananaId: 42, localImport: false });
+    const other = mod({ id: 'other', gameBananaId: 43, localImport: false });
+    const local = mod({ id: 'local', localImport: true, gameBananaId: 99 });
+    expect(localVariantSelectionEligibility([gb, other])).toEqual({ eligible: false, reason: 'gamebanana' });
+    expect(localVariantSelectionEligibility([gb, other, local])).toEqual({ eligible: false, reason: 'gamebanana' });
+    expect(localVariantSelectionEligibility([gb, { ...gb, id: 'sound', sourceSection: 'Sound' }, local]))
+      .toEqual({ eligible: false, reason: 'gamebanana' });
+    expect(localVariantSelectionEligibility([gb, { ...gb, id: 'variant' }]))
+      .toEqual({ eligible: false, reason: 'local-required' });
+    expect(localVariantSelectionEligibility([gb, { ...gb, id: 'variant' }, local])).toEqual({ eligible: true });
+    expect(localVariantSelectionEligibility([local, { ...local, id: 'local2', gameBananaId: 100 }])).toEqual({ eligible: true });
+  });
   it('requires at least two selected mods', () => {
     expect(localVariantSelectionEligibility([])).toEqual({
       eligible: false,
@@ -89,13 +106,13 @@ describe('localVariantSelectionEligibility', () => {
     ).toEqual({ eligible: false, reason: 'merged' });
   });
 
-  it('rejects a selection containing a GameBanana mod', () => {
+  it('allows a GameBanana mod and a local mod to group', () => {
     expect(
       localVariantSelectionEligibility([
         mod({ id: 'local' }),
         mod({ id: 'remote', gameBananaId: 42 }),
       ])
-    ).toEqual({ eligible: false, reason: 'gamebanana' });
+    ).toEqual({ eligible: true });
   });
 
   it('rejects mixed Global priority-folder placement like the main-process planner', () => {
@@ -107,22 +124,22 @@ describe('localVariantSelectionEligibility', () => {
     ).toEqual({ eligible: false, reason: 'placement' });
   });
 
-  it('rejects two definite but different Locker classifications', () => {
+  it('allows different Locker hero and General classifications', () => {
     expect(
       localVariantSelectionEligibility([
         mod({ id: 'ivy', lockerHero: 'Ivy' }),
         mod({ id: 'geist', lockerHero: 'Lady Geist' }),
       ])
-    ).toEqual({ eligible: false, reason: 'classification' });
+    ).toEqual({ eligible: true });
     expect(
       localVariantSelectionEligibility([
         mod({ id: 'hud', globalType: 'hud' }),
         mod({ id: 'ivy', lockerHero: 'Ivy' }),
       ])
-    ).toEqual({ eligible: false, reason: 'classification' });
+    ).toEqual({ eligible: true });
   });
 
-  it('lets an unclassified mod inherit a classified peer, matching hero case-insensitively', () => {
+  it('allows unclassified files alongside classified files', () => {
     expect(
       localVariantSelectionEligibility([
         mod({ id: 'ivy', lockerHero: 'Ivy' }),
@@ -130,6 +147,32 @@ describe('localVariantSelectionEligibility', () => {
         mod({ id: 'unclassified' }),
       ])
     ).toEqual({ eligible: true });
+  });
+
+  it('allows different effective hero sets', () => {
+    expect(localVariantSelectionEligibility([
+      mod({ id: 'shared', lockerHeroes: ['Haze', 'The Doorman', 'Haze'], lockerHero: 'Wraith' }),
+      mod({ id: 'matching', lockerHeroes: ['Doorman', 'haze'] }),
+    ])).toEqual({ eligible: true });
+    expect(localVariantSelectionEligibility([
+      mod({ id: 'shared', lockerHeroes: ['Haze', 'Wraith'] }),
+      mod({ id: 'single', lockerHeroes: ['Haze'] }),
+    ])).toEqual({ eligible: true });
+  });
+
+  it('does not restrict grouping based on automatic or legacy classifications', () => {
+    expect(localVariantSelectionEligibility([
+      mod({ id: 'unclassified', lockerHero: 'Haze', lockerHeroes: [] }),
+      mod({ id: 'wraith', lockerHeroes: ['Wraith'] }),
+    ])).toEqual({ eligible: true });
+    expect(localVariantSelectionEligibility([
+      mod({ id: 'hud', globalType: 'hud', lockerHero: 'Haze', lockerHeroes: [] }),
+      mod({ id: 'hud2', globalType: 'hud', lockerHero: 'Wraith', lockerHeroes: [] }),
+    ])).toEqual({ eligible: true });
+    expect(localVariantSelectionEligibility([
+      mod({ id: 'hud', globalType: 'hud', lockerHero: 'Haze', lockerHeroes: [] }),
+      mod({ id: 'hero', lockerHeroes: ['Haze'] }),
+    ])).toEqual({ eligible: true });
   });
 });
 

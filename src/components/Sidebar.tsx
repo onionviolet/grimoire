@@ -12,7 +12,7 @@ import {
   Target,
   ScrollText,
   Activity,
-  Swords,
+  Blend,
   BookMarked,
   Settings2,
   AlertTriangle,
@@ -54,6 +54,7 @@ import UpdateModal from './UpdateModal';
 import { CrashLaunchIndicator } from './CrashAdvisories';
 import { useCrashLaunchSuspect } from '../stores/crashAdvisoryStore';
 import Tx from './translation/Tx';
+import { knockOnLogo } from '../lib/loaderToy';
 import { SidebarActiveBackdrop, SurfaceBackdrop } from './sidebar/surfaceArt';
 
 const COLLAPSED_KEY = 'grimoire:sidebar-collapsed';
@@ -123,7 +124,7 @@ function GrimoireTitleIcon() {
       alt=""
       aria-hidden
       draggable={false}
-      className="h-6 w-6 flex-shrink-0 opacity-90"
+      className="h-6 w-6 flex-shrink-0 opacity-90 light:invert"
     />
   );
 }
@@ -311,15 +312,15 @@ export default function Sidebar() {
   }, []);
 
   const refreshGameStatus = useCallback(async () => {
-    let next: boolean;
     try {
-      next = (await getGameRunningStatus()).running;
-    } catch {
-      next = false;
+      const status = await getGameRunningStatus();
+      useAppStore.getState().setLoadedGameModIds(status.lockedModIds);
+      if (gameRunningRef.current === status.running) return;
+      gameRunningRef.current = status.running;
+      setGameRunning(status.running);
+    } catch (error) {
+      console.warn('[launch] Failed to refresh game status:', error);
     }
-    if (gameRunningRef.current === next) return;
-    gameRunningRef.current = next;
-    setGameRunning(next);
   }, []);
 
   useEffect(() => {
@@ -523,7 +524,7 @@ export default function Sidebar() {
       { to: '/config', icon: SlidersHorizontal, labelKey: 'nav.config', label: t('nav.config'), tooltip: t('sidebar.tooltip.config') },
       { to: '/chat-wheel', icon: MessageCircle, labelKey: 'nav.chatWheel', label: t('nav.chatWheel', 'Chat Wheel'), tooltip: t('sidebar.tooltip.chatWheel', 'Edit ChatLane chat wheels'), experimental: 'chatWheel' },
       { to: '/stats', icon: Activity, labelKey: 'nav.stats', label: t('nav.stats'), tooltip: t('sidebar.tooltip.stats'), experimental: 'stats' },
-      { to: '/conflicts', icon: Swords, labelKey: 'nav.conflicts', label: t('nav.conflicts'), tooltip: t('sidebar.tooltip.conflicts'), badge: conflictCount, badgeTone: 'warning' },
+      { to: '/overlap', icon: Blend, labelKey: 'nav.overlap', label: t('nav.overlap'), tooltip: t('sidebar.tooltip.overlap'), badge: conflictCount, badgeTone: 'muted' },
       { to: '/profiles', icon: BookMarked, labelKey: 'nav.profiles', label: t('nav.profiles'), tooltip: t('sidebar.tooltip.profiles') },
       { to: '/recovery', icon: ShieldCheck, labelKey: 'nav.recovery', label: t('nav.recovery'), tooltip: t('sidebar.tooltip.recovery') },
     ];
@@ -867,7 +868,15 @@ export default function Sidebar() {
               style={{ fontFamily: "'IM Fell English', serif" }}
               aria-hidden={!labelsVisible}
             >
-              <GrimoireTitleIcon />
+              {/* Easter egg: knocking on the logo opens the news computer (LoaderToy). */}
+              <span className="pointer-events-auto" onClick={(event) => {
+                // It answers each knock a little more than the last, which is what brings the next one.
+                const knocks = knockOnLogo();
+                if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+                  event.currentTarget.animate([{ rotate: '0deg', scale: '1' }, { rotate: `${-5 * knocks}deg`, scale: `${1 + 0.06 * knocks}` },
+                    { rotate: `${4 * knocks}deg`, scale: `${1 + 0.04 * knocks}` }, { rotate: '0deg', scale: '1' }], { duration: 260 + 30 * knocks, easing: 'ease-out' });
+                }
+              }}><GrimoireTitleIcon /></span>
               {t('sidebar.brand')}
             </span>
           </div>
@@ -933,7 +942,7 @@ export default function Sidebar() {
                           : 'border-red-500/45 bg-red-500/10 text-red-200 font-bold hover:border-red-400/75 hover:bg-red-500/20 hover:text-red-100'
                         : active
                         ? sidebarHeroHighlightSrc
-                          ? 'border-hl/15 text-text-primary font-semibold shadow-[inset_0_0_0_1px_rgba(255,255,255,0.03)]'
+                          ? 'always-dark border-hl/15 text-text-primary font-semibold shadow-[inset_0_0_0_1px_rgba(255,255,255,0.03)]'
                           : 'border-accent/40 text-text-primary font-medium hover:border-accent/60'
                         : 'border-transparent text-text-primary/80 font-medium hover:bg-accent/5 hover:border-accent/25 hover:text-text-primary'
                     }`
@@ -1332,7 +1341,7 @@ export default function Sidebar() {
           className={`group relative flex w-full h-10 items-center overflow-hidden rounded-sm border text-sm transition-colors duration-200 cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-accent/60 ${
             settingsActive
               ? sidebarHeroHighlightSrc
-                ? 'border-hl/15 bg-transparent text-text-primary font-semibold shadow-[inset_0_0_0_1px_rgba(255,255,255,0.03)]'
+                ? 'always-dark border-hl/15 bg-transparent text-text-primary font-semibold shadow-[inset_0_0_0_1px_rgba(255,255,255,0.03)]'
                 : 'border-accent/40 bg-transparent text-text-primary font-semibold hover:border-accent/60'
               : 'border-accent/25 bg-bg-tertiary text-text-primary/90 hover:bg-accent/10 hover:border-accent/45 hover:text-text-primary'
           }`}

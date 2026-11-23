@@ -52,7 +52,7 @@ import { ViewModeToggle, EmptyState, SectionHeader, ConfirmModal } from '../comp
 import { Tag, ToggleIndicator } from '../components/common/ui';
 import { Skeleton } from '../components/common/Skeleton';
 import { useEscapeKey } from '../components/common/useEscapeKey';
-import { useElasticOverscroll } from '../lib/useElasticOverscroll';
+import { modRestoreKey } from '../lib/soloRestore';
 import { RevealImage } from '../components/common/RevealImage';
 import {
   globalModTypeLabel,
@@ -79,6 +79,8 @@ import {
   type HeroCategory,
 } from '../lib/lockerUtils';
 import {
+  getManualOnlyShuffleKeys,
+  shuffleExclusionKey,
   shuffleGroupKind,
   shufflePoolKey,
   shuffleSkinKey,
@@ -927,7 +929,6 @@ export default function Locker() {
     heroList.length,
     viewMode,
   ]);
-  useElasticOverscroll(lockerScrollRef);
 
   // When "hide empty" is on, drop heroes with no assigned skins/sounds. Favorites
   // are kept so an intentional pin never disappears. Uses the same content test
@@ -1218,16 +1219,20 @@ export default function Locker() {
 
   // Hero ids with at least one skin in the launch-shuffle pool. Drives the
   // gallery card's shuffle badge (only shown while the master switch is armed).
+  const excludedShuffleKeys = useMemo(() => getManualOnlyShuffleKeys(mods), [mods]);
   const shufflePoolHeroes = useMemo(() => {
     const set = new Set<number>();
     if (shuffleIncluded.size === 0) return set;
     for (const [heroId, heroSkinMods] of heroMods.map) {
-      if (groupLockerSkins(heroSkinMods).some((g) => shuffleIncluded.has(shuffleSkinKey(g.primary)))) {
+      // A skin whose file is shared with another hero stays manual-only, so it
+      // never counts as pooled even when an old pool key still names it.
+      if (groupLockerSkins(heroSkinMods).some((g) => !excludedShuffleKeys.has(shuffleExclusionKey(g.primary))
+        && shuffleIncluded.has(shuffleSkinKey(g.primary)))) {
         set.add(heroId);
       }
     }
     return set;
-  }, [heroMods, shuffleIncluded]);
+  }, [heroMods, shuffleIncluded, excludedShuffleKeys]);
 
   // Reorder the load order of a hero's enabled skins. `orderedModIds` is the
   // new desired order of THIS hero's enabled skin VPK ids (lower index = loads
@@ -1297,8 +1302,14 @@ export default function Locker() {
       (m) =>
         m.id !== modId && m.enabled && getEffectiveGlobalType(m) === targetType
     );
-    for (const m of active) await toggleMod(m.id);
-    return toggleMod(modId);
+    // Each toggle rescans, which can re-mint ids; follow the mod by its restore
+    // key rather than a stale id, and stop if a disable fails.
+    for (const mod of active) {
+      const current = useAppStore.getState().mods.find(candidate => modRestoreKey(candidate) === modRestoreKey(mod));
+      if (current?.enabled && !await toggleMod(current.id)) return false;
+    }
+    const current = useAppStore.getState().mods.find(mod => modRestoreKey(mod) === modRestoreKey(target));
+    return current ? current.enabled || toggleMod(current.id) : false;
   };
 
   // Sorted hero name list for the "tag as hero" dropdown on Unassigned cards.
@@ -1719,9 +1730,11 @@ export default function Locker() {
           </div>
         </div>
       )}
+      {/* The Global view sets its cards straight on full-bleed art under a dark
+          wash, so it keeps the dark tokens in the light theme (always-dark). */}
       {globalOverlay.item && (
         <div
-          className={`fixed bottom-0 right-0 top-0 z-30 overflow-hidden bg-bg-primary sidebar-offset-transition ${
+          className={`always-dark fixed bottom-0 right-0 top-0 z-30 overflow-hidden bg-bg-primary sidebar-offset-transition ${
             globalOverlay.closing ? 'animate-fade-out pointer-events-none' : 'animate-fade-in'
           }`}
           style={{ left: 'var(--grimoire-sidebar-width, 14rem)' }}
@@ -3260,7 +3273,7 @@ const HeroGalleryCard = memo(function HeroGalleryCard({
   return (
     <div
       data-locker-hero-id={hero.id}
-      className={`group relative w-full overflow-hidden rounded-2xl border border-border bg-bg-secondary text-left shadow-sm transition-transform duration-300 hover:-translate-y-1 ${typeaheadClassName}`}
+      className={`always-dark group relative w-full overflow-hidden rounded-2xl border border-border bg-bg-secondary text-left shadow-sm transition-transform duration-300 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/70 cursor-pointer ${typeaheadClassName}`}
     >
       <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent opacity-80" />
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.06),_transparent_55%)] opacity-60 transition-opacity duration-300 group-hover:opacity-100" />

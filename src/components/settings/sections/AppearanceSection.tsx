@@ -1,12 +1,14 @@
+import { FilterItem, FilterDivider } from '../../common/FilteredContent';
 import { Languages, Palette } from 'lucide-react';
 import { useAppStore } from '../../../stores/appStore';
 import { formatDateParts } from '../../../lib/dateFormat';
-import { Card, Toggle } from '../../common/ui';
+import { Card } from '../../common/ui';
 import Tx from '../../translation/Tx';
 import AccentColorPicker from '../AccentColorPicker';
 import BackgroundGradientPicker from '../BackgroundGradientPicker';
 import AppearanceArtSection from '../AppearanceArtSection';
 import LanguageSelector from '../LanguageSelector';
+import ThemePicker from '../ThemePicker';
 
 // Everything that changes how the app looks and reads. The card is a single
 // stacked list (accent, background, launcher chrome) rather than a header
@@ -29,36 +31,34 @@ export default function AppearanceSection() {
 
   return (
     <>
-      <Card title={<Tx k="settings.sections.appearance" fallback="Appearance" />} icon={Palette}>
-        <Toggle
-          checked={settings?.oledMode ?? false}
-          onChange={(checked) => settings && void saveSettings({ ...settings, oledMode: checked })}
-          label={<Tx k="settings.appearance.oled.title" fallback="OLED mode" />}
-        />
+      <Card id="settings-appearance-settings-sections-appearance-card" title={<Tx k="settings.sections.appearance" fallback="Appearance" />} icon={Palette}>
+        <FilterItem id="settings-theme"><ThemePicker /></FilterItem>
 
-        <div className="my-5 h-px bg-hl/5" />
+        <FilterDivider className="my-5 h-px bg-hl/5" />
 
-        <AccentColorPicker />
+        <FilterItem id="settings-accent"><AccentColorPicker /></FilterItem>
 
-        <div className="my-5 h-px bg-hl/5" />
+        <FilterDivider className="my-5 h-px bg-hl/5" />
 
-        <BackgroundGradientPicker />
+        <FilterItem id="settings-background"><BackgroundGradientPicker /></FilterItem>
 
-        <div className="my-5 h-px bg-hl/5" />
+        <FilterDivider className="my-5 h-px bg-hl/5" />
 
         <AppearanceArtSection />
       </Card>
 
-      <Card title={<Tx k="settings.nav.language" fallback="Language & region" />} icon={Languages}>
+      <Card id="settings-appearance-settings-nav-language-card" title={<Tx k="settings.nav.language" fallback="Language & region" />} icon={Languages}>
         <div className="space-y-6">
-          <LanguageSelector
-            value={settings?.language ?? null}
-            onChange={handleLanguageChange}
-          />
+          <FilterItem id="settings-language">
+            <LanguageSelector
+              value={settings?.language ?? null}
+              onChange={handleLanguageChange}
+            />
+          </FilterItem>
 
-          <div className="h-px bg-hl/5" />
+          <FilterDivider className="h-px bg-hl/5" />
 
-          <div>
+          <FilterItem id="settings-date-format">
             <label className="text-sm font-medium text-text-primary block">
               <Tx k="settings.preferences.dateFormat" fallback="Date Format" />
             </label>
@@ -89,7 +89,7 @@ export default function AppearanceSection() {
                 );
               })}
             </div>
-          </div>
+          </FilterItem>
         </div>
       </Card>
     </>

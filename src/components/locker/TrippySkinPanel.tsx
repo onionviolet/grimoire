@@ -1,5 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useFoundryDraft } from '../../lib/useFoundryDraft';
+import { trippySkinDraftSchema } from '../../lib/effectDraftSchema';
 import { useTranslation } from 'react-i18next';
+import { SegmentedControl } from '../common/ui';
 import { Loader2, AlertCircle, Check, RefreshCw, RotateCcw } from 'lucide-react';
 import {
   applyTrippySkin,
@@ -7,7 +10,7 @@ import {
   getGameRunningStatus,
   revertTrippySkin,
 } from '../../lib/api';
-import { TRIPPY_STYLE_LABELS } from '../../lib/trippy';
+import { TRIPPY_STYLE_LABEL_KEYS } from '../../lib/trippy';
 import TrippyPatternPicker from './TrippyPatternPicker';
 import { useTrippyPreviewStore } from '../../stores/trippyPreviewStore';
 import type { ActiveTrippySkin, TrippySkinTargets, TrippyStyleName } from '../../types/mod';
@@ -28,13 +31,6 @@ const pct = (x: number): number => Math.round(x * 100);
  *  dirty check compares like with like. */
 const q = (x: number): number => Math.round(x * 100) / 100;
 
-const segBtn = (selected: boolean) =>
-  `rounded px-2.5 py-1 text-xs font-medium transition-colors disabled:cursor-not-allowed ${
-    selected
-      ? 'border border-accent/40 bg-accent/10 text-text-primary'
-      : 'border border-transparent text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
-  }`;
-
 /**
  * The Body + Gun surface of the Effects panel: paints a hero's body/weapon
  * material textures with a procedural trippy pattern plus a runtime UV-scroll,
@@ -49,14 +45,16 @@ export default function TrippySkinPanel({
   onAppliedChange,
 }: TrippySkinPanelProps) {
   const { t } = useTranslation();
+  const [draft, setDraft] = useFoundryDraft(`effects:${heroName}:skin`, trippySkinDraftSchema.nullable(), null);
+  const restored = useRef(draft);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [style, setStyle] = useState<TrippyStyleName>('confetti');
-  const [intensity, setIntensity] = useState(1);
-  const [phase, setPhase] = useState(0);
-  const [scroll, setScroll] = useState(1);
-  const [targets, setTargets] = useState<TrippySkinTargets>('all');
+  const [style, setStyle] = useState<TrippyStyleName>(draft?.style ?? 'confetti');
+  const [intensity, setIntensity] = useState(draft?.intensity ?? 1);
+  const [phase, setPhase] = useState(draft?.phase ?? 0);
+  const [scroll, setScroll] = useState(draft?.scroll ?? 1);
+  const [targets, setTargets] = useState<TrippySkinTargets>(draft?.targets ?? 'all');
 
   const [activeSkin, setActiveSkin] = useState<ActiveTrippySkin | null>(null);
   const [busy, setBusy] = useState(false);
@@ -79,7 +77,7 @@ export default function TrippySkinPanel({
         setActiveSkin(skin);
         setGameRunning(status.running);
         // Reflect whatever is applied so the sliders read back.
-        if (skin) {
+        if (skin && !restored.current) {
           setStyle(skin.style);
           setIntensity(skin.intensity);
           setPhase(skin.phase);
@@ -97,6 +95,9 @@ export default function TrippySkinPanel({
       mounted.current = false;
     };
   }, [heroName]);
+  useLayoutEffect(() => {
+    if (!loading) setDraft({ style, intensity, phase, scroll, targets });
+  }, [loading, style, intensity, phase, scroll, targets, setDraft]);
 
   const applied = activeSkin !== null;
   useEffect(() => {
@@ -215,7 +216,7 @@ export default function TrippySkinPanel({
         busy={busy}
         summary={
           <>
-            {TRIPPY_STYLE_LABELS[style]}
+            {t(TRIPPY_STYLE_LABEL_KEYS[style])}
             <span className="text-text-secondary">
               {' '}
               {t('locker.trippy.summarySuffix', { intensity: pct(intensity), scroll: pct(scroll) })}
@@ -228,7 +229,7 @@ export default function TrippySkinPanel({
             : !dirty
               ? t('locker.trippy.applied')
               : t('locker.trippy.statusApplied', {
-                  style: TRIPPY_STYLE_LABELS[activeSkin.style],
+                  style: t(TRIPPY_STYLE_LABEL_KEYS[activeSkin.style]),
                   intensity: pct(activeSkin.intensity),
                   targets: activeSkin.targets,
                 })
@@ -258,23 +259,10 @@ export default function TrippySkinPanel({
 
       <div className="flex items-center gap-2">
         <span className="text-2xs font-medium text-text-secondary">{t('locker.trippy.paint')}</span>
-        <div className="inline-flex rounded-md border border-border p-0.5 text-xs">
-          {(['all', 'body', 'weapons'] as const).map((target) => (
-            <button
-              key={target}
-              type="button"
-              disabled={busy}
-              onClick={() => setTargets(target)}
-              className={segBtn(targets === target)}
-            >
-              {target === 'all'
-                ? t('locker.trippy.bodyGun')
-                : target === 'body'
-                  ? t('locker.trippy.body')
-                  : t('locker.trippy.gun')}
-            </button>
-          ))}
-        </div>
+        <SegmentedControl variant="joined" size="sm" value={targets} onChange={setTargets} disabled={busy}
+          label={t('locker.trippy.paint')} options={(['all', 'body', 'weapons'] as const).map(value => ({ value,
+            label: t(value === 'all' ? 'locker.trippy.bodyGun' : value === 'body' ? 'locker.trippy.body' : 'locker.trippy.gun'),
+          }))} />
       </div>
 
       {/* Actions */}

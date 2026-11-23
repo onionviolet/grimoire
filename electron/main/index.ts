@@ -1,7 +1,7 @@
 import { devSlotSeeding } from './devUserData';
 import { app, BrowserWindow, shell, session, protocol, nativeTheme, screen } from 'electron';
 import { cleanupExpiredModBackups } from './services/modBackups';
-import { windowBackgroundColor } from '../../src/lib/oledMode';
+import { THEME_ARGUMENT_PREFIX, nativeThemeSource, windowBackgroundColor } from '../../src/lib/theme';
 import { join, resolve } from 'path';
 import { pathToFileURL } from 'url';
 import { setDefaultAutoSelectFamilyAttemptTimeout } from 'net';
@@ -31,9 +31,10 @@ protocol.registerSchemesAsPrivileged([
     },
 ]);
 
-// The app is dark-only, so pin Chromium and the OS chrome to dark regardless
-// of the system theme. On Windows this stops the native frame/menus rendering
-// light, and it makes prefers-color-scheme report dark in the renderer.
+// Pin Chromium and the OS chrome to dark regardless of the system theme. On
+// Windows this stops the native frame/menus rendering light, and it makes
+// prefers-color-scheme report dark in the renderer. Only the app's own light
+// theme turns them light: createWindow does that once settings can be read.
 nativeTheme.themeSource = 'dark';
 
 import { initLogger } from './services/diagnostics';
@@ -163,10 +164,11 @@ import './ipc/modInterchange';
 import { initUpdater, checkForUpdates, getInstallSource } from './services/updater';
 import { runStartupRecovery } from './ipc/launch';
 import './ipc/modSafety';
-import { loadSettings, saveSettings, type AppSettings } from './services/settings';
+import { loadSettings, saveSettings } from './services/settings';
 import { attachBrowserFilter, configureFilter, reloadBrowserFilter } from './services/browserContentFilter';
 import { attachBrowserDownloadCapture, sweepToolDownloadTempRoot, toolDownloadTempRoot } from './services/browserDownloadCapture';
 import { hardenGuestWebPreferences } from './services/webviewHardening';
+import { prebuildHideoutScene } from './services/hideoutScene';
 import {
     configureForgeBridge,
     requestForgeEnable,
@@ -181,6 +183,13 @@ import { backfillImprintedFlags } from './services/imprintMods';
 import { destroyDiscordRpc } from './services/discordRpc';
 import { releaseAllPreviewVpks } from './services/previewVpkRegistry';
 import { startSaltIngest } from './services/saltIngest';
+import {
+    MIN_WINDOW_HEIGHT,
+    MIN_WINDOW_WIDTH,
+    centerInWorkArea,
+    isTitleBarReachable,
+    resolveInitialBounds,
+} from './services/windowBounds';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -284,63 +293,28 @@ async function runStartupMetadataMaintenance(): Promise<void> {
     }
 }
 
-const DEFAULT_WINDOW_WIDTH = 1280;
-const DEFAULT_WINDOW_HEIGHT = 800;
-const MIN_WINDOW_WIDTH = 900;
-const MIN_WINDOW_HEIGHT = 600;
-
-/**
- * Resolve the saved window rectangle into safe constructor bounds. We only
- * honour a saved position when it still lands on a connected display: on some
- * multi-monitor Linux/Wayland setups the OS otherwise placed the window on the
- * wrong screen at the wrong size, and a stale x/y from an unplugged monitor
- * would strand the window offscreen. When the saved spot is gone (or nothing
- * was saved yet) we omit x/y so Electron centers on the primary display.
- */
-function resolveInitialBounds(saved: AppSettings['windowBounds']): {
-    width: number;
-    height: number;
-    x?: number;
-    y?: number;
-    isMaximized: boolean;
-} {
-    if (!saved) {
-        return { width: DEFAULT_WINDOW_WIDTH, height: DEFAULT_WINDOW_HEIGHT, isMaximized: false };
-    }
-
-    const width = Math.max(MIN_WINDOW_WIDTH, Math.round(saved.width) || DEFAULT_WINDOW_WIDTH);
-    const height = Math.max(MIN_WINDOW_HEIGHT, Math.round(saved.height) || DEFAULT_WINDOW_HEIGHT);
-
-    // Only restore the position if the saved rectangle visibly overlaps some
-    // display's work area; otherwise the monitor it was on is gone.
-    let x: number | undefined;
-    let y: number | undefined;
-    if (typeof saved.x === 'number' && typeof saved.y === 'number') {
-        const onScreen = screen.getAllDisplays().some((display) => {
-            const wa = display.workArea;
-            return (
-                saved.x! < wa.x + wa.width &&
-                saved.x! + width > wa.x &&
-                saved.y! < wa.y + wa.height &&
-                saved.y! + height > wa.y
-            );
-        });
-        if (onScreen) {
-            x = Math.round(saved.x);
-            y = Math.round(saved.y);
-        }
-    }
-
-    return { width, height, x, y, isMaximized: !!saved.isMaximized };
-}
-
 function createWindow(): void {
     const settings = loadSettings();
     configureFilter({ enabled: settings.browserBlockTrackers !== false, userListPath: settings.browserBlockListPath,
         exceptions: settings.browserFilterExceptions });
     attachBrowserFilter(session.fromPartition('persist:grimoire-browser'));
     const filtering = reloadBrowserFilter().catch(error => console.warn('[Adblocker] Startup initialization failed:', error));
-    const initial = resolveInitialBounds(settings.windowBounds);
+    nativeTheme.themeSource = nativeThemeSource(settings.theme);
+    const displays = screen.getAllDisplays();
+    const initial = resolveInitialBounds(settings.windowBounds, displays.map((d) => d.workArea));
+    // One line per launch so a "window is invisible" report can be read off the
+    // log: what was saved, what we did with it, and what Windows says is there.
+    console.log('[Window] startup bounds:', JSON.stringify({
+        saved: settings.windowBounds ?? null,
+        position: settings.windowBounds ? (initial.x !== undefined ? 'honoured' : 'dropped') : 'none saved',
+        initial,
+        displays: displays.map((d) => ({
+            id: d.id,
+            bounds: d.bounds,
+            workArea: d.workArea,
+            scaleFactor: d.scaleFactor,
+        })),
+    }));
     mainWindow = new BrowserWindow({
         width: initial.width,
         height: initial.height,
@@ -351,10 +325,9 @@ function createWindow(): void {
         minHeight: MIN_WINDOW_HEIGHT,
         title: dev.slot === undefined ? 'Grimoire' : `Grimoire [dev slot ${dev.slot}]`,
         show: false, // Don't show until ready to prevent white flash
-        backgroundColor: windowBackgroundColor(settings.oledMode),
-        autoHideMenuBar: true,
-        // Standard native frame on every platform. themeSource is forced to
-        // 'dark' above, so Windows draws its title bar dark; the previous
+        backgroundColor: windowBackgroundColor(settings.theme),
+        // Standard native frame on every platform. themeSource follows the
+        // app theme, so Windows draws its title bar to match; the previous
         // hidden-titleBar + overlay approach put the OS window controls on
         // top of the renderer, where they collided with in-app controls and
         // page-level overlays.
@@ -363,13 +336,13 @@ function createWindow(): void {
             contextIsolation: true,
             nodeIntegration: false,
             sandbox: true,
-            // The OLED flag lets the renderer apply that theme before its
+            // The theme argument lets the renderer apply that theme before its
             // first paint, instead of waiting on the async settings IPC (which
             // flashed the default grey canvas). Read in the preload via
             // process.argv, alongside the dev slot.
             additionalArguments: [
                 ...(dev.slot === undefined ? [] : [`--grimoire-dev-slot=${dev.slot}`]),
-                ...(settings.oledMode ? ['--grimoire-oled'] : []),
+                `${THEME_ARGUMENT_PREFIX}${settings.theme}`,
             ],
             // Enables the <webview> element used by the in-app Browser page.
             // Turning this on means the renderer can ASK to embed arbitrary web
@@ -380,10 +353,35 @@ function createWindow(): void {
         },
     });
 
-    // Show window when ready to prevent white screen flash
+    // Auto-hiding still lets Alt open the native menu instead of a mod preview.
+    if (process.platform !== 'darwin') mainWindow.removeMenu();
+
+    // Show window when ready to prevent white screen flash. If the renderer
+    // never paints, show it anyway after a few seconds: a visible broken
+    // window beats an invisible process the user can only kill.
+    let revealed = false;
+    const reveal = () => {
+        if (revealed || !mainWindow || mainWindow.isDestroyed()) return;
+        revealed = true;
+        if (initial.isMaximized) mainWindow.maximize();
+        mainWindow.show();
+    };
+    const revealFallback = setTimeout(() => {
+        if (revealed) return;
+        console.warn('[Window] ready-to-show did not fire within 5s, showing the window anyway');
+        reveal();
+    }, 5000);
     mainWindow.once('ready-to-show', () => {
-        if (initial.isMaximized) mainWindow?.maximize();
-        mainWindow?.show();
+        clearTimeout(revealFallback);
+        reveal();
+    });
+    mainWindow.once('closed', () => clearTimeout(revealFallback));
+
+    mainWindow.webContents.on('unresponsive', () => {
+        console.warn('[Window] renderer became unresponsive');
+    });
+    mainWindow.webContents.on('responsive', () => {
+        console.log('[Window] renderer is responsive again');
     });
 
     // Persist position and size so the app reopens where the user left it.
@@ -506,7 +504,7 @@ function createWindow(): void {
     // --- UI zoom (Ctrl +/-/0), persisted across launches. The renderer is dense
     // and on hi-DPI laptops everything renders tiny, so let the user scale the
     // whole UI. Driven through webContents.setZoomFactor via before-input-event
-    // (the menu bar is auto-hidden, so there's no View > Zoom to lean on).
+    // (Windows/Linux windows have no native View > Zoom menu).
     const ZOOM_MIN = 0.5;
     const ZOOM_MAX = 3.0;
     const ZOOM_STEP = 0.1;
@@ -551,6 +549,29 @@ function createWindow(): void {
     }
 }
 
+/**
+ * Move the window onto the display under the cursor when it is on another
+ * display or its title bar is out of reach there. The user just clicked a
+ * shortcut, so they can see that display; the one the window is on may be a
+ * switched-off TV, a dummy plug or a virtual display that startup can't tell
+ * apart from a real monitor. The move/resize listeners persist the new bounds.
+ */
+function bringWindowToCursorDisplay(win: BrowserWindow): void {
+    if (!win.isVisible()) win.show();
+
+    const target = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+    const current = win.getBounds();
+    const onTarget = screen.getDisplayMatching(current).id === target.id;
+    if (onTarget && isTitleBarReachable(current, [target.workArea])) return;
+
+    const wasMaximized = win.isMaximized();
+    if (wasMaximized) win.unmaximize();
+    const next = centerInWorkArea(win.getNormalBounds(), target.workArea);
+    console.log('[Window] relaunch moved the window to display', target.id, JSON.stringify({ from: current, to: next }));
+    win.setBounds(next);
+    if (wasMaximized) win.maximize();
+}
+
 // Register the `grimoire:` URL scheme so Windows hands `grimoire:...` URLs to
 // this app. The packaged NSIS installer also writes registry entries via the
 // `protocols:` block in electron-builder.yml, but the runtime call covers
@@ -580,13 +601,18 @@ if (!gotTheLock) {
     app.quit();
 } else {
     app.on('second-instance', (_event, argv) => {
-        // Focus the main window if a second instance is attempted
+        const url = findGrimoireUrlInArgv(argv);
+
+        // Focus the main window if a second instance is attempted. A plain
+        // relaunch is what a user does when they can't see the window, so that
+        // also pulls it onto the display they launched from. Protocol URLs come
+        // from the browser and must not move it.
         if (mainWindow) {
             if (mainWindow.isMinimized()) mainWindow.restore();
+            if (!url) bringWindowToCursorDisplay(mainWindow);
             mainWindow.focus();
         }
 
-        const url = findGrimoireUrlInArgv(argv);
         if (url) {
             if (isGrimoireAuthUrl(url)) {
                 void handleProtocolAuthCallback(url);
@@ -601,6 +627,14 @@ if (!gotTheLock) {
                 }
             }
         }
+    });
+
+    // Local log only: makes a renderer or GPU crash visible in the next report.
+    app.on('render-process-gone', (_event, _webContents, details) => {
+        console.error('[Main] render process gone:', details.reason, 'exitCode', details.exitCode);
+    });
+    app.on('child-process-gone', (_event, details) => {
+        console.error('[Main] child process gone:', details.type, details.name ?? '', details.reason, 'exitCode', details.exitCode);
     });
 
     app.whenReady().then(() => {
@@ -645,13 +679,15 @@ if (!gotTheLock) {
                         ...details.responseHeaders,
                         'Content-Security-Policy': [
                             "default-src 'self'; " +
-                            "script-src 'self'; " +
+                            // Meshopt's bundled decoder uses WebAssembly, not JS eval.
+                            "script-src 'self' 'wasm-unsafe-eval'; " +
                             "style-src 'self' 'unsafe-inline'; " +
                             "font-src 'self'; " +
                             // `grimoire-foundry:` serves Foundry's cached texture
-                            // thumbnails, rendered as <img>, so they must be allowed
-                            // here or the browse grid is blank under the prod CSP.
-                            "img-src 'self' data: https: blob: grimoire-foundry: grimoire-hero:; " +
+                            // thumbnails and `grimoire-soul:` the Locker's cached prop
+                            // `preview.png`s, both rendered as <img>, so they must be
+                            // allowed here or those tiles are blank under the prod CSP.
+                            "img-src 'self' data: https: blob: grimoire-foundry: grimoire-hero: grimoire-soul:; " +
                             // Foundry voice-line auditions are served as `data:audio/mpeg`
                             // URLs into an <audio> element (the clip MP3 is sliced out of
                             // the `.vsnd_c` in the main process), so `data:` must be allowed
@@ -718,6 +754,13 @@ if (!gotTheLock) {
         // we're on Linux without a real secret store: ADR-011). Its check
         // calls the Social server, so it waits until Social is turned on.
         if (loadSettings().experimentalSocial) void hydrateSocialSession();
+
+        // Rebuild the hideout scene cache after a game update, at low priority,
+        // so the viewer finds it ready. Waits out the startup work first.
+        setTimeout(() => {
+            const deadlockPath = getConfiguredDeadlockPath();
+            if (deadlockPath) void prebuildHideoutScene(deadlockPath, { everyone: loadSettings().experimentalHideoutDefault }).catch((error: unknown) => console.warn('[hideout] Prebuild failed:', error));
+        }, 30000);
 
         // Resume the opt-in match-salt contributor across restarts.
         if (loadSettings().contributeMatchSalts) {

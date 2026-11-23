@@ -4,6 +4,7 @@ import {
   Loader2,
   Sparkles,
   Swords,
+  Zap,
   Volume2,
   Image as ImageIcon,
   Images,
@@ -23,6 +24,7 @@ import HeroDetailFrame, { type HeroDetailSection } from '../common/HeroDetailFra
 import { IconButton, SegmentedControl } from '../common/ui';
 import { useSegmentedTabs } from '../common/useSegmentedTabs';
 import HeroEffectsPanel from '../locker/HeroEffectsPanel';
+import { HeroNavigation } from '../locker/HeroNavigation';
 import HeroSoundPicker from '../locker/HeroSoundPicker';
 import FloatingModelPanel from '../locker/FloatingModelPanel';
 import { useModelPanelOpen } from '../locker/useModelPanelOpen';
@@ -32,6 +34,8 @@ import SoundBrowse from './SoundBrowse';
 import TextureBrowse from './TextureBrowse';
 import LibraryBrowse from './LibraryBrowse';
 import PortraitBrowse from './PortraitBrowse';
+import MovementFxEditor from './MovementFxEditor';
+import SkinEditor from './SkinEditor';
 import FoundryBuildTray from './FoundryBuildTray';
 import MyChanges from './MyChanges';
 import type { FoundryStagedEdit } from './buildTray';
@@ -46,6 +50,12 @@ const HeroPoseViewer = lazy(() => import('../locker/HeroPoseViewer'));
 
 interface HeroWorkshopProps {
   hero: HeroInfo;
+  /** Neighbors in the hero grid's order, for the rail's arrows and arrow keys. */
+  previous?: HeroInfo;
+  next?: HeroInfo;
+  onNavigate?: (hero: HeroInfo) => void;
+  /** Skin sources carried by a Locker "edit this skin" link; opens the skin editor on them. */
+  skinSources?: HeroPoseSkinSource[];
   /** Full roster codename -> display name map (for the reused browse panels). */
   heroNames: Map<string, string>;
   onBack: () => void;
@@ -69,9 +79,10 @@ interface HeroWorkshopProps {
   initialFamilyKey?: string;
 }
 
-type SectionId = 'appearance' | 'abilities' | 'voice' | 'portraits' | 'icons' | 'myChanges';
+type SectionId = 'appearance' | 'abilities' | 'mechanics' | 'voice' | 'portraits' | 'icons' | 'myChanges';
+type AppearanceTool = 'effects' | 'parts';
 
-const SECTION_IDS: readonly SectionId[] = ['appearance', 'abilities', 'voice', 'portraits', 'icons', 'myChanges'];
+const SECTION_IDS: readonly SectionId[] = ['appearance', 'abilities', 'mechanics', 'voice', 'portraits', 'icons', 'myChanges'];
 
 /**
  * The per-hero Foundry workshop: pick a hero, edit everything about them. Mirrors
@@ -92,6 +103,10 @@ const SECTION_IDS: readonly SectionId[] = ['appearance', 'abilities', 'voice', '
  */
 export default function HeroWorkshop({
   hero,
+  previous,
+  next,
+  onNavigate,
+  skinSources,
   heroNames,
   onBack,
   stagedEdits,
@@ -109,9 +124,19 @@ export default function HeroWorkshop({
   const modsLoaded = useAppStore((s) => s.modsLoaded);
   const loadMods = useAppStore((s) => s.loadMods);
   const toggleMod = useAppStore((s) => s.toggleMod);
+  const linkedSkin = !!skinSources?.length;
   const [section, setSection] = useState<SectionId>(
-    SECTION_IDS.find((id) => id === initialSection) ?? 'appearance'
+    linkedSkin ? 'appearance' : SECTION_IDS.find((id) => id === initialSection) ?? 'appearance'
   );
+  // Effects (recolor, staged into the tray) stays the default so the fork's
+  // workshop opens as before; Parts is upstream's skin editor. A Locker skin
+  // link opens straight on Parts with that skin loaded.
+  const [appearanceTool, setAppearanceTool] = useState<AppearanceTool>(linkedSkin ? 'parts' : 'effects');
+  useEffect(() => {
+    if (!linkedSkin) return;
+    setSection('appearance');
+    setAppearanceTool('parts');
+  }, [linkedSkin]);
   // The workshop is a full-bleed hero view, so the tray docks on demand rather
   // than permanently eating width. Staging opens it: an edit the user cannot
   // see landing is an edit they cannot review.
@@ -209,6 +234,7 @@ export default function HeroWorkshop({
   const sections: Array<HeroDetailSection<SectionId>> = [
     { id: 'appearance', label: t('foundry.workshop.appearance', 'Appearance'), icon: Sparkles },
     { id: 'abilities', label: t('foundry.workshop.abilities', 'Abilities'), icon: Swords },
+    { id: 'mechanics', label: t('foundry.workshop.mechanics'), icon: Zap },
     { id: 'voice', label: t('foundry.workshop.voice', 'Voice'), icon: Volume2 },
     { id: 'portraits', label: t('foundry.workshop.portraits', 'Portraits'), icon: Images },
     { id: 'icons', label: t('foundry.workshop.icons', 'Icons & Textures'), icon: ImageIcon },
@@ -248,112 +274,58 @@ export default function HeroWorkshop({
   );
 
   return (
-    <HeroDetailFrame
-      surface="foundry"
-      heroName={hero.name}
-      // Third fallback step, matching the grid: a hero with no render still
-      // gets their chip icon rather than dropping straight to bare text.
-      heroIconUrl={getHeroChipIconPath(hero.name)}
-      backLabel={t('foundry.workshop.back', 'All heroes')}
-      onBack={onBack}
-      navLabel={t('foundry.workshop.sections', 'Workshop sections')}
-      sections={sections}
-      activeSection={section}
-      onSectionChange={setSection}
-      contentWidth="fluid"
-      railTop={
-        <div className="rounded-lg border border-accent/25 bg-accent/10 px-3 py-2 text-sm text-text-primary">
-          <p className="font-medium">{t('foundry.workshop.createNewMod', 'Create a new mod')}</p>
-          <p className="mt-0.5 text-xs text-text-secondary">
-            {stagedEdits.length > 0
-              ? t('foundry.workshop.stagedEdits', '{{count}} staged edit ready for the Build tray', { count: stagedEdits.length })
-              : t('foundry.workshop.stagedEditsEmpty', 'Stage an edit, then review it in the Build tray.')}
-          </p>
-        </div>
-      }
-      topRight={
-        <>
-          <SegmentedControl
-            options={[
-              { value: 'model', label: t('locker.hero.stageMode.model') },
-              { value: 'image', label: t('locker.hero.stageMode.image') },
-            ]}
-            value={stageMode}
-            onChange={setStageMode}
-            tabs={tabs}
-            label={t('locker.hero.stageModeLabel')}
-          />
-          <IconButton
-            icon={PictureInPicture2}
-            label={t('locker.hero.popOutModel')}
-            onClick={() => setModelPanelOpen(!modelPanelOpen)}
-            disabled={stageMode !== 'model'}
-          />
-        </>
-      }
-      platePreview={
-        stageMode === 'model' && !modelPanelOpen ? (
-          <div className={heroPlateComposition({ kind: 'model' }).className}>
-            <Suspense
-              fallback={
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <Loader2 className="h-6 w-6 animate-spin text-white/80" />
-                </div>
-              }
-            >
-              <HeroPoseViewer
-                key={`${hero.name}:${poseSourceKey}`}
-                heroName={hero.name}
-                skinSources={poseSkinSources}
-              />
-            </Suspense>
-            {previewStatusPills}
+    <div data-foundry-hero-view className="h-full">
+      <HeroDetailFrame
+        surface="foundry"
+        heroName={hero.name}
+        // Third fallback step, matching the grid: a hero with no render still
+        // gets their chip icon rather than dropping straight to bare text.
+        heroIconUrl={getHeroChipIconPath(hero.name)}
+        backLabel={t('foundry.workshop.back', 'All heroes')}
+        onBack={onBack}
+        navLabel={t('foundry.workshop.sections', 'Workshop sections')}
+        sections={sections}
+        activeSection={section}
+        onSectionChange={setSection}
+        contentWidth="fluid"
+        backRowExtra={
+          onNavigate && (previous || next) ? (
+            <HeroNavigation previous={previous} next={next} onNavigate={onNavigate} enabled />
+          ) : undefined
+        }
+        railTop={
+          <div className="rounded-lg border border-accent/25 bg-accent/10 px-3 py-2 text-sm text-text-primary">
+            <p className="font-medium">{t('foundry.workshop.createNewMod', 'Create a new mod')}</p>
+            <p className="mt-0.5 text-xs text-text-secondary">
+              {stagedEdits.length > 0
+                ? t('foundry.workshop.stagedEdits', '{{count}} staged edit ready for the Build tray', { count: stagedEdits.length })
+                : t('foundry.workshop.stagedEditsEmpty', 'Stage an edit, then review it in the Build tray.')}
+            </p>
           </div>
-        ) : undefined
-      }
-      platePanel={tabs.panelProps(stageMode)}
-      railExtra={
-        <button
-          type="button"
-          onClick={() => setTrayOpen((open) => !open)}
-          aria-expanded={trayOpen}
-          className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors cursor-pointer ${
-            trayOpen ? 'border-accent/60 bg-accent/15' : 'border-transparent hover:bg-hl/10'
-          }`}
-        >
-          <Layers3 className="h-4 w-4 flex-shrink-0 text-white/80" />
-          <span className="flex-1 truncate text-sm font-medium text-white">
-            {stagedEdits.length > 0
-              ? t('foundry.buildTray.openWithCount', 'Build tray ({{count}})', { count: stagedEdits.length })
-              : t('foundry.buildTray.panelToggle', 'Build tray')}
-          </span>
-        </button>
-      }
-      after={
-        <>
-          {trayOpen && (
-            <div className="relative z-10 overflow-y-auto scrollbar-glass">
-              <FoundryBuildTray
-                edits={stagedEdits}
-                outputName={outputName}
-                onOutputNameChange={onOutputNameChange}
-                onForge={onForge}
-                onInstall={onInstall}
-                onRemove={onRemoveStagedEdit}
-                className="h-full bg-bg-secondary/80"
-              />
-            </div>
-          )}
-
-          {/* The staged edits, built into a throwaway VPK and stacked over the
-              user's own enabled skins. The same single viewer instance moves
-              between the plate and this popped-out panel. */}
-          {modelPanelOpen && (
-            <FloatingModelPanel
-              surface="foundry"
-              title={t('foundry.workshop.preview3dTitle', '{{hero}} preview', { hero: hero.name })}
-              onClose={() => setModelPanelOpen(false)}
-            >
+        }
+        topRight={
+          <>
+            <SegmentedControl
+              options={[
+                { value: 'model', label: t('locker.hero.stageMode.model') },
+                { value: 'image', label: t('locker.hero.stageMode.image') },
+              ]}
+              value={stageMode}
+              onChange={setStageMode}
+              tabs={tabs}
+              label={t('locker.hero.stageModeLabel')}
+            />
+            <IconButton
+              icon={PictureInPicture2}
+              label={t('locker.hero.popOutModel')}
+              onClick={() => setModelPanelOpen(!modelPanelOpen)}
+              disabled={stageMode !== 'model'}
+            />
+          </>
+        }
+        platePreview={
+          stageMode === 'model' && !modelPanelOpen ? (
+            <div className={heroPlateComposition({ kind: 'model' }).className}>
               <Suspense
                 fallback={
                   <div className="absolute inset-0 flex items-center justify-center">
@@ -368,64 +340,141 @@ export default function HeroWorkshop({
                 />
               </Suspense>
               {previewStatusPills}
-            </FloatingModelPanel>
-          )}
-        </>
-      }
-    >
-      {section === 'appearance' ? (
-        <HeroEffectsPanel
-          key={hero.name}
-          heroName={hero.name}
-          onStageRecolor={stage}
-          stagedRecolorEdit={stagedRecolorEdit}
-        />
-      ) : section === 'abilities' ? (
-        <div className="space-y-6">
-          <HeroSoundPicker
-            heroName={hero.name}
-            soundList={heroSoundMods}
-            onSelect={(modId) => void toggleMod(modId)}
-          />
-          {/* Each ability card lists its gameplay sounds with play + Swap (drop
-              your own MP3), forged through the soundswap engine. The ability
-              axis lives here (not under Voice); Voice is VO only. */}
-          <SoundBrowse heroes={scopedRoster} heroNames={heroNames} hero={hero.codename} only="gameplay" onStage={stage} />
-          <AbilitiesComingNote />
-        </div>
-      ) : section === 'voice' ? (
-        <SoundBrowse heroes={scopedRoster} heroNames={heroNames} hero={hero.codename} only="voice" onStage={stage} />
-      ) : section === 'portraits' ? (
-        // The family-first portrait surface, pinned to this hero. Staging goes
-        // through the same editor and preflight as the catalog-mode tab.
-        <PortraitBrowse
-          hero={hero.codename}
-          heroNames={heroNames}
-          onStage={stage}
-          initialFamilyKey={initialFamilyKey}
-        />
-      ) : section === 'icons' ? (
-        <div className="space-y-8">
-          <TextureBrowse heroes={scopedRoster} heroNames={heroNames} hero={hero.codename} onStage={stage} />
-          <div className="space-y-2">
-            <h4 className="text-sm font-semibold text-white/90">
-              {t('foundry.workshop.abilityIcons', 'Ability & item icons')}
-            </h4>
-            <LibraryBrowse
-              heroNames={heroNames}
-              initialCategory="ability-icon"
-              hero={hero.codename}
-              heroDisplayName={hero.name}
-              onStage={stage}
+            </div>
+          ) : undefined
+        }
+        platePanel={tabs.panelProps(stageMode)}
+        railExtra={
+          <button
+            type="button"
+            onClick={() => setTrayOpen((open) => !open)}
+            aria-expanded={trayOpen}
+            className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors cursor-pointer ${
+              trayOpen ? 'border-accent/60 bg-accent/15' : 'border-transparent hover:bg-hl/10'
+            }`}
+          >
+            <Layers3 className="h-4 w-4 flex-shrink-0 text-white/80" />
+            <span className="flex-1 truncate text-sm font-medium text-white">
+              {stagedEdits.length > 0
+                ? t('foundry.buildTray.openWithCount', 'Build tray ({{count}})', { count: stagedEdits.length })
+                : t('foundry.buildTray.panelToggle', 'Build tray')}
+            </span>
+          </button>
+        }
+        after={
+          <>
+            {trayOpen && (
+              <div className="relative z-10 overflow-y-auto scrollbar-glass">
+                <FoundryBuildTray
+                  edits={stagedEdits}
+                  outputName={outputName}
+                  onOutputNameChange={onOutputNameChange}
+                  onForge={onForge}
+                  onInstall={onInstall}
+                  onRemove={onRemoveStagedEdit}
+                  className="h-full bg-bg-secondary/80"
+                />
+              </div>
+            )}
+
+            {/* The staged edits, built into a throwaway VPK and stacked over the
+                user's own enabled skins. The same single viewer instance moves
+                between the plate and this popped-out panel. */}
+            {modelPanelOpen && (
+              <FloatingModelPanel
+                surface="foundry"
+                title={t('foundry.workshop.preview3dTitle', '{{hero}} preview', { hero: hero.name })}
+                onClose={() => setModelPanelOpen(false)}
+              >
+                <Suspense
+                  fallback={
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <Loader2 className="h-6 w-6 animate-spin text-white/80" />
+                    </div>
+                  }
+                >
+                  <HeroPoseViewer
+                    key={`${hero.name}:${poseSourceKey}`}
+                    heroName={hero.name}
+                    skinSources={poseSkinSources}
+                  />
+                </Suspense>
+                {previewStatusPills}
+              </FloatingModelPanel>
+            )}
+          </>
+        }
+      >
+        {section === 'appearance' ? (
+          <div className="flex flex-col gap-4">
+            <SegmentedControl
+              value={appearanceTool}
+              onChange={setAppearanceTool}
+              options={[
+                { value: 'effects', label: t('foundry.skin.effects') },
+                { value: 'parts', label: t('foundry.skin.title') },
+              ]}
             />
+            {appearanceTool === 'parts' ? (
+              <SkinEditor key={hero.name} heroName={hero.name} initialSkinSources={skinSources} />
+            ) : (
+              <HeroEffectsPanel
+                key={hero.name}
+                heroName={hero.name}
+                onStageRecolor={stage}
+                stagedRecolorEdit={stagedRecolorEdit}
+              />
+            )}
           </div>
-        </div>
-      ) : section === 'myChanges' ? (
-        // Scoped to this hero: the workshop is a per-hero surface, so a
-        // global change would read as belonging to a hero it does not.
-        <MyChanges heroName={hero.name} onAddNew={() => setSection('icons')} />
-      ) : null}
-    </HeroDetailFrame>
+        ) : section === 'mechanics' ? (
+          <MovementFxEditor heroName={hero.name} skinSources={skinSources} />
+        ) : section === 'abilities' ? (
+          <div className="space-y-6">
+            <HeroSoundPicker
+              heroName={hero.name}
+              soundList={heroSoundMods}
+              onSelect={(modId) => void toggleMod(modId)}
+            />
+            {/* Each ability card lists its gameplay sounds with play + Swap (drop
+                your own MP3), forged through the soundswap engine. The ability
+                axis lives here (not under Voice); Voice is VO only. */}
+            <SoundBrowse heroes={scopedRoster} heroNames={heroNames} hero={hero.codename} only="gameplay" onStage={stage} />
+            <AbilitiesComingNote />
+          </div>
+        ) : section === 'voice' ? (
+          <SoundBrowse heroes={scopedRoster} heroNames={heroNames} hero={hero.codename} only="voice" onStage={stage} />
+        ) : section === 'portraits' ? (
+          // The family-first portrait surface, pinned to this hero. Staging goes
+          // through the same editor and preflight as the catalog-mode tab.
+          <PortraitBrowse
+            hero={hero.codename}
+            heroNames={heroNames}
+            onStage={stage}
+            initialFamilyKey={initialFamilyKey}
+          />
+        ) : section === 'icons' ? (
+          <div className="space-y-8">
+            <TextureBrowse heroes={scopedRoster} heroNames={heroNames} hero={hero.codename} onStage={stage} />
+            <div className="space-y-2">
+              <h4 className="text-sm font-semibold text-white/90">
+                {t('foundry.workshop.abilityIcons', 'Ability & item icons')}
+              </h4>
+              <LibraryBrowse
+                heroNames={heroNames}
+                initialCategory="ability-icon"
+                hero={hero.codename}
+                heroDisplayName={hero.name}
+                onStage={stage}
+              />
+            </div>
+          </div>
+        ) : section === 'myChanges' ? (
+          // Scoped to this hero: the workshop is a per-hero surface, so a
+          // global change would read as belonging to a hero it does not.
+          <MyChanges heroName={hero.name} onAddNew={() => setSection('icons')} />
+        ) : null}
+      </HeroDetailFrame>
+    </div>
   );
 }
 

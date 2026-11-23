@@ -1,24 +1,36 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { basename, join } from 'node:path';
+import { tmpdir } from 'node:os';
 import type { ModMetadata } from '../services/metadata';
 import type { Mod } from '../services/mods';
+import { buildCategoryPaths } from '../../../src/lib/categoryPaths';
 
 const h = vi.hoisted(() => ({
     handlers: new Map<string, (...args: unknown[]) => Promise<unknown>>(),
-    path: '/normal', devMode: false, locked: false,
+    path: '/normal', devMode: false, locked: false, safety: false, autoEnable: false,
+    trusted: new Map<string, boolean>(),
     lockGate: null as Promise<void> | null,
     metadata: new Map<string, ModMetadata>(),
-    scan: vi.fn(), heal: vi.fn(), enterLock: vi.fn(), write: vi.fn(), refresh: vi.fn(), download: vi.fn(), remove: vi.fn(), enable: vi.fn(),
+    ignoredConflicts: [] as string[],
+    reorder: vi.fn(), priority: vi.fn(), swap: vi.fn(), migrateConflicts: vi.fn(), saveSettings: vi.fn(),
+    scan: vi.fn(), parse: vi.fn(), heal: vi.fn(), enterLock: vi.fn(), write: vi.fn(), refresh: vi.fn(), download: vi.fn(), remove: vi.fn(), enable: vi.fn(),
+    patch: vi.fn(), paths: vi.fn(), categoryPaths: vi.fn(), localHero: vi.fn(), loadMetadata: vi.fn(), cachedMod: vi.fn(),
+    importVpk: vi.fn(), adoption: vi.fn(), prepare: vi.fn(), prepared: vi.fn(), release: vi.fn(), gallery: vi.fn(), galleryRead: vi.fn(), galleryExists: vi.fn(),
 }));
 vi.mock('electron', () => ({
     ipcMain: { handle: (name: string, handler: (...args: unknown[]) => Promise<unknown>) => h.handlers.set(name, handler) },
 }));
 vi.mock('../index', () => ({ getMainWindow: () => null }));
 vi.mock('../services/settings', () => ({
-    loadSettings: () => ({ devMode: h.devMode }),
+    loadSettings: () => ({ devMode: h.devMode, ignoredConflicts: h.ignoredConflicts, experimentalModSafety: h.safety,
+        autoEnableDownloads: h.autoEnable }),
     getActiveDeadlockPath: () => h.path,
+    saveSettings: h.saveSettings,
 }));
 vi.mock('../services/mods', () => ({
     scanMods: h.scan,
+    scanModsAfterMutations: h.scan,
     healModFolders: h.heal,
     runExclusiveModMutation: async (operation: () => Promise<unknown>) => {
         h.enterLock();
@@ -30,32 +42,61 @@ vi.mock('../services/mods', () => ({
     },
     deleteModsUnlocked: h.remove,
     enableModUnlocked: h.enable,
+    reorderMods: h.reorder,
+    setModPriority: h.priority,
+    swapModPriority: h.swap,
 }));
 vi.mock('../services/metadata', () => ({
+    loadMetadata: h.loadMetadata,
     getModMetadata: (key: string) => h.metadata.get(key),
     setModMetadataWithHash: h.write,
+    setModMetadata: h.patch,
+    removeModMetadata: (key: string) => h.metadata.delete(key),
 }));
-vi.mock('../services/modReplacement', () => ({ refreshEmbedAfterMetadataChange: h.refresh }));
+vi.mock('../services/modReplacement', async original => ({
+    ...await original<typeof import('../services/modReplacement')>(), refreshEmbedAfterMetadataChange: h.refresh,
+}));
 vi.mock('../services/download', () => ({ downloadMod: h.download }));
-vi.mock('../services/vpk', () => ({ GLOBAL_CLASSIFIER_VERSION: 4 }));
-vi.mock('../services/modSafety', () => ({ modSafetySnapshot: () => undefined }));
-vi.mock('../services/vdataCheck', () => ({ outdatedVdataSnapshot: () => undefined, staleModelsSnapshot: () => undefined }));
+vi.mock('../services/vpk', async original => ({
+    ...await original<typeof import('../services/vpk')>(),
+    parseVpkDirectoriesAsync: h.parse, parseVpkDirectoryCached: h.paths,
+}));
+vi.mock('../services/gamebanana', () => ({
+    readCachedCategoryPaths: h.categoryPaths,
+    fetchCategoryTreeCached: async () => [],
+    observeCategoryTreeChanges: () => () => {},
+}));
+vi.mock('../services/modSafety', () => ({
+    modSafetySnapshot: (path: string) => h.trusted.has(path) ? { trusted: h.trusted.get(path) } : undefined,
+}));
+vi.mock('../services/vdataCheck', () => ({ outdatedVdataSnapshot: () => undefined, staleModelsSnapshot: () => undefined,
+    checkOutdatedVdata: () => {} }));
 vi.mock('../services/attachmentHeal', () => ({}));
-vi.mock('../services/importDisabledVpk', () => ({}));
-vi.mock('../services/deadlock', () => ({}));
-vi.mock('../services/abilitySounds', () => ({}));
-vi.mock('../services/modChangeObservation', () => ({}));
-vi.mock('../services/conflicts', () => ({}));
-vi.mock('../services/lockerVpk', () => ({}));
+vi.mock('../services/importDisabledVpk', () => ({ importDisabledVpk: h.importVpk,
+    prepareLocalImport: h.prepare, getPreparedLocalImport: h.prepared, releaseLocalImport: h.release,
+    withPreparedLocalImport: async (id: string, owner: number, path: string, operation: (value: unknown) => Promise<unknown>) =>
+        operation(await h.prepared(id, owner, path)),
+}));
+vi.mock('../services/lockerModImages', () => ({ getLocalModGallery: h.galleryRead, hasLocalModGallery: (id: string) => h.galleryExists(id) || h.galleryRead(id).length > 0, localModGalleryThumbnail: () => undefined,
+    setLocalModGallery: h.gallery }));
+vi.mock('../services/deadlock', () => ({ metaKeyFor: (path: string) => basename(path) }));
+vi.mock('../services/abilitySounds', () => ({ classifyAbilitySoundsFromVpk: () => null }));
+vi.mock('../services/modChangeObservation', () => ({ notifyModChanges: () => {} }));
+vi.mock('../services/conflicts', () => ({ migrateIgnoredConflictKeysForMods: h.migrateConflicts }));
+vi.mock('../services/lockerVpk', () => ({ isLockerManaged: () => false }));
 vi.mock('../services/profiles', () => ({}));
-vi.mock('../services/unknownModDetection', () => ({}));
+vi.mock('../services/unknownModDetection', () => ({ inferHeroFromVpkTree: h.localHero }));
 vi.mock('../services/adoptedThumbnail', () => ({}));
-vi.mock('../services/modDatabase', () => ({}));
-vi.mock('../services/extract', () => ({}));
-vi.mock('../services/importVariantGroups', () => ({}));
-vi.mock('../services/localImportTransaction', () => ({}));
+vi.mock('../services/modDatabase', () => ({ getModById: h.cachedMod }));
+// The fork's identity gate reads a bare VPK's magic bytes; the fixtures are
+// plain files, so the gate passes them through unchanged here.
+vi.mock('../services/extract', () => ({ resolveInstallableVpk: async (path: string) => ({ path }) }));
 vi.mock('../services/modMerger', () => ({}));
-vi.mock('../services/imprintMods', () => ({}));
+vi.mock('../services/imprintMods', () => ({
+    computeAdoptionPatchAt: h.adoption,
+    hasAdoptionFields: (patch: object) => Object.keys(patch).length > 0,
+    hasAnyImprint: () => false,
+}));
 vi.mock('../services/vpkIdentity', () => ({}));
 vi.mock('../services/modinfoFormat', () => ({}));
 vi.mock('../services/foundryCatalog', () => ({}));
@@ -63,8 +104,8 @@ vi.mock('../services/soulContainerImport', () => ({}));
 vi.mock('../services/spiritUrnImport', () => ({}));
 vi.mock('../services/soulContainerModels', () => ({}));
 vi.mock('../services/foundryExport', () => ({}));
-vi.mock('../services/localVariantGroup', () => ({}));
 import './mods';
+import { toLocalVariantGroupMember } from '../services/modReplacement';
 
 const source: Mod = {
     id: 'unknown', metaKey: 'pak01_dir.vpk', fileName: 'pak01_dir.vpk',
@@ -80,16 +121,115 @@ function deferred() {
     return { promise, resolve };
 }
 
+describe('local picker artwork', () => {
+    it('attaches local files without inheriting the parent submission or changing its origin', async () => {
+        const directory = await mkdtemp(join(tmpdir(), 'grimoire-gb-attachment-'));
+        try {
+            const file = join(directory, 'custom.vpk'); await writeFile(file, 'fixture');
+            h.metadata.set(source.metaKey, { modName: 'Parent', gameBananaId: 7, gameBananaFileId: 20 });
+            const grouped = await h.handlers.get('set-local-variant-group')!({}, [source.id], { mode: 'mint' }) as { groupId: string };
+            h.safety = true;
+            h.importVpk.mockResolvedValue(file);
+            h.scan.mockImplementation(async () => [source, ...(h.metadata.has('custom.vpk')
+                ? [{ ...replacement, id: 'custom', metaKey: 'custom.vpk', path: file, fileName: 'custom.vpk' }] : [])]);
+            const result = await h.handlers.get('import-custom-mods')!({ sender: { isDestroyed: () => false, send: vi.fn() } }, {
+                items: [{ vpkPath: file, name: 'Parent', localGroupId: grouped.groupId }],
+            }) as { results: { ok: boolean; importedModIds: string[] }[] };
+            expect(result.results).toMatchObject([{ ok: true, importedModIds: ['custom'] }]);
+            expect(h.metadata.get(source.metaKey)).toMatchObject({ gameBananaId: 7, gameBananaFileId: 20, localImport: false });
+            expect(h.metadata.get('custom.vpk')).toMatchObject({ localGroupId: grouped.groupId, localImport: true });
+            expect(h.metadata.get('custom.vpk')?.gameBananaId).toBeUndefined();
+        } finally { await rm(directory, { recursive: true, force: true }); }
+    });
+    it('protects shared NSFW images on every sibling before Installed filters run', async () => {
+        h.scan.mockResolvedValue([source, replacement]);
+        h.metadata.set(source.metaKey, { localGroupId: 'shared', nsfw: true, abilitySounds: null });
+        h.metadata.set(replacement.metaKey, { localGroupId: 'shared', nsfw: false, abilitySounds: null });
+        h.galleryExists.mockReturnValue(true);
+        const mods = await h.handlers.get('set-local-mod-gallery')!({}, 'shared', []) as { nsfw?: boolean; thumbnailUrl?: string }[];
+        expect(mods.map(mod => mod.nsfw)).toEqual([true, true]);
+        expect(mods.every(mod => mod.thumbnailUrl === undefined)).toBe(true);
+    });
+
+    it('can edit a previously emptied managed gallery', async () => {
+        h.metadata.set(source.metaKey, { localGroupId: 'empty', modName: 'Local', abilitySounds: null });
+        h.galleryExists.mockReturnValue(true);
+        await invoke('edit-local-mod', { name: 'Local', thumbnailDataUrl: 'data:image/png;base64,new' });
+        expect(h.gallery).toHaveBeenCalledWith('empty', ['data:image/png;base64,new']);
+        expect(h.metadata.get(source.metaKey)?.thumbnailUrl).toBeUndefined();
+    });
+
+    it('does not write NSFW flags into a different mode after waiting for a scan', async () => {
+        h.scan.mockImplementationOnce(async () => { h.devMode = true; return [source]; });
+        await expect(h.handlers.get('set-mods-nsfw')!({}, [source.id], true)).rejects.toThrow('installation changed');
+        expect(h.patch).not.toHaveBeenCalled();
+    });
+    it('sets NSFW for all selected files without changing their names or artwork', async () => {
+        h.scan.mockResolvedValue([source, replacement]);
+        h.metadata.set(source.metaKey, { modName: 'Original', thumbnailUrl: 'data:image/png;base64,art' });
+        await h.handlers.get('set-mods-nsfw')!({}, [source.id, replacement.id], true);
+        expect(h.enterLock).toHaveBeenCalledOnce();
+        expect(h.metadata.get(source.metaKey)).toMatchObject({ modName: 'Original', thumbnailUrl: 'data:image/png;base64,art', nsfw: true });
+        expect(h.metadata.get(replacement.metaKey)?.nsfw).toBe(true);
+        expect(h.gallery).not.toHaveBeenCalled();
+        expect(h.refresh).not.toHaveBeenCalled();
+    });
+
+    it('rejects stale NSFW targets before changing any metadata', async () => {
+        await expect(h.handlers.get('set-mods-nsfw')!({}, [source.id, 'missing'], true)).rejects.toThrow('Mod not found');
+        expect(h.patch).not.toHaveBeenCalled();
+    });
+
+    it('shares artwork under the mutation lock and clears superseded per-file images', async () => {
+        h.metadata.set(source.metaKey, { localGroupId: 'artwork', thumbnailUrl: 'https://example.com/old.png', abilitySounds: null });
+        h.gallery.mockImplementation(async () => { expect(h.locked).toBe(true); });
+        await h.handlers.get('set-local-mod-gallery')!({}, 'artwork', ['https://example.com/old.png', 'data:image/png;base64,new']);
+        expect(h.gallery).toHaveBeenCalledExactlyOnceWith('artwork', ['https://example.com/old.png', 'data:image/png;base64,new']);
+        expect(h.metadata.get(source.metaKey)?.thumbnailUrl).toBeUndefined();
+        expect(h.metadata.get(source.metaKey)).not.toHaveProperty('mainThumbnail');
+    });
+
+    it('rejects missing groups and unrecognized remote artwork without writing', async () => {
+        await expect(h.handlers.get('set-local-mod-gallery')!({}, 'missing', [])).rejects.toThrow('not found');
+        h.metadata.set(source.metaKey, { localGroupId: 'artwork' });
+        await expect(h.handlers.get('set-local-mod-gallery')!({}, 'artwork', ['https://example.com/unrelated.png'])).rejects.toThrow('Invalid local artwork');
+        expect(h.gallery).not.toHaveBeenCalled();
+    });
+});
+
 beforeEach(() => {
     vi.clearAllMocks();
+    h.loadMetadata.mockReset().mockImplementation(() => Object.fromEntries(h.metadata));
+    h.cachedMod.mockReset();
     h.path = '/normal';
     h.devMode = false;
     h.locked = false;
+    h.safety = false;
+    h.autoEnable = false;
+    h.trusted.clear();
+    h.importVpk.mockReset();
+    h.adoption.mockReset().mockReturnValue({});
+    h.prepare.mockReset(); h.prepared.mockReset(); h.release.mockReset().mockResolvedValue(undefined);
+    h.gallery.mockReset().mockResolvedValue(undefined);
+    h.galleryRead.mockReset().mockReturnValue([]);
+    h.galleryExists.mockReset().mockReturnValue(false);
     h.lockGate = null;
+    h.ignoredConflicts = [];
+    h.reorder.mockResolvedValue(undefined);
+    h.priority.mockResolvedValue(source);
+    h.swap.mockResolvedValue(undefined);
+    h.migrateConflicts.mockImplementation(keys => keys);
     h.metadata.clear();
     h.metadata.set(source.metaKey, { globalType: null, globalTypeClassifierVersion: 4, abilitySounds: null });
     h.metadata.set(replacement.metaKey, { modName: 'Matched mod', globalType: null, globalTypeClassifierVersion: 4, abilitySounds: null });
     h.scan.mockResolvedValue([source]);
+    h.parse.mockResolvedValue(undefined);
+    h.paths.mockReturnValue([]);
+    h.localHero.mockReturnValue(null);
+    h.categoryPaths.mockReturnValue(undefined);
+    h.patch.mockImplementation((key: string, patch: ModMetadata) => {
+        h.metadata.set(key, { ...h.metadata.get(key), ...patch });
+    });
     h.heal.mockImplementation(async () => { expect(h.locked).toBe(true); });
     h.write.mockImplementation(async (key: string, patch: ModMetadata) => {
         expect(h.locked).toBe(true);
@@ -104,6 +244,346 @@ beforeEach(() => {
     h.enable.mockImplementation(async () => {
         expect(h.locked).toBe(true);
         return { ...replacement, enabled: true };
+    });
+});
+
+describe('mod tag selections', () => {
+    it('persists independent overrides under the mutation lock and restores detected tags on reset', async () => {
+        h.metadata.set(source.metaKey, { gameBananaId: 7, categoryId: 2, categoryName: 'Ivy', abilitySounds: null });
+        h.categoryPaths.mockReturnValue(buildCategoryPaths([{ id: 1, name: 'Skins', itemCount: 1,
+            children: [{ id: 2, name: 'Ivy', itemCount: 1 }] }]));
+        await invoke('set-mod-tags', { base: ['HUD', 'HUD'] });
+        expect(h.metadata.get(source.metaKey)?.tagOverrides).toEqual({ base: ['HUD'] });
+        const cleared = await invoke('set-mod-tags', { heroes: [] }) as Mod & { lockerHeroes: string[] };
+        expect(cleared.lockerHeroes).toEqual([]);
+        expect(cleared).toHaveProperty('detectedTags.heroes', ['Ivy']);
+        expect(h.metadata.get(source.metaKey)).not.toHaveProperty('detectedTags');
+        expect(h.metadata.get(source.metaKey)).toMatchObject({ categoryId: 2, categoryName: 'Ivy',
+            tagOverrides: { base: ['HUD'], heroes: [] } });
+        const reset = await invoke('set-mod-tags', null) as Mod & { lockerHeroes: string[] };
+        expect(reset.lockerHeroes).toEqual(['Ivy']);
+        expect(h.metadata.get(source.metaKey)?.tagOverrides).toBeUndefined();
+        expect(h.enterLock).toHaveBeenCalledTimes(3);
+    });
+
+    it('rejects invalid selections without writing any tags', async () => {
+        await expect(invoke('set-mod-tags', { base: [4] })).rejects.toThrow('Invalid tag selections');
+        expect(h.patch).not.toHaveBeenCalled();
+    });
+
+    it('keeps retagging from Locker connected to the same selections', async () => {
+        h.metadata.set(source.metaKey, { tagOverrides: { base: ['HUD', 'Skins'], heroes: [] }, abilitySounds: null });
+        await invoke('set-mod-locker-hero', 'Haze');
+        expect(h.metadata.get(source.metaKey)?.tagOverrides).toEqual({ base: ['Skins'], heroes: ['Haze'] });
+        const retagged = await invoke('set-mod-global-type', 'maps') as Mod & { globalType?: string };
+        expect(retagged.globalType).toBe('maps');
+        expect(h.metadata.get(source.metaKey)?.tagOverrides).toEqual({ base: ['Skins', 'Maps'], heroes: undefined });
+    });
+
+    it('does not write selections after the installation changes during scanning', async () => {
+        h.scan.mockImplementationOnce(async () => { h.path = '/developer'; return [source]; });
+        await expect(invoke('set-mod-tags', { base: [] })).rejects.toThrow('active installation changed');
+        expect(h.patch).not.toHaveBeenCalled();
+    });
+});
+
+describe('importing into a mixed local variant group', () => {
+    it('updates shared artwork through the existing editor without saving another image in metadata', async () => {
+        const images = ['data:image/png;base64,first', 'data:image/png;base64,second'];
+        h.metadata.set(source.metaKey, { modName: 'Local', localGroupId: 'gallery', abilitySounds: null });
+        h.galleryRead.mockReturnValue(images);
+        await invoke('edit-local-mod', { name: 'Renamed', thumbnailDataUrl: images[0] });
+        expect(h.gallery).not.toHaveBeenCalled();
+        expect(h.metadata.get(source.metaKey)?.thumbnailUrl).toBeUndefined();
+        await invoke('edit-local-mod', { name: 'Renamed', thumbnailDataUrl: 'data:image/png;base64,new' });
+        expect(h.gallery).toHaveBeenCalledWith('gallery', ['data:image/png;base64,new', images[1]]);
+    });
+    it('rejects a stale prepared batch before any installation writes', async () => {
+        h.prepared.mockRejectedValue(new Error('The file changed after inspection'));
+        await expect(h.handlers.get('import-custom-mods')!({ sender: { id: 7 } }, {
+            items: [{ vpkPath: '/first.vpk', name: 'First', preparationId: 'first' },
+                { vpkPath: '/second.vpk', name: 'Second', preparationId: 'second' }],
+        })).rejects.toThrow('changed after inspection');
+        expect(h.importVpk).not.toHaveBeenCalled(); expect(h.write).not.toHaveBeenCalled();
+    });
+
+    it.each([false, true])('reuses prepared members and preserves per-file tags (legacy aliases: %s)', async legacyAliases => {
+        const directory = await mkdtemp(join(tmpdir(), 'grimoire-prepared-import-'));
+        try {
+            const files = ['Haze', 'Wraith'].map(hero => join(directory, `${hero}.vpk`));
+            await Promise.all(files.map(file => writeFile(file, 'fixture')));
+            h.safety = true;
+            h.scan.mockImplementation(async () => files.filter(file => h.metadata.has(basename(file))).map(file => ({
+                ...source, id: basename(file), fileName: basename(file), metaKey: basename(file), path: file,
+            })));
+            h.importVpk.mockImplementation(async (_root, file) => file);
+            h.prepared.mockImplementation(async (_id, _owner, file) => ({ sources: [{ path: file, fileName: basename(file) }] }));
+            h.adoption.mockImplementation((file: string) => ({ lockerHero: basename(file, '.vpk'), lockerHeroSource: 'manual',
+                categoryName: legacyAliases ? 'RatKing Flag' : 'Skins' }));
+            const galleryImages = ['data:image/png;base64,AAAA', 'https://example.com/cached-thumbnail.png'];
+            const result = await h.handlers.get('import-custom-mods')!({ sender: { id: 7, isDestroyed: () => false, send: vi.fn() } }, {
+                items: files.map((file, index) => ({ vpkPath: file, name: 'Shared', preparationId: file, localGroupBatchKey: 'shared',
+                    galleryImages: index ? [] : galleryImages, tagChanges: {
+                        add: { base: legacyAliases ? ['HUD', 'Faithul/Vanilla+', 'Faithful/Vanilla+'] : ['HUD'] },
+                        remove: legacyAliases ? { base: ['RATKING FLAG'] } : {},
+                    } })),
+            }) as { results: Array<{ importedModIds: string[]; ok: boolean }> };
+            expect(result.results.map(entry => entry.ok)).toEqual([true, true]);
+            expect(result.results.map(entry => entry.importedModIds)).toEqual([['Haze.vpk'], ['Wraith.vpk']]);
+            expect(h.gallery).toHaveBeenCalledTimes(1); expect(h.gallery.mock.calls[0][1]).toEqual(galleryImages);
+            for (const hero of ['Haze', 'Wraith']) {
+                expect(h.metadata.get(`${hero}.vpk`)?.lockerHero).toBe(hero);
+                expect(h.metadata.get(`${hero}.vpk`)?.tagOverrides).toEqual({ base: legacyAliases ? ['HUD', 'Faithful/Vanilla+'] : ['Skins', 'HUD'] });
+                expect(h.metadata.get(`${hero}.vpk`)?.thumbnailUrl).toBeUndefined();
+                expect(h.metadata.get(`${hero}.vpk`)).not.toHaveProperty('galleryImages');
+            }
+        } finally { await rm(directory, { recursive: true, force: true }); }
+    });
+
+    it('imports an imprinted Lowdetailmap without requiring CompLock members to share classifications', async () => {
+        const directory = await mkdtemp(join(tmpdir(), 'grimoire-variant-import-'));
+        try {
+            const file = join(directory, 'Lowdetailmap.vpk');
+            await writeFile(file, 'fixture');
+            h.safety = true;
+            const components = [source, { ...source, id: 'particles', metaKey: 'particles.vpk' },
+                { ...source, id: 'outlines', metaKey: 'outlines.vpk' }];
+            h.scan.mockResolvedValue(components);
+            const identities: ModMetadata[] = [
+                { lockerHero: 'Ivy', lockerHeroSource: 'manual' },
+                { lockerHero: 'Haze', lockerHeroSource: 'manual' },
+                { globalType: 'hud', globalTypeSource: 'manual' },
+            ];
+            components.forEach((component, index) => h.metadata.set(component.metaKey, {
+                modName: 'CompLock', localGroupId: 'complock', abilitySounds: null, ...identities[index],
+            }));
+            const originalMetadata = components.map(component => structuredClone(h.metadata.get(component.metaKey)));
+            h.importVpk.mockImplementation(async () => {
+                expect(h.locked).toBe(true);
+                components.push({ ...source, id: 'new-map', metaKey: 'Lowdetailmap.vpk', path: file, fileName: 'Lowdetailmap.vpk' });
+                return file;
+            });
+            h.adoption.mockReturnValue({ gameBananaId: 7, sourceSection: 'Mod', categoryName: 'Maps',
+                categoryId: 37225, thumbnailUrl: 'https://example.com/map.png' });
+            const result = await h.handlers.get('import-custom-mods')!({ sender: { isDestroyed: () => false, send: vi.fn() } }, {
+                items: [{ vpkPath: file, name: 'CompLock', localGroupId: 'complock' }],
+            }) as { results: Array<{ ok: boolean; imported: number }> };
+            expect(result.results).toMatchObject([{ ok: true, imported: 1 }]);
+            const imported = h.metadata.get('Lowdetailmap.vpk');
+            expect(imported).toMatchObject({ modName: 'CompLock', localGroupId: 'complock',
+                gameBananaId: 7, categoryId: 37225, categoryName: 'Maps' });
+            expect(imported).not.toHaveProperty('lockerHero');
+            expect(imported).not.toHaveProperty('globalType');
+            expect(components.slice(0, 3).map(component => h.metadata.get(component.metaKey))).toMatchObject(originalMetadata);
+        } finally {
+            await rm(directory, { recursive: true, force: true });
+        }
+    });
+});
+
+describe('enabling local imports under the safety review', () => {
+    async function importClean(trusted: boolean) {
+        const directory = await mkdtemp(join(tmpdir(), 'grimoire-import-enable-'));
+        try {
+            const file = join(directory, 'skin.vpk');
+            await writeFile(file, 'fixture');
+            const imported = { ...source, id: 'imported', metaKey: 'skin.vpk', path: file, fileName: 'skin.vpk', enabled: false };
+            h.safety = true;
+            h.trusted.set(file, trusted);
+            h.scan.mockResolvedValue([source, imported]);
+            h.importVpk.mockResolvedValue(file);
+            const result = await h.handlers.get('import-custom-mods')!({ sender: { isDestroyed: () => false, send: vi.fn() } }, {
+                items: [{ vpkPath: file, name: 'Skin' }],
+            }) as { results: Array<{ ok: boolean; needsReview: boolean }> };
+            expect(result.results).toMatchObject([{ ok: true, needsReview: !trusted }]);
+        } finally {
+            await rm(directory, { recursive: true, force: true });
+        }
+    }
+
+    it('leaves a reviewed import disabled while "Enable mods after download" is off', async () => {
+        await importClean(true);
+        expect(h.enable).not.toHaveBeenCalled();
+    });
+
+    it('enables a reviewed import when "Enable mods after download" is on', async () => {
+        h.autoEnable = true;
+        await importClean(true);
+        expect(h.enable).toHaveBeenCalledWith('/normal', 'imported');
+    });
+
+    it('keeps an import that needs a decision disabled either way', async () => {
+        h.autoEnable = true;
+        await importClean(false);
+        expect(h.enable).not.toHaveBeenCalled();
+    });
+});
+
+describe('library enrichment installation isolation', () => {
+    it('repairs categories before enrichment, scopes catalog IDs by section, and shares variant lookups', async () => {
+        const modPaths = buildCategoryPaths([{ id: 1, name: 'Skins', itemCount: 0, children: [{
+            id: 49629, name: 'Rat King', itemCount: 0, children: [{ id: 49852, name: 'RatKing Flag', itemCount: 0 }],
+        }] }]);
+        const soundPaths = buildCategoryPaths([{ id: 2, name: 'VOs', itemCount: 0 }]);
+        h.categoryPaths.mockImplementation(model => model === 'ModCategory' ? modPaths : soundPaths);
+        h.cachedMod.mockImplementation((id, section) => id === 7
+            ? section === 'Mod' ? { subCategoryId: 49852 } : { categoryId: 2, subCategoryId: null }
+            : id === 8 ? { subCategoryId: 999 } : null);
+        h.metadata.set(source.metaKey, { gameBananaId: 7, categoryId: 49629, categoryName: 'RatKing', abilitySounds: null });
+        h.loadMetadata.mockImplementation(resolveCategory => {
+            if (!resolveCategory) return Object.fromEntries(h.metadata);
+            const metadata = h.metadata.get(source.metaKey)!;
+            const category = resolveCategory(metadata);
+            expect(category).toEqual({ id: 49852, name: 'Rat King Flag' });
+            expect(resolveCategory(metadata)).toBe(category);
+            expect(resolveCategory({ gameBananaId: 7, sourceSection: 'Sound' })).toEqual({ id: 2, name: 'VOs' });
+            expect(resolveCategory({ gameBananaId: 8 })).toBeUndefined();
+            expect(resolveCategory({ gameBananaId: 9 })).toBeUndefined();
+            h.metadata.set(source.metaKey, { ...metadata, categoryId: category.id, categoryName: category.name });
+            return Object.fromEntries(h.metadata);
+        });
+        const mods = await h.handlers.get('get-mods')!({}) as Array<Mod & { lockerHeroes: string[] }>;
+        expect(mods[0]).toMatchObject({ categoryId: 49852, categoryName: 'Rat King Flag', lockerHeroes: ['Rat King'] });
+        expect(h.cachedMod.mock.calls).toEqual([[7, 'Mod'], [7, 'Sound'], [8, 'Mod'], [9, 'Mod']]);
+    });
+
+    it('does not classify unrelated cold files while creating a local group under the mutation lock', async () => {
+        const peer = { ...source, id: 'peer', metaKey: 'peer.vpk', fileName: 'peer.vpk', path: '/normal/peer.vpk' };
+        const unrelated = { ...source, id: 'unrelated', metaKey: 'unrelated.vpk', fileName: 'unrelated.vpk', path: '/normal/unrelated.vpk' };
+        h.scan.mockResolvedValue([source, peer, unrelated]);
+        for (const mod of [source, peer]) h.metadata.set(mod.metaKey, {
+            modName: 'My pack', lockerHero: 'Ivy', lockerHeroSource: 'manual', abilitySounds: null, sha256: 'a'.repeat(64),
+        });
+        h.metadata.set(unrelated.metaKey, { modName: 'Cold local file', abilitySounds: null });
+        h.paths.mockImplementation((path: string) => {
+            if (h.locked) expect(path).not.toBe(unrelated.path);
+            return [];
+        });
+        await expect(h.handlers.get('set-local-variant-group')!({}, [source.id, peer.id], { mode: 'mint' })).resolves.toBeDefined();
+    });
+
+    it('does not resolve payload classifications when clearing local group membership', async () => {
+        const peer = { ...source, id: 'peer', metaKey: 'peer.vpk', fileName: 'peer.vpk', path: '/normal/peer.vpk' };
+        h.scan.mockResolvedValue([source, peer]);
+        for (const mod of [source, peer]) h.metadata.set(mod.metaKey, { modName: 'Local pack', localGroupId: 'group', abilitySounds: null });
+        h.paths.mockImplementation(() => {
+            expect(h.locked).toBe(false);
+            return [];
+        });
+        await expect(h.handlers.get('set-local-variant-group')!({}, [source.id], { mode: 'clear' })).resolves.toBeDefined();
+    });
+
+    it('keeps named custom local skins visible through the same identity used by group checks', async () => {
+        h.metadata.set(source.metaKey, { modName: 'Custom outfit', abilitySounds: null });
+        h.localHero.mockReturnValue({ name: 'Ivy', strongestSignal: 'medium' });
+        const mods = await h.handlers.get('get-mods')!({}) as Array<Mod & { lockerHeroes: string[] }>;
+        expect(mods[0].lockerHeroes).toEqual(['Ivy']);
+        expect(toLocalVariantGroupMember(source).resolvedHeroes).toEqual(mods[0].lockerHeroes);
+        expect(h.localHero).toHaveBeenCalledTimes(1);
+        await h.handlers.get('get-mods')!({});
+        expect(h.localHero).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([
+        { globalType: 'hud' as const, lockerHero: 'Ivy', lockerHeroSource: 'manual' as const },
+        { globalType: 'hud' as const, globalTypeSource: 'manual' as const, lockerHero: 'Ivy', lockerHeroSource: 'manual' as const },
+        { globalType: 'hud' as const, lockerHero: 'Ivy', lockerHeroSource: 'vpk' as const },
+    ])('uses the same manual/legacy precedence for display and local groups (%j)', async metadata => {
+        h.metadata.set(source.metaKey, { ...metadata, modName: 'Local mod', abilitySounds: null,
+            bodyModelDetection: { version: 1, size: source.size, modifiedAt: source.installedAt, heroes: [] } });
+        const mods = await h.handlers.get('get-mods')!({}) as Array<Mod & { lockerHeroes: string[]; globalType?: string }>;
+        const member = toLocalVariantGroupMember(source);
+        expect(member.resolvedHeroes).toEqual(mods[0].lockerHeroes);
+        expect(member.resolvedGlobalType).toBe(mods[0].globalType);
+        if (mods[0].globalType === 'hud') expect(h.paths).toHaveBeenCalled();
+        else expect(h.paths).not.toHaveBeenCalled();
+    });
+
+    it('reads each cached category model once for a library batch, including absent trees', async () => {
+        const other = { ...source, id: 'other', metaKey: 'other.vpk' };
+        h.scan.mockResolvedValue([source, other]);
+        for (const mod of [source, other]) h.metadata.set(mod.metaKey, {
+            gameBananaId: 7, modName: 'Installed skin', categoryName: 'Skins > Ivy', abilitySounds: null,
+        });
+        const mods = await h.handlers.get('get-mods')!({}) as Array<Mod & { lockerHeroes: string[] }>;
+        expect(mods.map(mod => mod.lockerHeroes)).toEqual([['Ivy'], ['Ivy']]);
+        expect(h.categoryPaths).toHaveBeenCalledTimes(1);
+    });
+
+    it('detects body models once from the worker-warmed file list', async () => {
+        h.metadata.set(source.metaKey, { gameBananaId: 7, modName: 'Ivy HUD', categoryName: 'Skins > Ivy', abilitySounds: null });
+        h.paths.mockReturnValue(['models/heroes_wip/ivy/materials/ivy_body_color.vtex_c', 'panorama/layout/hud.vxml_c']);
+        const [mod] = await h.handlers.get('get-mods')!({}) as Array<Mod & { bodyModelHeroes?: string[] }>;
+        expect(h.parse).toHaveBeenCalledWith([source.path]);
+        expect(mod.bodyModelHeroes).toEqual(['Ivy']);
+        expect(h.metadata.get(source.metaKey)?.bodyModelDetection).toEqual({
+            version: 1, size: source.size, modifiedAt: source.installedAt, sha256: undefined, heroes: ['Ivy'] });
+
+        h.parse.mockClear();
+        h.paths.mockClear();
+        await h.handlers.get('get-mods')!({});
+        expect(h.parse).not.toHaveBeenCalled();
+        expect(h.paths).not.toHaveBeenCalled();
+
+        h.scan.mockResolvedValue([{ ...source, size: 200 }]);
+        h.paths.mockReturnValue(null);
+        const [changed] = await h.handlers.get('get-mods')!({}) as Array<Mod & { bodyModelHeroes?: string[] }>;
+        expect(h.parse).toHaveBeenCalledWith([source.path]);
+        expect(changed.bodyModelHeroes).toBeUndefined();
+        expect(h.metadata.get(source.metaKey)?.bodyModelDetection?.size).toBe(source.size);
+    });
+
+    it('captures developer mode before the initial inventory scan', async () => {
+        h.scan.mockImplementationOnce(async () => {
+            h.devMode = true;
+            return [source];
+        });
+        await expect(h.handlers.get('get-mods')!({})).rejects.toThrow('active installation changed');
+        expect(h.write).not.toHaveBeenCalled();
+    });
+
+    it('does not persist detection against another mode after worker parsing', async () => {
+        h.metadata.set(source.metaKey, { sourceSection: 'Sound', abilitySounds: null });
+        h.parse.mockImplementationOnce(async () => { h.devMode = true; });
+        await expect(h.handlers.get('get-mods')!({})).rejects.toThrow('active installation changed');
+        expect(h.parse).toHaveBeenCalledWith([source.path]);
+        expect(h.write).not.toHaveBeenCalled();
+    });
+});
+
+describe('rename conflict migration inventories', () => {
+    beforeEach(() => {
+        h.metadata.set(source.metaKey, { ...h.metadata.get(source.metaKey), lockerHeroVpkChecked: true });
+    });
+
+    it.each([
+        ['reorder-mods', 1],
+        ['set-mod-priority', 0],
+        ['swap-mod-priority', 1],
+    ] as const)('%s skips the migration scan without ignored conflicts', async (channel, responseScans) => {
+        await h.handlers.get(channel)!({}, source.id, 2);
+
+        expect(h.scan).toHaveBeenCalledTimes(responseScans);
+        expect(h.migrateConflicts).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        ['reorder-mods', h.reorder, 2],
+        ['set-mod-priority', h.priority, 1],
+        ['swap-mod-priority', h.swap, 2],
+    ] as const)('%s migrates existing ignored conflicts before renaming', async (channel, mutation, scans) => {
+        h.ignoredConflicts = ['legacy conflict'];
+        h.migrateConflicts.mockReturnValue(['stable conflict']);
+        mutation.mockImplementation(async () => {
+            expect(h.migrateConflicts).toHaveBeenCalledWith(['legacy conflict'], [source]);
+            expect(h.saveSettings).toHaveBeenCalledWith(expect.objectContaining({ ignoredConflicts: ['stable conflict'] }));
+            return source;
+        });
+
+        await h.handlers.get(channel)!({}, source.id, 2);
+
+        expect(h.scan).toHaveBeenCalledTimes(scans);
+        expect(mutation).toHaveBeenCalledOnce();
     });
 });
 

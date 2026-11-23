@@ -256,10 +256,9 @@ export function SoundImportEditor({
     // Report authored edits upward. Trim only when the window is narrower than the
     // whole clip; gain only when it is a real change.
     useEffect(() => {
-        if (!buffer) {
-            onChange({});
-            return;
-        }
+        // Nothing to report until a decode lands. Reporting {} here would wipe
+        // edits restored from a draft before the clip has even loaded.
+        if (!buffer) return;
         const full = Math.round(buffer.duration * 1000);
         const trimmed = startMs > 0 || endMs < full;
         onChange({

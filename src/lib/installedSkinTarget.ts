@@ -1,0 +1,49 @@
+import { canonicalHeroName, inferHeroFromTitle, isLockerManagedMod } from './lockerUtils';
+import { getInstalledCardTaxonomy, type InstalledTaxonomyContext } from './installedCardTaxonomy';
+import type { Mod } from '../types/mod';
+import type { SkinEditSource } from '../types/skinEditor';
+import type { MovementFxLink } from './movementFx';
+
+export function installedDoorStuckTarget(mod: Mod, context: InstalledTaxonomyContext = {}): SkinEditSource | MovementFxLink | null {
+  return mod.movementFx ? { kind: 'movement', choice: mod.movementFx } : installedSkinTarget(mod, context);
+}
+
+export function installedSkinTarget(mod: Mod, context: InstalledTaxonomyContext = {}): SkinEditSource | null {
+  if (!isLockerManagedMod(mod)) return null;
+  const heroes = getInstalledCardTaxonomy(mod, context).heroNames;
+  if (!mod.skinEdit?.hero && heroes.length > 1) return null;
+  const heroName = canonicalHeroName(mod.skinEdit?.hero ?? heroes[0]
+    ?? inferHeroFromTitle(mod.name) ?? '');
+  if (!heroName) return null;
+  return { heroName, skinSources: [{ metaKey: mod.metaKey, priority: mod.priority }] };
+}
+
+/** The preview shows the hero's body, so the file itself must change it. Hero tags alone also
+ *  cover HUD, sound and effect files. A saved overlay is previewed through its source skins. */
+export function installedHeroPreviewTarget(mod: Mod, context: InstalledTaxonomyContext = {}): SkinEditSource | null {
+  const target = installedSkinTarget(mod, context);
+  return target && (mod.skinEdit || mod.bodyModelHeroes?.includes(target.heroName)) ? target : null;
+}
+
+/** A saved material overlay is only meaningful together with its original skins. */
+export function installedSkinPreviewTarget(mod: Mod, mods: readonly Mod[], context: InstalledTaxonomyContext = {}): SkinEditSource | null {
+  const target = installedHeroPreviewTarget(mod, context);
+  if (!target) return null;
+  const stack = new Map<string, Mod>();
+  const visiting = new Set<string>();
+  const collect = (current: Mod): boolean => {
+    if (visiting.has(current.id)) return false;
+    if (stack.has(current.id)) return true;
+    visiting.add(current.id);
+    for (const hash of current.skinEdit?.sources ?? []) {
+      const base = mods.find(candidate => candidate.sha256 === hash && candidate.enabled)
+        ?? mods.find(candidate => candidate.sha256 === hash);
+      if (!base || !collect(base)) return false;
+    }
+    visiting.delete(current.id);
+    stack.set(current.id, current);
+    return true;
+  };
+  if (!collect(mod)) return null;
+  return { ...target, skinSources: [...stack.values()].map(source => ({ metaKey: source.metaKey, priority: source.priority })) };
+}

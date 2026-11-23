@@ -2,6 +2,7 @@ import type { GlobalModType, Mod } from '../types/mod';
 import {
   activeLockerSkin,
   getEffectiveGlobalType,
+  modHeroNames,
   GLOBAL_MOD_TYPE_ORDER,
   groupGlobalMods,
   groupLockerSkins,
@@ -10,6 +11,7 @@ import {
   isLockerManagedSound,
   isPropContainerType,
   type LockerSkin,
+  type HeroCategory,
 } from './lockerUtils';
 
 /** localStorage key for the set of skin keys opted INTO the launch shuffle. */
@@ -94,6 +96,25 @@ export function parseShuffleCardKey(key: string): CardShuffleChoice | null {
   }
 }
 
+/** Transient exclusions scope remote identities by section without changing saved pool keys. */
+export function shuffleExclusionKey(mod: Mod): string {
+  const key = shuffleSkinKey(mod);
+  return !mod.localGroupId && typeof mod.gameBananaId === 'number' && mod.gameBananaId > 0
+    ? `${mod.sourceSection ?? 'Mod'}:${key}`
+    : key;
+}
+
+/** A shared hero payload keeps its whole logical skin outside automatic shuffle. */
+export function getManualOnlyShuffleKeys(mods: Iterable<Mod>): Set<string> {
+  const keys = new Set<string>();
+  for (const mod of mods) {
+    if (mod.sourceSection !== 'Sound' && !getEffectiveGlobalType(mod) && modHeroNames(mod).length > 1) {
+      keys.add(shuffleExclusionKey(mod));
+    }
+  }
+  return keys;
+}
+
 /**
  * The pool key for a mod on the axis it actually shuffles on.
  *
@@ -139,7 +160,9 @@ export interface ShuffleGroupOptions {
    * correctly reported as null instead of 'hero'. Pass it wherever offering a
    * dead opt-in would be a lie; omit it when the caller only needs the axis.
    */
-  heroList?: readonly { id: number; name: string }[];
+  heroList?: readonly HeroCategory[];
+  /** Full-library exclusions, including siblings outside the current view. */
+  excludedSkinKeys?: ReadonlySet<string>;
 }
 
 /**
@@ -150,15 +173,18 @@ export interface ShuffleGroupOptions {
  */
 function homeGroupKind(
   mod: Mod,
-  heroList?: readonly { id: number; name: string }[]
+  heroList?: readonly HeroCategory[],
+  excludedSkinKeys?: ReadonlySet<string>,
 ): 'hero' | 'bucket' | null {
-  if (getEffectiveGlobalType(mod)) return 'bucket';
+  const generalType = getEffectiveGlobalType(mod);
+  if (generalType) return GLOBAL_MOD_TYPE_ORDER.includes(generalType) ? 'bucket' : null;
+  if (modHeroNames(mod).length > 1 || excludedSkinKeys?.has(shuffleExclusionKey(mod))) return null;
   if (!isLockerManagedMod(mod)) return null;
   if (!heroList) return 'hero';
   // Ask the real grouper rather than re-deriving the hero match: its fallback
-  // chain (manual tag, author category, fuzzy name match) lives there, and a
+  // chain (resolved heroes, legacy tag, author category) lives there, and a
   // second copy here is precisely the drift this helper exists to prevent.
-  return groupModsByCategory([mod], [...heroList]).map.size > 0 ? 'hero' : null;
+  return groupModsByCategory([mod], heroList).map.size > 0 ? 'hero' : null;
 }
 
 /**
@@ -174,7 +200,7 @@ export function shuffleGroupKind(
   // Placement beats filing: a priority-root mod still sits in its home group,
   // but planShuffleGroup neither picks it nor disables it.
   if (mod.priorityMod) return 'priority';
-  return homeGroupKind(mod, options.heroList);
+  return homeGroupKind(mod, options.heroList, options.excludedSkinKeys);
 }
 
 export interface ShufflePoolSummary {
@@ -214,22 +240,10 @@ export function summarizeShufflePool(
 }
 
 /**
- * Drop a mod's pool keys when it becomes Global (priority root).
- *
- * A pinned mod is always on and the planner never re-rolls it, so its card
- * shows the pin instead of the opt-in. Left in the pool, the key would be
- * invisible yet still counted by the toolbar badge, and unpinning would slide
- * the mod back into the shuffle without the user ever asking for it again.
- * Unpinning deliberately does NOT restore the key: re-opting in is one click on
- * a control that is visible again.
- *
- * Both axis keys are considered (the bare hero-axis key and the qualified
- * bucket one) because a mod can have been pooled before it was classified.
- * A key another live non-priority mod still maps to is kept: that sibling's
- * opt-in is not ours to cancel.
- *
- * Pure: returns the new set, or null when there is nothing to remove (the
- * common case, so the caller can skip the write entirely).
+ * Remove stale shuffle keys for a legacy priority-root mod when restoring a
+ * profile. Both its former hero key and current bucket key are considered;
+ * a key still used by a non-priority sibling is kept. Returns null when no
+ * change is needed.
  */
 export function prunePoolKeysForMod(
   included: ReadonlySet<string>,
@@ -271,7 +285,10 @@ export function readStoredShuffleIncluded(): Set<string> {
     if (!stored) return new Set();
     const parsed = JSON.parse(stored);
     if (!Array.isArray(parsed)) return new Set();
-    return new Set(parsed.filter((k): k is string => typeof k === 'string'));
+    return new Set(parsed.filter((k): k is string => typeof k === 'string')
+      .flatMap(key => key.startsWith('bucket:patron:')
+        ? ['hidden-king', 'archmother'].map(type => key.replace(/^bucket:patron:/, 'bucket:' + type + ':'))
+        : [key.replace(/^bucket:killstreak-music:/, 'bucket:sounds:')]));
   } catch {
     return new Set();
   }
@@ -358,7 +375,9 @@ export function readStoredShuffleVariants(): Map<string, VariantChoice> {
     return new Map(
       Object.entries(parsed).filter(
         (entry): entry is [string, VariantChoice] => isVariantChoice(entry[1])
-      )
+      ).flatMap(([key, choice]): [string, VariantChoice][] => key.startsWith('bucket:patron:')
+        ? ['hidden-king', 'archmother'].map(type => [key.replace(/^bucket:patron:/, 'bucket:' + type + ':'), choice])
+        : [[key.replace(/^bucket:killstreak-music:/, 'bucket:sounds:'), choice]])
     );
   } catch {
     return new Map();
@@ -407,6 +426,8 @@ export interface RandomizePlanOptions {
   includeVanilla?: boolean;
   /** Stable namespace-aware identity for a pool entry. */
   keyFor?: (mod: Mod) => string;
+  /** Preserve logical skins containing a multi-hero file, including hidden siblings. */
+  excludedSkinKeys?: ReadonlySet<string>;
 }
 
 export interface RandomizePlan {
@@ -435,6 +456,7 @@ interface GroupPlanContext {
   /** Overrides the scope-derived pool key. The sound and card pools reuse this
    *  planner under their own namespace; everything else lets `scope` decide. */
   keyFor?: (mod: Mod) => string;
+  excludedSkinKeys: ReadonlySet<string>;
 }
 
 /**
@@ -463,7 +485,9 @@ function planShuffleGroup(
   scope: ShuffleGroupScope,
   { singleSlot = scope === 'hero' }: { singleSlot?: boolean } = {}
 ): boolean {
-  const { included, variants, rng, avoidCurrent, enableIds, disableIds, includeVanilla } = ctx;
+  const { included, variants, rng, avoidCurrent, enableIds, disableIds, includeVanilla, excludedSkinKeys } = ctx;
+  // Shared payloads stay manual: another hero must never switch them off.
+  mods = mods.filter(mod => !excludedSkinKeys.has(shuffleExclusionKey(mod)));
   // Bucket members are pooled under an axis-qualified key so a hero-card opt-in
   // (or variant choice) on the same submission cannot arm this group.
   const poolKeyOf = ctx.keyFor ?? (scope === 'bucket' ? shufflePoolKey : shuffleSkinKey);
@@ -595,10 +619,14 @@ export function planRandomization(options: RandomizePlanOptions): RandomizePlan 
     rng = Math.random,
     avoidCurrent = true, includeVanilla = false, keyFor,
   } = options;
+  const excludedSkinKeys = new Set([
+    ...(options.excludedSkinKeys ?? []),
+    ...getManualOnlyShuffleKeys([...heroSkins.values(), ...(globalBuckets?.values() ?? [])].flat()),
+  ]);
   const enableIds: string[] = [];
   const disableIds: string[] = [];
   const changedHeroes: number[] = [];
-  const ctx: GroupPlanContext = { included, variants, rng, avoidCurrent, enableIds, disableIds, includeVanilla, keyFor };
+  const ctx: GroupPlanContext = { included, variants, rng, avoidCurrent, enableIds, disableIds, includeVanilla, keyFor, excludedSkinKeys };
 
   for (const heroId of heroIds) {
     const mods = heroSkins.get(heroId);
@@ -622,7 +650,7 @@ export interface LaunchShufflePlanOptions {
   /** The full installed mod list (appStore `mods`). */
   mods: Mod[];
   /** Hero categories used to group skins by hero (buildHeroList output). */
-  heroList: { id: number; name: string }[];
+  heroList: readonly HeroCategory[];
   /** Pool keys (shufflePoolKey) opted into the shuffle pool. */
   included: Set<string>;
   /** Per-skin variant preferences. */
@@ -652,14 +680,15 @@ export function planLaunchShuffle(options: LaunchShufflePlanOptions): RandomizeP
   // from drifting apart. The hero list is deliberately not passed: the grouping
   // below resolves heroes itself, and mods it cannot place land in `unassigned`
   // and are dropped there.
-  const lockerSkins = mods.filter((m) => homeGroupKind(m) === 'hero');
+  const excludedSkinKeys = getManualOnlyShuffleKeys(mods);
+  const lockerSkins = mods.filter((m) => homeGroupKind(m, undefined, excludedSkinKeys) === 'hero');
   const { map } = groupModsByCategory(lockerSkins, heroList);
   // Bucket over the full mod list, not lockerSkins: getEffectiveGlobalType is
   // exactly what lockerSkins filtered out, so the two group sets partition the
   // library instead of overlapping.
   const groups = groupGlobalMods(mods);
   const globalBuckets = new Map<GlobalModType, Mod[]>(
-    GLOBAL_MOD_TYPE_ORDER.map((type) => [type, groups[type]])
+    GLOBAL_MOD_TYPE_ORDER.map((type) => [type, groups[type].filter(mod => getEffectiveGlobalType(mod) === type)])
   );
   const skins = planRandomization({
     heroSkins: map,
@@ -669,6 +698,7 @@ export function planLaunchShuffle(options: LaunchShufflePlanOptions): RandomizeP
     variants,
     rng,
     includeVanilla,
+    excludedSkinKeys,
   });
   // The sound pool is a fork addition and keeps its own namespace: it reuses
   // this planner under shuffleSoundKey rather than joining the hero/bucket

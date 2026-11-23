@@ -67,7 +67,7 @@ Built from source via the repo's flake:
 
 ```nix
 # flake.nix
-inputs.grimoire.url = "github:Slush97/grimoire";
+inputs.grimoire.url = "github:Slush97/grimoire/stable";
 
 # use the package directly
 inputs.grimoire.packages.${pkgs.system}.default
@@ -78,7 +78,27 @@ environment.systemPackages = [ pkgs.grimoire ];
 ```
 
 Exposes `packages.<system>.{grimoire,vpkmerge}` and `overlays.default`.
-Updates come through the flake, not the in-app updater.
+Updates come through the flake (`nix flake update grimoire`), not the in-app updater.
+
+The `stable` branch follows releases, and only moves once the release's Nix package has built and passed a launch test in CI. Plain `github:Slush97/grimoire` tracks `main`, which gets every change before it's released and is only tested as a Nix package once a day.
+
+Releases are prebuilt in the `grimoire` Cachix cache, so you don't have to compile it. On NixOS:
+
+```nix
+nix.settings = {
+  extra-substituters = [ "https://grimoire.cachix.org" ];
+  extra-trusted-public-keys = [ "grimoire.cachix.org-1:5Y9dQ9wk9z4BsOnkv9t8ULcsnnaJ1zSMnzOd1dV5QbA=" ];
+};
+```
+
+Rebuild with that before adding Grimoire, since a rebuild can't use a cache it's only now turning on. On other distros, add the same two settings to `/etc/nix/nix.conf` and restart the daemon (`sudo systemctl restart nix-daemon`):
+
+```
+extra-substituters = https://grimoire.cachix.org
+extra-trusted-public-keys = grimoire.cachix.org-1:5Y9dQ9wk9z4BsOnkv9t8ULcsnnaJ1zSMnzOd1dV5QbA=
+```
+
+The cache only has release builds, so you get a hit when you follow `stable` (or pin a release tag) and use the flake's own package. The overlay and `inputs.grimoire.inputs.nixpkgs.follows` both swap in your nixpkgs, which almost always means building from source.
 
 Requires Deadlock installed via Steam.
 
@@ -126,27 +146,16 @@ No telemetry. On its own, Grimoire only talks to GitHub (to check for app update
 
 ## Development
 
-Grimoire shares wire-format types with its companion service,
-[grimoire-social](https://github.com/Slush97/grimoire-social), through a
-workspace package resolved from `../grimoire-social`. Clone both side by side,
-or `pnpm install` fails with `ERR_PNPM_WORKSPACE_PKG_NOT_FOUND`. Needs Node 24+
-and pnpm 10+.
+Needs Node 24+ and pnpm 12.
 
 ```bash
 git clone https://github.com/onionviolet/grimoire.git
-git clone https://github.com/Slush97/grimoire-social.git
-
-cd grimoire-social
+cd grimoire
 pnpm install
-
-cd ../grimoire
-pnpm install
-pnpm exec electron-rebuild -f -w better-sqlite3
 pnpm dev
 ```
 
-Package builds: `pnpm package:win` or `pnpm package:linux` (both require
-`GRIMOIRE_SOCIAL_BASE_URL` set to an https URL).
+`pnpm dev` automatically rebuilds `better-sqlite3` for the installed Electron version on first run. Package builds (`pnpm package:win`, `pnpm package:linux`, `pnpm package:mac`) require `GRIMOIRE_SOCIAL_BASE_URL` set to an `https://` URL.
 
 More detail in [CONTRIBUTING.md](CONTRIBUTING.md).
 
@@ -167,21 +176,14 @@ Releases also publish [build provenance attestations](https://docs.github.com/en
 that tie each artifact back to the exact commit and workflow run that
 produced it; verify with `gh attestation verify <file> --owner onionviolet`.
 
-Windows installers are not yet code-signed, so SmartScreen will show an
-"Unknown Publisher" warning on first run: click **More info → Run
-anyway** to proceed. Free Authenticode signing through the SignPath
-Foundation OSS program is being pursued.
-
-## **PENDING** Code signing policy
-
-Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/).
-
-- Committers and reviewers: [Slush97](https://github.com/Slush97)
-- Approvers: [Slush97](https://github.com/Slush97)
-
-The full policy, including what gets signed and how, is at
-[grimoiremods.com/code-signing](https://grimoiremods.com/code-signing). Privacy:
-[what Grimoire sends and to whom](https://grimoiremods.com/docs/privacy).
+Windows builds are signed with Azure Artifact Signing since v1.34.0, and
+the publisher shows up as **Eliott Humes**. CI signs them in the same
+GitHub Actions run that builds them, and nothing built locally gets
+signed. SmartScreen can still warn about a new release for a while: if
+it names Eliott Humes, click **More info → Run anyway**. The full policy
+is at [grimoiremods.com/code-signing](https://grimoiremods.com/code-signing),
+and [what Grimoire sends and to whom](https://grimoiremods.com/docs/privacy)
+covers privacy.
 
 ## License
 

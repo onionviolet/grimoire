@@ -20,6 +20,7 @@ import {
   MenuSubTrigger,
 } from '../common/menu';
 import type { ModList } from '../../lib/modLists';
+import { ModListGlyph } from './ModListIcon';
 
 interface ModListSubmenuProps {
   lists: readonly ModList[];
@@ -38,22 +39,32 @@ export function ModListSubmenu({ lists, memberIds, onToggle, onCreateNew }: ModL
       {/* Cap the height: a user with many lists would otherwise get a submenu
           taller than the window. */}
       <MenuSubContent className="max-h-72 overflow-y-auto">
+        <ModListMenuItems lists={lists} membership={id => memberIds.includes(id)} onToggle={onToggle} onCreateNew={onCreateNew} />
+      </MenuSubContent>
+    </MenuSub>
+  );
+}
+
+export function ModListMenuItems({ lists, membership, onToggle, onCreateNew }: {
+  lists: readonly ModList[]; membership: (id: string) => boolean | 'indeterminate';
+  onToggle: (id: string) => void; onCreateNew: () => void;
+}) {
+  const { t } = useTranslation();
+  return <>
         {lists.map((list) => (
           <MenuCheckboxItem
             key={list.id}
-            checked={memberIds.includes(list.id)}
+            checked={membership(list.id)}
             onCheckedChange={() => onToggle(list.id)}
           >
-            {list.name}
+            <span className="flex items-center gap-2"><ModListGlyph icon={list.icon} />{list.name}</span>
           </MenuCheckboxItem>
         ))}
         {lists.length > 0 && <MenuSeparator />}
         <MenuItem icon={Plus} onSelect={onCreateNew}>
           {t('installed.lists.newList')}
         </MenuItem>
-      </MenuSubContent>
-    </MenuSub>
-  );
+  </>;
 }
 
 interface CreateModListModalProps {
@@ -87,7 +98,7 @@ export function CreateModListModal({ modName, onClose, onCreate }: CreateModList
         <ModalHeader
           titleId="create-mod-list-title"
           title={t('installed.lists.createTitle')}
-          subtitle={modName}
+          subtitle={modName ? t('installed.lists.addingMod', { name: modName }) : undefined}
           subtitleTitle={modName}
           onClose={onClose}
           closeLabel={t('common.actions.close')}

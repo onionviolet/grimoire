@@ -1,8 +1,8 @@
-import type { Mod, GlobalModType } from '../types/mod';
-import { inferHeroFromTitle, canonicalHeroName, GLOBAL_MOD_TYPE_LABELS, getEffectiveGlobalType, modLoadOrder } from './lockerUtils';
-import { installedVariantGroupKey } from './localVariantEligibility';
+import type { Mod } from '../types/mod';
+import { canonicalHeroName, modLoadOrder } from './lockerUtils';
+import { installedVariantGroupKey, isLocalMod } from './localVariantEligibility';
 import { modPreferenceKey } from './disabledModPrefs';
-import { heroNameForLabel } from './heroNames';
+import { getInstalledCardTaxonomy, installedTaxonomyTags, type InstalledTaxonomyContext } from './installedCardTaxonomy';
 
 /**
  * Rows on the Installed page are either standalone mods or grouped files that
@@ -58,9 +58,9 @@ export function buildModEntries(mods: Mod[]): ModEntry[] {
     }
   }
   // Singletons (only one mod for a given group key) collapse back to single
-  // entries: the group concept only matters when there are 2+ variants.
+  // entries, except when its picker still owns a shared image gallery.
   for (const [groupKey, variants] of Array.from(byGroup.entries())) {
-    if (variants.length === 1) {
+    if (variants.length === 1 && !variants[0].hasLocalGallery) {
       singles.push(variants[0]);
       byGroup.delete(groupKey);
     }
@@ -91,11 +91,12 @@ export function buildModEntries(mods: Mod[]): ModEntry[] {
     variants.sort((a, b) => a.priority - b.priority);
     const enabledVariants = variants.filter((v) => v.enabled);
     const active = enabledVariants[0] ?? null;
-    const primary = enabledVariants[0] ?? variants[0];
+    const remoteOwner = enabledVariants.find(variant => !isLocalMod(variant))
+      ?? variants.find(variant => !isLocalMod(variant));
+    const primary = remoteOwner ?? enabledVariants[0] ?? variants[0];
     const totalSize = variants.reduce((sum, v) => sum + v.size, 0);
-    // Preserve primary provenance for mod-page affordances. Whether membership
-    // is user-managed comes from the authoritative group key, not this id: an
-    // explicit local group may legitimately contain an adopted GameBanana VPK.
+    // Keep downloaded provenance for mod-page affordances, even when an
+    // imported attachment is the only enabled member.
     const gameBananaId =
       typeof primary.gameBananaId === 'number' && primary.gameBananaId > 0
         ? primary.gameBananaId
@@ -120,11 +121,9 @@ export function isEntryEnabled(entry: ModEntry): boolean {
   return entry.kind === 'single' ? entry.mod.enabled : entry.enabledVariants.length > 0;
 }
 
-/** Sort key for ordering enabled/disabled sections. Uses the primary's
- *  priority for groups so reorder math stays consistent with the existing
- *  per-mod priority system. */
+/** Groups follow their first enabled file even when another file owns the artwork. */
 export function entrySortPriority(entry: ModEntry): number {
-  return modLoadOrder(entry.kind === 'single' ? entry.mod : entry.primary);
+  return modLoadOrder(entry.kind === 'single' ? entry.mod : entry.active ?? entry.primary);
 }
 
 /** Searchable display name for an entry (the visible card title). */
@@ -169,85 +168,67 @@ export function entryInstalledAt(entry: ModEntry): string {
   );
 }
 
-/** Whether membership/name are user-managed. Explicit local identity wins over
- * adopted GameBanana provenance, matching variantGroupKey and the main process. */
+/** Bytes on disk across every file the card stands for (the size it shows). */
+export function entrySize(entry: ModEntry): number {
+  return entry.kind === 'single' ? entry.mod.size : entry.totalSize;
+}
+
+/** A group exposes local-only controls only when every file is locally imported. */
 export function entryIsLocal(entry: ModEntry): boolean {
-  return entry.kind === 'single'
-    ? !!entry.mod.localGroupId ||
-        !(typeof entry.mod.gameBananaId === 'number' && entry.mod.gameBananaId > 0)
-    : entry.groupKey.startsWith('local:');
+  return entry.kind === 'single' ? isLocalMod(entry.mod) : entry.variants.every(isLocalMod);
 }
 
-export const OTHER_TAG_KEY = 'other';
-
-function heroNameFromTag(label?: string): string | null {
-  if (!label) return null;
-  const direct = heroNameForLabel(label);
-  if (direct) return canonicalHeroName(direct);
-  for (const part of label.split(/[/>]/).map((p) => p.trim()).filter(Boolean).reverse()) {
-    const match = heroNameForLabel(part);
-    if (match) return canonicalHeroName(match);
-  }
-  return null;
-}
-
-function modHeroName(mod: Mod): string | null {
-  const tagged = canonicalHeroName(mod.lockerHero);
-  if (tagged) return tagged;
-  const categoryHero = heroNameFromTag(mod.categoryName);
-  if (categoryHero) return categoryHero;
-  const section = (mod.sourceSection ?? '').toLowerCase();
-  if (section.includes('sound')) {
-    const inferred = inferHeroFromTitle(mod.name);
-    return inferred ? canonicalHeroName(inferred) : null;
-  }
-  return null;
-}
-
-export function entryHeroNames(entry: ModEntry): string[] {
+export function entryHeroNames(entry: ModEntry, context?: InstalledTaxonomyContext): string[] {
   const mods = entry.kind === 'single' ? [entry.mod] : entry.variants;
-  return Array.from(new Set(mods.map(modHeroName).filter((name): name is string => !!name)));
+  return Array.from(new Set(
+    mods.flatMap((mod) => getInstalledCardTaxonomy(mod, context).heroNames)
+  ));
 }
 
-export function tagKeyLabel(key: string): string {
-  if (key === OTHER_TAG_KEY) return 'Other';
-  if (key === 'section:sound') return 'Sounds';
-  if (key.startsWith('global:')) {
-    const gt = key.slice('global:'.length) as GlobalModType;
-    return GLOBAL_MOD_TYPE_LABELS[gt] ?? gt;
+export interface EntrySwapTarget { key: string; name: string; heroNames: string[] }
+
+/** Match disabled cards to enabled cards using the same resolved hero tags.
+ * Disabled variants cannot make an enabled group eligible for another hero. */
+export function buildEntrySwapTargets(entries: readonly ModEntry[], context?: InstalledTaxonomyContext): Map<string, EntrySwapTarget[]> {
+  const byHero = new Map<string, EntrySwapTarget[]>();
+  for (const entry of entries) {
+    const enabled = entry.kind === 'single' ? [entry.mod].filter(mod => mod.enabled) : entry.enabledVariants;
+    const heroes = new Map(enabled.flatMap(mod => getInstalledCardTaxonomy(mod, context).heroNames)
+      .map(hero => { const name = canonicalHeroName(hero); return [name.toLowerCase(), name]; }));
+    const target = { key: entry.key, name: entryName(entry), heroNames: [...heroes.values()] };
+    for (const hero of heroes.keys()) {
+      const matches = byHero.get(hero) ?? [];
+      matches.push(target);
+      byHero.set(hero, matches);
+    }
   }
-  if (key.startsWith('cat:')) return key.slice('cat:'.length);
-  if (key.startsWith('section:')) return key.slice('section:'.length);
-  return key;
+  const targets = new Map<string, EntrySwapTarget[]>();
+  for (const entry of entries) {
+    if (isEntryEnabled(entry)) continue;
+    const matches = new Map<string, EntrySwapTarget>();
+    for (const hero of entryHeroNames(entry, context)) {
+      for (const candidate of byHero.get(canonicalHeroName(hero).toLowerCase()) ?? []) {
+        matches.set(candidate.key, candidate);
+      }
+    }
+    if (matches.size) targets.set(entry.key, [...matches.values()]);
+  }
+  return targets;
 }
 
-function modTagKeys(mod: Mod): string[] {
-  const keys: string[] = [];
-  const labels = new Set<string>();
-  const add = (key: string) => {
-    const labelKey = tagKeyLabel(key).trim().toLowerCase();
-    if (!labelKey || labels.has(labelKey)) return;
-    labels.add(labelKey);
-    keys.push(key);
-  };
-
-  const global = getEffectiveGlobalType(mod);
-  if (global) add(`global:${global}`);
-
-  const section = (mod.sourceSection ?? '').trim();
-  if (section.toLowerCase().includes('sound')) add('section:sound');
-
-  const category = mod.categoryName?.trim();
-  if (category && !heroNameFromTag(category)) add(`cat:${category}`);
-
-  if (keys.length === 0 && section && section !== 'Mod') add(`section:${section}`);
-  if (keys.length === 0) add(OTHER_TAG_KEY);
-  return keys;
+export interface InstalledTag {
+  key: string;
+  label: string;
 }
 
-export function entryTagKeys(entry: ModEntry): string[] {
+function modTags(mod: Mod, context?: InstalledTaxonomyContext): InstalledTag[] {
+  const taxonomy = getInstalledCardTaxonomy(mod, context);
+  return installedTaxonomyTags(taxonomy, mod.sourceSection).map(label => ({ key: `tag:${label.toLowerCase()}`, label }));
+}
+
+export function entryTags(entry: ModEntry, context?: InstalledTaxonomyContext): InstalledTag[] {
   const mods = entry.kind === 'single' ? [entry.mod] : entry.variants;
-  return Array.from(new Set(mods.flatMap(modTagKeys)));
+  return [...new Map(mods.flatMap(mod => modTags(mod, context)).map(tag => [tag.key, tag])).values()];
 }
 
 export function flattenEntries(entries: ModEntry[]): Mod[] {
@@ -255,7 +236,7 @@ export function flattenEntries(entries: ModEntry[]): Mod[] {
 }
 
 export function entryRepresentativeId(entry: ModEntry): string {
-  return entry.kind === 'single' ? entry.mod.id : entry.primary.id;
+  return entry.kind === 'single' ? entry.mod.id : (entry.active ?? entry.primary).id;
 }
 
 export function entryDisabledPreferenceKey(entry: ModEntry): string {

@@ -1,4 +1,7 @@
 import { EyeOff } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { movementFxThumbnail } from '../lib/movementFxThumbnail';
+import type { MovementFxChoice } from '../lib/movementFx';
 import { useTranslation } from 'react-i18next';
 import type { MergedModSource } from '../types/mod';
 import { getHeroRenderPath } from '../lib/lockerUtils';
@@ -9,6 +12,7 @@ import { RevealImage } from './common/RevealImage';
 
 interface ModThumbnailProps {
   src?: string;
+  movementFx?: MovementFxChoice;
   alt: string;
   nsfw?: boolean;
   hideNsfw?: boolean;
@@ -44,6 +48,7 @@ interface ModThumbnailProps {
 
 export default function ModThumbnail({
   src,
+  movementFx,
   alt,
   nsfw,
   hideNsfw,
@@ -61,6 +66,16 @@ export default function ModThumbnail({
   priority,
 }: ModThumbnailProps) {
   const { t } = useTranslation();
+  const [effectThumbnail, setEffectThumbnail] = useState<{ choice: MovementFxChoice; src: string }>();
+  useEffect(() => {
+    let cancelled = false;
+    if (!src && movementFx) {
+      void movementFxThumbnail(movementFx).then(value => {
+        if (!cancelled) setEffectThumbnail({ choice: movementFx, src: value });
+      }).catch((error: unknown) => console.warn('[movementFx] Thumbnail:', error));
+    }
+    return () => { cancelled = true; };
+  }, [src, movementFx]);
   const shouldBlur = nsfw && hideNsfw;
   // Hero portrait wins over the uploader's thumbnail, then any real thumbnail,
   // then the DeadlockForge badge. The badge is last so a forge sound mod still
@@ -68,7 +83,7 @@ export default function ModThumbnail({
   // because neither is a user-uploaded image.
   const forgeBadge = forgeInstalled && !src ? getForgeBadgePath() : undefined;
   const sizedSrc = src && width ? sizeGameBananaThumbUrl(src, width, currentPixelRatio(), height) : src;
-  const resolvedSrc = heroPortrait ? getHeroRenderPath(heroPortrait) : (sizedSrc ?? forgeBadge);
+  const resolvedSrc = heroPortrait ? getHeroRenderPath(heroPortrait) : (sizedSrc ?? (effectThumbnail?.choice === movementFx ? effectThumbnail?.src : undefined) ?? forgeBadge);
   const resolvedBlur = heroPortrait || forgeBadge ? false : shouldBlur;
 
   // Collage path: only when there's no explicit src and we have sources to
@@ -97,7 +112,7 @@ export default function ModThumbnail({
   }
 
   const thumbnail = (
-    <div className={`relative overflow-hidden ${className}`}>
+    <div className={`relative overflow-hidden ${className}`} data-nsfw-blurred={resolvedBlur || undefined}>
       <div className={`w-full h-full ${imageClassName}`}>
         <RevealImage
           src={resolvedSrc}
@@ -112,7 +127,7 @@ export default function ModThumbnail({
         />
       </div>
       {resolvedBlur && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-bg-primary/40">
+        <div data-nsfw-overlay className="absolute inset-0 flex flex-col items-center justify-center bg-bg-primary/40">
           <EyeOff className="w-4 h-4 text-white/70" />
           <span className="text-[9px] text-white/70 mt-0.5">{t('modThumbnail.nsfw')}</span>
         </div>
@@ -147,7 +162,7 @@ function MergedCollage({ sources, alt, className, shouldBlur, enableImageContext
   const { t } = useTranslation();
   const { cells, cols } = buildCollage(sources);
   return (
-    <div className={`relative overflow-hidden bg-bg-tertiary ${className}`}>
+    <div className={`relative overflow-hidden bg-bg-tertiary ${className}`} data-nsfw-blurred={shouldBlur || undefined}>
       <div
         className="grid w-full h-full gap-px bg-bg-tertiary"
         style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
@@ -191,7 +206,7 @@ function MergedCollage({ sources, alt, className, shouldBlur, enableImageContext
         ))}
       </div>
       {shouldBlur && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-bg-primary/40 pointer-events-none">
+        <div data-nsfw-overlay className="absolute inset-0 flex flex-col items-center justify-center bg-bg-primary/40 pointer-events-none">
           <EyeOff className="w-4 h-4 text-white/70" />
           <span className="text-[9px] text-white/70 mt-0.5">{t('modThumbnail.nsfw')}</span>
         </div>

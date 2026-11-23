@@ -1,3 +1,4 @@
+import { isLocalMod } from '../../../src/lib/localVariantEligibility';
 import { ipcMain, shell } from 'electron';
 import { listMergeRecipes, saveMergeRecipe, reviewMergeRecipe } from '../services/mergeRecipes';
 import { modSafetySnapshot } from '../services/modSafety';
@@ -5,7 +6,8 @@ import { reserveOutputSlot } from '../services/modMerger';
 import { checkOutdatedVdata, outdatedVdataSnapshot, staleModelsSnapshot } from '../services/vdataCheck';
 import { healModAttachments } from '../services/attachmentHeal';
 import { repairModCompatibility, reviewModCompatibility } from '../services/compatibilityHeal';
-import { importDisabledVpk } from '../services/importDisabledVpk';
+import { importDisabledVpk, prepareLocalImport, getPreparedLocalImport, withPreparedLocalImport, releaseLocalImport } from '../services/importDisabledVpk';
+import { getLocalModGallery, hasLocalModGallery, localModGalleryThumbnail, setLocalModGallery } from '../services/lockerModImages';
 import { randomUUID } from 'node:crypto';
 import { promises as fs, existsSync } from 'fs';
 import { extname, basename, join, resolve, sep } from 'path';
@@ -21,19 +23,19 @@ import {
     deleteMods,
     deleteModsUnlocked,
     setModPriority,
+    setModPriorityFolder,
     reorderMods,
     swapModPriority,
     setModsEnabledBatch,
-    setModPriorityFolder,
+    swapEnabledMods,
     installEnabledVpk,
     allocateEnabledVpkPath,
     runExclusiveModMutation,
     type Mod,
 } from '../services/mods';
 import { metaKeyFor } from '../services/deadlock';
-import { getModMetadata, setModMetadata, setModMetadataWithHash, removeModMetadata, type ModMetadata } from '../services/metadata';
-import { inferHeroFromTitle } from '@grimoire/social-types/heroes';
-import { inferHeroFromVpk, classifyGlobalModFromVpk, GLOBAL_CLASSIFIER_VERSION, parseVpkDirectory, parseVpkDirectoriesAsync, checkVpkFile, invalidateVpkParseCache } from '../services/vpk';
+import { getModMetadata, loadMetadata, setModMetadata, setModMetadataWithHash, removeModMetadata, type ModMetadata } from '../services/metadata';
+import { parseVpkDirectory, parseVpkDirectoryCached, parseVpkDirectoriesAsync, checkVpkFile, invalidateVpkParseCache } from '../services/vpk';
 import {
     reconcileInstalledVpks,
     repairVpkImpostor,
@@ -42,6 +44,11 @@ import {
 } from '../services/vpkImpostors';
 import { inspectFoundrySoundWriteSet } from '../services/foundrySoundConflicts';
 import { inspectFoundryAssetSources } from '../services/foundryAssetSources';
+import { bodyModelHeroes } from '../services/heroPoseModels';
+import { resolveModClassification, needsModHeroDetection } from '../services/modHeroDetection';
+import { fetchCategoryTreeCached, readCachedCategoryPaths, observeCategoryTreeChanges } from '../services/gamebanana';
+import { baseTagGlobalType, categoryModelForSection, GLOBAL_MOD_TYPE_LABELS, normalizeCategoryLabel, resolveCategoryPath, type CategoryPaths } from '../../../src/lib/categoryPaths';
+import { canonicalSupportedHeroName } from '../services/heroCodenames';
 import { notifyModChanges } from '../services/modChangeObservation';
 import { classifyAbilitySoundsFromVpk } from '../services/abilitySounds';
 import { migrateIgnoredConflictKeysForMods } from '../services/conflicts';
@@ -51,7 +58,6 @@ import {
     detectUnknownModCacheMatches,
     detectUnknownModFilters,
     emptyCrcMatch,
-    inferHeroFromVpkTree,
     type UnknownModCacheMatchInput,
     type UnknownModFilterGuess,
 } from '../services/unknownModDetection';
@@ -91,14 +97,18 @@ import { buildSpiritUrnVpk, cleanupSpiritUrnBuild, previewSpiritUrnGlb } from '.
 import { resolveModVpk, clearSoulModelCache } from '../services/soulContainerModels';
 import { exportVpkViaDialog, exportVpkFileName } from '../services/foundryExport';
 import { getMainWindow } from '../index';
-import { assertCompatibleLocalVariantClassifications, planLocalVariantGroup, resolveLocalVariantGroupProfile, type LocalVariantGroupMember, type LocalVariantGroupProfile } from '../services/localVariantGroup';
+import { planLocalVariantGroup, resolveLocalVariantGroupProfile, type LocalVariantGroupProfile } from '../services/localVariantGroup';
 import { refreshEmbedAfterMetadataChange, toLocalVariantGroupMember } from '../services/modReplacement';
-import { resolveImportedVariantLabel } from '../../../src/lib/customModImport';
-import type { ImportCustomModArgs, ImportCustomModsBatchArgs, ImportCustomModsBatchResult, ImportCustomModResult, ImportCustomModsProgress, ImportSoulContainerGlbArgs, PreviewSoulContainerGlbArgs, SoulContainerPreview, ImportSpiritUrnGlbArgs, PreviewSpiritUrnGlbArgs, SpiritUrnPreview, LocalVariantGroupTarget, SetLocalVariantGroupResult } from '../../../src/types/electron';
+import { planLocalImport } from '../../../src/lib/customModImport';
+import type { PreparedLocalModImport, ImportCustomModArgs, ImportCustomModsBatchArgs, ImportCustomModsBatchResult, ImportCustomModResult, ImportCustomModsProgress, ImportSoulContainerGlbArgs, LocalVariantGroupTarget, PreviewSoulContainerGlbArgs, SetLocalVariantGroupResult, SoulContainerPreview, ImportSpiritUrnGlbArgs, PreviewSpiritUrnGlbArgs, SpiritUrnPreview } from '../../../src/types/electron';
 import type { VpkExportResult, HeroSoundSwapRequest, TextureReplacementRequest, FoundryForgeRequest, FoundrySoundConflictInspection, FoundryAssetSourcesInspection } from '../../../src/types/foundry';
-import type { AbilitySoundClassification, AddMergeSourcesResult, ApplyUnknownCustomModArgs, ApplyUnknownModMatchArgs, AssociateUnknownModArgs, EditLocalModArgs, GlobalModType, LockerHeroSource, MergeAnalysisResult, MergeModsArgs, Mod as WireMod, SoulContainerImportInfo, SoundSwapInfo, UrnImportInfo, UnmergeModResult, ExtractMergeSourceResult, UnknownModFileList, ImprintPreflightResult, ImprintDetails, PeekImprintResult, ModelCompatibilityReport, MergeSourceReplacement, ReplaceMergeSourcesResult, DeleteModEntry, DeleteModsResult } from '../../../src/types/mod';
+import type { AbilitySoundClassification, AddMergeSourcesResult, DeleteModEntry, ModSwapPlacement, DeleteModsResult, MergeSourceReplacement, ReplaceMergeSourcesResult, ApplyUnknownCustomModArgs, ApplyUnknownModMatchArgs, AssociateUnknownModArgs, EditLocalModArgs, GlobalModType, LockerHeroSource, MergeAnalysisResult, MergeModsArgs, Mod as WireMod, SoulContainerImportInfo, SoundSwapInfo, UrnImportInfo, UnmergeModResult, ExtractMergeSourceResult, UnknownModFileList, ImprintPreflightResult, ImprintDetails, PeekImprintResult, ModelCompatibilityReport } from '../../../src/types/mod';
 
 const unknownDetectionControllers = new Map<string, AbortController>();
+
+observeCategoryTreeChanges(model => {
+    getMainWindow()?.webContents.send('gamebanana-categories-changed', model);
+});
 
 function assertActiveModInstallation(deadlockPath: string, devMode: boolean): void {
     if (getActiveDeadlockPath() !== deadlockPath || loadSettings().devMode !== devMode) {
@@ -152,101 +162,6 @@ interface UnknownCacheBulkRequest {
     requestId?: string;
 }
 
-/**
- * Enrich mod with metadata.
- *
- * For Sound mods without a stored lockerHero, lazily infer one from the mod
- * name and persist it. The infer call is cheap (substring + a few regexes per
- * hero) but writing back means follow-up scans skip the work and the manual
- * override path has a stable field to overwrite.
- */
-/**
- * Resolve a mod's Locker global type, classifying from the VPK tree when it has
- * not been classified yet OR when an older classifier version produced a stale
- * `null` ("not global") result. A positive type is left untouched (except a
- * stale 'icons', below): it may be a manual override. Runs for mods
- * with no metadata row too (a VPK dropped straight into citadel/addons), so
- * locally added HUD / Soul Container mods get tagged like downloaded ones.
- * Persists the result + classifier version so later scans skip the re-parse.
- *
- * Foundry sound swaps are exempt from classification entirely. A swap's file
- * tree is not its own: it mirrors whatever event it overrides, so path sniffing
- * reads the *game's* layout rather than the mod's intent. An item-sound swap
- * mints into `sounds/mods/`, which ANNOUNCER_PATTERN claims, and the resulting
- * 'announcer' type then excludes it from the Locker's Sounds bucket (which
- * filters on `!getEffectiveGlobalType`). That is 295 of the 1100 indexed global
- * events, essentially the whole `item` category. The Foundry already decided
- * placement at install time, so its decision stands; an explicit user retag
- * (a stored positive `globalType`) still wins.
- */
-function resolveGlobalType(
-    mod: Mod,
-    metadata: ReturnType<typeof getModMetadata>
-): import('../../../src/types/mod').GlobalModType | null {
-    // An installed Foundry build has the same problem as a sound swap: its file
-    // tree is the *game's* layout for whatever it overrides, not a statement of
-    // its own intent, so path sniffing would mislabel it. Foundry already
-    // decided placement at install time; an explicit user retag still wins.
-    if (metadata?.soundSwap || metadata?.foundryBuild) return metadata.globalType ?? null;
-    const current = metadata?.globalType;
-    const stamped = metadata?.globalTypeClassifierVersion ?? 0;
-    // Classifier v3 and earlier filed single-hero card packs as 'icons' (see
-    // heroImageHeroes in vpk.ts), so a stale 'icons' result is re-run too.
-    const needsClassify =
-        current === undefined ||
-        ((current === null || current === 'icons') && stamped < GLOBAL_CLASSIFIER_VERSION);
-    if (!needsClassify) return current;
-    let classified: ReturnType<typeof classifyGlobalModFromVpk> = null;
-    try {
-        classified = classifyGlobalModFromVpk(mod.path);
-    } catch (err) {
-        console.warn(`[enrichMod] VPK global-type classification failed for ${mod.fileName}:`, err);
-    }
-    setModMetadata(mod.metaKey, {
-        globalType: classified,
-        globalTypeClassifierVersion: GLOBAL_CLASSIFIER_VERSION,
-    });
-    return classified;
-}
-
-/**
- * File-tree hero tag for UNKNOWN mods. Known mods get their hero from the
- * GameBanana category; unknown skins have no metadata, so we infer the hero
- * from the VPK tree (inferHeroFromVpkTree, which recognizes skins, not just
- * sound mods) and tag it like a downloaded mod so the Locker chip + icon show.
- * Only accepts a confident (strong/medium) signal to avoid mislabeling, and
- * stamps lockerHeroVpkChecked so a "no hero found" result isn't re-parsed every
- * scan. A recognized global cosmetic (soul container, HUD, ...) isn't per-hero,
- * so it's skipped entirely.
- */
-function resolveUnknownLockerHero(
-    mod: Mod,
-    metadata: ReturnType<typeof getModMetadata>,
-    isUnknown: boolean,
-    globalType: GlobalModType | null
-): { lockerHero?: string; lockerHeroSource?: LockerHeroSource } {
-    if (!isUnknown) return {};
-    if (metadata?.lockerHero) {
-        return { lockerHero: metadata.lockerHero, lockerHeroSource: metadata.lockerHeroSource };
-    }
-    if (globalType) return {};
-    if (metadata?.lockerHeroVpkChecked) return {};
-
-    let lockerHero: string | undefined;
-    let lockerHeroSource: LockerHeroSource | undefined;
-    try {
-        const guess = inferHeroFromVpkTree(mod.path);
-        if (guess && guess.strongestSignal !== 'weak') {
-            lockerHero = guess.name;
-            lockerHeroSource = 'vpk';
-        }
-    } catch (err) {
-        console.warn(`[enrichMod] VPK-tree hero inference failed for ${mod.fileName}:`, err);
-    }
-    setModMetadata(mod.metaKey, { lockerHero, lockerHeroVpkChecked: true });
-    return { lockerHero, lockerHeroSource };
-}
-
 async function copyIntoModSlot(
     sourcePath: string,
     destPath: string,
@@ -265,162 +180,143 @@ async function copyIntoModSlot(
     }
 }
 
-function enrichMod(mod: Mod): WireMod {
-    const metadata = getModMetadata(mod.metaKey);
+const BODY_MODEL_DETECTION_VERSION = 1;
+
+function hasBodyModelDetection(mod: Mod, metadata: ModMetadata | undefined): boolean {
+    const previous = metadata?.bodyModelDetection;
+    return previous?.version === BODY_MODEL_DETECTION_VERSION && previous.size === mod.size
+        && previous.modifiedAt === mod.installedAt && previous.sha256 === metadata?.sha256;
+}
+
+function enrichMod(mod: Mod, categoryPaths = new Map<string, CategoryPaths | undefined>(), sharedNsfw?: ReadonlySet<string>): WireMod {
+    const metadata = getModMetadata(mod.metaKey) ?? {};
+    const galleryOwned = isLocalMod(metadata) && !!metadata.localGroupId && hasLocalModGallery(metadata.localGroupId);
+    const nsfw = metadata.nsfw || galleryOwned && (sharedNsfw
+        ? sharedNsfw.has(metadata.localGroupId!)
+        : Object.values(loadMetadata()).some(peer => peer.localGroupId === metadata.localGroupId && peer.nsfw));
     const isUnknown =
         !metadata?.gameBananaId &&
         !(typeof metadata?.modName === 'string' && metadata.modName.trim().length > 0);
-    // Classify the global (non-hero) cosmetic type for EVERY scanned VPK, even
-    // ones with no metadata row, so locally added mods get tagged like
-    // downloaded ones. resolveGlobalType persists the result + classifier
-    // version so subsequent scans skip the parse.
-    const globalType = resolveGlobalType(mod, metadata);
-    if (metadata) {
-        let lockerHero = metadata.lockerHero;
-        let lockerHeroSource = metadata.lockerHeroSource;
-        if (!lockerHero && metadata.sourceSection === 'Sound') {
-            // Title match first because it's O(1) regex; only crack open the
-            // VPK if the title gave us nothing. The VPK path is authoritative
-            // (parses real Source 2 codenames like `ghost` → Lady Geist) but
-            // costs a disk read + directory tree parse per call.
-            let inferred: string | null = inferHeroFromTitle(metadata.modName || mod.name);
-            let inferredSource: typeof lockerHeroSource = inferred ? 'title' : undefined;
-            if (!inferred) {
-                try {
-                    inferred = inferHeroFromVpk(mod.path);
-                    inferredSource = inferred ? 'vpk' : undefined;
-                } catch (err) {
-                    console.warn(`[enrichMod] VPK hero inference failed for ${mod.fileName}:`, err);
-                }
-            }
-            if (inferred) {
-                setModMetadata(mod.metaKey, { lockerHero: inferred, lockerHeroSource: inferredSource });
-                lockerHero = inferred;
-                lockerHeroSource = inferredSource;
-            }
-        } else if (!lockerHero && isUnknown) {
-            // Unknown mod (no GameBanana category to lean on): tag the hero from
-            // the VPK tree so the card/Locker show the same chip as known mods.
-            const resolved = resolveUnknownLockerHero(mod, metadata, isUnknown, globalType);
-            lockerHero = resolved.lockerHero;
-            lockerHeroSource = resolved.lockerHeroSource;
+    const model = categoryModelForSection(metadata.sourceSection);
+    if (!categoryPaths.has(model)) categoryPaths.set(model, readCachedCategoryPaths(model));
+    const classification = resolveModClassification(mod, metadata, categoryPaths.get(model));
+    const { lockerHero, lockerHeroSource, lockerHeroes, propTypes, metadataPatch, detectedTags } = classification;
+    // A Foundry sound swap or installed Foundry build mirrors the game's own
+    // file layout for whatever it overrides, so path sniffing would mislabel it
+    // (an item-sound swap mints into sounds/mods/, which reads as announcer and
+    // drops it out of the Locker's Sounds bucket). Foundry decided placement at
+    // install time; an explicit user retag (a stored globalType) still wins.
+    const globalType = metadata.soundSwap || metadata.foundryBuild
+        ? metadata.globalType ?? undefined
+        : classification.globalType;
+    const patch: ModMetadata = { ...metadataPatch };
+    // Ability-slot analysis shares the warmed VPK directory with hero
+    // detection. Null records a successful check with no recognized audio.
+    let abilitySounds = metadata.abilitySounds;
+    if (abilitySounds === undefined) {
+        let classified: AbilitySoundClassification | null = null;
+        try {
+            const result = classifyAbilitySoundsFromVpk(mod.path);
+            // Store null ("checked, none") unless a recognized hero matched,
+            // so skins and non-sound mods skip the re-parse on later scans.
+            classified = result && result.dominantHero ? result : null;
+        } catch (err) {
+            console.warn(`[enrichMod] VPK ability-sound classification failed for ${mod.fileName}:`, err);
         }
-        // Per-ability sound footprint. Same lazy + persist + null-sentinel
-        // pattern as globalType, and it shares the cached VPK parse, so the two
-        // classifications cost one directory read between them. Lets the
-        // per-ability sound picker know which abilities a mod offers a sound for.
-        let abilitySounds = metadata.abilitySounds;
-        if (abilitySounds === undefined) {
-            let classified: AbilitySoundClassification | null = null;
-            try {
-                const result = classifyAbilitySoundsFromVpk(mod.path);
-                // Store null ("checked, none") unless a recognized hero matched,
-                // so skins and non-sound mods skip the re-parse on later scans.
-                classified = result && result.dominantHero ? result : null;
-            } catch (err) {
-                console.warn(`[enrichMod] VPK ability-sound classification failed for ${mod.fileName}:`, err);
-            }
-            setModMetadata(mod.metaKey, { abilitySounds: classified });
-            abilitySounds = classified;
-        }
-        return {
-            ...mod,
-            safety: modSafetySnapshot(mod.path),
-            outdatedVdata: outdatedVdataSnapshot(mod.path),
-            staleModels: staleModelsSnapshot(mod.path),
-            // Use the stored mod name from GameBanana if available
-            name: metadata.modName || mod.name,
-            thumbnailUrl: metadata.thumbnailUrl,
-            audioUrl: metadata.audioUrl,
-            gameBananaId: metadata.gameBananaId,
-            gameBananaFileId: metadata.gameBananaFileId,
-            vpkIndex: metadata.vpkIndex,
-            archiveVpkPath: metadata.archiveVpkPath,
-            categoryId: metadata.categoryId,
-            categoryName: metadata.categoryName,
-            sourceSection: metadata.sourceSection,
-            nsfw: metadata.nsfw,
-            isArchived: metadata.isArchived,
-            sha256: metadata.sha256,
-            isUnknown,
-            variantLabel: metadata.variantLabel,
-            fileDescription: metadata.fileDescription,
-            sourceFileName: metadata.sourceFileName,
-            localGroupId: metadata.localGroupId,
-            lockerHero,
-            lockerHeroSource,
-            globalType: globalType ?? undefined,
-            merged: metadata.merged,
-            forgeInstall: metadata.forgeInstall,
-            lockerCosmetics: metadata.lockerCosmetics,
-            lockerSounds: metadata.lockerSounds,
-            abilitySounds: abilitySounds ?? undefined,
-            soulImport: metadata.soulImport,
-            urnImport: metadata.urnImport,
-            soundSwap: metadata.soundSwap,
-            textureReplacement: metadata.textureReplacement,
-            foundryBuild: metadata.foundryBuild,
-            ignoreUpdates: metadata.ignoreUpdates,
-            priorityMod: metadata.priorityMod,
-            imprinted: metadata.imprinted,
-            imprintStale: metadata.imprintStale,
-        };
+        patch.abilitySounds = classified;
+        abilitySounds = classified;
     }
-    // No metadata row (a VPK dropped straight into addons): run the same sound
-    // footprint detection as downloaded Sound mods. This lets a locally placed
-    // audio VPK appear in the per-ability picker without GameBanana metadata.
-    let abilitySounds: AbilitySoundClassification | null = null;
-    try {
-        const result = classifyAbilitySoundsFromVpk(mod.path);
-        abilitySounds = result && result.dominantHero ? result : null;
-    } catch (err) {
-        console.warn(`[enrichMod] VPK ability-sound classification failed for ${mod.fileName}:`, err);
+    let bodyModels = metadata.bodyModelDetection;
+    if (!hasBodyModelDetection(mod, metadata)) {
+        const paths = parseVpkDirectoryCached(mod.path);
+        bodyModels = paths ? { version: BODY_MODEL_DETECTION_VERSION, size: mod.size, modifiedAt: mod.installedAt,
+            sha256: metadata.sha256, heroes: bodyModelHeroes(paths) } : undefined;
+        if (bodyModels) patch.bodyModelDetection = bodyModels;
     }
-    const resolved = resolveUnknownLockerHero(mod, metadata, isUnknown, globalType);
-    const lockerHero = abilitySounds?.dominantHero ?? resolved.lockerHero;
-    const lockerHeroSource = abilitySounds?.dominantHero ? 'vpk' : resolved.lockerHeroSource;
-    if (abilitySounds) setModMetadata(mod.metaKey, { abilitySounds });
+    if (Object.keys(patch).length > 0) setModMetadata(mod.metaKey, patch);
     return {
         ...mod,
         safety: modSafetySnapshot(mod.path),
         outdatedVdata: outdatedVdataSnapshot(mod.path),
         staleModels: staleModelsSnapshot(mod.path),
+        // Use the stored mod name from GameBanana if available
+        name: metadata.modName || mod.name,
+        thumbnailUrl: galleryOwned ? localModGalleryThumbnail(metadata.localGroupId!) : metadata.thumbnailUrl,
+        ...(galleryOwned ? { hasLocalGallery: true } : {}),
+        audioUrl: metadata.audioUrl,
+        gameBananaId: metadata.gameBananaId,
+        gameBananaFileId: metadata.gameBananaFileId,
+        vpkIndex: metadata.vpkIndex,
+        archiveVpkPath: metadata.archiveVpkPath,
+        categoryId: metadata.categoryId,
+        categoryName: metadata.categoryName,
+        sourceSection: metadata.sourceSection,
+        nsfw,
+        isArchived: metadata.isArchived,
+        sha256: metadata.sha256,
         isUnknown,
-        globalType: globalType ?? undefined,
+        variantLabel: metadata.variantLabel,
+        fileDescription: metadata.fileDescription,
+        sourceFileName: metadata.sourceFileName,
+        localGroupId: metadata.localGroupId,
+        localImport: metadata.localImport,
         lockerHero,
         lockerHeroSource,
+        lockerHeroes,
+        tagOverrides: metadata.tagOverrides,
+        detectedTags,
+        globalTypeSource: metadata.globalTypeSource,
+        globalType: globalType ?? undefined,
+        propTypes,
+        bodyModelHeroes: bodyModels?.heroes,
+        merged: metadata.merged,
+        forgeInstall: metadata.forgeInstall,
+        lockerCosmetics: metadata.lockerCosmetics,
+        lockerSounds: metadata.lockerSounds,
         abilitySounds: abilitySounds ?? undefined,
+        soulImport: metadata.soulImport,
+        urnImport: metadata.urnImport,
+        soundSwap: metadata.soundSwap,
+        textureReplacement: metadata.textureReplacement,
+        foundryBuild: metadata.foundryBuild,
+        skinEdit: metadata.skinEdit,
+        movementFx: metadata.movementFx,
+        ignoreUpdates: metadata.ignoreUpdates,
+        priorityMod: metadata.priorityMod,
+        imprinted: metadata.imprinted,
+        imprintStale: metadata.imprintStale,
     };
+}
+
+function enrichMods(mods: readonly Mod[], categoryPaths = new Map<string, CategoryPaths | undefined>()): WireMod[] {
+    const sharedNsfw = new Set(Object.values(loadMetadata()).filter(meta => meta.localGroupId && meta.nsfw).map(meta => meta.localGroupId!));
+    return mods.map(mod => enrichMod(mod, categoryPaths, sharedNsfw));
 }
 
 /**
  * Will enrichMod crack open this mod's VPK? Mirrors (conservatively
- * over-approximates) the lazy-classification predicates above: globalType not
- * yet classified at the current version, abilitySounds never checked, a Sound
- * mod with no hero tag yet (the parse only happens when title inference fails,
- * which we don't pre-compute; a wasted warm parse is harmless), or an unknown
- * mod whose tree hasn't been hero-checked. Every positive persists to
- * metadata, so this is a first-scan-only cost per mod.
+ * over-approximates) the detection predicates above: ability sounds or body
+ * models never checked (or stale), Sound/WiP/HUD hero detection missing or
+ * stale, or a local mod whose tree has not been hero-checked. The worker pool
+ * keeps cold parsing off the main thread.
  */
-function needsVpkParseForEnrich(mod: Mod): boolean {
+function needsVpkParseForEnrich(mod: Mod, categoryPaths: Map<string, CategoryPaths | undefined>): boolean {
     const metadata = getModMetadata(mod.metaKey);
-    const globalTypeStamped = metadata?.globalTypeClassifierVersion ?? 0;
-    if (metadata?.globalType === undefined) return true;
-    if ((metadata.globalType === null || metadata.globalType === 'icons') && globalTypeStamped < GLOBAL_CLASSIFIER_VERSION) return true;
-    if (metadata.abilitySounds === undefined) return true;
-    if (!metadata.lockerHero && metadata.sourceSection === 'Sound') return true;
-    const isUnknown =
-        !metadata.gameBananaId &&
-        !(typeof metadata.modName === 'string' && metadata.modName.trim().length > 0);
-    if (isUnknown && !metadata.lockerHero && !metadata.lockerHeroVpkChecked) return true;
-    return false;
+    if (metadata?.abilitySounds === undefined || !hasBodyModelDetection(mod, metadata)) return true;
+    const model = categoryModelForSection(metadata.sourceSection);
+    if (!categoryPaths.has(model)) categoryPaths.set(model, readCachedCategoryPaths(model));
+    return needsModHeroDetection(mod, metadata, categoryPaths.get(model));
 }
 
 function sameKeys(a: string[], b: string[]): boolean {
     return a.length === b.length && a.every((key, index) => key === b[index]);
 }
 
-function migrateIgnoredConflictKeysBeforeRenames(mods: Mod[]): void {
+async function migrateIgnoredConflictKeysBeforeRenames(deadlockPath: string): Promise<void> {
+    // Most libraries have nothing to migrate. Avoid a full inventory read in
+    // that case, but reload settings after the scan before saving any changes.
+    if (!loadSettings().ignoredConflicts?.length) return;
+    const mods = await scanMods(deadlockPath);
     const settings = loadSettings();
     const current = settings.ignoredConflicts ?? [];
     if (current.length === 0) return;
@@ -503,13 +399,32 @@ ipcMain.handle('mods:repairVpkImpostor', async (_, modId: string): Promise<VpkIm
 
 // get-mods
 ipcMain.handle('get-mods', async (): Promise<Mod[]> => {
+    const settings = loadSettings();
+    const devMode = settings.devMode;
     const deadlockPath = getActiveDeadlockPath();
     if (!deadlockPath) {
         return [];
     }
     startStartupImpostorScan();
+    const categoryPaths = new Map<string, CategoryPaths | undefined>();
+    const categoriesByMod = new Map<string, { id: number; name: string } | undefined>();
+    // Repair saved categories using existing catalog data. Unchanged entries
+    // need no write; library loads never fetch individual mod details.
+    loadMetadata(metadata => {
+        const section = metadata.sourceSection ?? 'Mod';
+        const key = `${section}:${metadata.gameBananaId}`;
+        if (categoriesByMod.has(key)) return categoriesByMod.get(key);
+        const cached = getModById(metadata.gameBananaId!, section);
+        const model = categoryModelForSection(section);
+        if (!categoryPaths.has(model)) categoryPaths.set(model, readCachedCategoryPaths(model));
+        const id = cached?.subCategoryId ?? cached?.categoryId;
+        const leaf = id == null ? undefined : categoryPaths.get(model)?.get(id)?.at(-1);
+        const category = leaf?.id !== undefined && leaf.name ? { id: leaf.id, name: leaf.name } : undefined;
+        categoriesByMod.set(key, category);
+        return category;
+    });
     let mods = await scanModsAfterMutations(deadlockPath);
-    const settings = loadSettings();
+    assertActiveModInstallation(deadlockPath, devMode);
     // Hide Grimoire-managed Locker VPKs (hero cards + ability sounds). They're
     // driven solely through the Locker pickers and are auto-enabled + pinned to
     // the front of the load order (services/lockerVpk.ts), so surfacing them in
@@ -517,20 +432,33 @@ ipcMain.handle('get-mods', async (): Promise<Mod[]> => {
     // silently break their applied cosmetics.
     const isVisible = (m: Mod): boolean => !isLockerManaged(m.metaKey);
     let visible = mods.filter(isVisible);
+    const categoryModels = new Set(visible.flatMap((mod) => {
+        const metadata = getModMetadata(mod.metaKey);
+        return metadata?.categoryId !== undefined || metadata?.gameBananaId
+            ? [categoryModelForSection(metadata.sourceSection)] : [];
+    }));
+    // Cold/offline trees must not delay the library. A changed cached tree
+    // notifies the renderer to refresh these derived identities when ready.
+    void Promise.allSettled([...categoryModels].map(model => fetchCategoryTreeCached(model)));
     // Pre-warm the VPK parse cache across the worker pool for mods whose lazy
     // classifications will parse inside enrichMod below. enrichMod stays sync;
     // its parseVpkDirectoryCached calls hit the warmed cache instead of
     // sequentially pinning the main process (worst case: first scan after
     // importing a large collection).
-    const warmPaths = visible.filter(needsVpkParseForEnrich).map((m) => m.path);
+    // A cold tree may have completed while scanning the inventory.
+    categoryPaths.clear();
+    const warmPaths = visible.filter(mod => needsVpkParseForEnrich(mod, categoryPaths)).map((m) => m.path);
     if (warmPaths.length > 0) {
         await parseVpkDirectoriesAsync(warmPaths);
         // A mutation can rename slots during the parse. enrichMod persists
         // classifications by metaKey, so rescan and enrich with no await between.
+        assertActiveModInstallation(deadlockPath, devMode);
         mods = await scanModsAfterMutations(deadlockPath);
+        assertActiveModInstallation(deadlockPath, devMode);
         visible = mods.filter(isVisible);
+        categoryPaths.clear();
     }
-    const enriched = visible.map(enrichMod);
+    const enriched = enrichMods(visible, categoryPaths);
     notifyModChanges();
     void checkOutdatedVdata(deadlockPath, visible.map((m) => m.path));
     if (settings.verboseModTrace) {
@@ -906,39 +834,46 @@ ipcMain.handle(
         // release because imprintOneMod acquires this non-reentrant lock itself.
         // Keeping the whole fan-out in one critical section prevents a toggle
         // from migrating a later sibling's sidecar between this scan and write.
+        const devMode = loadSettings().devMode;
         const { updated, refresh } = await runExclusiveModMutation(async () => {
             const all = await scanMods(deadlockPath);
+            assertActiveModInstallation(deadlockPath, devMode);
             const target = all.find((m) => m.id === modId);
             if (!target) {
                 throw new Error(`Mod not found: ${modId}`);
             }
             const existing = getModMetadata(target.metaKey) ?? {};
             if (
-                typeof existing.gameBananaId === 'number' &&
-                existing.gameBananaId > 0 &&
-                !existing.localGroupId
+                !isLocalMod(existing)
             ) {
                 throw new Error('Only local mods can be renamed');
             }
 
+            const gallery = existing.localGroupId ? getLocalModGallery(existing.localGroupId) : [];
+            const galleryOwned = !!existing.localGroupId && hasLocalModGallery(existing.localGroupId);
+            if (existing.localGroupId && galleryOwned && args.thumbnailDataUrl !== gallery[0]) {
+                await setLocalModGallery(existing.localGroupId, args.thumbnailDataUrl
+                    ? [args.thumbnailDataUrl, ...gallery.slice(1)] : gallery.slice(1));
+                assertActiveModInstallation(deadlockPath, devMode);
+            }
             await setModMetadataWithHash(target.metaKey, {
                 modName: trimmed,
-                thumbnailUrl: args.thumbnailDataUrl,
+                thumbnailUrl: galleryOwned ? undefined : args.thumbnailDataUrl,
                 nsfw: !!args.nsfw,
             }, target.path);
 
             const refreshMods: Mod[] = [target];
             // A rename inside a local variant group renames the GROUP: every
-            // member shares one name (the card title is whichever member is
-            // primary). Thumbnail and NSFW remain per file, like GB groups.
+            // member shares the mod name and content flag.
             const groupId = getModMetadata(target.metaKey)?.localGroupId;
             if (groupId) {
                 for (const sibling of all) {
                     if (sibling.id === target.id) continue;
                     const meta = getModMetadata(sibling.metaKey);
-                    if (meta?.localGroupId !== groupId || meta?.modName === trimmed) continue;
-                    setModMetadata(sibling.metaKey, { modName: trimmed });
-                    refreshMods.push(sibling);
+                    if (meta?.localGroupId !== groupId) continue;
+                    const renamed = meta.modName !== trimmed;
+                    if (renamed || meta.nsfw !== !!args.nsfw) setModMetadata(sibling.metaKey, { modName: trimmed, nsfw: !!args.nsfw });
+                    if (renamed) refreshMods.push(sibling);
                 }
             }
 
@@ -977,29 +912,27 @@ ipcMain.handle(
         target: LocalVariantGroupTarget
     ): Promise<SetLocalVariantGroupResult> => {
         const deadlockPath = getActiveDeadlockPath();
+        const devMode = loadSettings().devMode;
         if (!deadlockPath) {
             throw new Error('No Deadlock path configured');
         }
 
         const { groupId, renamed, snapshot } = await runExclusiveModMutation(async () => {
             const all = await scanMods(deadlockPath);
-            const members: LocalVariantGroupMember[] = all.map(toLocalVariantGroupMember);
+            assertActiveModInstallation(deadlockPath, devMode);
+            const members = all.map(mod => toLocalVariantGroupMember(mod, undefined, false));
 
             const plan = planLocalVariantGroup(members, modIds ?? [], target, randomUUID);
             const renamedMods: Mod[] = [];
             for (const write of plan.writes) {
-                const classification = write.classification
-                    ? {
-                          ...write.classification,
-                          globalTypeClassifierVersion:
-                              write.classification.globalTypeClassifierVersion ??
-                              GLOBAL_CLASSIFIER_VERSION,
-                      }
-                    : {};
+                const previous = getModMetadata(write.metaKey);
+                const detachedThumbnail = write.localGroupId !== previous?.localGroupId && previous?.localGroupId && !previous.thumbnailUrl
+                    ? localModGalleryThumbnail(previous.localGroupId) : undefined;
                 const data = {
                     localGroupId: write.localGroupId,
+                    ...(write.localImport !== undefined ? { localImport: write.localImport } : {}),
+                    ...(detachedThumbnail ? { thumbnailUrl: detachedThumbnail } : {}),
                     ...(write.modName ? { modName: write.modName } : {}),
-                    ...classification,
                 };
                 const mod = all.find((candidate) => candidate.id === write.id);
                 if (write.localGroupId && mod && !getModMetadata(write.metaKey)?.sha256) {
@@ -1031,7 +964,7 @@ ipcMain.handle(
         // The embed refresh rewrites VPK bytes (and re-stamps identity), so a
         // rename invalidates the locked snapshot; only then re-scan.
         const mods = renamed.length > 0 ? await scanMods(deadlockPath) : snapshot;
-        return { groupId, mods: mods.map(enrichMod) };
+        return { groupId, mods: enrichMods(mods) };
     }
 );
 
@@ -1060,7 +993,7 @@ ipcMain.handle(
 );
 
 // set-mod-locker-hero — manual hero tag for the Locker. Pass null to clear
-// the override and fall back to categoryId / inferHeroFromTitle. Used from
+// the override and fall back to category paths or per-file detection. Used from
 // the Locker's "unassigned" section when GameBanana left a mod under the
 // generic "Skins" parent (or when an author misspelled the hero name).
 ipcMain.handle(
@@ -1076,24 +1009,49 @@ ipcMain.handle(
             throw new Error(`Mod not found: ${modId}`);
         }
         const trimmed = heroName?.trim() ?? '';
+        const overrides = getModMetadata(target.metaKey)?.tagOverrides;
         setModMetadata(target.metaKey, {
             lockerHero: trimmed.length > 0 ? trimmed : undefined,
             lockerHeroSource: trimmed.length > 0 ? 'manual' : undefined,
-            ...(trimmed.length > 0 ? { globalType: undefined } : {}),
+            ...(trimmed.length > 0 ? { globalType: undefined, globalTypeSource: undefined } : {}),
+            ...(overrides ? { tagOverrides: { ...overrides,
+                heroes: trimmed ? [trimmed] : undefined,
+                ...(trimmed && overrides.base ? { base: overrides.base.filter(label => !baseTagGlobalType(label)) } : {}),
+            } } : {}),
         });
         return enrichMod(target);
     }
 );
 
-// set-mod-global-type — manual override for the Locker's Global axis, used when
-// the VPK-path classifier (classifyGlobalModType) misses a mod or files it
-// under the wrong type. Pass a GlobalModType to assign it (this also clears any
-// hero tag, since a mod lives on either the hero axis or the global axis, never
-// both). Pass null to force it OFF the global axis: we persist the explicit null
-// so the classifier doesn't just re-add it on the next scan. A positive type
-// always wins over auto-classification (enrichMod never re-runs a positive
-// result); the null is stamped with the current classifier version so a stale
-// null re-run can't override this deliberate "not global" choice.
+// Category metadata stays intact: null restores detection, empty arrays clear it.
+ipcMain.handle('set-mod-tags', async (_, modId: string, tags: WireMod['tagOverrides'] | null): Promise<WireMod> => {
+    return runExclusiveModMutation(async () => {
+        const deadlockPath = getActiveDeadlockPath();
+        if (!deadlockPath) throw new Error('No Deadlock path configured');
+        const devMode = loadSettings().devMode;
+        const target = (await scanMods(deadlockPath)).find(mod => mod.id === modId);
+        assertActiveModInstallation(deadlockPath, devMode);
+        if (!target) throw new Error(`Mod not found: ${modId}`);
+        if (tags !== null && (typeof tags !== 'object' || !tags || Array.isArray(tags))) throw new Error('Invalid tag selections');
+        const normalized: NonNullable<WireMod['tagOverrides']> = {};
+        for (const axis of ['base', 'heroes'] as const) {
+            const values = tags?.[axis];
+            if (values === undefined) continue;
+            if (!Array.isArray(values) || values.length > 1000
+                || values.some(value => typeof value !== 'string' || value.length > 200)) {
+                throw new Error('Invalid tag selections');
+            }
+            normalized[axis] = [...new Set(values.map(value => value.trim()).filter(Boolean))];
+        }
+        setModMetadata(target.metaKey, { tagOverrides: tags === null ? undefined : {
+            ...getModMetadata(target.metaKey)?.tagOverrides, ...normalized,
+        } });
+        return enrichMod(target);
+    });
+});
+
+// Explicit General override. The manual marker preserves positive choices and
+// explicit null across category refreshes, migrations, and backup restoration.
 ipcMain.handle(
     'set-mod-global-type',
     async (_, modId: string, globalType: GlobalModType | null): Promise<Mod> => {
@@ -1106,11 +1064,17 @@ ipcMain.handle(
         if (!target) {
             throw new Error(`Mod not found: ${modId}`);
         }
+        const overrides = getModMetadata(target.metaKey)?.tagOverrides;
         setModMetadata(target.metaKey, {
             globalType,
-            globalTypeClassifierVersion: GLOBAL_CLASSIFIER_VERSION,
+            globalTypeSource: 'manual',
+            globalTypeClassifierVersion: undefined,
             // Assigning a global type moves the mod off the hero axis.
             ...(globalType ? { lockerHero: undefined, lockerHeroSource: undefined } : {}),
+            ...(overrides ? { tagOverrides: { ...overrides,
+                base: [...(overrides.base ?? []).filter(label => !baseTagGlobalType(label)), ...(globalType ? [GLOBAL_MOD_TYPE_LABELS[globalType]] : [])],
+                ...(globalType ? { heroes: undefined } : {}),
+            } } : {}),
         });
         return enrichMod(target);
     }
@@ -1119,25 +1083,6 @@ ipcMain.handle(
 // set-mod-ignore-updates — manual opt-out from the update-available flag.
 // Pass false to clear and resume normal update detection. Stored alongside
 // other per-mod metadata so it survives priority renames.
-ipcMain.handle(
-    'set-mod-ignore-updates',
-    async (_, modId: string, ignore: boolean): Promise<Mod> => {
-        const deadlockPath = getActiveDeadlockPath();
-        if (!deadlockPath) {
-            throw new Error('No Deadlock path configured');
-        }
-        const all = await scanMods(deadlockPath);
-        const target = all.find((m) => m.id === modId);
-        if (!target) {
-            throw new Error(`Mod not found: ${modId}`);
-        }
-        setModMetadata(target.metaKey, {
-            ignoreUpdates: ignore ? true : undefined,
-        });
-        return enrichMod(target);
-    }
-);
-
 // set-mod-priority: mark a mod Global (or clear it). Global mods move to the
 // priority root citadel/grimoire, which gameinfo.gi lists ahead of
 // citadel/addons, so they win every file collision without any load-order
@@ -1156,6 +1101,25 @@ ipcMain.handle(
         // Global chip until the next full reload.
         const mod = await setModPriorityFolder(deadlockPath, modId, priority);
         return enrichMod(mod);
+    }
+);
+
+ipcMain.handle(
+    'set-mod-ignore-updates',
+    async (_, modId: string, ignore: boolean): Promise<Mod> => {
+        const deadlockPath = getActiveDeadlockPath();
+        if (!deadlockPath) {
+            throw new Error('No Deadlock path configured');
+        }
+        const all = await scanMods(deadlockPath);
+        const target = all.find((m) => m.id === modId);
+        if (!target) {
+            throw new Error(`Mod not found: ${modId}`);
+        }
+        setModMetadata(target.metaKey, {
+            ignoreUpdates: ignore ? true : undefined,
+        });
+        return enrichMod(target);
     }
 );
 
@@ -1211,7 +1175,7 @@ ipcMain.handle(
         if (!deadlockPath) {
             throw new Error('No Deadlock path configured');
         }
-        migrateIgnoredConflictKeysBeforeRenames(await scanMods(deadlockPath));
+        await migrateIgnoredConflictKeysBeforeRenames(deadlockPath);
         const mod = await setModPriority(deadlockPath, modId, priority);
         return enrichMod(mod);
     }
@@ -1225,10 +1189,10 @@ ipcMain.handle(
         if (!deadlockPath) {
             throw new Error('No Deadlock path configured');
         }
-        migrateIgnoredConflictKeysBeforeRenames(await scanMods(deadlockPath));
+        await migrateIgnoredConflictKeysBeforeRenames(deadlockPath);
         await reorderMods(deadlockPath, orderedIds);
         const mods = await scanMods(deadlockPath);
-        return mods.map(enrichMod);
+        return enrichMods(mods);
     }
 );
 
@@ -1253,8 +1217,9 @@ ipcMain.handle('apply-model-compatibility-fix', async (): Promise<Mod[]> => {
         ...enabled.filter((mod) => modelIds.has(mod.id)),
     ].map((mod) => mod.id);
     await reorderMods(deadlockPath, orderedIds);
-    return (await scanMods(deadlockPath)).map(enrichMod);
+    return enrichMods(await scanMods(deadlockPath));
 });
+
 
 // apply-mod-toggle-batch: disable a set then enable a set as one atomic
 // mutation, returning the fresh mod list AND the per-mod failures. Backs the
@@ -1271,9 +1236,17 @@ ipcMain.handle(
         }
         const result = await setModsEnabledBatch(deadlockPath, { enable: enableIds, disable: disableIds });
         const mods = await scanMods(deadlockPath);
-        return { mods: mods.map(enrichMod), failures: result.failures };
+        return { mods: enrichMods(mods), failures: result.failures };
     }
 );
+
+// swap-mods: enable replacements before releasing the outgoing loadout.
+ipcMain.handle('swap-mods', async (_, enableIds: string[], disableIds: string[], placement: ModSwapPlacement): Promise<Mod[]> => {
+    const deadlockPath = getActiveDeadlockPath();
+    if (!deadlockPath) throw new Error('No Deadlock path configured');
+    await swapEnabledMods(deadlockPath, enableIds, disableIds, placement);
+    return enrichMods(await scanMods(deadlockPath));
+});
 
 // swap-mod-priority
 ipcMain.handle(
@@ -1283,10 +1256,10 @@ ipcMain.handle(
         if (!deadlockPath) {
             throw new Error('No Deadlock path configured');
         }
-        migrateIgnoredConflictKeysBeforeRenames(await scanMods(deadlockPath));
+        await migrateIgnoredConflictKeysBeforeRenames(deadlockPath);
         await swapModPriority(deadlockPath, modIdA, modIdB);
         const mods = await scanMods(deadlockPath);
-        return mods.map(enrichMod);
+        return enrichMods(mods);
     }
 );
 
@@ -1390,63 +1363,6 @@ function localSourceFileStem(fileName: string): string | undefined {
     return stem.length > 0 ? stem : undefined;
 }
 
-function blankLocalVariantClassification(): NonNullable<LocalVariantGroupProfile['classification']> {
-    return {
-        lockerHero: undefined,
-        lockerHeroSource: undefined,
-        lockerHeroVpkChecked: true,
-        globalType: null,
-        globalTypeClassifierVersion: GLOBAL_CLASSIFIER_VERSION,
-    };
-}
-
-function classifyImportedLocalVariant(
-    vpkPath: string,
-    metadata: ModMetadata | undefined
-): NonNullable<LocalVariantGroupProfile['classification']> {
-    let globalType: GlobalModType | null = null;
-    try {
-        globalType = classifyGlobalModFromVpk(vpkPath);
-    } catch (err) {
-        console.warn(`[mods] Local variant global classification failed for ${vpkPath}:`, err);
-    }
-    if (globalType) {
-        return {
-            ...blankLocalVariantClassification(),
-            globalType,
-            lockerHeroVpkChecked: undefined,
-        };
-    }
-
-    // Provenance is authoritative when adoption supplied it. Otherwise inspect
-    // the VPK before falling back to the shared user-entered group name: using
-    // that name first would classify every newly-added file as the existing
-    // group hero and make the conflict guard below incapable of spotting an
-    // Ivy VPK accidentally added to a Geist group.
-    let lockerHero = inferHeroFromTitle(metadata?.categoryName || '');
-    let lockerHeroSource: LockerHeroSource | undefined = lockerHero ? 'title' : undefined;
-    if (!lockerHero) {
-        try {
-            const guess = inferHeroFromVpkTree(vpkPath);
-            if (guess && guess.strongestSignal !== 'weak') {
-                lockerHero = guess.name;
-                lockerHeroSource = 'vpk';
-            }
-        } catch (err) {
-            console.warn(`[mods] Local variant hero classification failed for ${vpkPath}:`, err);
-        }
-    }
-    if (!lockerHero) {
-        lockerHero = inferHeroFromTitle(metadata?.modName || '');
-        lockerHeroSource = lockerHero ? 'title' : undefined;
-    }
-    return {
-        ...blankLocalVariantClassification(),
-        lockerHero: lockerHero ?? undefined,
-        lockerHeroSource,
-    };
-}
-
 async function installedLocalVariantGroupProfile(
     deadlockPath: string,
     groupId: string,
@@ -1454,21 +1370,101 @@ async function installedLocalVariantGroupProfile(
 ): Promise<LocalVariantGroupProfile | undefined> {
     const all = await scanMods(deadlockPath);
     const members = all
-        .map(toLocalVariantGroupMember)
-        .filter((member) => member.localGroupId === groupId);
+        .filter(mod => getModMetadata(mod.metaKey)?.localGroupId === groupId)
+        .map(mod => toLocalVariantGroupMember(mod, undefined, false));
     if (members.length === 0) {
         if (requireExisting) throw new Error('The local variant group no longer exists');
         return undefined;
     }
-    const profile = resolveLocalVariantGroupProfile(members);
-    return {
-        ...profile,
-        // Make "unassigned" just as stable as a positive classification. If
-        // every existing member is unassigned, a newly-added VPK must not be
-        // lazily inferred into a different Locker section on the next scan.
-        classification: profile.classification ?? blankLocalVariantClassification(),
-    };
+    return resolveLocalVariantGroupProfile(members);
 }
+
+function localImportTags(path: string, metadata: ModMetadata, stat: { size: number; mtime: Date }) {
+    const paths = readCachedCategoryPaths(categoryModelForSection(metadata.sourceSection));
+    const classification = resolveModClassification({ path, size: stat.size, installedAt: stat.mtime.toISOString() }, metadata, paths);
+    const categories = resolveCategoryPath(paths, { id: metadata.categoryId, name: metadata.categoryName ?? '' });
+    const baseTags = metadata.tagOverrides?.base ?? [...new Set([
+        ...categories.map(category => category.name).filter(label => !canonicalSupportedHeroName(label)),
+        ...(metadata.sourceSection === 'Sound' ? ['Sounds'] : metadata.sourceSection === 'Wip' ? ['Wip'] : []),
+        ...(!categories.length && classification.globalType ? [GLOBAL_MOD_TYPE_LABELS[classification.globalType]] : []),
+    ])];
+    return { heroes: classification.lockerHeroes,
+        baseTags: [...new Map(baseTags.map(raw => normalizeCategoryLabel(raw)).filter(Boolean).map(tag => [tag.toLowerCase(), tag])).values()] };
+}
+
+const importPreparationOwners = new WeakSet<Electron.WebContents>();
+ipcMain.handle('prepare-local-mod-import', async (event, path: string, requestId: string): Promise<PreparedLocalModImport> => {
+    if (typeof path !== 'string' || !path || typeof requestId !== 'string' || !requestId) throw new Error('Invalid import source');
+    const owner = event.sender;
+    if (!importPreparationOwners.has(owner)) {
+        importPreparationOwners.add(owner);
+        const ownerId = owner.id;
+        owner.once('destroyed', () => { void releaseLocalImport(ownerId).catch(error => console.warn('[import] Temporary cleanup failed:', error)); });
+    }
+    const preparation = await prepareLocalImport(path, owner.id, requestId);
+    try {
+        const members = [];
+        for (const source of preparation.sources) {
+            const metadata = computeAdoptionPatchAt(source.path, undefined);
+            const stat = await fs.stat(source.path);
+            const imprint = readImprintSummary(source.path);
+            const recognized = imprint ? { ...imprint, thumbnailUrl: imprint.kind === 'mod'
+                ? catalogThumbnailUrl(imprint.gamebananaId, imprint.section) : undefined } : null;
+            members.push({ fileName: source.fileName, recognized, ...localImportTags(source.path, {
+                ...metadata, sourceFileName: localSourceFileStem(source.fileName),
+            }, stat) });
+        }
+        if (owner.isDestroyed()) throw new Error('Import inspection cancelled');
+        return { id: preparation.id, size: preparation.size, members };
+    } catch (error) {
+        await releaseLocalImport(owner.id, requestId);
+        throw error;
+    }
+});
+
+ipcMain.handle('release-local-mod-import', (event, requestId: string) => releaseLocalImport(event.sender.id, requestId));
+ipcMain.handle('get-local-mod-gallery', (_, groupId: string) => {
+    if (!Object.values(loadMetadata()).some(metadata => metadata.localGroupId === groupId)) return [];
+    return getLocalModGallery(groupId);
+});
+ipcMain.handle('set-mods-nsfw', async (_, modIds: string[], nsfw: boolean): Promise<WireMod[]> => {
+    const deadlockPath = getActiveDeadlockPath();
+    const devMode = loadSettings().devMode;
+    if (!deadlockPath) throw new Error('No Deadlock path configured');
+    if (!Array.isArray(modIds) || !modIds.length || modIds.some(id => typeof id !== 'string') || typeof nsfw !== 'boolean') {
+        throw new Error('Invalid NSFW selection');
+    }
+    return runExclusiveModMutation(async () => {
+        if (deadlockPath !== getActiveDeadlockPath()) throw new Error('The active installation changed');
+        const all = await scanMods(deadlockPath);
+        assertActiveModInstallation(deadlockPath, devMode);
+        const ids = new Set(modIds);
+        const members = all.filter(mod => ids.has(mod.id));
+        if (members.length !== ids.size) throw new Error('Mod not found');
+        for (const mod of members) setModMetadata(mod.metaKey, { nsfw });
+        return enrichMods(all);
+    }, { healPath: deadlockPath });
+});
+ipcMain.handle('set-local-mod-gallery', async (_, groupId: string, images: string[]): Promise<WireMod[]> => {
+    const deadlockPath = getActiveDeadlockPath();
+    const devMode = loadSettings().devMode;
+    if (!deadlockPath) throw new Error('No Deadlock path configured');
+    return runExclusiveModMutation(async () => {
+        if (deadlockPath !== getActiveDeadlockPath()) throw new Error('The active installation changed');
+        const all = await scanMods(deadlockPath);
+        assertActiveModInstallation(deadlockPath, devMode);
+        const members = all.filter(mod => getModMetadata(mod.metaKey)?.localGroupId === groupId && !mod.merged);
+        if (!members.length) throw new Error('Local mod group not found');
+        const existing = new Set([...getLocalModGallery(groupId), ...members.map(mod => getModMetadata(mod.metaKey)?.thumbnailUrl)]);
+        if (!Array.isArray(images) || images.some(image => typeof image !== 'string'
+            || !image.startsWith('data:') && !existing.has(image))) throw new Error('Invalid local artwork');
+        await setLocalModGallery(groupId, images);
+        assertActiveModInstallation(deadlockPath, devMode);
+        // The gallery owns shared artwork, including an explicitly empty gallery.
+        for (const mod of members) setModMetadata(mod.metaKey, { thumbnailUrl: undefined });
+        return enrichMods(all);
+    }, { healPath: deadlockPath });
+});
 
 // Exported (not just used by the 'import-custom-mods' handler below) so
 // ipc/browser.ts can route a confirmed browser-tool download through this
@@ -1478,8 +1474,10 @@ export async function importCustomModSource(
     deadlockPath: string,
     args: ImportCustomModArgs,
     thumbnailFetchTargets: AdoptedThumbnailTarget[],
-    requireExistingGroup = false
-): Promise<{ imported: number; needsReview: boolean }> {
+    requireExistingGroup = false,
+    preparedSources?: ExtractedVpk[],
+    writtenGalleries = new Set<string>(),
+): Promise<{ imported: number; needsReview: boolean; metaKeys: string[] }> {
     const {
         vpkPath,
         name,
@@ -1512,21 +1510,26 @@ export async function importCustomModSource(
     // exactly one VPK, and otherwise rejects by detected type; `extractArchive`
     // applies the same gate to everything it pulls out of a real archive.
     let sourceVpks: ExtractedVpk[];
-    const tempDir = await fs.mkdtemp(join(tmpdir(), 'grimoire-import-'));
+    let tempDir: string | undefined;
     const rejected: RejectedVpk[] = [];
-    try {
-        if (isVpk) {
-            const resolved = await resolveInstallableVpk(vpkPath, tempDir, basename(vpkPath));
-            sourceVpks = [{ path: resolved.path, fileName: basename(vpkPath) }];
-        } else {
-            sourceVpks = await extractArchive(vpkPath, tempDir, { rejected });
+    if (preparedSources) {
+        sourceVpks = preparedSources;
+    } else {
+        tempDir = await fs.mkdtemp(join(tmpdir(), 'grimoire-import-'));
+        try {
+            if (isVpk) {
+                const resolved = await resolveInstallableVpk(vpkPath, tempDir, basename(vpkPath));
+                sourceVpks = [{ path: resolved.path, fileName: basename(vpkPath) }];
+            } else {
+                sourceVpks = await extractArchive(vpkPath, tempDir, { rejected });
+            }
+        } catch (err) {
+            await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+            throw err;
         }
-    } catch (err) {
-        await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
-        throw err;
     }
     if (sourceVpks.length === 0) {
-        await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+        if (tempDir) await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
         if (rejected.length > 0) {
             throw new Error(
                 `No usable VPK was found inside the archive. ${rejected.map((r) => r.reason).join(' ')}`
@@ -1536,28 +1539,44 @@ export async function importCustomModSource(
     }
 
     // A multi-VPK archive is one mod shipped as several interchangeable files,
-    // so link its members with a freshly minted local group id: the Installed
-    // page collapses them into one variant card exactly like a multi-file
-    // GameBanana submission. The id is grouping state only (no provenance, no
-    // meaning outside this install). A single-VPK import stays standalone.
+    // so its members share a freshly minted local group id: the Installed page
+    // collapses them into one variant card exactly like a multi-file GameBanana
+    // submission. The id is grouping state only (no provenance, no meaning
+    // outside this install). A single-VPK import stays standalone, and an
+    // archive whose imprints name different mods is imported as those mods.
     //
-    // An import addressed to an existing group ("Add variant") overrides both
-    // rules: every VPK joins that group, INCLUDING a lone one, which is the
+    // An import addressed to an existing group ("Add variant") overrides all
+    // of that: every VPK joins that group, INCLUDING a lone one, which is the
     // whole point of the affordance. The caller passes the group's name as
     // `name`, so the members stay name-unified without a second write.
-    const localGroupId = joinGroupId?.trim() || (sourceVpks.length > 1 ? randomUUID() : undefined);
+    // planLocalImport holds these rules.
+    const joinId = joinGroupId?.trim() || undefined;
     let groupProfile: LocalVariantGroupProfile | undefined;
     const importWrites: LocalImportTransactionWrite[] = [];
+    const finalMetaKeys: string[] = [];
     const thumbnailStart = thumbnailFetchTargets.length;
     let needsReview = false;
+    const passedReview = new Set<string>();
 
     try {
-        groupProfile = localGroupId
-            ? await installedLocalVariantGroupProfile(
-                  deadlockPath,
-                  localGroupId,
-                  requireExistingGroup
-              )
+        const plan = planLocalImport(
+            sourceVpks.map((source) => ({
+                // Label seed: the author's own folder inside the archive when
+                // there is one ("Gold/skin.vpk" reads as "Gold"), which is how
+                // GameBanana multi-variant downloads are labelled too, falling
+                // back to the VPK filename stem.
+                seed: source.archiveFolder || localSourceFileStem(source.fileName),
+                // The dialog already read a bare VPK's imprint and sends the
+                // label the user saw, so only archive members are read here.
+                imprint: isVpk ? null : readImprintSummary(source.path),
+            })),
+            trimmedName,
+            requestedVariantLabel,
+            joinId,
+            randomUUID
+        );
+        groupProfile = joinId
+            ? await installedLocalVariantGroupProfile(deadlockPath, joinId, requireExistingGroup)
             : undefined;
         // Complete the whole source while disabled. Review is a separate
         // activation step after the batch and import dialog have finished.
@@ -1566,7 +1585,9 @@ export async function importCustomModSource(
             const destMetaKey = metaKeyFor(destPath);
             // Record only committed files owned by this import for rollback.
             importWrites.push({ destPath, metaKey: destMetaKey });
-            needsReview ||= modSafetySnapshot(destPath)?.trusted === false;
+            const trusted = modSafetySnapshot(destPath)?.trusted;
+            needsReview ||= trusted === false;
+            if (trusted) passedReview.add(destPath);
 
             // Scrub any orphan metadata at this slot before writing.
             // setModMetadata merges into the existing entry, so stale fields
@@ -1577,29 +1598,16 @@ export async function importCustomModSource(
             // Grouped members all carry the SAME name (the card title comes from
             // the group's primary) and are told apart by their variant label
             // instead of the old "(N)" suffix.
-            const stampedName = trimmedName;
-            const sourceFileName = localSourceFileStem(sourceVpks[i].fileName);
-            // Label seed: the author's own folder inside the archive when there
-            // is one ("Gold/skin.vpk" reads as "Gold"), which is how GameBanana
-            // multi-variant downloads are labelled too, falling back to the VPK
-            // filename stem. Ungrouped imports get no label at all: the card
-            // title already says everything about a standalone mod.
-            const variantSeed = sourceVpks[i].archiveFolder || sourceFileName;
+            const { modName: stampedName, localGroupId, variantLabel } = plan[i];
             await setModMetadataWithHash(destMetaKey, {
                 modName: stampedName,
-                thumbnailUrl: thumbnailDataUrl,
+                thumbnailUrl: args.galleryImages === undefined ? thumbnailDataUrl : undefined,
+                localImport: true,
                 nsfw: !!nsfw,
-                sourceFileName,
+                sourceFileName: localSourceFileStem(sourceVpks[i].fileName),
                 localGroupId,
                 priorityMod: groupProfile?.priorityMod ? true : undefined,
-                variantLabel: localGroupId
-                    ? resolveImportedVariantLabel(
-                          requestedVariantLabel,
-                          variantSeed,
-                          sourceVpks.length,
-                          i
-                      )
-                    : undefined,
+                variantLabel,
             }, destPath);
 
             // ADOPTION: the just-copied VPK may already carry a Grimoire
@@ -1620,32 +1628,26 @@ export async function importCustomModSource(
                 setModMetadata(destMetaKey, adoptionPatch);
             }
 
-            // localGroupId is an explicit grouping decision, while an adopted
-            // GameBanana id is provenance/update identity. Keep both. The
-            // group's first member establishes one Locker profile; later
-            // members inherit it so one logical card cannot split across hero,
-            // General, or priority-root sections.
-            if (localGroupId) {
-                const importedClassification = classifyImportedLocalVariant(
-                    destPath,
-                    getModMetadata(destMetaKey)
-                );
-                if (groupProfile?.classification) {
-                    assertCompatibleLocalVariantClassifications(
-                        groupProfile.classification,
-                        importedClassification
-                    );
-                } else {
-                    groupProfile = {
-                        priorityMod: groupProfile?.priorityMod ?? false,
-                        classification: importedClassification,
-                    };
+            if (args.tagChanges) {
+                const current = getModMetadata(destMetaKey) ?? {};
+                const detected = localImportTags(destPath, current, await fs.stat(destPath));
+                const overrides = { ...current.tagOverrides };
+                for (const axis of ['base', 'heroes'] as const) {
+                    const normalize = (tag: string) => axis === 'base' ? normalizeCategoryLabel(tag) : canonicalSupportedHeroName(tag) ?? tag.trim();
+                    const added = (args.tagChanges.add[axis] ?? []).map(normalize).filter(Boolean);
+                    const removed = new Set((args.tagChanges.remove[axis] ?? []).map(tag => normalize(tag).toLowerCase()));
+                    if (!added.length && !removed.size) continue;
+                    const initial = axis === 'base' ? detected.baseTags : detected.heroes;
+                    overrides[axis] = [...new Map([...initial.map(normalize).filter(tag => !removed.has(tag.toLowerCase())), ...added]
+                        .map(tag => [tag.toLowerCase(), tag])).values()];
                 }
-                setModMetadata(destMetaKey, {
-                    ...groupProfile.classification,
-                    priorityMod: groupProfile.priorityMod ? true : undefined,
-                });
+                if (Object.keys(overrides).length) setModMetadata(destMetaKey, { tagOverrides: overrides });
             }
+            finalMetaKeys.push(destMetaKey);
+
+            // Membership is organizational. Adopted identity, manual tags, and
+            // payload detection stay on this file and never inherit a peer's
+            // Locker classification. Placement was set from the group above.
 
             // Stamp imprinted/imprintStale from the embed truth immediately,
             // so the toolbar button's pending count is honest without
@@ -1670,7 +1672,10 @@ export async function importCustomModSource(
             // it; the actual network fetch runs after this handler returns
             // (best-effort, never blocks or fails the import).
             const adoptedGbId = finalMeta?.gameBananaId;
-            if (adoptedGbId && !finalMeta?.thumbnailUrl) {
+            const needsThumbnail = !finalMeta?.thumbnailUrl && !args.galleryImages?.length
+                && !(localGroupId && hasLocalModGallery(localGroupId));
+            const needsAudio = finalMeta?.sourceSection === 'Sound' && !finalMeta.audioUrl;
+            if (adoptedGbId && (needsThumbnail || needsAudio)) {
                 thumbnailFetchTargets.push({
                     metaKey: destMetaKey,
                     gameBananaId: adoptedGbId,
@@ -1680,6 +1685,10 @@ export async function importCustomModSource(
                     expectedSha256: finalMeta?.sha256,
                 });
             }
+        }
+        if (joinId && args.galleryImages !== undefined && !writtenGalleries.has(joinId)) {
+            if (args.galleryImages.length || hasLocalModGallery(joinId)) await setLocalModGallery(joinId, args.galleryImages);
+            writtenGalleries.add(joinId);
         }
     } catch (err) {
         const rollbackFailures = await rollbackLocalImport(
@@ -1697,16 +1706,28 @@ export async function importCustomModSource(
         }
         throw err;
     } finally {
-        await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+        if (tempDir) {
+            await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+        }
     }
 
     // Imports land disabled to wait for the safety review. With the review off
     // they go live like any install; one that can't get a slot stays disabled.
-    if (!loadSettings().experimentalModSafety) {
+    // With it on, "Enable mods after download" turns on the files that already
+    // passed. One that needs a decision stays disabled for the Mod safety page:
+    // enabling it here would raise the prompt under the mutation lock, behind
+    // the still-open import dialog.
+    const settings = loadSettings();
+    const goesLive = (destPath: string): boolean => !settings.experimentalModSafety
+        || (settings.autoEnableDownloads === true && passedReview.has(destPath));
+    if (importWrites.some(({ destPath }) => goesLive(destPath))) {
         const mods = await scanMods(deadlockPath);
         for (const { destPath, metaKey } of importWrites) {
+            if (!goesLive(destPath)) continue;
             try {
                 const enabled = await enableModUnlocked(deadlockPath, mods.find((m) => m.path === destPath)!.id);
+                const keyIndex = finalMetaKeys.indexOf(metaKey);
+                if (keyIndex >= 0) finalMetaKeys[keyIndex] = enabled.metaKey;
                 for (const target of thumbnailFetchTargets) {
                     if (target.metaKey === metaKey) target.metaKey = enabled.metaKey;
                 }
@@ -1716,7 +1737,7 @@ export async function importCustomModSource(
         }
     }
 
-    return { imported: sourceVpks.length, needsReview };
+    return { imported: sourceVpks.length, needsReview, metaKeys: finalMetaKeys };
 }
 
 /**
@@ -1737,8 +1758,7 @@ function fireAdoptedThumbnailFetches(targets: AdoptedThumbnailTarget[]): void {
 // batch as a whole. Each source (including all VPKs inside one archive) commits
 // or rolls back under one lock. Each disabled file gets its own unique path.
 // Holding the queue for the whole batch would block every other mod mutation
-// in the app (toggle, reorder, delete,
-// profile apply, merge, imprint) for the minutes a 30-archive batch can take.
+// in the app for the minutes a 30-archive batch can take.
 //
 // Per-source failures are collected, never thrown: one corrupt archive (or
 // hitting the 99-active cap partway) must not discard the sources that already
@@ -1749,6 +1769,7 @@ ipcMain.handle(
     'import-custom-mods',
     async (event, args: ImportCustomModsBatchArgs): Promise<ImportCustomModsBatchResult> => {
         const deadlockPath = getActiveDeadlockPath();
+        const devMode = loadSettings().devMode;
         if (!deadlockPath) {
             throw new Error('No Deadlock path configured');
         }
@@ -1763,11 +1784,37 @@ ipcMain.handle(
 
         const thumbnailFetchTargets: AdoptedThumbnailTarget[] = [];
         const results: ImportCustomModResult[] = [];
+        // Inspect every prepared source before the first installation write.
+        // A stale selection must not silently install only part of the batch.
+        await Promise.all(items.map(item => item.preparationId
+            ? getPreparedLocalImport(item.preparationId, event.sender.id, item.vpkPath) : undefined));
+        for (const item of items) {
+            if (item.galleryImages !== undefined && (!Array.isArray(item.galleryImages)
+                || item.galleryImages.some(image => typeof image !== 'string' || !image.startsWith('data:image/') && !/^https?:\/\//.test(image)))) {
+                throw new Error('Invalid gallery images');
+            }
+            if (item.tagChanges) {
+                for (const action of ['add', 'remove'] as const) for (const axis of ['base', 'heroes'] as const) {
+                    const values = item.tagChanges[action]?.[axis];
+                    if (values !== undefined && (!Array.isArray(values) || values.length > 1000
+                        || values.some(value => typeof value !== 'string' || value.length > 200))) throw new Error('Invalid tag selections');
+                }
+            }
+        }
+        const sourceMetaKeys: string[][] = [];
+        const writtenGalleries = new Set<string>();
         const total = items.length;
         // Batch keys are renderer-local handles, never persistent identity.
         // Resolve them once before the loop so every selected source shares a
         // main-minted UUID, and echo it in results for partial-failure retries.
         const localGroupIds = resolveImportVariantGroupIds(items, randomUUID);
+        const galleryByGroup = new Map<string, string[]>();
+        items.forEach((item, index) => {
+            const group = localGroupIds[index];
+            if (group && item.galleryImages !== undefined && (!galleryByGroup.has(group) || item.galleryImages.length > 0)) {
+                galleryByGroup.set(group, item.galleryImages);
+            }
+        });
         const report = (progress: ImportCustomModsProgress): void => {
             if (!event.sender.isDestroyed()) event.sender.send('import-custom-mods-progress', progress);
         };
@@ -1775,18 +1822,28 @@ ipcMain.handle(
         for (let index = 0; index < total; index++) {
             const item = items[index];
             const localGroupId = localGroupIds[index];
-            const resolvedItem = { ...item, localGroupId };
+            const resolvedItem = { ...item, localGroupId,
+                ...(localGroupId && galleryByGroup.has(localGroupId) ? { galleryImages: galleryByGroup.get(localGroupId) } : {}),
+            };
             report({ index, total, vpkPath: item.vpkPath, phase: 'importing' });
             try {
-                const { imported, needsReview } = await runExclusiveModMutation(() =>
-                    importCustomModSource(
+                const { imported, needsReview, metaKeys } = await runExclusiveModMutation(async () => {
+                    assertActiveModInstallation(deadlockPath, devMode);
+                    const install = (sources?: ExtractedVpk[]) => importCustomModSource(
                         deadlockPath,
                         resolvedItem,
                         thumbnailFetchTargets,
-                        !!item.localGroupId?.trim()
-                    ),
+                        !!item.localGroupId?.trim(),
+                        sources,
+                        writtenGalleries,
+                    );
+                    return item.preparationId
+                        ? withPreparedLocalImport(item.preparationId, event.sender.id, item.vpkPath, preparation => install(preparation.sources))
+                        : install();
+                },
                     { healPath: deadlockPath }
                 );
+                sourceMetaKeys[index] = metaKeys;
                 results.push({ vpkPath: item.vpkPath, ok: true, imported, localGroupId, needsReview });
                 report({ index, total, vpkPath: item.vpkPath, phase: 'done', imported });
             } catch (err) {
@@ -1815,7 +1872,10 @@ ipcMain.handle(
         for (let index = 0; index < results.length; index++) {
             if (!results[index].ok) results[index].localGroupId = retryGroupIds[index];
         }
-        const result = mods.map(enrichMod);
+        const result = enrichMods(mods);
+        results.forEach((entry, index) => {
+            if (entry.ok) entry.importedModIds = mods.filter(mod => sourceMetaKeys[index]?.includes(mod.metaKey)).map(mod => mod.id);
+        });
         fireAdoptedThumbnailFetches(thumbnailFetchTargets);
         return { mods: result, results };
     }
@@ -2057,7 +2117,7 @@ ipcMain.handle(
             );
 
             const mods = await scanMods(deadlockPath);
-            return mods.map(enrichMod);
+            return enrichMods(mods);
         } catch (err) {
             // The output VPK and its metadata form one observable install.  Do
             // not leave a half-installed override behind if metadata/scanning
@@ -2123,7 +2183,7 @@ ipcMain.handle(
                 },
                 destPath
             );
-            return (await scanMods(deadlockPath)).map(enrichMod);
+            return enrichMods(await scanMods(deadlockPath));
         } catch (err) {
             // The VPK and its metadata are one observable install; never leave
             // half of it behind.
@@ -2182,7 +2242,7 @@ ipcMain.handle(
                 },
                 destPath
             );
-            return (await scanMods(deadlockPath)).map(enrichMod);
+            return enrichMods(await scanMods(deadlockPath));
         } finally {
             await cleanupTextureReplacementBuild(built.vpkPath);
         }
@@ -2298,7 +2358,6 @@ ipcMain.handle(
                     nsfw: !!nsfw,
                     sourceSection: 'SoulContainerImport',
                     globalType: 'soul-container',
-                    globalTypeClassifierVersion: GLOBAL_CLASSIFIER_VERSION,
                     soulImport,
                     ...(notes?.trim() ? { variantLabel: notes.trim() } : {}),
                 },
@@ -2307,7 +2366,7 @@ ipcMain.handle(
             retargetProfileModSha(previousSha, getModMetadata(destMetaKey)?.sha256);
 
             const mods = await scanMods(deadlockPath);
-            return mods.map(enrichMod);
+            return enrichMods(mods);
         } finally {
             // 4. Always remove the temp staging dir (the installed copy is
             //    byte-identical, so nothing is lost).
@@ -2449,7 +2508,6 @@ ipcMain.handle(
                     nsfw: !!nsfw,
                     sourceSection: 'SpiritUrnImport',
                     globalType: 'spirit-urn',
-                    globalTypeClassifierVersion: GLOBAL_CLASSIFIER_VERSION,
                     urnImport,
                     ...(notes?.trim() ? { variantLabel: notes.trim() } : {}),
                 },
@@ -2458,7 +2516,7 @@ ipcMain.handle(
             retargetProfileModSha(previousSha, getModMetadata(destMetaKey)?.sha256);
 
             const mods = await scanMods(deadlockPath);
-            return mods.map(enrichMod);
+            return enrichMods(mods);
         } finally {
             // 4. Always remove the temp staging dir (the installed copy is
             //    byte-identical, so nothing is lost).
@@ -2552,7 +2610,7 @@ ipcMain.handle(
         const result = await unmergeMod(deadlockPath, mergedModId);
         return {
             ...result,
-            recovered: result.recovered.map(enrichMod),
+            recovered: enrichMods(result.recovered),
         };
     }
 );
@@ -2575,7 +2633,7 @@ ipcMain.handle(
         return {
             ...result,
             merged: result.merged ? enrichMod(result.merged) : null,
-            restored: result.restored.map(enrichMod),
+            restored: enrichMods(result.restored),
         };
     }
 );
@@ -2710,6 +2768,21 @@ ipcMain.handle('read-imprint-details', async (_, modId: string): Promise<Imprint
 // no recoverable Grimoire embed, so the dialog's recognition note simply
 // doesn't show rather than erroring.
 ipcMain.handle('peek-imprint', async (_, filePath: string): Promise<PeekImprintResult | null> => {
+    const summary = readImprintSummary(filePath);
+    if (!summary) return null;
+    const { section, ...imprint } = summary;
+    return {
+        ...imprint,
+        thumbnailUrl:
+            imprint.kind === 'mod' ? catalogThumbnailUrl(imprint.gamebananaId, section) : undefined,
+    };
+});
+
+/** What a VPK's embed says about itself: the import dialog's recognition note,
+ *  and the names an imported archive member gets. Read-only. */
+function readImprintSummary(
+    filePath: string
+): (Omit<PeekImprintResult, 'thumbnailUrl'> & { section?: string }) | null {
     if (!filePath || !filePath.toLowerCase().endsWith('.vpk') || !existsSync(filePath)) {
         return null;
     }
@@ -2719,13 +2792,13 @@ ipcMain.handle('peek-imprint', async (_, filePath: string): Promise<PeekImprintR
         if (modinfo.kind === 'merge') {
             return { title: modinfo.merge.title || modinfo.title, kind: 'merge' };
         }
-        const gamebananaId = modinfo.source?.gamebananaId;
         return {
             title: modinfo.title,
             author: modinfo.author,
-            gamebananaId,
+            gamebananaId: modinfo.source?.gamebananaId,
             gamebananaFileId: modinfo.source?.gamebananaFileId,
-            thumbnailUrl: catalogThumbnailUrl(gamebananaId),
+            variantLabel: modinfo.packaging?.variantLabel,
+            section: modinfo.source?.section,
             kind: 'mod',
         };
     }
@@ -2742,25 +2815,22 @@ ipcMain.handle('peek-imprint', async (_, filePath: string): Promise<PeekImprintR
     // A legacy merge companion is the only way a legacy embed could be a
     // merge; readLegacyGrimoireMergeMeta's presence with a readable source
     // list is the same signal classifyMissingMergeManifest uses elsewhere.
-    const kind = hasLegacyGrimoireMergeMetaEntry(filePath) ? 'merge' : 'mod';
-    const gamebananaId = legacyGbId !== undefined && Number.isFinite(legacyGbId) ? legacyGbId : undefined;
     return {
         title: embedded.title,
         author: embedded.author,
-        gamebananaId,
+        gamebananaId: legacyGbId !== undefined && Number.isFinite(legacyGbId) ? legacyGbId : undefined,
         gamebananaFileId:
             legacyFileId !== undefined && Number.isFinite(legacyFileId) ? legacyFileId : undefined,
-        thumbnailUrl: kind === 'mod' ? catalogThumbnailUrl(gamebananaId) : undefined,
-        kind,
+        kind: hasLegacyGrimoireMergeMetaEntry(filePath) ? 'merge' : 'mod',
     };
-});
+}
 
 // Read from the local catalog mirror only, so peeking never touches the
 // network. A mod the catalog hasn't synced still gets its art from the
 // post-import fetch (fireAdoptedThumbnailFetches).
-function catalogThumbnailUrl(gamebananaId: number | undefined): string | undefined {
+function catalogThumbnailUrl(gamebananaId: number | undefined, section = 'Mod'): string | undefined {
     if (!gamebananaId) return undefined;
-    return getModById(gamebananaId)?.thumbnailUrl ?? undefined;
+    return getModById(gamebananaId, section)?.thumbnailUrl ?? undefined;
 }
 
 ipcMain.handle('review-mod-compatibility', async () => {

@@ -1,9 +1,13 @@
+import type { ProfileShuffle } from '../lib/profileShuffle';
+import type { AppTheme } from '../lib/theme';
 import type { ModSafetyPrompt, InstalledModSafety } from './modSafety';
 import type { ChooseModUpdateReplacementArgs, ModUpdateState, StartModUpdatesArgs } from './modUpdates';
 import type {
     Mod,
+    ModTagOverrides,
     AppSettings,
     DeleteModEntry,
+    ModSwapPlacement,
     DeleteModsProgress,
     DeleteModsResult,
     GlobalModType,
@@ -44,6 +48,8 @@ import type {
     TrippySpriteResult,
     TrippyVfxChoice,
     LockerOverview,
+    LockerColorSelection,
+    LockerTrippySkinSelection,
     LockerCardThumbnail,
     LockerClearScope,
     SoulImportStatus,
@@ -63,7 +69,7 @@ import type {
     GameBananaCommentsResponse,
     GameBananaArtistLink,
 } from './gamebanana';
-import type { HeroPortrait, CustomCardSlot, SoulModelInfo, HeroPoseInfo, HeroPoseSkinSource, HeroEffectInfo } from './portrait';
+import type { HeroPortrait, CustomCardSlot, SoulModelInfo, HeroPoseInfo, HeroPoseSkinSource, HeroEffectInfo, HeroParticleBundleInfo } from './portrait';
 import type {
     DeadworksServer,
     DeadworksContentItem,
@@ -215,6 +221,15 @@ export interface PerformanceOptIn {
     group: 'visibility' | 'camera' | 'devtools';
 }
 
+/** A user-pinned convar value, shared by every preset. Disabling a pin keeps
+ *  its value for later but leaves the preset's own value in the file. */
+export interface PerformanceConvarPin {
+    value: string;
+    enabled: boolean;
+}
+
+export type PerformanceConvarPins = Record<string, PerformanceConvarPin>;
+
 /** One bundled upstream release of a preset. Users can roll back to an older
  *  release when a newer one runs worse on their machine, so every release we
  *  ship is described here rather than fetched on demand. */
@@ -306,6 +321,9 @@ export interface PerformanceConfigStatus {
     /** ConVars values banked as overrides for the applied preset. A disabled
      *  opt-in with one here comes back at this value when re-enabled. */
     savedConvarValues?: Record<string, string>;
+    /** User-pinned convar values, shared by every preset. A disabled pin keeps
+     *  its value but is not written into gameinfo.gi. */
+    pinnedConvars?: PerformanceConvarPins;
     /** Applied, but the file no longer matches what Grimoire wrote (hand edits). */
     handEdited?: boolean;
     /** Applied from another upstream commit of that release, or under older
@@ -396,6 +414,19 @@ export interface SaveDialogOptions {
     filters?: Array<{ name: string; extensions: string[] }>;
 }
 
+export interface PreparedLocalModMember {
+    fileName: string;
+    recognized: PeekImprintResult | null;
+    heroes: string[];
+    baseTags: string[];
+}
+
+export interface PreparedLocalModImport {
+    id: string;
+    size: number;
+    members: PreparedLocalModMember[];
+}
+
 export interface ImportCustomModArgs {
     vpkPath: string;
     name: string;
@@ -404,6 +435,12 @@ export interface ImportCustomModArgs {
     variantLabel?: string;
     thumbnailDataUrl?: string;
     nsfw?: boolean;
+    preparationId?: string;
+    /** Shared artwork is saved once under the resolved local group id. */
+    galleryImages?: string[];
+    tagChanges?: { add: ModTagOverrides; remove: ModTagOverrides };
+    /** Renderer-only assignments applied after the final imported ids arrive. */
+    customTagIds?: string[];
     /** Join this existing local variant group instead of standing alone. Every
      *  VPK this source yields gets the id, so a SINGLE-vpk source imported into
      *  a group joins it rather than collapsing it. Omitted for a normal import,
@@ -464,6 +501,7 @@ export interface ImportCustomModResult {
     ok: boolean;
     /** Mod slots this source produced (an archive can yield several). */
     imported: number;
+    importedModIds?: string[];
     /** Imported disabled; this source contains versions still needing consent. */
     needsReview?: boolean;
     /** Resolved local group id when this source was imported as a variant.
@@ -631,6 +669,8 @@ export interface VanillaRestoreResult {
 
 export interface GameRunningStatus {
     running: boolean;
+    /** Mods loaded at launch. Remains populated during the launch grace period. */
+    lockedModIds: string[];
 }
 
 export interface StopGameResult {
@@ -781,6 +821,7 @@ export interface SyncProgressData {
 export interface SearchLocalModsOptions {
     query?: string;
     section?: string;
+    sections?: string[];
     categoryId?: number;
     /** Root category name for `categoryId`, resolved from the live category
      *  tree. The cached catalog stores only a mod's root category *name* (the
@@ -788,12 +829,14 @@ export interface SearchLocalModsOptions {
      *  null), so this is what actually scopes a local category filter. Without
      *  it the id comparison matches no rows at all. */
     categoryName?: string;
-    /** Hero's category and every descendant. Matched against the mod's
-     *  sub-category id, so it is exact. Mod section only. */
-    heroCategoryIds?: number[];
-    /** Hero name, matched as a whole word in the title. For Sound and Wip,
-     *  which have no hero categories. Ignored when `heroCategoryIds` is set. */
+    /** Matching hero branches and descendants, keyed by section because
+     *  category IDs can collide between their independent trees. */
+    heroCategoryIds?: Record<string, number[]>;
+    /** Hero name, matched in Sound/Wip titles, plus Mod titles when extended
+     *  matching is enabled. Combined with category matches using OR. */
     heroName?: string;
+    /** Include Mod title matches and hero branches outside Skins. */
+    extendedHeroMatching?: boolean;
     sortBy?: 'relevance' | 'likes' | 'date' | 'date_added' | 'views' | 'name';
     nsfw?: 'all' | 'sfw' | 'nsfw';
     addedWithin?: 'all' | 'today' | 'week' | 'month' | 'custom';
@@ -811,6 +854,25 @@ export interface LocalSearchResult {
     totalCount: number;
     offset: number;
     limit: number;
+}
+
+/** What the local catalog knows about a hidden mod or one of a hidden creator's uploads. */
+export interface HiddenPreviewMod {
+    id: number;
+    section: string;
+    name: string;
+    thumbnailUrl: string | null;
+    isNsfw: boolean;
+    submitterName: string | null;
+}
+
+/** Previews for Settings' hidden lists, read from the local catalog only. A mod
+ *  or creator the catalog does not hold is simply absent. */
+export interface HiddenContentPreviews {
+    /** By creator id: how many uploads the catalog holds and its most liked few. */
+    creators: Record<number, { count: number; mods: HiddenPreviewMod[] }>;
+    /** By `${section}:${id}`. */
+    mods: Record<string, HiddenPreviewMod>;
 }
 
 export interface CachedMod {
@@ -1016,9 +1078,9 @@ export interface ElectronAPI {
     // bar strip (the native frame is hidden on Windows only).
     platform: string;
 
-    // Saved OLED setting at window creation, forwarded through the preload's
-    // argv so the theme can apply before the settings IPC round-trip.
-    initialOledMode: boolean;
+    // Saved theme at window creation, forwarded through the preload's argv so
+    // it can apply before the settings IPC round-trip.
+    initialTheme: AppTheme;
 
     // Settings
     detectDeadlock: () => Promise<string | null>;
@@ -1075,6 +1137,7 @@ export interface ElectronAPI {
     getInstalledModSafety: () => Promise<{ mods: InstalledModSafety[]; running: boolean; failed: boolean }>;
     rescanModSafety: () => Promise<InstalledModSafety[]>;
     reviewModSafety: (id: string, fingerprint: string) => Promise<Mod>;
+    disallowModSafety: (id: string) => Promise<Mod>;
     onModSafetyChanged: (callback: () => void) => () => void;
     /** Fires when the background check flags a mod's outdated vdata or stale hero models. */
     onModVdataChecked: (callback: () => void) => () => void;
@@ -1085,6 +1148,7 @@ export interface ElectronAPI {
     getMods: () => Promise<Mod[]>;
     enableMod: (modId: string) => Promise<Mod>;
     disableMod: (modId: string) => Promise<Mod>;
+    swapMods: (enableIds: string[], disableIds: string[], placement: ModSwapPlacement) => Promise<Mod[]>;
     deleteMod: (entry: DeleteModEntry) => Promise<DeleteModsResult>;
     deleteMods: (entries: DeleteModEntry[]) => Promise<DeleteModsResult>;
     onDeleteModsProgress: (callback: (progress: DeleteModsProgress) => void) => () => void;
@@ -1133,10 +1197,33 @@ export interface ElectronAPI {
     getAppliedCustomCard: (
         heroName: string
     ) => Promise<{ variant: string; dataUrl: string }[]>;
+    getSoulPreviewThumbnail: (key: string) => Promise<import('./portrait').SoulPreviewThumbnailInfo>;
+    saveSoulPreviewThumbnail: (key: string, capture: import('./portrait').SoulPreviewThumbnailCapture) => Promise<import('./portrait').SoulPreviewThumbnailInfo>;
     getSoulModelInfo: (key: string) => Promise<SoulModelInfo>;
     /** `entry` selects which model entry to export (soul container vs urn);
-     *  defaults to the soul-container model when omitted. */
-    exportSoulModel: (metaKey: string, cacheKey: string, entry?: string) => Promise<SoulModelInfo>;
+     *  defaults to the soul-container model when omitted. `animated` keeps a
+     *  real rig and its clips (the Installed preview); use its own cacheKey. */
+    exportSoulModel: (metaKey: string, cacheKey: string, entry?: string, options?: { animated?: boolean }) => Promise<SoulModelInfo>;
+    /** An animation mod's clips exported onto its hero (the Installed preview); null when it has none to play. */
+    exportAnimationModPreview: (metaKey: string) => Promise<{ heroName: string; key: string; clips: string[]; meshGroup: string | null } | null>;
+    getSkinEditInfo: (source: import('./skinEditor').SkinEditSource) => Promise<import('./skinEditor').SkinEditInfo>;
+    previewMovementFx: (request: import('../lib/movementFx').MovementFxPreviewRequest) => Promise<import('../lib/movementFx').MovementFxPreview>;
+    previewMovementEngine: (request: import('../lib/movementFx').MovementFxPreviewRequest) => Promise<import('../lib/movementFx').MovementEnginePreview>;
+    exportMovementFx: (choice: import('../lib/movementFx').MovementFxChoice) => Promise<import('./foundry').VpkExportResult>;
+    saveMovementFx: (request: import('../lib/movementFx').MovementFxSaveRequest) => Promise<void>;
+    /** Swaps a saved skin-editor overlay in the stack for its own sources and returns its edits. */
+    resumeSkinEdit: (source: import('./skinEditor').SkinEditSource) => Promise<import('./skinEditor').SkinEditResume>;
+    exportSkinEdits: (request: import('./skinEditor').SkinEditExport) => Promise<import('./foundry').VpkExportResult>;
+    saveSkinEdits: (request: import('./skinEditor').SkinEditSave) => Promise<import('./skinEditor').SkinEditSaveResult>;
+    onSkinEditProgress: (callback: (progress: import('./skinEditor').SkinEditProgress) => void) => () => void;
+    loadHideoutScene: () => Promise<import('./skinEditor').HideoutSceneInfo>;
+    /** Whether the hideout scene cache for the current game build is complete. */
+    isHideoutSceneReady: () => Promise<boolean>;
+    /** How far the running hideout cache build has come, from 0 to 1, or null when none runs. */
+    getHideoutBuildProgress: () => Promise<number | null>;
+    /** Saves a room frame next to the hideout scene cache `key`, served back at `grimoire-hero://s/<key>/snapshots/<name>`. */
+    saveHideoutSnapshot: (key: string, name: string, bytes: Uint8Array) => Promise<void>;
+    getHeroShaderNoise: () => Promise<string>;
     getHeroPoseInfo: (
         heroName: string,
         skinSources?: HeroPoseSkinSource[]
@@ -1148,12 +1235,14 @@ export interface ElectronAPI {
     ) => Promise<HeroPoseInfo>;
     getRiggedHeroPose: (
         heroName: string,
-        skinSources?: HeroPoseSkinSource[]
+        skinSources?: HeroPoseSkinSource[],
+        meshGroup?: string
     ) => Promise<HeroPoseInfo>;
     exportRiggedHeroPose: (
         heroName: string,
         skinSources?: HeroPoseSkinSource[],
-        fallbackSkinMetaKey?: string
+        fallbackSkinMetaKey?: string,
+        meshGroup?: string
     ) => Promise<HeroPoseInfo>;
     getHeroClothModel: (
         heroName: string,
@@ -1163,8 +1252,11 @@ export interface ElectronAPI {
     prepareHeroAbilityPreview: (heroName: string, slot: import('./mod').AbilitySlot, options?: import('./abilityPreview').HeroAbilityPreviewOptions) => Promise<import('./abilityPreview').HeroAbilityPlayback>;
     getHeroEffectInfo: (heroName: string, skinSources?: HeroPoseSkinSource[]) => Promise<HeroEffectInfo>;
     exportHeroEffect: (heroName: string, skinSources?: HeroPoseSkinSource[]) => Promise<HeroEffectInfo>;
+    /** The faithful particle runtime's bundle for a hero's own effects (served at grimoire-hero://m/<key>/particles/). */
+    exportHeroParticles: (heroName: string, skinSources?: HeroPoseSkinSource[], clips?: string[]) => Promise<HeroParticleBundleInfo>;
     getPreviewCacheSize: () => Promise<{ bytes: number }>;
     clearPreviewCache: () => Promise<{ bytesFreed: number }>;
+    onPreviewCacheCleared: (callback: () => void) => () => void;
     getGameBananaFileServerDiagnostics: () => Promise<GameBananaFileServerDiagnostics>;
     getGameBananaDownloadProxy: () => Promise<GameBananaDownloadProxyConfig>;
     setGameBananaDownloadProxy: (config: Pick<GameBananaDownloadProxyConfig, 'enabled' | 'url'>) => Promise<GameBananaDownloadProxyConfig>;
@@ -1225,11 +1317,9 @@ export interface ElectronAPI {
     getLockerCardThumbnails: () => Promise<LockerCardThumbnail[]>;
     clearLockerOverrides: (scope: LockerClearScope) => Promise<void>;
     setModGlobalType: (modId: string, globalType: GlobalModType | null) => Promise<Mod>;
-    setModIgnoreUpdates: (modId: string, ignore: boolean) => Promise<Mod>;
-    /** Mark a mod Global (moves it to the citadel/grimoire priority root) or
-     *  clear it. See Mod.priorityMod. Distinct from setModPriority, which sets
-     *  a mod's pakNN slot within citadel/addons. */
+    setModTags: (modId: string, tags: ModTagOverrides | null) => Promise<Mod>;
     setModPriorityFolder: (modId: string, priority: boolean) => Promise<Mod>;
+    setModIgnoreUpdates: (modId: string, ignore: boolean) => Promise<Mod>;
     backfillGameBananaFileId: (
       modId: string,
       payload: { gameBananaFileId: number; fileDescription?: string; sourceFileName?: string }
@@ -1244,6 +1334,11 @@ export interface ElectronAPI {
     ) => Promise<{ mods: Mod[]; failures: string[] }>;
     swapModPriority: (modIdA: string, modIdB: string) => Promise<Mod[]>;
     importCustomMods: (args: ImportCustomModsBatchArgs) => Promise<ImportCustomModsBatchResult>;
+    prepareLocalModImport: (path: string, requestId: string) => Promise<PreparedLocalModImport>;
+    releaseLocalModImport: (requestId: string) => Promise<void>;
+    getLocalModGallery: (groupId: string) => Promise<string[]>;
+    setLocalModGallery: (groupId: string, images: string[]) => Promise<Mod[]>;
+    setModsNsfw: (modIds: string[], nsfw: boolean) => Promise<Mod[]>;
     onImportCustomModsProgress: (
         callback: (progress: ImportCustomModsProgress) => void
     ) => () => void;
@@ -1371,6 +1466,9 @@ export interface ElectronAPI {
     // GameBanana
     browseMods: (args: BrowseModsArgs) => Promise<GameBananaModsResponse>;
     getModDetails: (args: GetModDetailsArgs) => Promise<GameBananaModDetails>;
+    getModRequirements: (targets: import('./gamebanana').GameBananaItemRef[], refresh?: boolean) => Promise<Record<string, import('./gamebanana').ModRequirementSnapshot>>;
+    onRequirementInstallCheck: (callback: (request: { requestId: string; source: import('./gamebanana').ModRequirementSource }) => void) => () => void;
+    respondToRequirementInstallCheck: (requestId: string, accepted: boolean) => Promise<void>;
     getModFileList: (args: GetModDetailsArgs) => Promise<GameBananaModFileList>;
     getModComments: (args: GetModCommentsArgs) => Promise<GameBananaCommentsResponse>;
     getModUpdates: (args: GetModUpdatesArgs) => Promise<GameBananaModUpdatesResponse>;
@@ -1383,6 +1481,7 @@ export interface ElectronAPI {
     removeModUpdateRequest: (requestId: string) => Promise<void>;
     getGameBananaSections: () => Promise<GameBananaSection[]>;
     getGameBananaCategories: (args: GetCategoriesArgs) => Promise<GameBananaCategoryNode[]>;
+    onGamebananaCategoriesChanged: (callback: (model: string) => void) => () => void;
     getCollection: (args: { collectionId: number }) => Promise<GameBananaCollection>;
     getCollectionItems: (args: { collectionId: number; page?: number }) => Promise<GameBananaCollectionItemsResponse>;
 
@@ -1417,6 +1516,8 @@ export interface ElectronAPI {
         version?: string | null,
         videoVariant?: string | null
     ) => Promise<PerformanceConfigStatus>;
+    setPerformanceConvarOverride: (key: string, value: string | null) => Promise<PerformanceConfigStatus>;
+    setPerformanceConvarOverrideEnabled: (key: string, enabled: boolean) => Promise<PerformanceConfigStatus>;
     reapplyWipedPerformanceConfig: () => Promise<PerformanceConfigStatus>;
     restorePerformanceConfigBackup: () => Promise<PerformanceConfigStatus>;
     getPerformanceLatestInfo: (presetId: string) => Promise<PerformanceLatestInfo>;
@@ -1505,9 +1606,9 @@ export interface ElectronAPI {
 
     // Profiles
     getProfiles: () => Promise<Profile[]>;
-    createProfile: (name: string, crosshairSettings?: ProfileCrosshairSettings) => Promise<Profile>;
+    createProfile: (name: string, crosshairSettings?: ProfileCrosshairSettings, shuffle?: ProfileShuffle) => Promise<Profile>;
     createProfileFromGameBananaIds: (args: { name: string; gameBananaIds: number[] }) => Promise<Profile>;
-    updateProfile: (profileId: string, crosshairSettings?: ProfileCrosshairSettings) => Promise<Profile>;
+    updateProfile: (profileId: string, crosshairSettings?: ProfileCrosshairSettings, shuffle?: ProfileShuffle) => Promise<Profile>;
     previewProfile: (profileId: string, mappings?: ProfileApplyMapping[]) => Promise<ProfileApplyPreview>;
     applyProfile: (profileId: string, reviewToken?: string, mappings?: ProfileApplyMapping[]) => Promise<ApplyProfileResult>;
     listProfileRecoveryPoints: () => Promise<import('./profileRecovery').ProfileRecoverySummary[]>;
@@ -1557,13 +1658,12 @@ export interface ElectronAPI {
     syncSection: (section: string) => Promise<{ success: boolean }>;
     /** Launch-time top-up: page 1 of each section only, leaving the 24h full-sync
      *  cadence (`needsSync`) untouched. */
-    refreshCatalogHead: () => Promise<{ success: boolean }>;
+    refreshCatalogHead: (sections?: string[]) => Promise<{ success: boolean }>;
     wipeModCache: () => Promise<{ success: boolean }>;
     getSyncStatus: () => Promise<Record<string, { lastSync: number; count: number } | null>>;
     needsSync: () => Promise<boolean>;
     isSyncInProgress: () => Promise<boolean>;
     searchLocalMods: (options: SearchLocalModsOptions) => Promise<LocalSearchResult>;
-    getCachedMod: (id: number) => Promise<CachedMod | null>;
     getFavoriteMods: (section?: string) => Promise<Array<{ modId: number; section: string; savedAt: number }>>;
     setFavoriteMod: (modId: number, section: string, saved: boolean) => Promise<void>;
     getFavoriteModIds: (modIds: number[], section: string) => Promise<number[]>;
@@ -1575,13 +1675,15 @@ export interface ElectronAPI {
     exportSavedMods: () => Promise<string | null>;
     importSavedMods: () => Promise<{ imported: number; skipped: number } | null>;
     checkSavedModUpdates: () => Promise<SavedModUpdateResult[]>;
+    getCachedMod: (id: number, section?: string) => Promise<CachedMod | null>;
+    getHiddenContentPreviews: (creatorIds: number[], mods: Array<{ id: number; section: string }>) => Promise<HiddenContentPreviews>;
     getLocalModCount: (section?: string) => Promise<number>;
     getLocalCategories: (section?: string) => Promise<Array<{ id: number; name: string; count: number }>>;
     getSectionStats: () => Promise<Array<{ section: string; count: number }>>;
-    getModsNsfwStatus: (ids: number[]) => Promise<Record<number, boolean>>;
-    getModsDownloadCounts: (ids: number[]) => Promise<Record<number, number>>;
-    updateModNsfw: (modId: number, isNsfw: boolean) => Promise<void>;
-    updateModDownloadCount: (modId: number, downloadCount: number) => Promise<void>;
+    getModsNsfwStatus: (ids: number[], section?: string) => Promise<Record<number, boolean>>;
+    getModsDownloadCounts: (ids: number[], section?: string) => Promise<Record<number, number>>;
+    updateModNsfw: (modId: number, isNsfw: boolean, section?: string) => Promise<void>;
+    updateModDownloadCount: (modId: number, downloadCount: number, section?: string) => Promise<void>;
     onSyncProgress: (callback: (data: SyncProgressData) => void) => () => void;
     /** Write a renderer-side trace line into main.log (and therefore into
      *  diagnostic reports). Fire-and-forget, returns nothing. */
@@ -1616,6 +1718,10 @@ export interface ElectronAPI {
     /** Read the player's live in-game crosshair from machine_convars.vcfg.
      *  settings is null when the file is missing or has no crosshair convars. */
     importCrosshairFromGame: (gamePath: string) => Promise<{ found: boolean; settings: CrosshairSettings | null }>;
+    /** Copy settings to the clipboard as the game's crosshair share code (via deadlock-api). */
+    copyCrosshairShareCode: (settings: CrosshairSettings) => Promise<void>;
+    /** Decode the share code on the clipboard, or null when it holds none (nothing is sent then). */
+    pasteCrosshairShareCode: (current: CrosshairSettings) => Promise<CrosshairSettings | null>;
     getAutoexecCommands: (gamePath: string) => Promise<{ commands: string[]; manualCommands: string[]; exists: boolean }>;
     saveAutoexecCommands: (gamePath: string, commands: string[]) => Promise<{ success: boolean; path: string }>;
 
@@ -1669,6 +1775,10 @@ export interface ElectronAPI {
         updateProfile: (
             id: string,
             body: import('@grimoire/social-types').UpdateProfileRequest
+        ) => Promise<import('@grimoire/social-types').UpdateProfileResponse>;
+        updateProfileContents: (
+            id: string,
+            body: import('@grimoire/social-types').UpdateProfileContentsRequest
         ) => Promise<import('@grimoire/social-types').UpdateProfileResponse>;
         like: (id: string) => Promise<import('@grimoire/social-types').LikeResponse>;
         unlike: (id: string) => Promise<import('@grimoire/social-types').LikeResponse>;
@@ -1828,8 +1938,10 @@ export interface ElectronAPI {
         setPrimaryPlayer: (accountId: number) => Promise<void>;
 
         // Player Data (API)
-        getPlayerMMR: (accountIds: number[]) => Promise<unknown[]>;
-        getPlayerMMRHistory: (accountId: number) => Promise<unknown[]>;
+        getPlayerRank: (accountIds: number[]) => Promise<unknown[]>;
+        getRankedSeasons: () => Promise<unknown[]>;
+        getMatchScoreboard: (matchId: number) => Promise<unknown>;
+        getSeasonRankDistribution: () => Promise<unknown[]>;
         getHeroes: () => Promise<unknown[]>;
         getRanks: () => Promise<unknown[]>;
         getPlayerHeroStats: (accountId: number) => Promise<unknown>;
@@ -1850,7 +1962,7 @@ export interface ElectronAPI {
         getActiveMatches: () => Promise<unknown[]>;
 
         // Leaderboards
-        getLeaderboard: (region: string) => Promise<unknown[]>;
+        getLeaderboard: (region: string, leaderboardId?: number) => Promise<unknown[]>;
         getHeroLeaderboard: (region: string, heroId: number) => Promise<unknown[]>;
 
         // Analytics
@@ -1859,18 +1971,10 @@ export interface ElectronAPI {
         getHeroSynergies: (heroId?: number) => Promise<unknown[]>;
         getItemAnalytics: () => Promise<unknown[]>;
         getBadgeDistribution: () => Promise<unknown[]>;
-        getMMRDistribution: () => Promise<unknown>;
-
-        // Extended MMR
-        getHeroMMR: (accountIds: number[], heroId: number) => Promise<unknown[]>;
-        getHeroMMRHistory: (accountId: number, heroId: number) => Promise<unknown[]>;
-        getMMRDistributionGlobal: (filters?: unknown) => Promise<unknown[]>;
-        getHeroMMRDistribution: (heroId: number, filters?: unknown) => Promise<unknown[]>;
 
         // Player Social Stats
         getEnemyStats: (accountId: number, filters?: unknown) => Promise<unknown[]>;
         getMateStats: (accountId: number, filters?: unknown) => Promise<unknown[]>;
-        getPartyStats: (accountId: number, filters?: unknown) => Promise<unknown[]>;
         searchSteamProfiles: (query: string) => Promise<unknown[]>;
 
         // Advanced Analytics
@@ -1950,12 +2054,24 @@ export interface ProfileMod {
  *  with normalizeCrosshairSettings before use. */
 export type ProfileCrosshairSettings = CrosshairSettings;
 
+/** The Locker effect picks a profile carries: ability colors and trippy skins.
+ *  Both are stored as parameters and rebuilt from the base game, so they don't
+ *  depend on any installed mod. Hero cards and ability sounds are not included. */
+export interface ProfileLocker {
+    colors: LockerColorSelection[];
+    trippySkins: LockerTrippySkinSelection[];
+}
+
 export interface Profile {
     id: string;
     name: string;
     mods: ProfileMod[];
     crosshair?: ProfileCrosshairSettings;
     autoexecCommands?: string[];
+    shuffle?: ProfileShuffle;
+    /** Absent on profiles saved before profiles carried Locker effects, and on
+     *  imported ones. Applying such a profile leaves the Locker as it is. */
+    locker?: ProfileLocker;
     createdAt: string;
     updatedAt: string;
 }
@@ -1967,6 +2083,9 @@ export interface Profile {
 export interface ApplyProfileResult {
     profile: Profile;
     failures: string[];
+    /** Set when the profile's Locker effects could not be rebuilt. The mods,
+     *  autoexec and crosshair are applied regardless. */
+    lockerError?: string;
     unresolved: ProfileApplyEntry[];
 }
 
