@@ -2,3 +2,9 @@
 # text because there's no NUL byte early in the file, so with core.autocrlf it
 # would insert CR bytes on checkout and corrupt the probe. Force binary handling.
 *.hdr binary
+
+# ChatLane data is hash-pinned by scripts/check-chatlane-resources.mjs. With
+# core.autocrlf (the Git for Windows default) a checkout would add CR bytes
+# and fail that check on every Windows release build. Keep the bytes as committed.
+resources/chatlane/base-commands.json -text
+resources/chatlane/red2.bin binary
