@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const h = vi.hoisted(() => ({ channel: 'stable', events: new Map<string, (...args: unknown[]) => void>(), beforeQuit: (() => {}) as () => void,
   updater: { on: vi.fn(), checkForUpdates: vi.fn(async () => ({ updateInfo: null })), allowPrerelease: true, allowDowngrade: true, autoInstallOnAppQuit: true } }));
 vi.mock('electron-updater', () => ({ default: { autoUpdater: h.updater } }));
@@ -8,11 +8,16 @@ vi.mock('./updaterCache', () => ({ pruneUpdaterCache: async () => 0 }));
 vi.mock('./settings', () => ({ loadSettings: () => ({ updateReleaseChannel: h.channel }) }));
 let updater: typeof import('./updater');
 beforeEach(async () => {
+  // A fork build, as release.yml produces. Without it the install source is
+  // read from process.execPath, and a CI runner's /opt/hostedtoolcache Node
+  // classifies as a managed install, which switches the updater off.
+  vi.stubEnv('GRIMOIRE_FORK_BUILD', '1');
   vi.resetModules(); h.channel = 'stable'; h.events.clear();
   h.updater.on.mockImplementation((name: string, fn: (...args: unknown[]) => void) => h.events.set(name, fn));
   updater = await import('./updater');
   updater.initUpdater({ isDestroyed: () => false, webContents: { send: vi.fn() } } as unknown as import('electron').BrowserWindow);
 });
+afterEach(() => { vi.unstubAllEnvs(); });
 describe('updater release-channel boundaries', () => {
   it('distinguishes an unchecked install from a completed update check', () => {
     expect(updater.getUpdateStatus().checked).toBe(false);
