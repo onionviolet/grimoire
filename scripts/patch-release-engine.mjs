@@ -10,6 +10,16 @@ const git = (args, options = {}) => execFileSync('git', ['-C', engine, ...args],
     encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], ...options,
 });
 git(['fetch', '--quiet', '--no-tags', 'https://github.com/Slush97/vpkmerge.git', READER_FIX]);
+// An engine rebased onto upstream v0.30.1 or later already contains the fix in
+// its history. Later upstream commits touch the same files, so neither a
+// forward nor a reverse apply of the old diff works there: check ancestry.
+try {
+    git(['merge-base', '--is-ancestor', READER_FIX, 'HEAD']);
+    console.log(`[patch-release-engine] reader fix is in the engine history: ${READER_FIX}`);
+    process.exit(0);
+} catch {
+    // Not an ancestor: fall through to the patch path below.
+}
 const patch = git(['show', '--format=', '--binary', READER_FIX, '--',
     'Cargo.toml', 'Cargo.lock', 'vendor/valve_pak', 'vpkmerge-core/tests/optional_checksums.rs']);
 if (!patch.trim()) throw new Error('Pinned reader fix produced an empty patch');

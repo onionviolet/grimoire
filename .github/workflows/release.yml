@@ -51,8 +51,11 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: onionviolet/vpkmerge
-          ref: 798f3a7d28f3ef314d8f6ebf51ced0d9fe049445
+          ref: c34fadff7e72c83b2c0e55ca4db36eb3e7147026
           path: vpkmerge
+          # Full history: patch-release-engine.mjs checks whether the reader
+          # fix is already an ancestor, which a depth-1 clone cannot answer.
+          fetch-depth: 0
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable

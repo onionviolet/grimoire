@@ -99,8 +99,8 @@ repeatable while preserving a usable rollback path.
    Locker (including Global), Browse, and Foundry. In Foundry, open **Global
    sounds** and confirm its catalog loads, then replace one ordinary icon and
    one YCoCg icon. Record the app version and the vpkmerge version shown in
-   Settings (the pinned fork build currently reports `vpkmerge 0.19.0
-   (798f3a7)`). Install the setup executable only when its upgrade path also
+   Settings (the pinned fork build currently reports `vpkmerge 0.30.1
+   (c34fadf)`). Install the setup executable only when its upgrade path also
    needs testing.
 
 8. Push the release commit and an immutable version tag; the Release workflow

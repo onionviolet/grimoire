@@ -34,6 +34,8 @@ game-engine acceptance record. No upstream repository objects were changed.
   that call newer vpkmerge verbs (outdated vdata check, attachment heal, video
   and model tooling) have not been run against the fork engine. Rebase the fork
   engine before the next release.
+  Closed 2026-11-23: the fork engine was rebased onto upstream v0.30.1
+  (`onionviolet/vpkmerge` `c34fadff`), see `fork-maintenance.md` D-02.
 - **Nix.** `nix/grimoire.nix` carries upstream's store hash; the fork lockfile
   differs, so the hash is stale until `nix.yml` or a local nix build refreshes it.
 - **Lockfile.** Regenerated with pnpm 11.1.1 (`lockfileVersion` 9.0). CI pins

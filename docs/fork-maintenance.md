@@ -93,14 +93,23 @@ pnpm package:win
 
 ### Engine build policy (D-02)
 
-As of 2026-10-03, the release workflow builds `onionviolet/vpkmerge` from
-pinned SHA `798f3a7d28f3ef314d8f6ebf51ced0d9fe049445` on Windows, macOS and
-Linux. Before building, `scripts/patch-release-engine.mjs` applies the reader
-repair from immutable upstream commit
-`4396ad7a00528ce3b70af9a7d7bb74ceac9b3747`. It carries the vendored MIT
-`valve_pak` fix and its five optional-checksum regression tests. Neither engine
-remote is mutated. The engine reports 0.19.0 because its fork CLI version is
-unchanged; the build includes the behavioral repair shipped in upstream 0.19.1.
+As of 2026-11-23, the release workflow builds `onionviolet/vpkmerge` from
+pinned SHA `c34fadff7e72c83b2c0e55ca4db36eb3e7147026` on Windows, macOS and
+Linux. That commit is branch `rebase/v0.30.1-fork`: upstream tag `v0.30.1` plus
+the six fork-only commits (YCoCg icon replace, global soundevents catalog,
+underscore labels, `base` inheritance for hero and global events, and the build
+id in `--version`). It reports `vpkmerge 0.30.1 (c34fadf)`.
+
+`scripts/patch-release-engine.mjs` carries the reader repair from immutable
+upstream commit `4396ad7a00528ce3b70af9a7d7bb74ceac9b3747` (the vendored MIT
+`valve_pak` fix and its optional-checksum tests). v0.30.1 already contains it,
+so the script finds it in the engine history and changes nothing. The checkout
+uses `fetch-depth: 0` so that ancestry check works. Neither engine remote is
+mutated by the release job.
+
+The previous pin, `798f3a7d28f3ef314d8f6ebf51ced0d9fe049445` (fork 0.19.0),
+returned an empty hero roster on the 2026-11 game build and lacked the
+`--base` flag that the vdata check and attachment heal pass.
 
 This keeps the fork catalog and YCoCg capabilities on every release platform.
 The patch applied cleanly to the pinned checkout and its five tests passed on
