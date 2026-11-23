@@ -95,7 +95,7 @@ pnpm package:win
 
 As of 2026-11-23, the release workflow builds `onionviolet/vpkmerge` from
 pinned SHA `c34fadff7e72c83b2c0e55ca4db36eb3e7147026` on Windows, macOS and
-Linux. That commit is branch `rebase/v0.30.1-fork`: upstream tag `v0.30.1` plus
+Linux. That commit is the fork's `main`: upstream tag `v0.30.1` plus
 the six fork-only commits (YCoCg icon replace, global soundevents catalog,
 underscore labels, `base` inheritance for hero and global events, and the build
 id in `--version`). It reports `vpkmerge 0.30.1 (c34fadf)`.
@@ -109,7 +109,8 @@ mutated by the release job.
 
 The previous pin, `798f3a7d28f3ef314d8f6ebf51ced0d9fe049445` (fork 0.19.0),
 returned an empty hero roster on the 2026-11 game build and lacked the
-`--base` flag that the vdata check and attachment heal pass.
+`--base` flag that the vdata check and attachment heal pass. It stays reachable on
+branch `archive/main-fork-0.19.0`, so older releases remain reproducible.
 
 This keeps the fork catalog and YCoCg capabilities on every release platform.
 The patch applied cleanly to the pinned checkout and its five tests passed on
