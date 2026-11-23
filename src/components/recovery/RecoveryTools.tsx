@@ -7,7 +7,7 @@ import { getInterruptedProfileRecovery, recoverInterruptedProfileRecovery, revie
 import type { InterruptedRecovery } from '../../types/profileRecovery';
 import type { CompatibilityReview, ModIsolationSession } from '../../types/recovery';
 
-export default function RecoveryTools() {
+export default function RecoveryTools({ suspectName }: { suspectName?: string }) {
   const { t } = useTranslation();
   const [interrupted, setInterrupted] = useState<InterruptedRecovery | null>(null);
   const [compatibility, setCompatibility] = useState<CompatibilityReview | null>(null);
@@ -66,6 +66,9 @@ export default function RecoveryTools() {
     <Card title={t('recovery.tools.isolationTitle')} description={t('recovery.tools.isolationDescription')} accentEdge="none">
       <div className="space-y-3">
         <p className="text-sm text-text-secondary">{t('recovery.tools.isolationScope')}</p>
+        {suspectName && <p className="break-words text-sm text-text-primary">
+          {t('recovery.tools.crashSuspect', { name: suspectName })}
+        </p>}
         {session?.strategy === 'delta' && <p className="text-xs text-text-secondary">{t('recovery.tools.deltaScope')}</p>}
         {!session ? <Button variant="secondary" disabled={busy || !!interrupted} onClick={() => void run(startModIsolation)}>{t('recovery.tools.startIsolation')}</Button>
           : <>

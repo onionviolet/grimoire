@@ -26,13 +26,11 @@ import { scanMods, enableMod, reorderMods } from './mods';
 import { getModMetadata, setModMetadata, removeModMetadata } from './metadata';
 import { invalidateVpkParseCache } from './vpk';
 import { readStash } from './launch';
+import { LOCKER_CARDS_KEY, LOCKER_SOUNDS_KEY, LOCKER_COLORS_KEY, LOCKER_TRIPPY_SKINS_KEY, LOCKER_VPK_SLOTS } from './lockerVpkSlots';
 
 /** Synthetic metadata keys for the managed selection sets (decoupled from the
  *  VPK filename so they never collide with a user mod). */
-export const LOCKER_CARDS_KEY = 'locker:cards';
-export const LOCKER_SOUNDS_KEY = 'locker:sounds';
-export const LOCKER_COLORS_KEY = 'locker:colors';
-export const LOCKER_TRIPPY_SKINS_KEY = 'locker:trippyskins';
+export { LOCKER_CARDS_KEY, LOCKER_SOUNDS_KEY, LOCKER_COLORS_KEY, LOCKER_TRIPPY_SKINS_KEY } from './lockerVpkSlots';
 
 /**
  * Whether two per-hero selection sets describe the same picks, ignoring order
@@ -56,10 +54,10 @@ export function sameLockerSelections<T extends { heroCodename: string; addedAt: 
 }
 
 /** Fixed filenames inside citadel/grimoire. */
-const GRIMOIRE_CARDS_FILE = 'pak01_dir.vpk';
-const GRIMOIRE_SOUNDS_FILE = 'pak02_dir.vpk';
-const GRIMOIRE_COLORS_FILE = 'pak03_dir.vpk';
-const GRIMOIRE_TRIPPY_SKINS_FILE = 'pak04_dir.vpk';
+const GRIMOIRE_CARDS_FILE = `${LOCKER_VPK_SLOTS[LOCKER_CARDS_KEY]}_dir.vpk`;
+const GRIMOIRE_SOUNDS_FILE = `${LOCKER_VPK_SLOTS[LOCKER_SOUNDS_KEY]}_dir.vpk`;
+const GRIMOIRE_COLORS_FILE = `${LOCKER_VPK_SLOTS[LOCKER_COLORS_KEY]}_dir.vpk`;
+const GRIMOIRE_TRIPPY_SKINS_FILE = `${LOCKER_VPK_SLOTS[LOCKER_TRIPPY_SKINS_KEY]}_dir.vpk`;
 
 /** Absolute path to the managed cards VPK in citadel/grimoire. */
 export function lockerCardsVpkPath(deadlockPath: string): string {

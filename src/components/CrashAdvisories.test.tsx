@@ -61,6 +61,27 @@ describe('advisory crash UI', () => {
     expect(useCrashAdvisoryStore.getState().detailId).toBeNull();
     expect(api.dismissCrashAdvisory).not.toHaveBeenCalled();
   });
+  it('opens Recovery from the advisory without dismissing the finding', async () => {
+    api.getCrashAdvisories.mockResolvedValue([finding]);
+    function RecoveryTarget() {
+      return <div data-advisory-id={useLocation().state?.crashAdvisoryId}>Recovery workspace</div>;
+    }
+    await render(<>
+      <CrashAdvisoryHost />
+      <Routes>
+        <Route path="/" element={<div>Installed</div>} />
+        <Route path="/recovery" element={<RecoveryTarget />} />
+      </Routes>
+    </>);
+    await act(async () => useCrashAdvisoryStore.getState().openDetail(finding.id));
+    const recovery = [...document.querySelectorAll('button')].find(button => button.textContent === 'recovery.title');
+    expect(recovery).toBeDefined();
+    await act(async () => recovery?.click());
+    expect(host.textContent).toContain('Recovery workspace');
+    expect(host.querySelector('[data-advisory-id]')?.getAttribute('data-advisory-id')).toBe(finding.id);
+    expect(useCrashAdvisoryStore.getState().detailId).toBeNull();
+    expect(api.dismissCrashAdvisory).not.toHaveBeenCalled();
+  });
   it('never opens a dialog automatically for findings arriving on startup or while open', async () => {
     api.getCrashAdvisories.mockResolvedValue([finding]);
     await render();

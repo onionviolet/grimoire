@@ -2,10 +2,13 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-const h = vi.hoisted(() => ({ list: vi.fn(), preview: vi.fn(), export: vi.fn() }));
-vi.mock('../../lib/api', () => ({ foundryModels: h.list, foundryModelPreview: h.preview, foundryExportModel: h.export }));
+const h = vi.hoisted(() => ({ list: vi.fn(), preview: vi.fn(), export: vi.fn(), replacement: vi.fn() }));
+vi.mock('../../lib/api', () => ({ foundryModels: h.list, foundryModelPreview: h.preview, foundryExportModel: h.export, foundrySelectModelReplacement: h.replacement }));
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
-vi.mock('./ModelAssetPreview', () => ({ default: ({ url }: { url: string }) => <div data-model-url={url} /> }));
+vi.mock('./ModelAssetPreview', () => ({ default: ({ url }: { url: string }) => {
+  if (url === 'broken-replacement') throw new Error('Invalid replacement model');
+  return <div data-model-url={url} />;
+} }));
 const { default: ModelBrowse } = await import('./ModelBrowse');
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root;
@@ -50,5 +53,17 @@ describe('Foundry model browser', () => {
     await act(async () => buttons('foundry.models.preview')[0].click());
     expect(document.body.textContent).toContain('Unsupported model');
     expect(buttons('foundry.models.export')[0].disabled).toBe(true);
+  });
+  it('previews a different replacement after the first viewer fails', async () => {
+    h.replacement.mockResolvedValueOnce({ preview: { url: 'broken-replacement' }, review: { dependencies: [], entries: [] } })
+      .mockResolvedValueOnce({ preview: { url: 'valid-replacement' }, review: { dependencies: [], entries: [] } });
+    await act(async () => root.render(<ModelBrowse onStage={vi.fn()} />));
+    await act(async () => buttons('foundry.models.preview')[0].click());
+    const choose = buttons('foundry.models.replacement.choose')[0];
+    await act(async () => choose.click());
+    expect(document.body.textContent).toContain('foundry.models.previewFailed');
+    await act(async () => choose.click());
+    expect(document.querySelector('[data-model-url="valid-replacement"]')).not.toBeNull();
+    expect(document.body.textContent).not.toContain('foundry.models.previewFailed');
   });
 });

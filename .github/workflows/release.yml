@@ -165,6 +165,10 @@ jobs:
             pnpm exec electron-vite build && pnpm exec electron-builder --win --publish never
           fi
 
+      - name: Smoke-test packaged app
+        working-directory: grimoire
+        run: pnpm smoke:packaged
+
       - name: List release directory
         if: always()
         working-directory: grimoire
@@ -217,7 +221,15 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.platform }}-build
-          path: grimoire/release/*
+          path: |
+            grimoire/release/*.exe
+            grimoire/release/*.AppImage
+            grimoire/release/*.deb
+            grimoire/release/*.dmg
+            grimoire/release/*.zip
+            grimoire/release/*.blockmap
+            grimoire/release/latest*.yml
+            grimoire/release/SHA256SUMS-*.txt
           if-no-files-found: error
           retention-days: 1
 

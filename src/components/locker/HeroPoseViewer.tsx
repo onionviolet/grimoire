@@ -735,7 +735,7 @@ const PAINT_MOUSE_BUTTONS = { MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.ROTATE
 /** The room left above a staged actor when framing, as a fraction of its height. */
 const ACTOR_HEADROOM = 0.6;
 
-export function Controls({ interaction, reset, label, model, fitKey, readSavedView, onViewChange, focusMaterial, movement, painting = false, hideout = false }: {
+export function Controls({ interaction, reset, label, model, fitKey, readSavedView, onViewChange, focusMaterial, movement, painting = false, hideout = false, preserveView = false }: {
   interaction: RefObject<TurntableInteraction>; reset: number; label: string; model: THREE.Object3D; fitKey: string;
   readSavedView?: () => ViewerCameraDraft | null; onViewChange?: (view: ViewerCameraDraft) => void;
   focusMaterial?: string | null;
@@ -743,6 +743,7 @@ export function Controls({ interaction, reset, label, model, fitKey, readSavedVi
   painting?: boolean;
   /** Frames the hero for the hideout room and keeps the camera inside it. */
   hideout?: boolean;
+  preserveView?: boolean;
 }) {
   const motionClock = useContext(MovementClock);
   const { camera, gl, scene, size: viewportSize } = useThree();
@@ -769,6 +770,7 @@ export function Controls({ interaction, reset, label, model, fitKey, readSavedVi
   const stageFitKey = movement?.engine ? `engine:${(movement.engine.actors ?? []).map((actor) => `${actor.id}:${actor.hero}`).join('|')}` : 'overlay';
   // The viewer outlives a hero, so each model that arrives restores its view's camera.
   const restoredModel = useRef<THREE.Object3D | null>(null);
+  const lastFraming = useRef<string | null>(null);
   const cameraCommit = useMemo(() => deferredCommit<ViewerCameraDraft>(view => onViewChange?.(view)), [onViewChange]);
   useEffect(() => {
     if (typeof window === 'undefined') return () => cameraCommit.flush();
@@ -794,6 +796,7 @@ export function Controls({ interaction, reset, label, model, fitKey, readSavedVi
   useFrame(() => {
     const controls = controlsRef.current;
     if (!pendingFit.current || !controls || viewportSize.width <= 0 || viewportSize.height <= 0) return;
+    const framing = JSON.stringify([reset, viewportSize.width, viewportSize.height]);
     // A staged actor is out of sight while its programs are linked (StagedActorsPrecompile), and has no
     // bounds to frame until it shows. The fit waits for it, for as long as the stage itself does: fitted
     // without it, the camera would frame the hero alone and leave the other one off the screen.
@@ -860,11 +863,15 @@ export function Controls({ interaction, reset, label, model, fitKey, readSavedVi
     let distance = Math.max(size.y / 2 / tangent, size.x / 2 / tangent / Math.max(0.001, perspective.aspect ?? 1)) * 1.2 + size.z / 2;
     if (hideout && !focusMaterial && !movement) ({ target: center, distance } = hideoutFraming(bounds, fov, perspective.aspect ?? 1));
     distance = Math.max(minimum, distance);
-    camera.position.copy(center).add(new THREE.Vector3(0, 0, distance));
-    controls.target.copy(center);
+    const homePosition = center.clone().add(new THREE.Vector3(0, 0, distance));
+    if (!preserveView || lastFraming.current !== framing) {
+      camera.position.copy(homePosition);
+      controls.target.copy(center);
+    }
+    lastFraming.current = framing;
     controls.minDistance = minimum;
     controls.maxDistance = Math.max(6, distance * 2);
-    Object.assign(camera.userData, { previewHome: { position: camera.position.toArray(), target: center.toArray() } });
+    Object.assign(camera.userData, { previewHome: { position: homePosition.toArray(), target: center.toArray() } });
     if (restoredModel.current !== model) {
       restoredModel.current = model;
       cameraCommit.flush();
@@ -1663,6 +1670,12 @@ export interface HeroPoseViewerProps {
   /** Clips to play instead of the model's own (an animation mod's preview): all of them back to back in a
    *  loop, or only `clip`. `paused` holds the pose. Neither is saved, unlike a clip picked in the viewer. */
   clipOverride?: { key: string; url: string; clip?: string | null; paused?: boolean };
+  previewPlayback?: {
+    paused: boolean;
+    speed: number;
+    seek?: HeroPlaybackSeek;
+    progressRef: RefObject<HeroPlaybackProgress>;
+  };
   /** A body group choice to show instead of the default body (Seven without his gun during his ult). */
   meshGroup?: string;
   initialScene?: HeroViewerScene;
@@ -1698,6 +1711,7 @@ export default function HeroPoseViewer({
   workspaceKey,
   movementPreview,
   clipOverride,
+  previewPlayback,
   meshGroup,
   initialScene,
   sceneSurface = 'preview',
@@ -1720,7 +1734,8 @@ export default function HeroPoseViewer({
   const viewKey = `${workspaceKey ?? `viewer:${heroName}`}:view`;
   // The model on screen and the hero and stack it was loaded for. A new hero leaves the previous
   // model on screen, playing as before, until its own model is ready to swap in behind a crossfade.
-  const loadKey = JSON.stringify([heroName, skinSources.map((source) => `${source.priority}:${source.metaKey}`), fallbackSkinMetaKey ?? null]);
+  const loadKey = JSON.stringify([heroName, skinSources.map((source) => `${source.priority}:${source.metaKey}`),
+    fallbackSkinMetaKey ?? null, clipOverride?.key ?? null, meshGroup ?? null]);
   const [loaded, setLoaded] = useState<{ key: string; heroName: string; skinSources: HeroPoseSkinSource[]; model: LoadedModel } | null>(null);
   const current = loaded?.key === loadKey;
   const loadedModel = loaded?.model ?? null;
@@ -1781,8 +1796,9 @@ export default function HeroPoseViewer({
   const overrideClip = clipOverride ? clipOverride.clip ?? OVERRIDE_ALL_CLIPS : null;
   const clips = useMemo(() => {
     const chosen = overrideClip === null ? null : modelClips.find((clip) => clip.name === overrideClip);
-    return chosen ? [chosen] : modelClips;
+    return chosen ? [chosen] : overrideClip !== null ? NO_CLIPS : modelClips;
   }, [modelClips, overrideClip]);
+  const partialClipBinding = overrideClip !== null && clips.some((clip) => clip.userData.partialBinding === true);
   const rigged = loadedModel?.rigged ?? false;
   const clothModel = loadedModel?.clothModel ?? null;
   const [animationUnavailable, setAnimationUnavailable] = useState(false);
@@ -1802,8 +1818,9 @@ export default function HeroPoseViewer({
   const switching = loaded !== null && !current;
   const holdPlayback = holdPose || switching;
   const overridePaused = !!clipOverride?.paused;
-  const heldPlayback = useMemo(() => (holdPlayback || overridePaused) && !playback.paused ? { ...playback, paused: true } : playback,
-    [holdPlayback, overridePaused, playback]);
+  const currentPlayback = previewPlayback ?? playback;
+  const heldPlayback = useMemo(() => (holdPlayback || overridePaused) && !currentPlayback.paused ? { ...currentPlayback, paused: true } : currentPlayback,
+    [holdPlayback, overridePaused, currentPlayback]);
   useEffect(() => {
     if (!holdPose) return;
     const turntable = interaction.current;
@@ -2017,7 +2034,7 @@ export default function HeroPoseViewer({
     cloth: devFlags.cloth,
     animated: devFlags.animated,
     bloom: devFlags.bloom,
-    ...(movementPreview ? { animated: true } : {}),
+    ...(movementPreview || clipOverride || previewPlayback ? { animated: true } : {}),
   };
   // The hero's own ambient effects keep playing under a movement preview (Celeste's horn through a dash)
   const sourceParticlesEnabled = devFlags.effects && devFlags.sourceParticles;
@@ -2295,18 +2312,25 @@ export default function HeroPoseViewer({
                     disposeScene(gltf.scene);
                     throw error;
                   });
+                  disposeScene(override.scene);
                   if (cancelled) {
                     disposeScene(gltf.scene);
                     return;
                   }
-                  // Bound by bone name; tracks for bones this model lacks would only warn every frame.
+                  // A replacement can remove accessory bones while keeping the rest of the hero rig.
                   for (const clip of override.animations) {
-                    clip.tracks = clip.tracks.filter((track) => !!gltf.scene.getObjectByName(track.name.slice(0, track.name.lastIndexOf('.'))));
+                    const tracks = clip.tracks.filter((track) => !!gltf.scene.getObjectByName(track.name.slice(0, track.name.lastIndexOf('.'))));
+                    clip.userData.partialBinding = tracks.length !== clip.tracks.length;
+                    clip.tracks = tracks;
                   }
-                  const played = override.animations.filter((c) => c.duration > 0.001);
+                  const played = override.animations.filter((clip) => clip.duration > 0.001 && clip.tracks.length > 0);
+                  if (!played.length) {
+                    disposeScene(gltf.scene);
+                    throw new Error('The preview clips do not bind to the selected model.');
+                  }
                   const joined = concatAnimationClips(played, OVERRIDE_ALL_CLIPS);
-                  joined.userData = { grimoireDefault: true };
-                  clips = joined.duration > 0.001 ? [joined, ...played] : clips;
+                  joined.userData = { grimoireDefault: true, partialBinding: played.some((clip) => clip.userData.partialBinding === true) };
+                  clips = [joined, ...played];
                 }
                 model = { cacheKey, scene: gltf.scene, clothModel, clips, rigged: true, bytes: heroModelBytes(gltf.scene, clips) };
               }
@@ -2675,15 +2699,15 @@ export default function HeroPoseViewer({
         <MovementFxStage preview={stagedMovementPreview} scene={scene} paused={heldPlayback.paused} speed={playback.speed}
           controls={<Controls interaction={interaction} reset={resetView} label={t('locker.pose.cameraHint')} model={scene} fitKey={playingClip} focusMaterial={focusMaterial} hideout={viewerScene === 'hideout'}
             movement={stagedMovementPreview} readSavedView={compact ? undefined : readCameraView} onViewChange={compact ? undefined : saveCameraView}
-            painting={regionSelection?.picker.by === 'brush'} />}>
+            painting={regionSelection?.picker.by === 'brush'} preserveView={!!previewPlayback} />}>
         {rigged ? (
           <RiggedModel
             heroName={shownHero}
             reset={resetView}
             clipName={playingClip}
             playback={heldPlayback}
-            seek={seek}
-            progressRef={playbackProgressRef}
+            seek={previewPlayback?.seek ?? seek}
+            progressRef={previewPlayback?.progressRef ?? playbackProgressRef}
             scene={scene}
             clips={clips}
             interaction={interaction}
@@ -2778,6 +2802,14 @@ export default function HeroPoseViewer({
           : buildingHideout ? t('locker.pose.hideoutBuilding')
           : viewerScene === 'hideout' && hideoutStatus.kind === 'loading' ? t('locker.pose.hideoutLoading') : null}
       </p>
+      {compact && current && (clipOverride || previewPlayback) && (animationUnavailable || (rigged && clips.length === 0)) &&
+        <p role="status" className="absolute inset-x-3 top-3 z-10 rounded-sm bg-bg-secondary/95 p-2 text-xs text-text-secondary">
+          {t('locker.pose.animationUnavailable')}
+        </p>}
+      {compact && current && partialClipBinding &&
+        <p role="status" className="absolute inset-x-3 top-3 z-10 rounded-sm bg-bg-secondary/95 p-2 text-xs text-text-secondary">
+          {t('installed.preview.partialClipBinding')}
+        </p>}
       {!compact && toolbar}
       {!compact && experimentalAbilityPreview && <div className="absolute bottom-3 right-3 z-10 max-w-72 space-y-2 rounded-sm bg-bg-secondary/90 p-2">
         <AbilityPreview heroName={heroName} skinSources={skinSources} fallbackSkinMetaKey={fallbackSkinMetaKey} />

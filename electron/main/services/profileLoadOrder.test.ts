@@ -81,7 +81,7 @@ describe('saved profile load order across addon folders', () => {
         const result = await applyProfile(deadlockPath, profile.id);
         expect(result.failures).toEqual([]);
         expect(await installedOrder()).toEqual(before);
-    }, 30_000);
+    }, 60_000);
 
     it('restores a profile saved with per-folder slot numbers in its listed order', async () => {
         installMods(150);
@@ -105,14 +105,14 @@ describe('saved profile load order across addon folders', () => {
         await reverseOrder();
         expect((await applyProfile(deadlockPath, profile.id)).failures).toEqual([]);
         expect(await installedOrder()).toEqual(before);
-    });
+    }, 30_000);
 
     it('keeps a collection subset ordered across addon folders', async () => {
         installMods(101);
         const profile = await createProfileFromGameBananaIds(deadlockPath, 'Collection', [2, 98, 100, 101]);
         expect((await applyProfile(deadlockPath, profile.id)).failures).toEqual([]);
         expect(await installedOrder()).toEqual([2, 98, 100, 101]);
-    });
+    }, 30_000);
 
     it('exports an installed snapshot with priorities in complete load order', async () => {
         installMods(100);

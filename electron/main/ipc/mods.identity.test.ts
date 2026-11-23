@@ -490,7 +490,7 @@ describe('library enrichment installation isolation', () => {
         { globalType: 'hud' as const, lockerHero: 'Ivy', lockerHeroSource: 'vpk' as const },
     ])('uses the same manual/legacy precedence for display and local groups (%j)', async metadata => {
         h.metadata.set(source.metaKey, { ...metadata, modName: 'Local mod', abilitySounds: null,
-            bodyModelDetection: { version: 1, size: source.size, modifiedAt: source.installedAt, heroes: [] } });
+            bodyModelDetection: { version: 2, size: source.size, modifiedAt: source.installedAt, heroes: [], hasAnimationClips: false } });
         const mods = await h.handlers.get('get-mods')!({}) as Array<Mod & { lockerHeroes: string[]; globalType?: string }>;
         const member = toLocalVariantGroupMember(source);
         expect(member.resolvedHeroes).toEqual(mods[0].lockerHeroes);
@@ -512,12 +512,13 @@ describe('library enrichment installation isolation', () => {
 
     it('detects body models once from the worker-warmed file list', async () => {
         h.metadata.set(source.metaKey, { gameBananaId: 7, modName: 'Ivy HUD', categoryName: 'Skins > Ivy', abilitySounds: null });
-        h.paths.mockReturnValue(['models/heroes_wip/ivy/materials/ivy_body_color.vtex_c', 'panorama/layout/hud.vxml_c']);
-        const [mod] = await h.handlers.get('get-mods')!({}) as Array<Mod & { bodyModelHeroes?: string[] }>;
+        h.paths.mockReturnValue(['models/heroes_wip/ivy/materials/ivy_body_color.vtex_c', 'models/heroes_wip/ivy/clips/idle.vnmclip_c']);
+        const [mod] = await h.handlers.get('get-mods')!({}) as import('../../../src/types/mod').Mod[];
         expect(h.parse).toHaveBeenCalledWith([source.path]);
         expect(mod.bodyModelHeroes).toEqual(['Ivy']);
+        expect(mod.hasAnimationClips).toBe(true);
         expect(h.metadata.get(source.metaKey)?.bodyModelDetection).toEqual({
-            version: 1, size: source.size, modifiedAt: source.installedAt, sha256: undefined, heroes: ['Ivy'] });
+            version: 2, size: source.size, modifiedAt: source.installedAt, sha256: undefined, heroes: ['Ivy'], hasAnimationClips: true });
 
         h.parse.mockClear();
         h.paths.mockClear();
@@ -527,9 +528,10 @@ describe('library enrichment installation isolation', () => {
 
         h.scan.mockResolvedValue([{ ...source, size: 200 }]);
         h.paths.mockReturnValue(null);
-        const [changed] = await h.handlers.get('get-mods')!({}) as Array<Mod & { bodyModelHeroes?: string[] }>;
+        const [changed] = await h.handlers.get('get-mods')!({}) as import('../../../src/types/mod').Mod[];
         expect(h.parse).toHaveBeenCalledWith([source.path]);
         expect(changed.bodyModelHeroes).toBeUndefined();
+        expect(changed.hasAnimationClips).toBeUndefined();
         expect(h.metadata.get(source.metaKey)?.bodyModelDetection?.size).toBe(source.size);
     });
 

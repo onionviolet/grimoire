@@ -33,6 +33,7 @@ import { randomUUID } from 'node:crypto';
 import { app, BrowserWindow } from 'electron';
 
 import {
+    ALLOWED_FORGE_ORIGINS,
     FORGE_AUTHOR_HEADER,
     FORGE_INSTALL_PATH,
     FORGE_MAX_AUTHOR_LENGTH,
@@ -127,6 +128,7 @@ const lastAcceptedByOrigin = new Map<string, number>();
 /** True from the moment an install request claims the slot until it finishes.
  *  Set synchronously so concurrent requests cannot both get past the check. */
 let installInFlight = false;
+let receivedForgeProbe = false;
 
 /** True while the opt-in prompt is on screen. */
 let enablePromptOpen = false;
@@ -137,6 +139,10 @@ let enableDeclinedThisSession = false;
 
 export function getForgeBridgePort(): number | null {
     return boundPort;
+}
+
+export function hasReceivedForgeProbe(): boolean {
+    return receivedForgeProbe;
 }
 
 /**
@@ -497,6 +503,7 @@ function handleRequest(req: IncomingMessage, res: ServerResponse): void {
     const path = (req.url ?? '').split('?')[0];
 
     if (req.method === 'GET' && path === FORGE_PING_PATH) {
+        if (ALLOWED_FORGE_ORIGINS.has(origin)) receivedForgeProbe = true;
         // Deliberately minimal. No version string, no game path, no mod counts,
         // no username: any site that gets past the origin check learns only
         // that Grimoire is running and willing to accept an install.
@@ -621,6 +628,7 @@ export async function stopForgeBridge(): Promise<void> {
     const httpServer = server;
     server = null;
     boundPort = null;
+    receivedForgeProbe = false;
     if (pendingConfirm) {
         clearTimeout(pendingConfirm.timer);
         pendingConfirm.resolve(false);

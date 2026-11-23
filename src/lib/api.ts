@@ -365,8 +365,8 @@ export async function exportSoulModel(metaKey: string, cacheKey: string, entry?:
 }
 
 /** An animation mod's clips on its hero's stock model, for the Installed preview. Null when it has none to play. */
-export async function exportAnimationModPreview(metaKey: string): Promise<{ heroName: string; key: string; clips: string[]; meshGroup: string | null } | null> {
-  return window.electronAPI.exportAnimationModPreview(metaKey);
+export async function exportAnimationModPreview(metaKey: string, stock?: boolean): Promise<import('../types/portrait').AnimationModPreview | null> {
+  return window.electronAPI.exportAnimationModPreview(metaKey, stock);
 }
 
 /** Whether a hero's posed 3D still exists for the given active skin stack (+ mtime, key). */

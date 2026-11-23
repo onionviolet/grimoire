@@ -45,6 +45,7 @@ import {
 import { inspectFoundrySoundWriteSet } from '../services/foundrySoundConflicts';
 import { inspectFoundryAssetSources } from '../services/foundryAssetSources';
 import { bodyModelHeroes } from '../services/heroPoseModels';
+import { animationModClips } from '../services/animationModPreview';
 import { resolveModClassification, needsModHeroDetection } from '../services/modHeroDetection';
 import { fetchCategoryTreeCached, readCachedCategoryPaths, observeCategoryTreeChanges } from '../services/gamebanana';
 import { baseTagGlobalType, categoryModelForSection, GLOBAL_MOD_TYPE_LABELS, normalizeCategoryLabel, resolveCategoryPath, type CategoryPaths } from '../../../src/lib/categoryPaths';
@@ -180,7 +181,7 @@ async function copyIntoModSlot(
     }
 }
 
-const BODY_MODEL_DETECTION_VERSION = 1;
+const BODY_MODEL_DETECTION_VERSION = 2;
 
 function hasBodyModelDetection(mod: Mod, metadata: ModMetadata | undefined): boolean {
     const previous = metadata?.bodyModelDetection;
@@ -230,7 +231,7 @@ function enrichMod(mod: Mod, categoryPaths = new Map<string, CategoryPaths | und
     if (!hasBodyModelDetection(mod, metadata)) {
         const paths = parseVpkDirectoryCached(mod.path);
         bodyModels = paths ? { version: BODY_MODEL_DETECTION_VERSION, size: mod.size, modifiedAt: mod.installedAt,
-            sha256: metadata.sha256, heroes: bodyModelHeroes(paths) } : undefined;
+            sha256: metadata.sha256, heroes: bodyModelHeroes(paths), hasAnimationClips: animationModClips(paths) !== null } : undefined;
         if (bodyModels) patch.bodyModelDetection = bodyModels;
     }
     if (Object.keys(patch).length > 0) setModMetadata(mod.metaKey, patch);
@@ -269,6 +270,7 @@ function enrichMod(mod: Mod, categoryPaths = new Map<string, CategoryPaths | und
         globalType: globalType ?? undefined,
         propTypes,
         bodyModelHeroes: bodyModels?.heroes,
+        hasAnimationClips: bodyModels?.hasAnimationClips,
         merged: metadata.merged,
         forgeInstall: metadata.forgeInstall,
         lockerCosmetics: metadata.lockerCosmetics,

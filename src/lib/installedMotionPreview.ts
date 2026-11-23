@@ -10,6 +10,8 @@ export type MotionPreviewTarget = { kind: 'movement'; choice: MovementFxChoice }
  *  heavy melee effect, or an animation mod's clips. */
 export function installedMotionTarget(mod: Mod): MotionPreviewTarget | null {
   if (mod.movementFx) return { kind: 'movement', choice: mod.movementFx };
-  if (getEffectiveGlobalType(mod) === 'animations') return { kind: 'animation', metaKey: mod.metaKey, sha256: mod.sha256 ?? null };
+  if (mod.hasAnimationClips || getEffectiveGlobalType(mod) === 'animations') {
+    return { kind: 'animation', metaKey: mod.metaKey, sha256: mod.sha256 ?? null };
+  }
   return null;
 }

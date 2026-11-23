@@ -276,6 +276,7 @@
       "Wip": "WiPs"
     },
     "loading": "Loading saved mods...",
+    "loadFailed": "Saved mods could not be loaded.",
     "empty": {
       "title": "Nothing saved yet",
       "description": "Use Save mod for later in Browse to build a watchlist.",
@@ -1726,6 +1727,7 @@
       "isolationTitle": "Assisted mod isolation",
       "isolationDescription": "Test smaller groups of enabled user mods and report what happened yourself.",
       "isolationScope": "The original setup is backed up first. Close Deadlock before each change, launch it yourself, then select Works or Crashes. Locker managed artifacts stay active. Group results can miss interactions between mods, so a candidate is a lead to test, not a proven cause. Launcher exit codes are never used as crash evidence.",
+      "crashSuspect": "Crash advisory flagged {{name}}. A reviewed isolation trial can help check the mod.",
       "startIsolation": "Back up and prepare isolation",
       "baselineReady": "First test: disable all user mods to establish a baseline.",
       "baselineTesting": "All user mods are disabled. Test Deadlock yourself, close it, then report the result.",
@@ -2967,7 +2969,17 @@
       "resize": "Resize",
       "unavailable": "No 3D preview for this file",
       "clips": "Clips",
-      "allClips": "All"
+      "allClips": "All clips",
+      "modelSource": "Model source",
+      "stockSkin": "Stock skin",
+      "modSkin": "Modded skin",
+      "animationSource": "Animation source",
+      "stockMotion": "Stock animation",
+      "loadingStock": "Loading stock animation…",
+      "modMotion": "Modded animation",
+      "stockClipUnavailable": "This clip has no playable match at the same path in the base game.",
+      "partialClipBinding": "Some animation tracks do not match this skin. The preview plays the tracks that match.",
+      "restart": "Restart animation"
     },
     "card": {
       "soundPreview": "Sound Preview",
@@ -3012,6 +3024,21 @@
       "openAuthorPageFailed": "Couldn't open author page: {{error}}",
       "installedAt": "Installed {{date}}",
       "gridMetaTitle": "{{file}} | {{size}} | installed {{date}}"
+    },
+    "removed": {
+      "trashed": "Trashed",
+      "withheld": "Withheld",
+      "private": "Private",
+      "trashedTitle": "This mod was removed from GameBanana.",
+      "trashedByAuthorTitle": "The author removed this mod from GameBanana.",
+      "trashedByModeratorTitle": "A GameBanana moderator removed this mod.",
+      "withheldTitle": "GameBanana moderators are holding this mod back until its author fixes a problem.",
+      "privateTitle": "The author made this mod private on GameBanana.",
+      "reason": "Reason given: {{reason}}",
+      "goneNote": "Your copy still works. It can no longer be updated or downloaded again.",
+      "hiddenNote": "Your copy still works. It can't be updated or downloaded again until it comes back.",
+      "filter": "Removed from GameBanana",
+      "filterTitle": "Show only mods whose GameBanana page was trashed, withheld or made private"
     },
     "solo": {
       "banner": "Testing {{name}} solo: every other mod is disabled.",
@@ -4220,6 +4247,8 @@
       "previewFailed": "Could not preview this restore point.",
       "restoreFailed": "Restore failed. {{error}}",
       "retainedBytes": "VPK and chunk copies retained",
+      "includesLocker": "Includes applied Locker cards, sounds, colors, and skins",
+      "replaceLocker": "This also restores the saved applied Locker cards, sounds, colors, and skins.",
       "identityOnly": "Legacy restore point: original files must still exist",
       "isolationPoint": "Before assisted isolation"
     }
@@ -5865,7 +5894,9 @@
     "settings": {
       "description": "Let deadlockforge.net send freshly forged mods straight to Grimoire, so you do not have to download and move the file yourself. Grimoire listens only on your own machine, accepts requests only from deadlockforge.net, and always asks before installing anything.",
       "toggleLabel": "Allow DeadlockForge 1-click installs",
-      "listening": "Listening on 127.0.0.1:{{port}}",
+      "openTextureForge": "Open Texture Forge",
+      "waitingForForge": "Listening on port {{port}}. Waiting for a Forge connection.",
+      "probeReceived": "Forge reached Grimoire on port {{port}}.",
       "notListening": "Not listening"
     },
     "enable": {

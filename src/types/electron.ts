@@ -795,6 +795,7 @@ export interface ForgeInstallRequestData {
 export interface ForgeBridgeStatus {
     listening: boolean;
     port: number | null;
+    receivedForgeProbe: boolean;
 }
 
 export interface MultiVpkPickData {
@@ -1205,7 +1206,7 @@ export interface ElectronAPI {
      *  real rig and its clips (the Installed preview); use its own cacheKey. */
     exportSoulModel: (metaKey: string, cacheKey: string, entry?: string, options?: { animated?: boolean }) => Promise<SoulModelInfo>;
     /** An animation mod's clips exported onto its hero (the Installed preview); null when it has none to play. */
-    exportAnimationModPreview: (metaKey: string) => Promise<{ heroName: string; key: string; clips: string[]; meshGroup: string | null } | null>;
+    exportAnimationModPreview: (metaKey: string, stock?: boolean) => Promise<import('./portrait').AnimationModPreview | null>;
     getSkinEditInfo: (source: import('./skinEditor').SkinEditSource) => Promise<import('./skinEditor').SkinEditInfo>;
     previewMovementFx: (request: import('../lib/movementFx').MovementFxPreviewRequest) => Promise<import('../lib/movementFx').MovementFxPreview>;
     previewMovementEngine: (request: import('../lib/movementFx').MovementFxPreviewRequest) => Promise<import('../lib/movementFx').MovementEnginePreview>;

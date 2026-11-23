@@ -67,17 +67,19 @@ repeatable while preserving a usable rollback path.
    Expected outputs are `release/Grimoire-Setup-<version>.exe`,
    `release/Grimoire-Portable-<version>.exe`, and the installer blockmap.
 
-6. The GitHub workflow currently produces Windows artifacts automatically when
-   a `v<version>` tag is pushed. It checks out the pinned `onionviolet/vpkmerge`
+6. The GitHub workflow builds Windows x64, Linux x64 and macOS arm64 when
+   a `v<version>` tag is pushed. Use a branch ref for a manual build-only run.
+   Each platform runs the packaged smoke before attestation and uploads the
+   distributables, update manifests and checksums to the run. The workflow checks
+   out the pinned `onionviolet/vpkmerge`
    revision, builds it, and copies that engine into the app before packaging.
    This is required for Foundry's global-sound catalog and safe icon replacement.
    Advance the pinned revision in `.github/workflows/release.yml` deliberately,
    after validating the engine change locally.
 
-   The cross-platform publishing blocks remain retained below for a future
-   release expansion; do not describe Linux or macOS artifacts as shipped until
-   their build matrix is re-enabled. Before the first macOS release, add these
-   repository secrets so Gatekeeper accepts the app:
+   The matrix can build without publisher credentials. For a Developer ID signed
+   and notarized macOS package, enable signing in the build configuration and
+   configure the certificate and notarization credentials the workflow reads:
 
    - `MACOS_CERTIFICATE` â€” base64-encoded Developer ID Application `.p12`;
    - `MACOS_CERTIFICATE_PASSWORD`;

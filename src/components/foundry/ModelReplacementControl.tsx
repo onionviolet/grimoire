@@ -1,11 +1,13 @@
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '../common/ui';
 import { ErrorBoundary } from '../common/ErrorBoundary';
+import { LoadingState } from '../common/PageComponents';
 import { foundrySelectModelReplacement } from '../../lib/api';
 import type { ModelReplacementSelection } from '../../types/modelReplacement';
 import type { FoundryStagedEdit, ModelStagedEdit } from './buildTray';
-import ModelAssetPreview from './ModelAssetPreview';
+
+const ModelAssetPreview = lazy(() => import('./ModelAssetPreview'));
 
 export default function ModelReplacementControl({ entryPath, onStage }: { entryPath: string; onStage: (edit: FoundryStagedEdit) => void }) {
   const { t } = useTranslation();
@@ -29,7 +31,13 @@ export default function ModelReplacementControl({ entryPath, onStage }: { entryP
     <Button variant="secondary" size="sm" isLoading={busy} disabled={busy} onClick={() => void choose()}>{t('foundry.models.replacement.choose')}</Button>
     {error && <p role="alert" className="break-all text-sm text-state-danger">{error}</p>}
     {selection && <>
-      <div className="h-80 overflow-hidden rounded-sm bg-bg-sunken"><ErrorBoundary fallback={<p>{t('foundry.models.previewFailed')}</p>}><ModelAssetPreview url={selection.preview.url} /></ErrorBoundary></div>
+      <div className="h-80 overflow-hidden rounded-sm bg-bg-sunken">
+        <ErrorBoundary key={selection.preview.url} fallback={<p>{t('foundry.models.previewFailed')}</p>}>
+          <Suspense fallback={<LoadingState label={t('foundry.models.preparing')} />}>
+            <ModelAssetPreview url={selection.preview.url} />
+          </Suspense>
+        </ErrorBoundary>
+      </div>
       <p className="text-xs text-text-secondary">{t('foundry.models.replacement.dependencies')}</p>
       <ul className="max-h-40 overflow-auto space-y-1 text-xs text-text-secondary">{selection.review.dependencies.map(dependency => <li key={dependency.path} className="break-all">{dependency.path}: {t(`foundry.models.replacement.${dependency.source}`)}</li>)}</ul>
       <p className="text-xs text-text-secondary">{t('foundry.models.replacement.writeSet', { count: selection.review.entries.length })}</p>

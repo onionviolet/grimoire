@@ -39,7 +39,12 @@ export async function retainRecoveryFile(path: string): Promise<string> {
   try {
     await fs.copyFile(path, temp);
     if ((await fingerprintFile(temp)).sha256 !== hash) throw new Error('Recovery source changed during capture');
-    await fs.rename(temp, target);
+    try {
+      await fs.rename(temp, target);
+    } catch (error) {
+      // A concurrent capture can publish the same verified bytes first.
+      if (!await hasRecoveryFile(hash)) throw error;
+    }
   } finally { await fs.unlink(temp).catch(() => {}); }
   return hash;
 }

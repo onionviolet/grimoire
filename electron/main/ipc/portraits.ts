@@ -31,7 +31,8 @@ import {
     type HeroPoseSkinSource,
     type HeroEffectInfo,
 } from '../services/heroPoseModels';
-import { exportAnimationModPreview, type AnimationModPreview } from '../services/animationModPreview';
+import { exportAnimationModPreview } from '../services/animationModPreview';
+import type { AnimationModPreview } from '../../../src/types/portrait';
 import type { HeroPortrait } from '../../../src/types/portrait';
 import type { ApplyHeroCardResult } from '../../../src/types/mod';
 
@@ -140,10 +141,10 @@ ipcMain.handle(
 
 ipcMain.handle(
     'export-animation-mod-preview',
-    async (_, metaKey: string): Promise<AnimationModPreview | null> => {
+    async (_, metaKey: string, stock?: boolean): Promise<AnimationModPreview | null> => {
         const deadlockPath = getActiveDeadlockPath();
         if (!deadlockPath) throw new Error('No Deadlock path configured');
-        return exportAnimationModPreview(deadlockPath, metaKey);
+        return exportAnimationModPreview(deadlockPath, metaKey, stock === true);
     }
 );
 

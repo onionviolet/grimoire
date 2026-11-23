@@ -34,6 +34,7 @@ export default function Saved() {
   const [search, setSearch] = useState('');
   const summaryId = useId();
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [draft, setDraft] = useState({ notes: '', tags: '', whySaved: '', watchUpdates: false });
   const [fileAction, setFileAction] = useState<string | null>(null);
@@ -43,15 +44,18 @@ export default function Saved() {
 
   const loadSaved = async () => {
     setLoading(true);
+    setLoadFailed(false);
     try {
       const favorites = await window.electronAPI.getSavedMods();
       const loaded = await Promise.all(
         favorites.map(async (favorite) => ({
           saved: favorite,
-          mod: await window.electronAPI.getCachedMod(favorite.modId),
+          mod: await window.electronAPI.getCachedMod(favorite.modId).catch(() => null),
         }))
       );
       setRows(loaded);
+    } catch {
+      setLoadFailed(true);
     } finally {
       setLoading(false);
     }
@@ -212,9 +216,13 @@ export default function Saved() {
           </label>
         </div>
 
+        {loadFailed && <div role="alert" className="mb-4 flex flex-wrap items-center gap-3 text-sm text-state-danger">
+          <span>{t('saved.loadFailed')}</span>
+          <Button size="sm" variant="secondary" onClick={() => void loadSaved()}>{t('common.actions.retry')}</Button>
+        </div>}
         {loading ? (
           <div className="flex items-center justify-center gap-2 py-20 text-text-secondary"><Loader2 className="h-5 w-5 animate-spin" />{t('saved.loading')}</div>
-        ) : visibleRows.length === 0 ? (
+        ) : visibleRows.length === 0 ? !loadFailed && (
           <div className="rounded-xl border border-dashed border-border p-12 text-center text-text-secondary">
             <Heart className="mx-auto mb-3 h-8 w-8 opacity-50" />
             <p className="text-text-primary">{rows.length === 0 ? t('saved.empty.title') : t('saved.empty.filtered')}</p>

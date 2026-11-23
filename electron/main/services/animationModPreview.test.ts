@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('electron', () => ({ app: { getPath: () => '' }, net: { fetch: vi.fn() }, protocol: { handle: vi.fn() } }));
 
-const { animationModClips, heroForClipPath } = await import('./animationModPreview');
+const { animationModClips, heroForClipPath, matchingStockClips } = await import('./animationModPreview');
 
 describe('heroForClipPath', () => {
   it('names the hero from the clip folder, whatever its version suffix or tree', () => {
@@ -25,5 +25,12 @@ describe('animationModClips', () => {
       'sounds/doorman/bell.vsnd_c',
     ])).toEqual({ heroName: 'Shiv', clips: ['models/heroes_staging/shiv/clips/melee_hit.vnmclip_c', 'models/heroes_staging/shiv/clips/parry.vnmclip_c'] });
     expect(animationModClips(['animgraphs/animgraph2/hero/doorman/doorman_abilitymask.vnmgraph_c'])).toBeNull();
+  });
+
+  it('compares only paths supplied by both packages', () => {
+    const crow = 'models/heroes_staging/hornet_v3/clips/ability_crow_cast.vnmclip_c';
+    const added = 'models/heroes_staging/hornet_v3/clips/new_cast.vnmclip_c';
+    const other = 'models/heroes_wip/hornet/clips/new_cast.vnmclip_c';
+    expect(matchingStockClips([crow, added], [other, crow])).toEqual([crow]);
   });
 });

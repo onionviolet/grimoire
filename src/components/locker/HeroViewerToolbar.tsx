@@ -55,7 +55,7 @@ interface Props {
   hidden?: boolean;
 }
 
-function AnimationTimeline({ progressRef, frozen = false, onSeek }: Pick<Props, 'progressRef' | 'frozen' | 'onSeek'>) {
+export function AnimationTimeline({ progressRef, frozen = false, onSeek }: Pick<Props, 'progressRef' | 'frozen' | 'onSeek'>) {
   const { t } = useTranslation();
   const [position, setPosition] = useState<HeroPlaybackProgress>({ time: 0, duration: 0 });
   useEffect(() => {

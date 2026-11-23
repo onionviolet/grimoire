@@ -6,6 +6,7 @@ export interface ProfileRecoverySummary {
   modCount: number;
   enabledCount: number;
   retainedBytes?: boolean;
+  includesLocker?: boolean;
   purpose?: 'isolation';
 }
 export interface ProfileRecoveryIssue {

@@ -279,7 +279,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
         ipcRenderer.invoke('get-soul-model-info', key),
     exportSoulModel: (metaKey: string, cacheKey: string, entry?: string, options?: { animated?: boolean }) =>
         ipcRenderer.invoke('export-soul-model', metaKey, cacheKey, entry, options),
-    exportAnimationModPreview: (metaKey: string) => ipcRenderer.invoke('export-animation-mod-preview', metaKey),
+    exportAnimationModPreview: (metaKey: string, stock?: boolean) => ipcRenderer.invoke('export-animation-mod-preview', metaKey, stock),
     getHeroShaderNoise: () => ipcRenderer.invoke('get-hero-shader-noise'),
     getHeroPoseInfo: (heroName: string, skinSources?: unknown[]) =>
         ipcRenderer.invoke('get-hero-pose-info', heroName, skinSources),
