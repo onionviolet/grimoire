@@ -358,6 +358,22 @@ export function removeFromQueue(modId: number, fileId?: number, jobId?: string):
     return false;
 }
 
+export function removeWaitingDownload(target: string | Pick<DownloadQueueItem, 'modId' | 'fileId'>, deadlockPath: string) {
+    const index = downloadQueue.findIndex(item => item.deadlockPath === deadlockPath && (typeof target === 'string'
+        ? item.jobId === target
+        : item.args.modId === target.modId && item.args.fileId === target.fileId));
+    if (index < 0) return { removed: false };
+    const item = downloadQueue[index];
+    const successors = downloadQueue.slice(index + 1).map(next => next.jobId);
+    removeFromQueue(item.args.modId, item.args.fileId, item.jobId);
+    return { removed: true, ...(item.hooks ? {} : { jobId: item.jobId, successors }) };
+}
+
+function insertWaitingDownload(item: QueuedDownload, successors: readonly string[] = []): void {
+    const index = downloadQueue.findIndex(waiting => successors.includes(waiting.jobId));
+    downloadQueue.splice(index < 0 ? downloadQueue.length : index, 0, item);
+}
+
 function cancelQueuedJob(item: QueuedDownload): void {
     if (priorityJobId === item.jobId) priorityJobId = null;
     persistJobState(item, 'cancelled');
@@ -403,7 +419,8 @@ function emitQueueUpdate(): void {
 export function downloadMod(
     deadlockPath: string,
     args: DownloadModArgs,
-    mainWindow: BrowserWindow | null
+    mainWindow: BrowserWindow | null,
+    successors?: readonly string[],
 ): Promise<DownloadInstallResult> {
     assertDownloadAllowed();
     // Dedup at (modId, fileId), not modId alone: a single submission can have
@@ -427,7 +444,7 @@ export function downloadMod(
 
     const jobId = saveDownloadJob(deadlockPath, args);
     return new Promise((resolve, reject) => {
-        downloadQueue.push({ ...newJob(jobId), deadlockPath, args, mainWindow, resolve, reject });
+        insertWaitingDownload({ ...newJob(jobId), deadlockPath, args, mainWindow, resolve, reject }, successors);
         emitQueueUpdate();
         processQueue();
     });
@@ -468,7 +485,8 @@ export function enqueueManagedDownload(
 export function downloadModFromUrl(
     deadlockPath: string,
     oneClick: OneClickInstallArgs,
-    mainWindow: BrowserWindow | null
+    mainWindow: BrowserWindow | null,
+    successors?: readonly string[],
 ): Promise<DownloadInstallResult> {
     assertDownloadAllowed();
     validateDownloadUrl(oneClick.archiveUrl);
@@ -497,7 +515,7 @@ export function downloadModFromUrl(
 
     const jobId = saveDownloadJob(deadlockPath, args, oneClick.archiveUrl);
     return new Promise((resolve, reject) => {
-        downloadQueue.push({
+        insertWaitingDownload({
             ...newJob(jobId),
             deadlockPath,
             args,
@@ -506,7 +524,7 @@ export function downloadModFromUrl(
             mainWindow,
             resolve,
             reject,
-        });
+        }, successors);
         emitQueueUpdate();
         processQueue();
     });
@@ -672,6 +690,7 @@ interface RenamedVpk {
     fileName: string;
     /** The archive variant folder this VPK came from, if any. */
     archiveFolder?: string;
+    archivePath?: string;
     /** The VPK's original basename inside the archive. Combined with
      *  archiveFolder this is a cross-machine-stable identity (unlike fileName,
      *  which gets a random suffix on collision), used to stamp a deterministic
@@ -747,7 +766,7 @@ async function renameVpksToAvoidConflicts(
         : new Set<string>();
     const renamedFiles: RenamedVpk[] = [];
 
-    for (const { path: vpkPath, fileName, archiveFolder } of extractedVpks) {
+    for (const { path: vpkPath, fileName, archiveFolder, archivePath } of extractedVpks) {
         // Prefer the extracted VPK's own descriptive name; for bare pakNN
         // downloads fall back to the variant folder (so sibling variants get
         // distinct, readable names) and then the mod's GameBanana name.
@@ -759,7 +778,7 @@ async function renameVpksToAvoidConflicts(
         }
 
         await moveFileWithoutOverwrite(vpkPath, join(targetPath, finalFileName));
-        renamedFiles.push({ fileName: finalFileName, archiveFolder, sourceFileName: fileName });
+        renamedFiles.push({ fileName: finalFileName, archiveFolder, archivePath, sourceFileName: fileName });
     }
 
     return renamedFiles;
@@ -1113,6 +1132,8 @@ async function executeDownload(
                 installedVpks,
                 vpkLabels,
                 vpkFileSizes,
+                Object.fromEntries(renamed.map(({ fileName, archivePath, sourceFileName }) =>
+                    [fileName, archivePath ?? archivePathByFile.get(fileName) ?? sourceFileName])),
                 mainWindow
             );
             if (!pick || pick.selected.length === 0) {
@@ -1249,6 +1270,7 @@ function awaitMultiVpkPick(
     vpkFileNames: string[],
     vpkLabels: Record<string, string>,
     vpkFileSizes: Record<string, number>,
+    vpkArchivePaths: Record<string, string>,
     mainWindow: BrowserWindow | null
 ): Promise<{ selected: string[] } | null> {
     if (currentJob?.cancelled) return Promise.resolve(null);
@@ -1270,6 +1292,7 @@ function awaitMultiVpkPick(
             vpkFileNames,
             vpkLabels,
             vpkFileSizes,
+            vpkArchivePaths,
         });
     });
 }
@@ -1608,6 +1631,8 @@ async function executeOneClickDownload(
                 installedVpks,
                 vpkLabels,
                 vpkFileSizes,
+                Object.fromEntries(renamed.map(({ fileName, archivePath, sourceFileName }) =>
+                    [fileName, archivePath ?? archivePathByFile.get(fileName) ?? sourceFileName])),
                 mainWindow
             );
             if (!pick || pick.selected.length === 0) {
@@ -1822,10 +1847,11 @@ export async function installForgeVpk(
 }
 
 /** Saved jobs never execute on startup. Resuming is an explicit user action. */
-export function retryDownloadJob(id: string, activeGamePath: string, mainWindow: BrowserWindow | null): Promise<DownloadInstallResult> {
+export function retryDownloadJob(id: string, activeGamePath: string, mainWindow: BrowserWindow | null, successors?: string[]): Promise<DownloadInstallResult> {
     const job = getDownloadJobs().find(job => job.id === id);
     if (!job || job.gamePath !== activeGamePath || !['paused', 'failed', 'cancelled'].includes(job.state)) throw new Error('This download is unavailable for the selected installation');
+    if (successors && job.state !== 'cancelled') throw new Error('This download is no longer cancelled');
     return job.directUrl
-        ? downloadModFromUrl(activeGamePath, { archiveUrl: job.directUrl, modId: job.args.modId, modType: job.args.section }, mainWindow)
-        : downloadMod(activeGamePath, job.args, mainWindow);
+        ? downloadModFromUrl(activeGamePath, { archiveUrl: job.directUrl, modId: job.args.modId, modType: job.args.section }, mainWindow, successors)
+        : downloadMod(activeGamePath, job.args, mainWindow, successors);
 }

@@ -165,10 +165,26 @@ export default function DownloadQueueIndicator({ className = '' }: DownloadQueue
         showToast(t('downloadQueue.slowDownload', { speed: formatSpeed(SLOW_DOWNLOAD_BYTES_PER_SECOND) }), { tone: 'warning', duration: 12_000 });
     }, [currentJob, currentSpeed, t]);
 
-    const handleCancelQueued = useCallback(async (modId: number, fileId: number, jobId?: string) => {
-        cancelDownloadRequest(modId, fileId);
-        await window.electronAPI.cancelDownloadTarget(modId, fileId, jobId);
-    }, []);
+    const handleCancelQueued = useCallback(async (modId: number, fileId: number, jobId?: string, fileName?: string) => {
+        try {
+            const { removed, jobId: savedId, successors } = await window.electronAPI.removeWaitingDownload(jobId ?? { modId, fileId });
+            if (!removed) {
+                showToast(t('downloadQueue.noLongerWaiting'), { tone: 'info' });
+                return;
+            }
+            cancelDownloadRequest(modId, fileId);
+            showToast(t('downloadQueue.removedFile', { name: fileName }), {
+                ...(savedId && successors && {
+                    actionLabel: t('downloadQueue.undoRemove'),
+                    onAction: () => void window.electronAPI.retryDownloadJob(savedId, successors).catch(error => {
+                        showToast(t('downloadQueue.undoFailed', { error: String(error) }), { tone: 'error' });
+                    }),
+                }),
+            });
+        } catch {
+            showToast(t('downloadQueue.removeFailed'), { tone: 'error' });
+        }
+    }, [t]);
 
     const handleCancelActive = async () => {
         const current = queueState.currentDownload;

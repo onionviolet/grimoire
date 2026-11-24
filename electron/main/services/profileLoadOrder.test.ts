@@ -27,6 +27,9 @@ import { buildPortableProfileFromInstalled } from './portableProfile';
 
 let root: string;
 let deadlockPath: string;
+// Overflow cases journal and move VPKs on disk. Windows workers can exceed
+// 30 seconds even for a subset because applying it parks the other mods.
+const overflowTestTimeout = 60_000;
 
 beforeEach(() => {
     root = mkdtempSync(join(realpathSync(tmpdir()), 'grimoire-profile-order-'));
@@ -81,7 +84,7 @@ describe('saved profile load order across addon folders', () => {
         const result = await applyProfile(deadlockPath, profile.id);
         expect(result.failures).toEqual([]);
         expect(await installedOrder()).toEqual(before);
-    }, 30_000);
+    }, overflowTestTimeout);
 
     it('restores a profile saved with per-folder slot numbers in its listed order', async () => {
         installMods(150);
@@ -94,7 +97,7 @@ describe('saved profile load order across addon folders', () => {
         await reverseOrder();
         expect((await applyProfile(deadlockPath, profile.id)).failures).toEqual([]);
         expect(await installedOrder()).toEqual(before);
-    }, 30_000);
+    }, overflowTestTimeout);
 
     it('captures the new order when an overflow profile is updated', async () => {
         installMods(100);
@@ -105,14 +108,14 @@ describe('saved profile load order across addon folders', () => {
         await reverseOrder();
         expect((await applyProfile(deadlockPath, profile.id)).failures).toEqual([]);
         expect(await installedOrder()).toEqual(before);
-    });
+    }, overflowTestTimeout);
 
     it('keeps a collection subset ordered across addon folders', async () => {
         installMods(101);
         const profile = await createProfileFromGameBananaIds(deadlockPath, 'Collection', [2, 98, 100, 101]);
         expect((await applyProfile(deadlockPath, profile.id)).failures).toEqual([]);
         expect(await installedOrder()).toEqual([2, 98, 100, 101]);
-    });
+    }, overflowTestTimeout);
 
     it('exports an installed snapshot with priorities in complete load order', async () => {
         installMods(100);

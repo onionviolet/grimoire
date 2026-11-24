@@ -188,8 +188,7 @@ export function carryForwardOriginalIdentity(
         };
     }
 
-    // PRE-RELEASE SHIM: delete before first release. Pre-redo imprints (~131
-    // files on this machine) stored the identity under the old grimoire-branded
+    // Older imprints stored the identity under the grimoire-branded
     // addoninfo keys and, for merges, inside the old grimoire_meta.json (whose
     // relevant field the caller passes as legacyMergeMeta). Reading them here
     // migrates every legacy file to the new format on its next re-imprint.

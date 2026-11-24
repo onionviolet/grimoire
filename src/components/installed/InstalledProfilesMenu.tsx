@@ -271,7 +271,10 @@ export function InstalledProfilesMenu({ onApplied, className = '' }: InstalledPr
                   <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center">
                     {profile.id === activeProfileId && <Check className="h-3.5 w-3.5 text-accent" aria-hidden />}
                   </span>
-                  <span className="min-w-0 flex-1 truncate">{profile.name}</span>
+                  <span className="min-w-0 flex-1" title={profile.notes}>
+                    <span className="block truncate">{profile.name}</span>
+                    {profile.notes && <span className="block max-w-48 truncate text-2xs text-text-secondary">{profile.notes}</span>}
+                  </span>
                 </span>
               </MenuItem>
             ))

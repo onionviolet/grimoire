@@ -94,7 +94,7 @@ describe('download queue controls', () => {
     expect(rows()[3].querySelector<HTMLButtonElement>('[title="downloadQueue.downloadNow"]')!.disabled).toBe(true);
     expect(rows()[3].querySelector<HTMLButtonElement>('[title^="downloadQueue.reorder"]')!.disabled).toBe(true);
     await act(async () => rows()[0].querySelector<HTMLButtonElement>('[title="downloadQueue.removeFromQueue"]')!.click());
-    expect(onCancel).toHaveBeenCalledExactlyOnceWith(1, 1, 'a');
+    expect(onCancel).toHaveBeenCalledExactlyOnceWith(1, 1, 'a', items[0].fileName);
     await render(true);
     expect(rows()[0].querySelector('[title="downloadQueue.downloadNext"]')).not.toBeNull();
   });

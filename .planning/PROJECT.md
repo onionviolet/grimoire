@@ -2,7 +2,7 @@
 
 ## What This Is
 
-Grimoire is a mod manager and companion tool for Deadlock (Valve's hero shooter), shipped as an Electron 35 desktop app for Windows and Linux. It browses and installs mods from GameBanana, manages what is installed and in what order, organizes cosmetics per hero in the Locker, authors new assets in the Foundry (sound swaps, texture and icon replacement, ability VFX recolor, combined builds), and carries companion surfaces for player stats, crosshairs, autoexec, profiles, and the Deadworks server browser.
+Grimoire is an Electron desktop mod manager and companion tool for Deadlock (Valve's hero shooter). It browses and installs mods from GameBanana, manages what is installed and in what order, organizes cosmetics per hero in the Locker, authors new assets in the Foundry (sound swaps, texture and icon replacement, ability VFX recolor, combined builds), and carries companion surfaces for player stats, crosshairs, autoexec, profiles, and the Deadworks server browser.
 
 This repository is an independent product fork of Slush97/grimoire, maintained at onionviolet/grimoire. `main` is the integration branch and the authoritative source for releases; the fork does not shape work around an upstream pull request, but it does absorb upstream on upstream's cadence.
 
@@ -10,7 +10,10 @@ This repository is an independent product fork of Slush97/grimoire, maintained a
 
 A Deadlock player can change their game and always know exactly what changed, who owns it, and how to undo it.
 
-## Current State
+## Project status
+
+[STATE.md](STATE.md) tracks the current source, local installation, and open
+verification. The following milestone notes record earlier project state.
 
 **Shipped: v1.27 "verified, supported, coherent" (2026-08-10).** Six phases and
 32 plans landed and were archived: the fork's game-facing paths now carry an
@@ -115,7 +118,7 @@ The v1.27.5 milestone (confirmed scope):
 
 **Verification debt was the dominant risk and is now a recorded, accepted one.** The v1.27 milestone drove 23 app-tier rows over CDP against a live dev build (`pnpm verify:in-app`), added jsdom render coverage to the six Foundry lanes, and deferred the 18 engine-tier rows plus the phases 3-5 human checks by explicit user decision (out-of-game tool; VPK-level work is deterministic). The full suite now stands at 1931 tests across 175 files. Nobody has yet started Deadlock and confirmed the engine loads what the app says it will; that remains deferred by decision and is tracked in the milestone audit.
 
-**Three product decisions are open and must not be settled by an implementer.** Where installed global sound inventory lives; whether the portrait and Cards journey is defined before its code consolidates; and what the Locker hero page's target state is. All three are recorded in `.planning/INGEST-CONFLICTS.md` and carried as competing requirement variants; they route to `/gsd-discuss-phase`.
+**Three product decisions are open and must not be settled by an implementer.** Where installed global sound inventory lives; whether the portrait and Cards journey is defined before its code consolidates; and what the Locker hero page's target state is. All three are recorded in `.planning/INGEST-CONFLICTS.md` as competing requirement variants. If the current work depends on one, check the live feature docs and implementation for a later decision and ask the user if it remains open.
 
 **The ingest that produced this planning set ran with an overridden blocker gate.** Three cross-reference cycles held nine source docs out of `.planning/intel/`, including the delivery contract (`docs/feature-status.md`) and the verified ground truth (`docs/audit-2026-07-28-verdicts.md`). Those nine were read directly when this roadmap was written. If the ingest is re-run, break the cycles first.
 

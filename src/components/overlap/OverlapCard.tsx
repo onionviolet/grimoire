@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Ban, ChevronRight, Crown, ExternalLink, EyeOff, ImageOff, MoreHorizontal, PowerOff } from 'lucide-react';
+import { Ban, ChevronRight, Crown, ExternalLink, EyeOff, ImageOff, Merge, MoreHorizontal, PowerOff } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { ModConflict } from '../../lib/api';
 import { overlapKinds, sharesModel } from '../../lib/overlapKinds';
@@ -13,7 +13,7 @@ export interface OverlapMod {
   fileName: string;
   identity: string;
   thumbnailUrl?: string;
-  /** Set when the mod is one of several files from the same GameBanana page. */
+  /** Set when the mod is one of several files in an Installed group. */
   variant: string | null;
   /** Lives in the citadel/grimoire priority root, which loads before every addon. */
   global?: boolean;
@@ -114,6 +114,7 @@ interface OverlapCardProps {
   onDisable: (mod: OverlapMod) => void;
   onIgnoreFile: (filePath: string) => void;
   onIgnoreFileEverywhere: (filePath: string) => void;
+  onMergeLocalization?: () => void;
   /** Open a side in the Installed list. Omitted for a side that is no longer installed. */
   onOpenInInstalled?: (mod: OverlapMod) => void;
   /** Whether a side is still installed (so it can be opened in Installed). */
@@ -134,6 +135,7 @@ export default function OverlapCard({
   onDisable,
   onIgnoreFile,
   onIgnoreFileEverywhere,
+  onMergeLocalization,
   onOpenInInstalled,
   isInstalled,
 }: OverlapCardProps) {
@@ -213,6 +215,11 @@ export default function OverlapCard({
               <IconButton icon={MoreHorizontal} size="sm" label={t('overlap.actions.more')} className="border-transparent" />
             </MenuTrigger>
             <MenuContent>
+              {onMergeLocalization && (
+                <MenuItem icon={Merge} disabled={busy} onSelect={onMergeLocalization}>
+                  {t('overlap.localization.title')}
+                </MenuItem>
+              )}
               {[winner, loser].map((mod) => (
                 <MenuItem key={mod.id} icon={Ban} disabled={busy} onSelect={() => onIgnoreMod(mod)}>
                   {t('overlap.actions.ignoreMod', { name: mod.name })}

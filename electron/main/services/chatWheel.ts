@@ -4,7 +4,24 @@ import { promises as fs } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import type { ChatWheelConverterStatus, ChatWheelPlatform } from '../../../src/types/chatWheelPlatform';
-import { compileChatLaneVpk, readChatLaneConfig } from './chatWheelNative';
+import { chatLaneMenuNames, compileChatLaneVpk, readChatLaneConfig } from './chatWheelNative';
+import { parseVpkDirectoryCached } from './vpk';
+import type { Mod } from './mods';
+import { CHAT_WHEEL_RESOURCE } from '../../../src/lib/chatWheelAddon';
+export const CHAT_WHEEL_UNBIND_REQUIRED = 'Unbind custom chat wheel menus in Deadlock while their wheel is loaded, then close the game before continuing.';
+
+export function suppliesChatWheel(mod: Pick<Mod, 'sourceSection' | 'path'>): boolean {
+    return mod.sourceSection === 'ChatWheel' || (parseVpkDirectoryCached(mod.path)?.some(path => path.toLowerCase() === CHAT_WHEEL_RESOURCE) ?? false);
+}
+
+export async function mayHaveCustomChatWheelBindings(mod: Pick<Mod, 'sourceSection' | 'path' | 'enabled'>): Promise<boolean> {
+    if (!mod.enabled || !suppliesChatWheel(mod)) return false;
+    try {
+        return chatLaneMenuNames(await readChatWheelVpk(mod.path)).length > 0;
+    } catch {
+        return true;
+    }
+}
 
 function chatWheelResourceRoot(): string {
     return app.isPackaged ? process.resourcesPath : join(app.getAppPath(), 'resources');

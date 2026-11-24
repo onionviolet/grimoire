@@ -35,7 +35,7 @@ import {
     type DownloadModArgs,
 } from '../services/download';
 import { getMainWindow } from '../index';
-import { getDownloadJobs, retryDownloadJob } from '../services/download';
+import { getDownloadJobs, removeWaitingDownload, retryDownloadJob } from '../services/download';
 import { getGameBananaDownloadProxyConfig, saveGameBananaDownloadProxyConfig } from '../services/gamebananaDownloadProxy';
 import { gameBananaFileServerSelector } from '../services/gamebananaFileServers';
 import type {
@@ -163,11 +163,20 @@ ipcMain.handle('download-mod', async (_, args: DownloadModArgs): Promise<void> =
 
 // get-download-queue
 ipcMain.handle('get-download-jobs', () => getDownloadJobs().filter(job => job.gamePath === getActiveDeadlockPath()));
-ipcMain.handle('retry-download-job', async (_event, id: string) => {
+ipcMain.handle('retry-download-job', async (_event, id: string, successors?: string[]) => {
     if (typeof id !== 'string' || !/^[a-f0-9]{64}$/.test(id)) throw new Error('Invalid download job');
+    if (successors !== undefined && (!Array.isArray(successors) || successors.some(id => typeof id !== 'string'))) throw new Error('Invalid queue position');
     const path = getActiveDeadlockPath();
     if (!path) throw new Error('No Deadlock path configured');
-    await retryDownloadJob(id, path, getMainWindow());
+    await retryDownloadJob(id, path, getMainWindow(), successors);
+});
+ipcMain.handle('remove-waiting-download', (_event, target: string | Pick<DownloadQueueItem, 'modId' | 'fileId'>) => {
+    const path = getActiveDeadlockPath();
+    if (!path) return { removed: false };
+    if (typeof target === 'string') return removeWaitingDownload(target, path);
+    if (!target || !Number.isSafeInteger(target.modId) || !Number.isSafeInteger(target.fileId)) return { removed: false };
+    const removed = removeWaitingDownload(target, path);
+    return removed.removed ? removed : { removed: modUpdates.cancelPendingChoiceTarget(target.modId, target.fileId) };
 });
 ipcMain.handle('get-download-queue', () => {
     return getDownloadQueue();

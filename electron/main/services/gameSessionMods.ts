@@ -84,6 +84,10 @@ export function markLaunchGrace(ms = 60_000): void {
     launchGraceUntil = Date.now() + ms;
 }
 
+export function hasPendingGameLaunch(): boolean {
+    return Date.now() < launchGraceUntil;
+}
+
 /** Returns whether the game is running, so a caller that refuses to touch
  *  loaded files can decide from the same probe that updated the snapshot. */
 export async function syncRunningGameModSnapshotFromMods(mods: Mod[]): Promise<{ running: boolean }> {

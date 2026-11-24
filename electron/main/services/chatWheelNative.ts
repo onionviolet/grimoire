@@ -1,6 +1,7 @@
 import { promises as fs } from 'fs';
 import { join } from 'path';
 import { parseDocument } from 'yaml';
+import { CHAT_WHEEL_FIRST_MENU_ID } from '../../../src/lib/chatWheelAddon';
 import { vpkCrc32 as chatLaneCrc32, writeNativeVpk as writeChatLaneVpk } from './nativeVpk';
 export { vpkCrc32 as chatLaneCrc32, writeNativeVpk as writeChatLaneVpk } from './nativeVpk';
 
@@ -37,13 +38,23 @@ function text(value: unknown, field: string): string {
     return value;
 }
 
-/** Unknown YAML fields stay in the embedded original; only ChatLane's known fields compile. */
-export function applyChatLaneYaml(yaml: string, base: ChatLaneProperty[]): ChatLaneProperty[] {
+function parseChatLaneYaml(yaml: string): Map<string, unknown> {
     if (!yaml.trim()) throw new Error('Chat Wheel YAML cannot be empty.');
     if (Buffer.byteLength(yaml) > MAX_YAML_BYTES) throw new Error('Chat Wheel YAML exceeds the 1 MiB limit.');
     const document = parseDocument(yaml, { uniqueKeys: true });
     if (document.errors.length) throw new Error(document.errors.map((error) => error.message).join('\n'));
-    const config = map(document.toJS({ mapAsMap: true, maxAliasCount: 100 }), 'Chat Wheel configuration');
+    return map(document.toJS({ mapAsMap: true, maxAliasCount: 100 }), 'Chat Wheel configuration');
+}
+
+export function chatLaneMenuNames(yaml: string): string[] {
+    const menus = parseChatLaneYaml(yaml).get('custom_menus') ?? [];
+    if (!Array.isArray(menus)) throw new Error('custom_menus must be a list.');
+    return menus.map((menu, index) => text(map(menu, `custom_menus[${index}]`).get('name'), `custom_menus[${index}].name`));
+}
+
+/** Unknown YAML fields stay in the embedded original; only ChatLane's known fields compile. */
+export function applyChatLaneYaml(yaml: string, base: ChatLaneProperty[]): ChatLaneProperty[] {
+    const config = parseChatLaneYaml(yaml);
     text(config.get('name'), 'name');
     const root = structuredClone(base);
     for (const [field, target] of [['override_bindable', 'm_bBindable'], ['override_ping_wheel_bindable', 'm_bPingWheelBindable']]) {
@@ -63,14 +74,14 @@ export function applyChatLaneYaml(yaml: string, base: ChatLaneProperty[]): ChatL
         const menu = map(value, prefix);
         const name = text(menu.get('name'), `${prefix}.name`);
         const items = menu.get('items');
-        if (!Array.isArray(items) || items.length > 1000) throw new Error(`${prefix}.items must be a list with at most 1000 commands.`);
+        if (!Array.isArray(items) || items.length > 12) throw new Error(`${prefix}.items must be a list with at most 12 commands.`);
         const children = items.map((item, slot) => ({ key: String(slot), node: scalar('String', text(item, `${prefix}.items[${slot}]`)) }));
         const data: ChatLaneProperty[] = [
             { key: 'm_strLabelToken', node: scalar('String', name) },
             { key: 'm_strMessageToken', node: scalar('String', name) },
             { key: 'm_ePingMarkerInfo', node: scalar('String', 'k_EPingMarkerInfo_OnlyPlaySound') },
             { key: 'm_ePingConcept', node: scalar('String', 'CITADEL_PING_DEFEND_LANE') },
-            { key: 'm_unPingWheelOptionID', node: scalar('Int32', index + 70) },
+            { key: 'm_unPingWheelOptionID', node: scalar('Int32', index + CHAT_WHEEL_FIRST_MENU_ID) },
             { key: 'm_bIsSubnavMessage', node: scalar('Boolean', false) },
             { key: 'm_eSliceType', node: scalar('String', 'CITADEL_PING_WHEEL_SUBNAV_ONE_SLICE') },
             { key: 'm_vecSubnavMessageNames', node: collection(children, 'Array') },

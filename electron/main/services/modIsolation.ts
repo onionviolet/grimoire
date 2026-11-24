@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'crypto';
 import { promises as fs } from 'fs';
 import { join, resolve } from 'path';
 import { scanMods, runExclusiveModMutation } from './mods';
+import { CHAT_WHEEL_UNBIND_REQUIRED, mayHaveCustomChatWheelBindings } from './chatWheel';
 import { findChunkSiblingNames } from './vpk';
 import { getAutoexecPath } from './autoexec';
 import { getGameinfoPath } from './deadlock';
@@ -68,6 +69,9 @@ export function startModIsolation(gamePath: string): Promise<ModIsolationSession
     if (await readRecoveryJournal(gamePath)) throw new Error('Resolve interrupted recovery first');
     const mods = (await scanMods(gamePath)).filter(mod => mod.enabled);
     if (!mods.length) throw new Error('No enabled user mods to isolate');
+    for (const mod of mods) {
+      if (await mayHaveCustomChatWheelBindings(mod)) throw new Error(CHAT_WHEEL_UNBIND_REQUIRED);
+    }
     const point = await captureIsolationRecoveryUnlocked(gamePath);
     const session: StoredSession = { id: randomUUID(), gamePath: resolve(gamePath), recoveryPointId: point.id,
       createdAt: new Date().toISOString(), candidates: mods.map(mod => ({ id: mod.id, name: mod.name })), originalIds: mods.map(mod => mod.id),

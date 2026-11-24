@@ -472,10 +472,9 @@ export async function computeOriginalIdentity(
     };
 }
 
-// --- legacy embed shim ---------------------------------------------------------
+// --- legacy embed compatibility ------------------------------------------------
 
-// PRE-RELEASE SHIM: delete before first release. The ~131 files imprinted on
-// this machine before the vpk-modinfo redo carry the old grimoire-branded
+// Files imprinted before the vpk-modinfo format change can still carry the old grimoire-branded
 // embed: `grimoireOriginal*` keys in addoninfo.txt and, for merges, an old
 // `grimoire_meta.json` companion. carryForwardOriginalIdentity (vpkIdentity.ts)
 // reads the old addoninfo keys via ParsedAddonInfo.raw; this reader recovers a

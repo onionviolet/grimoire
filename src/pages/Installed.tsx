@@ -65,7 +65,7 @@ import { applyModelCompatibilityFix, getModelCompatibilityReport, getConflicts, 
 import type { UnmergeModResult, ImportCustomModArgs, ImportCustomModResult } from '../lib/api';
 import type { ModConflict } from '../lib/api';
 import type { Mod, ModelCompatibilityReport, UnknownModDetectionProgress, UnknownModFilterGuess, MergedModSource, MergeSourceReplacement, AssociateUnknownModArgs } from '../types/mod';
-import type { GameBananaModDetails, GameBananaItemRef, GameBananaFile } from '../types/gamebanana';
+import type { GameBananaModDetails, GameBananaItemRef, GameBananaFile, GameBananaRemoval } from '../types/gamebanana';
 import {
   mergeSourceModIds,
   planMergeSourceUpdates,
@@ -165,7 +165,7 @@ import { UnknownFilterGuessModal, BulkUnknownFixModal } from '../components/inst
 import { type ImprintModalState, ImprintModal } from '../components/installed/imprint/ImprintModal';
 import { ImprintDetailsModal } from '../components/installed/imprint/ImprintDetailsModal';
 import { InstalledSkeleton } from '../components/installed/InstalledSkeleton';
-import { type ModEntry, type InstalledTag, type EntrySwapTarget, buildModEntries, isEntryEnabled, entrySortPriority, entryName, entrySearchText, entryPrimaryMod, entryDetailsAnchor, entryIsLocal, entryHeroNames, entryTags, flattenEntries, entryRepresentativeId, entryDisabledPreferenceKey, buildCompactPriorityOrder } from '../lib/modEntries';
+import { type ModEntry, type InstalledTag, type EntrySwapTarget, buildModEntries, isEntryEnabled, entrySortPriority, entryName, entrySearchText, entryPrimaryMod, entryDetailsAnchor, entryIsLocal, entryRemoval, entryHeroNames, entryTags, flattenEntries, entryRepresentativeId, entryDisabledPreferenceKey, buildCompactPriorityOrder } from '../lib/modEntries';
 
 const installedToolbarIconClass = 'inline-flex h-[38px] w-[38px] shrink-0 cursor-pointer items-center justify-center rounded-lg border border-border bg-bg-secondary text-text-primary transition-colors hover:bg-bg-tertiary focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-50';
 
@@ -285,6 +285,7 @@ interface InstalledEntryCardProps {
   groupClickOpensDetails: boolean;
   conflicts: ModConflict[];
   updateAvailable: boolean;
+  removal: GameBananaRemoval | undefined;
   staleSourceCount: number;
   updatableSourceCount: number;
   fixingUnknown: boolean;
@@ -305,6 +306,7 @@ interface InstalledEntryCardProps {
   swapTargets?: readonly EntrySwapTarget[];
   onSwap: (entry: ModEntry, outgoingEntryKey: string) => Promise<void>;
   onSoloLaunch: (entry: ModEntry) => void;
+  onTrialLaunch: (entry: ModEntry, id: string) => void;
   onDelete: (entry: ModEntry) => void;
   /** Open the add-variants import dialog for an entry. */
   onAddVariant: (entry: ModEntry) => void;
@@ -349,6 +351,7 @@ export const InstalledEntryCard = memo(function InstalledEntryCard({
   groupClickOpensDetails,
   conflicts,
   updateAvailable,
+  removal,
   staleSourceCount,
   updatableSourceCount,
   fixingUnknown,
@@ -367,6 +370,7 @@ export const InstalledEntryCard = memo(function InstalledEntryCard({
   swapTargets,
   onSwap,
   onSoloLaunch,
+  onTrialLaunch,
   onDelete,
   onAddVariant,
   onViewImprint,
@@ -390,6 +394,14 @@ export const InstalledEntryCard = memo(function InstalledEntryCard({
     heroByCategoryId: state.heroByCategoryId, heroNames: state.heroNames, pathsByModel: state.pathsByModel,
   })));
   const previewMod = entry.kind === 'single' ? entry.mod : entry.enabledVariants[0] ?? entry.primary;
+  const trialTargets = (entry.kind === 'single' ? [entry.mod] : entry.variants)
+    .filter(mod => !mod.enabled && !mod.merged && !isChatWheelAddon(mod))
+    .map(mod => ({ id: mod.id, name: mod.variantLabel || (entry.kind === 'group' ? mod.sourceFileName || mod.fileName : mod.name) }));
+  const openOverlap = () => {
+    const variants = entry.kind === 'single' ? [entry.mod] : entry.variants;
+    const params = new URLSearchParams(variants.map(mod => ['mod', mod.id]));
+    navigate(`/overlap?${params}`, { state: { fromInstalled: true } });
+  };
   const target = installedDoorStuckTarget(previewMod, taxonomyContext);
   // Every file the Alt preview can show, in picker order. Alt+wheel steps through them.
   const previewKeys = useMemo(() => (entry.kind === 'single' ? [entry.mod] : entry.variants)
@@ -421,6 +433,7 @@ export const InstalledEntryCard = memo(function InstalledEntryCard({
         conflicts={conflicts}
         soundVolume={soundVolume}
         updateAvailable={updateAvailable}
+        removal={removal}
         staleSourceCount={staleSourceCount}
         updatableSourceCount={updatableSourceCount}
         entryKey={entry.key}
@@ -432,6 +445,9 @@ export const InstalledEntryCard = memo(function InstalledEntryCard({
         swapTargets={swapTargets}
         onSwap={key => onSwap(entry, key)}
         onSoloLaunch={() => onSoloLaunch(entry)}
+        trialTargets={trialTargets}
+        onTrialLaunch={id => onTrialLaunch(entry, id)}
+        onOpenOverlap={openOverlap}
         soloBusy={soloBusy}
         onDelete={() => onDelete(entry)}
         // A local mod can adopt variants: the first add mints the group. A
@@ -512,6 +528,7 @@ export const InstalledEntryCard = memo(function InstalledEntryCard({
       conflicts={conflicts}
       soundVolume={soundVolume}
       updateAvailable={updateAvailable}
+      removal={removal}
       entryKey={entry.key}
       onOpenDetails={groupOpensPicker ? () => onOpenPicker(entry.groupKey) : () => onOpenGroupDetails(entry)}
       onViewModPage={entryIsLocal(entry) && entry.gameBananaId ? () => onOpenGroupDetails(entry) : undefined}
@@ -522,6 +539,9 @@ export const InstalledEntryCard = memo(function InstalledEntryCard({
       swapTargets={swapTargets}
       onSwap={key => onSwap(entry, key)}
       onSoloLaunch={() => onSoloLaunch(entry)}
+      trialTargets={trialTargets}
+      onTrialLaunch={id => onTrialLaunch(entry, id)}
+      onOpenOverlap={openOverlap}
       soloBusy={soloBusy}
       onDelete={() => onDelete(entry)}
       onAddVariant={
@@ -848,6 +868,7 @@ function InstalledPage({ viewportRef, toolbarRef }: {
     return ['gamebanana', 'local'];
   });
   const [statusSel, setStatusSel] = useState<('enabled' | 'disabled')[]>(['enabled', 'disabled']);
+  const [removedOnly, setRemovedOnly] = useState(false);
   const [heroFilter, setHeroFilter] = useState<string[]>([]);
   const [tagFilter, setTagFilter] = useState<string[]>([]);
   const [excludedTagFilter, setExcludedTagFilter] = useState<string[]>([]);
@@ -1110,6 +1131,7 @@ function InstalledPage({ viewportRef, toolbarRef }: {
   // Monotonic guard so a slower linked-item fetch can't clobber a newer one.
   const detailsRequestIdRef = useRef(0);
   const updatesAvailable = useModUpdateCheckStore(state => state.updatesAvailable);
+  const removedMods = useModUpdateCheckStore(state => state.removed);
   const mergedSourceUpdates = useModUpdateCheckStore(state => state.staleMergeSources);
   const updatableMergeSources = useModUpdateCheckStore(state => state.updatableMergeSources);
   const updatingModIds = useModUpdatesStore(state => state.state.updatingModIds);
@@ -2654,6 +2676,40 @@ function InstalledPage({ viewportRef, toolbarRef }: {
       setSoloBusy(false);
     }
   });
+  const launchTrial = useStableCallback(async (entry: ModEntry, id: string) => {
+    if (soloBusyRef.current) return;
+    const variants = entry.kind === 'single' ? [entry.mod] : entry.variants;
+    const target = variants.find(mod => mod.id === id && !mod.enabled);
+    if (!target) return;
+    const replaced = variants.filter(mod => mod.enabled);
+    soloBusyRef.current = true;
+    setSoloBusy(true);
+    try {
+      const replaceIds = replaced.map(mod => mod.id);
+      const review = await window.electronAPI.reviewModTrial(id, replaceIds);
+      if (!await confirm({
+        title: t('installed.trial.title', { name: target.variantLabel || target.name }),
+        message: <div className="space-y-2">
+          <p>{t('installed.trial.message')}</p>
+          {review && review.total > 0 && <p>{t('installed.trial.overlaps', { names: review.names.join(', ') })}{' '}
+            {review.total > review.names.length && t('installed.trial.moreOverlaps', { count: review.total - review.names.length })}</p>}
+          {(!review || review.incomplete) && <p>{t('installed.trial.incomplete')}</p>}
+        </div>,
+        items: replaced.map(mod => mod.variantLabel || mod.sourceFileName || mod.name),
+        itemsLabel: t('installed.trial.replaced'),
+        confirmLabel: t('installed.trial.action'),
+      })) return;
+      await window.electronAPI.launchModTrial(id, replaceIds);
+      await useAppStore.getState().loadMods({ afterCurrent: true, silent: true });
+      showToast(t('installed.trial.started'), { tone: 'info' });
+    } catch (error) {
+      void useAppStore.getState().loadMods({ afterCurrent: true, silent: true });
+      showToast(String(error), { tone: 'error' });
+    } finally {
+      soloBusyRef.current = false;
+      setSoloBusy(false);
+    }
+  });
   const deleteEntry = useStableCallback(async (entry: ModEntry) => {
     // A chat wheel add-on must be unbound in the game first, or the game can
     // crash; the unbind warning is the confirmation for that case.
@@ -2857,6 +2913,7 @@ function InstalledPage({ viewportRef, toolbarRef }: {
     setTagFilter(previous => previous.filter(tag => tag !== key));
     setExcludedTagFilter(previous => previous.filter(tag => tag !== key));
   };
+  const removedCount = removedMods.size === 0 ? 0 : allEntries.filter(entry => entryRemoval(entry, removedMods)).length;
   const localCount = allEntries.filter(entryIsLocal).length;
   const gbCount = allEntries.length - localCount;
   const enabledCount = enabledEntries.length;
@@ -2922,7 +2979,7 @@ function InstalledPage({ viewportRef, toolbarRef }: {
   const statusActive = statusSel.length !== 2;
   const heroActive = heroFilter.length > 0;
   const filtersActive =
-    sourceActive || statusActive || heroActive || tagFilter.length > 0 || excludedTagFilter.length > 0 || listFilter.length > 0;
+    sourceActive || statusActive || removedOnly || heroActive || tagFilter.length > 0 || excludedTagFilter.length > 0 || listFilter.length > 0;
   const sortActive = sortMode !== 'priority';
   const viewIsReorderable = !listsView && !searchNeedle && !filtersActive && !sortActive;
   const disabledAlphabetical = disabledSortMode === 'name';
@@ -2946,6 +3003,7 @@ function InstalledPage({ viewportRef, toolbarRef }: {
     const matchesAllFilters = (entry: ModEntry) =>
       matchesSearchEntry(entry) &&
       matchesSourceEntry(entry) &&
+      (!removedOnly || !!entryRemoval(entry, removedMods)) &&
       matchesHeroEntry(entry) &&
       matchesTagEntry(entry) &&
       matchesListEntry(entry);
@@ -2976,7 +3034,7 @@ function InstalledPage({ viewportRef, toolbarRef }: {
         }))
       : [];
     return { visibleEnabled, visibleDisabled };
-  }, [searchNeedle, sourceSel, heroFilter, tagFilter, excludedTagFilter, listFilter, entryFacetMeta, taxonomyContext, entryListIds, sortMode, sortActive, statusSel, enabledEntries, disabledEntries, disabledAlphabetical, disabledOrder, disabledFavorites]);
+  }, [searchNeedle, sourceSel, removedOnly, removedMods, heroFilter, tagFilter, excludedTagFilter, listFilter, entryFacetMeta, taxonomyContext, entryListIds, sortMode, sortActive, statusSel, enabledEntries, disabledEntries, disabledAlphabetical, disabledOrder, disabledFavorites]);
   const totalMatches = visibleEnabled.length + visibleDisabled.length;
   const listGroups = useMemo(() => buildInstalledListGroups([...visibleEnabled, ...visibleDisabled], modLists, listPreferences.unlistedOrder), [visibleEnabled, visibleDisabled, modLists, listPreferences.unlistedOrder]);
   const activeCollapsedLists = searchNeedle
@@ -3259,6 +3317,7 @@ function InstalledPage({ viewportRef, toolbarRef }: {
       entry.kind === 'single'
         ? updatesAvailable.has(entry.mod.id)
         : entry.variants.some((v) => updatesAvailable.has(v.id)),
+    removal: entryRemoval(entry, removedMods),
     staleSourceCount:
       entry.kind === 'single' ? (mergedSourceUpdates.get(entry.mod.id)?.size ?? 0) : 0,
     updatableSourceCount:
@@ -3279,6 +3338,7 @@ function InstalledPage({ viewportRef, toolbarRef }: {
     swapTargets: swapTargets.get(entry.key),
     onSwap: beginSwap,
     onSoloLaunch: soloLaunchEntry,
+    onTrialLaunch: launchTrial,
     onDelete: deleteEntry,
     onAddVariant: openAddVariant,
     onViewImprint: viewEntryImprint,
@@ -3475,6 +3535,7 @@ function InstalledPage({ viewportRef, toolbarRef }: {
               cycleTagFilters={settings?.cycleTagFilters ?? false}
               view={listPreferences.view} onViewChange={setListView}
               sourceSel={sourceSel} onSourceChange={setSourceSel} sourceCounts={{ gamebanana: gbCount, local: localCount }}
+              removedOnly={removedOnly} onRemovedOnlyChange={setRemovedOnly} removedCount={removedCount}
               statusSel={statusSel} onStatusChange={setStatusSel} statusCounts={{ enabled: enabledCount, disabled: disabledCount }}
               heroFilter={heroFilter} onHeroChange={setHeroFilter} heroOptions={heroOptions}
               tagFilter={tagFilter} onTagChange={setTagFilter} excludedTagFilter={excludedTagFilter} onExcludedTagChange={setExcludedTagFilter} tagOptions={tagOptions}
@@ -3485,7 +3546,7 @@ function InstalledPage({ viewportRef, toolbarRef }: {
               onManageLists={() => setManagingLists(true)} active={filtersActive || listsView}
               onReset={() => {
                 setListView('all');
-                setSourceSel(['gamebanana', 'local']); setStatusSel(['enabled', 'disabled']);
+                setSourceSel(['gamebanana', 'local']); setStatusSel(['enabled', 'disabled']); setRemovedOnly(false);
                 setHeroFilter([]); setTagFilter([]); setExcludedTagFilter([]); setListFilter([]);
               }} />
             <InstalledOptionsMenu
@@ -3843,6 +3904,7 @@ function InstalledPage({ viewportRef, toolbarRef }: {
           dateModified={detailsDates?.dateModified}
           offline={detailsOffline}
           updateAvailable={detailsUpdate.flagged}
+          removal={detailsInstalledMods.map(mod => removedMods.get(mod.id)).find(Boolean)}
           updateFileIds={detailsUpdate.updateFileIds}
           archivedByAuthor={detailsUpdate.archived}
           replaceableFiles={detailsUpdate.replaceableFiles}

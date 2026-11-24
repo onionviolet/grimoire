@@ -770,6 +770,20 @@ export function renameProfile(profileId: string, newName: string): Profile {
     return profiles[index];
 }
 
+export function updateProfileNotes(profileId: string, notes: string): Profile {
+    if (typeof notes !== 'string' || notes.length > 2000) {
+        throw new Error('Invalid profile notes');
+    }
+    const profiles = loadProfiles();
+    const profile = profiles.find(item => item.id === profileId);
+    if (!profile) throw new Error(`Profile not found: ${profileId}`);
+
+    if (notes.trim()) profile.notes = notes.trim();
+    else delete profile.notes;
+    saveProfiles(profiles);
+    return profile;
+}
+
 /**
  * Remove the crosshair from a profile without touching its mods or autoexec.
  * updateProfile() re-scans the live mod state, so it can't be used to just drop

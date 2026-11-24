@@ -120,11 +120,12 @@ real work.
 Manual mapping now re-reviews a selected local replacement and binds its exact
 bytes to one apply operation; it does not rewrite the saved profile. User-mod
 byte retention, rolling restore history and interrupted rollback are implemented.
-Reserved Locker artifacts and their owning selections remain outside profile
-snapshots. Complete setup capture needs an explicit multi-owner restore contract
-before those artifacts can safely join profile recovery.
-**Size:** medium to large. **Evidence:** current `profileRecovery.ts` and
-`docs/setup-evidence-and-auditions-2026-10-03.md`.
+Local restore points now include the four reserved Locker VPK slots and their
+metadata, with stale-review checks and interrupted rollback. Older restore
+points still work without Locker data. Complete setup capture still needs to
+account for Locker-owned selections outside those slots.
+**Evidence:** `profileRecovery.ts`, `lockerRecovery.ts`, and
+`profileRecovery.test.ts`.
 
 ### B-09. Verified publisher identity and application rollback
 Stable/preview selection, startup-check opt-in and optional Windows certificate

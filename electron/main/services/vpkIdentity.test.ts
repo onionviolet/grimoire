@@ -139,7 +139,7 @@ describe('carryForwardOriginalIdentity', () => {
     expect(carryForwardOriginalIdentity(undefined)).toBeNull();
   });
 
-  // PRE-RELEASE SHIM coverage: the legacy grimoire-branded key set.
+  // Compatibility coverage for the legacy grimoire-branded key set.
   it('falls back to the legacy grimoireOriginal* raw keys (shim path)', () => {
     const embed: ParsedAddonInfo = {
       raw: {

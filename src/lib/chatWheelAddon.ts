@@ -1,5 +1,8 @@
 import type { Mod } from '../types/mod';
 
+export const CHAT_WHEEL_RESOURCE = 'scripts/ping_wheel_messages.vdata_c';
+export const CHAT_WHEEL_FIRST_MENU_ID = 70;
+
 /**
  * A chat wheel add-on is the VPK the Chat Wheel page writes through
  * `chat-wheel:save`, which stamps `sourceSection: 'ChatWheel'` on its metadata.

@@ -41,7 +41,8 @@ export default function ProfileRecoveryPanel({ revision, onRestored }: { revisio
       setMessage(t('profiles.recovery.restoreFailed', { error: String(error) }));
     } finally { setBusy(false); }
   };
-  const reasonLabel = (reason: 'missing' | 'changed' | 'ambiguous') => {
+  const reasonLabel = (reason: ProfileRecoveryPreview['issues'][number]['reason']) => {
+    if (reason === 'chat-wheel-bound') return t('profiles.recovery.chatWheelBound');
     if (reason === 'missing') return t('profiles.recovery.missing');
     if (reason === 'changed') return t('profiles.recovery.changed');
     return t('profiles.recovery.ambiguous');
@@ -58,6 +59,7 @@ export default function ProfileRecoveryPanel({ revision, onRestored }: { revisio
               <div className="min-w-0 text-sm">
                 <p className="text-text-primary break-words">{point.purpose === 'isolation' ? t('profiles.recovery.isolationPoint') : point.profileName}</p>
                 <p className="text-xs text-text-secondary">{t(point.retainedBytes ? 'profiles.recovery.retainedBytes' : 'profiles.recovery.identityOnly')}</p>
+                {point.includesLocker && <p className="text-xs text-text-secondary">{t('profiles.recovery.includesLocker')}</p>}
                 <p className="text-xs text-text-secondary">{formatAbsoluteDate(point.createdAt)} · {t('profiles.recovery.counts', { enabled: point.enabledCount, total: point.modCount })}</p>
               </div>
               <Button variant="secondary" disabled={busy} onClick={() => void review(point.id)}>{t('profiles.recovery.preview')}</Button>
@@ -72,7 +74,10 @@ export default function ProfileRecoveryPanel({ revision, onRestored }: { revisio
         )}
       </div>
       <ConfirmModal isOpen={!!preview?.canRestore} title={t('profiles.recovery.confirmTitle')}
-        message={t('profiles.recovery.confirmMessage', { date: preview ? formatAbsoluteDate(preview.point.createdAt) : '', count: preview?.disableCount ?? 0, recovered: preview?.recoverCount ?? 0 })}
+        message={<>
+          {t('profiles.recovery.confirmMessage', { date: preview ? formatAbsoluteDate(preview.point.createdAt) : '', count: preview?.disableCount ?? 0, recovered: preview?.recoverCount ?? 0 })}
+          {preview?.point.includesLocker && <p className="mt-2">{t('profiles.recovery.replaceLocker')}</p>}
+        </>}
         confirmLabel={t('profiles.recovery.restore')} cancelLabel={t('profiles.recovery.cancel')}
         busy={busy} onConfirm={() => void restore()} onCancel={() => { if (!busy) setPreview(null); }} />
     </Card>

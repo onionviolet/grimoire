@@ -29,6 +29,7 @@ import { useConfirm } from '../common/confirmContext';
 import { EmptyState } from '../common/PageComponents';
 import Tx from '../translation/Tx';
 import { SoundImportEditor, type SoundImportEdits } from './SoundImportEditor';
+import VoiceBatchStaging from './VoiceBatchStaging';
 import AssetSourcesPanel from './AssetSourcesPanel';
 import ShuffleToggleButton from './ShuffleToggleButton';
 import { useAssetSourceInspection } from './assetSourceInspection';
@@ -679,7 +680,8 @@ function VoiceLinesSection({
             </button>
 
             {open && (
-                <div className="mt-3">
+                <div className="mt-3 space-y-3">
+                    {!!lines.length && swap && onStage && <VoiceBatchStaging hero={hero} heroName={swap.heroName} lines={lines} onStage={onStage} />}
                     {loading ? (
                         <div className="flex items-center justify-center gap-2 py-10 text-text-secondary">
                             <Loader2 size={16} className="animate-spin" />

@@ -78,11 +78,11 @@ describe('installed card menu mounting', () => {
     const noop = vi.fn(async () => {});
     const props: ComponentProps<typeof InstalledEntryCard> = {
       entry: { kind: 'single', mod, key: 'local' }, viewMode, hideNsfwPreviews: false,
-      soundVolume: 0, groupClickOpensDetails: true, conflicts: [], updateAvailable: false,
+      soundVolume: 0, groupClickOpensDetails: true, conflicts: [], updateAvailable: false, removal: undefined,
       staleSourceCount: 0, updatableSourceCount: 0, fixingUnknown: false, loadPosition: undefined,
       loadCount: 1, selectMode: false, shiftHeld: false, selected: false, soloBusy: false, favorite: false,
       onOpenDetails: onOpen, onViewAuthor: noop, onOpenPicker: noop, onOpenGroupDetails: noop,
-      onToggle: async () => true, onSwap: noop, onSoloLaunch: noop, onDelete: noop,
+      onToggle: async () => true, onSwap: noop, onSoloLaunch: noop, onTrialLaunch: noop, onDelete: noop,
       onAddVariant: noop, onViewImprint: noop,
       onSetTags: noop, onFixUnknown: noop, onUnmerge: noop, onCopyShareCode: noop,
       occurrenceKey: undefined, onSelectToggle: noop, onToggleFavorite: noop, lists: [], listIds: [],

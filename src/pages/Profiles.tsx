@@ -27,6 +27,7 @@ import { ConfirmModal, EmptyState, PageLayout, LoadingState } from '../component
 import CrosshairPreview from '../components/crosshair/CrosshairPreview';
 import ExportProfileModal from '../components/profiles/ExportProfileModal';
 import ProfileRecoveryPanel from '../components/profiles/ProfileRecoveryPanel';
+import ProfileNotes from '../components/profiles/ProfileNotes';
 import ImportProfileDialog from '../components/profiles/ImportProfileDialog';
 import { useReviewedProfileApply } from '../components/profiles/useReviewedProfileApply';
 import PublishDialog from '../components/social/PublishDialog';
@@ -862,6 +863,10 @@ export default function Profiles() {
                           <div className="text-text-primary font-mono">{new Date(profile.updatedAt).toLocaleDateString()}</div>
                         </div>
                       </div>
+
+                      <ProfileNotes profileId={profile.id} notes={profile.notes} onError={setError}
+                        onSave={(notes) => setProfiles(current => current.map(item =>
+                          item.id === profile.id ? { ...item, notes } : item))} />
 
                       {/* Capabilities Indicators */}
                       {profile.autoexecCommands && profile.autoexecCommands.length > 0 && (

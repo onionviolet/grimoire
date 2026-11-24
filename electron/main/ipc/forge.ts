@@ -1,10 +1,8 @@
 /**
  * IPC surface for the DeadlockForge local install bridge.
  *
- * Two channels only, and both are deliberately thin:
- *  - the renderer relays the user's answer to the confirmation dialog
- *  - the renderer asks whether the bridge is currently listening, for the
- *    Settings screen
+ * The renderer relays consent and installation decisions and reads listener
+ * status for Settings.
  *
  * No VPK bytes and no filesystem paths cross into the renderer. All network
  * and file work stays in the main process, matching the two-process rule the
@@ -12,9 +10,11 @@
  */
 
 import { ipcMain } from 'electron';
+import type { ForgeBridgeStatus } from '../../../src/types/electron';
 
 import {
     getForgeBridgePort,
+    hasReceivedForgeProbe,
     resolveForgeEnable,
     resolveForgeInstallConfirmation,
 } from '../services/forgeBridge';
@@ -33,7 +33,7 @@ ipcMain.handle('forge-enable-response', async (_, args: { accepted: boolean }): 
 });
 
 // forge-bridge-status (Settings: is the listener up, and on which port)
-ipcMain.handle('forge-bridge-status', (): { listening: boolean; port: number | null } => {
+ipcMain.handle('forge-bridge-status', (): ForgeBridgeStatus => {
     const port = getForgeBridgePort();
-    return { listening: port !== null, port };
+    return { listening: port !== null, port, receivedForgeProbe: hasReceivedForgeProbe() };
 });

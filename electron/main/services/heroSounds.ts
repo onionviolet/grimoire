@@ -445,12 +445,12 @@ export async function getActiveHeroSounds(
  * source media is never substituted for a missing installed clip. */
 export async function previewAppliedHeroSound(
     deadlockPath: string, heroName: string, slot: AbilitySlot, clipPath: string,
-): Promise<{ url: string | null; selected: boolean; params?: AbilitySoundParams }> {
+): Promise<{ url: string | null; selected: boolean; params?: AbilitySoundParams; vpk?: string }> {
     const codename = soundCodenameForHero(heroName);
     const selection = (await currentSoundSelections(deadlockPath)).find(sound => sound.heroCodename === codename && sound.slot === slot);
     if (!selection) return { url: null, selected: false };
     const managed = await ensureModClip(lockerSoundsVpkPath(deadlockPath), clipPath).catch(() => null);
-    if (managed) return { url: managed, selected: true, params: selection.params };
+    if (managed) return { url: managed, selected: true, params: selection.params, vpk: basename(lockerSoundsVpkPath(deadlockPath)) };
     // Selected source media is authoring input, not proof that the applied
     // artifact still exists. A reused source slot must never replace it here.
     return { url: null, selected: true, params: selection.params };

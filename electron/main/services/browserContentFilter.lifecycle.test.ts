@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const context = vi.hoisted(() => ({ root: '', userData: '', page: 'https://site.test/page' }));
+const context = vi.hoisted(() => ({ root: '', userData: '', page: 'https://site.test/page', failAttach: false }));
 vi.mock('electron', () => ({
     app: { isPackaged: false, getAppPath: () => context.root, getPath: () => context.userData },
     webContents: { fromId: () => ({ isDestroyed: () => false, getURL: () => context.page }) },
@@ -18,6 +18,7 @@ vi.mock('@ghostery/adblocker-electron', async importOriginal => {
         enableBlockingInSession(target: Electron.Session) {
             this.sessions.add(target);
             target.webRequest.onBeforeRequest({ urls: ['<all_urls>'] }, this.onBeforeRequest);
+            if (context.failAttach) throw new Error('Native registration failed');
             return {} as ReturnType<InstanceType<typeof actual.ElectronBlocker>['enableBlockingInSession']>;
         }
         disableBlockingInSession(target: Electron.Session) { this.sessions.delete(target); target.webRequest.onBeforeRequest(null); }
@@ -52,6 +53,7 @@ beforeEach(() => {
     context.root = mkdtempSync(join(tmpdir(), 'grimoire-filter-'));
     context.userData = join(context.root, 'data');
     context.page = 'https://site.test/page';
+    context.failAttach = false;
     mkdirSync(context.userData);
     mkdirSync(join(context.root, 'resources', 'filters'), { recursive: true });
     writeFileSync(join(context.root, 'resources', 'filters', 'filters.txt'), '||bundled.test^\nsite.test##.ad\n');
@@ -127,6 +129,28 @@ describe('Browser filter lifecycle', () => {
         expect(service.filterStats().status).toBe('off');
         service.configureFilter({ enabled: true }); await service.reloadBrowserFilter();
         expect(blocked('bundled.test')).toBe(true);
+    });
+    it('restores basic blocking after a failed reattach and retries the full engine', async () => {
+        await start();
+        service.configureFilter({ enabled: false });
+        await service.reloadBrowserFilter();
+
+        const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        try {
+            context.failAttach = true;
+            service.configureFilter({ enabled: true });
+            await service.reloadBrowserFilter();
+            expect(service.filterStats().status).toBe('error');
+            expect(blocked('doubleclick.net')).toBe(true);
+            expect(blocked('bundled.test')).toBe(false);
+
+            context.failAttach = false;
+            await service.reloadBrowserFilter();
+            expect(service.filterStats().status).toBe('active');
+            expect(blocked('bundled.test')).toBe(true);
+        } finally {
+            warning.mockRestore();
+        }
     });
     it('reports supported custom lines and rejected line numbers', async () => {
         await start();

@@ -1,5 +1,7 @@
 import type { ProfileShuffle } from '../lib/profileShuffle';
 import type { AppTheme } from '../lib/theme';
+import type { LocalizationModsReview, LocalizationTokenChoice } from './localizationMerge';
+import type { DisabledCompressionResult, DisabledCompressionStatus } from './disabledCompression';
 import type { ModSafetyPrompt, InstalledModSafety } from './modSafety';
 import type { ChooseModUpdateReplacementArgs, ModUpdateState, StartModUpdatesArgs } from './modUpdates';
 import type {
@@ -795,6 +797,7 @@ export interface ForgeInstallRequestData {
 export interface ForgeBridgeStatus {
     listening: boolean;
     port: number | null;
+    receivedForgeProbe: boolean;
 }
 
 export interface MultiVpkPickData {
@@ -806,6 +809,7 @@ export interface MultiVpkPickData {
     vpkLabels?: Record<string, string>;
     /** filename → file size in bytes. */
     vpkFileSizes?: Record<string, number>;
+    vpkArchivePaths?: Record<string, string>;
 }
 
 export interface SyncProgressData {
@@ -904,6 +908,8 @@ export interface ChatWheelSaveArgs {
     name: string;
     /** Replace this installed generated VPK in-place, preserving its slot. */
     replaceModId?: string;
+    /** User confirmed that existing custom menus were unbound before their IDs change. */
+    customMenusUnbound?: boolean;
 }
 
 export interface SavedMod {
@@ -1090,6 +1096,10 @@ export interface ElectronAPI {
     onCopyModsToDevProgress: (callback: (percent: number) => void) => () => void;
     getSettings: () => Promise<AppSettings>;
     setSettings: (patch: Partial<AppSettings>) => Promise<AppSettings>;
+    disabledCompression: {
+        inspect: () => Promise<DisabledCompressionStatus>;
+        apply: (mode: 'compress' | 'expand') => Promise<DisabledCompressionResult>;
+    };
 
     // Mod transfer between mod managers (neutral interchange format; no cloud)
     interchange: {
@@ -1111,6 +1121,8 @@ export interface ElectronAPI {
     /** Non-mutating ChatLane conversion used for inline YAML diagnostics. */
     chatWheelValidate: (yaml: string) => Promise<void>;
     chatWheelSave: (args: ChatWheelSaveArgs) => Promise<Mod | null>;
+    chatWheelExport: (yaml: string, name: string) => Promise<string | null>;
+    chatWheelInspect: () => Promise<import('./chatWheelPlatform').ChatWheelInspection | null>;
     chatWheelStatus: () => Promise<import('./chatWheelPlatform').ChatWheelConverterStatus>;
     /** Game-asset dressing for the preview, or null (no game path, no
      *  qualifying pak entry, or decode failure). Never rejects. */
@@ -1205,7 +1217,7 @@ export interface ElectronAPI {
      *  real rig and its clips (the Installed preview); use its own cacheKey. */
     exportSoulModel: (metaKey: string, cacheKey: string, entry?: string, options?: { animated?: boolean }) => Promise<SoulModelInfo>;
     /** An animation mod's clips exported onto its hero (the Installed preview); null when it has none to play. */
-    exportAnimationModPreview: (metaKey: string) => Promise<{ heroName: string; key: string; clips: string[]; meshGroup: string | null } | null>;
+    exportAnimationModPreview: (metaKey: string, stock?: boolean) => Promise<import('./portrait').AnimationModPreview | null>;
     getSkinEditInfo: (source: import('./skinEditor').SkinEditSource) => Promise<import('./skinEditor').SkinEditInfo>;
     previewMovementFx: (request: import('../lib/movementFx').MovementFxPreviewRequest) => Promise<import('../lib/movementFx').MovementFxPreview>;
     previewMovementEngine: (request: import('../lib/movementFx').MovementFxPreviewRequest) => Promise<import('../lib/movementFx').MovementEnginePreview>;
@@ -1455,6 +1467,9 @@ export interface ElectronAPI {
 
     // Launch
     launchModded: () => Promise<void>;
+    launchModTrial: (id: string, replaceIds: string[]) => Promise<void>;
+    reviewModTrial: (id: string, replaceIds: string[]) => Promise<{ names: string[]; total: number; incomplete: boolean } | null>;
+    onModTrialFinished: (callback: (restored: boolean) => void) => () => void;
     launchVanilla: () => Promise<void>;
     getGameRunningStatus: () => Promise<GameRunningStatus>;
     stopGame: () => Promise<StopGameResult>;
@@ -1553,7 +1568,9 @@ export interface ElectronAPI {
     // Download Queue
     getDownloadQueue: () => Promise<DownloadQueueItem[]>;
     getDownloadJobs: () => Promise<import('./downloadJobs').DownloadJob[]>;
-    retryDownloadJob: (id: string) => Promise<void>;
+    retryDownloadJob: (id: string, successors?: string[]) => Promise<void>;
+    removeWaitingDownload: (target: string | Pick<DownloadQueueItem, 'modId' | 'fileId'>) =>
+        Promise<{ removed: boolean; jobId?: string; successors?: string[] }>;
     moveQueuedDownload: (jobId: string, beforeJobId: string | null) => Promise<boolean>;
     prioritizeQueuedDownload: (jobId: string) => Promise<boolean>;
     getCurrentDownload: () => Promise<DownloadQueueItem | null>;
@@ -1591,6 +1608,8 @@ export interface ElectronAPI {
 
     // Conflicts
     getConflicts: () => Promise<ModConflict[]>;
+    reviewLocalizationMerge: (modIds: string[]) => Promise<LocalizationModsReview>;
+    exportLocalizationMerge: (modIds: string[], reviewToken: string, choices: LocalizationTokenChoice[]) => Promise<string | null>;
     getIgnoredConflicts: () => Promise<string[]>;
     ignoreConflict: (modA: string, modB: string) => Promise<string[]>;
     unignoreConflict: (modA: string, modB: string) => Promise<string[]>;
@@ -1631,6 +1650,7 @@ export interface ElectronAPI {
     };
     deleteProfile: (profileId: string) => Promise<void>;
     renameProfile: (profileId: string, newName: string) => Promise<Profile>;
+    updateProfileNotes: (profileId: string, notes: string) => Promise<Profile>;
     removeProfileCrosshair: (profileId: string) => Promise<Profile>;
     exportPortableProfile: (profileId: string) => Promise<import('./portableProfile').PortableExportResult>;
     parsePortableProfile: (input: string) => Promise<import('./portableProfile').PortableProfile>;
@@ -1907,6 +1927,7 @@ export interface ElectronAPI {
         releaseTrayPreview: (previewId: string) => Promise<void>;
     };
     browser: {
+        onShortcut: (callback: (shortcut: 'address' | 'bookmark' | 'bar') => void) => () => void;
         filterStats: () => Promise<import('./foundry').BrowserFilterStats>;
         reloadFilter: () => Promise<import('./foundry').BrowserFilterStats>;
         checkFilterUpdate: () => Promise<import('./browserFilter').BrowserFilterUpdateReview>;
@@ -2065,6 +2086,8 @@ export interface ProfileLocker {
 export interface Profile {
     id: string;
     name: string;
+    /** Local notes, omitted from portable and published profiles. */
+    notes?: string;
     mods: ProfileMod[];
     crosshair?: ProfileCrosshairSettings;
     autoexecCommands?: string[];

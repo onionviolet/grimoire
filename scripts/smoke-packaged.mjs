@@ -30,10 +30,17 @@ let watchdog;
 try {
     const packaged = nix ? await realpath(source) : join(root, process.platform === 'darwin' ? 'Grimoire.app' : 'app');
     if (!nix) await cp(source, packaged, { recursive: true, verbatimSymlinks: true });
+    const deadlockPath = join(root, 'deadlock-fixture');
+    const citadel = join(deadlockPath, 'game', 'citadel');
+    const gameinfo = join(citadel, 'gameinfo.gi');
+    await mkdir(citadel, { recursive: true });
+    await writeFile(gameinfo, 'GameInfo\n{\nFileSystem\n{\nSearchPaths\n{\nGame "citadel"\n}\n}\n}\n');
     await mkdir(userData);
     await writeFile(join(userData, 'settings.json'), JSON.stringify({
+        deadlockPath,
         autoCheckAppUpdates: false,
         language: 'en',
+        experimentalChatWheel: true,
     }));
 
     const json = Buffer.from(JSON.stringify({ asset: { version: '2.0' }, scenes: [{}], scene: 0 }).padEnd(80, ' '));
@@ -102,6 +109,25 @@ try {
     const page = await application.firstWindow({ timeout: 30000 });
     await page.waitForURL('file:///**/app.asar/dist/renderer/index.html');
     await page.locator('#root > *').first().waitFor({ state: 'visible' });
+    const wheel = await page.evaluate(async () => {
+        const api = window.electronAPI;
+        const status = await api.chatWheelStatus();
+        const yaml = await api.chatWheelStarter();
+        await api.chatWheelValidate(yaml);
+        const inspection = await api.chatWheelInspect();
+        return { available: status.available, inspection, hasStarter: yaml.includes('custom_menus:') };
+    });
+    assert.deepEqual(wheel, { available: true, inspection: { mountOrderKnown: true, providers: [] }, hasStarter: true });
+    const gameinfoBefore = await readFile(gameinfo);
+    await page.evaluate(() => { location.hash = '#/chat-wheel'; });
+    // Keep first-run setup incomplete so the smoke does not start a catalog sync.
+    const saveDraft = page.getByRole('button', { name: 'Save draft' }).and(page.locator(':enabled'));
+    await saveDraft.dispatchEvent('click');
+    await page.getByText('Draft saved locally.', { exact: true }).waitFor();
+    assert.deepEqual(await readFile(gameinfo), gameinfoBefore);
+    assert.equal(await page.evaluate(async () => (await window.electronAPI.chatWheelInspect()).providers.length), 0);
+    await page.evaluate(() => { location.hash = '#/installed'; });
+    console.log('PASS native Chat Wheel resources, validation and draft save with no game changes');
     if (process.platform !== 'darwin') {
         const menuCanAppear = await application.evaluate(({ BrowserWindow }) => {
             const window = BrowserWindow.getAllWindows()[0];

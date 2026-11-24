@@ -32,6 +32,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     steamLaunchOptions: '',
     updateReleaseChannel: 'stable',
     checkUpdatesOnStartup: false,
+    taskbarGameIndicatorEnabled: false,
     steamLaunchOptionsManaged: false,
     activeProfileId: null,
     lockerUnappliedProfileId: null,
@@ -225,8 +226,8 @@ function readSettings(): AppSettings {
             nsfwContentMode:
                 settings.nsfwContentMode ??
                 migrateNsfwContentMode(browseNsfwContentMode, installedHideNsfwPreviews ?? hideNsfwPreviews),
-            // PRE-RELEASE SHIM: delete before first release. Migrate the
-            // pre-rename flag id so an existing opt-in survives.
+            // Preserve the opt-in when reading settings that still use the
+            // pre-rename flag.
             experimentalVpkImprinting:
                 settings.experimentalVpkImprinting ??
                 (settings as { experimentalVpkTagging?: boolean }).experimentalVpkTagging ??

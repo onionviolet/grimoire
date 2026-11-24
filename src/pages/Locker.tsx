@@ -630,7 +630,10 @@ export default function Locker() {
   // the per-hero Sounds axis even when GameBanana filed them under a hero or
   // inferHeroFromTitle tagged one. getEffectiveGlobalType reflects that routing.
   const lockerSounds = useMemo(
-    () => mods.filter((m) => isLockerManagedSound(m) && !getEffectiveGlobalType(m)),
+    () => mods.filter((m) => !m.lockerSounds && (
+      m.abilitySounds?.perHero.some(hero => Object.values(hero.slots).some(count => count > 0))
+      || isLockerManagedSound(m) && !getEffectiveGlobalType(m)
+    )),
     [mods]
   );
   // Global (priority-root) mods are a placement axis, not a classification, so
@@ -795,7 +798,7 @@ export default function Locker() {
     return groupModsByCategory(lockerMods, baseHeroList);
   }, [lockerMods, baseHeroList]);
   const heroSounds = useMemo(() => {
-    return groupModsByCategory(lockerSounds, baseHeroList);
+    return groupModsByCategory(lockerSounds, baseHeroList, true);
   }, [lockerSounds, baseHeroList]);
   // Issue #208: the image shown on a hero's card/backdrop is the active
   // (highest-priority enabled) skin's chosen Locker image, if the user picked

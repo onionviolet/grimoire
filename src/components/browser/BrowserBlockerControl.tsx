@@ -14,14 +14,14 @@ export function BrowserBlockerControl({ url, reload }: { url: string; reload: ()
     const [error, setError] = useState<string | null>(null);
     let origin: string | null = null;
     try { const parsed = new URL(url); if (/^https?:$/.test(parsed.protocol)) origin = parsed.origin; } catch { /* Not a page URL. */ }
-    const paused = !!origin && !!stats?.exceptions.includes(origin);
+    const exceptions = settings?.browserFilterExceptions ?? [];
+    const paused = !!origin && exceptions.includes(origin);
     const off = settings?.browserBlockTrackers === false;
     const toggle = async () => {
         if (!origin || !settings) return;
         setBusy(true); setError(null);
         try {
-            const previous = stats?.exceptions ?? settings.browserFilterExceptions ?? [];
-            await saveSettings({ ...settings, browserFilterExceptions: paused ? previous.filter(site => site !== origin) : [...previous, origin] });
+            await saveSettings({ ...settings, browserFilterExceptions: paused ? exceptions.filter(site => site !== origin) : [...exceptions, origin] });
             await window.electronAPI.browser.reloadFilter();
             reload();
         } catch (cause) { setError(String(cause)); } finally { setBusy(false); }

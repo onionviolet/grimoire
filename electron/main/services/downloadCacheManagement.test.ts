@@ -40,9 +40,15 @@ describe('reviewed cache cleanup', () => {
     const partial = join(h.root, 'download-cache', `${id}.part`); await fs.writeFile(partial, 'partial');
     const recent = await previewDownloadCache(); expect(recent.items.find(item => item.kind === 'partial')?.removable).toBe(false);
     await fs.utimes(partial, 1, 1);
-    await fs.symlink(join(h.root, 'original.vpk'), join(h.root, 'download-cache/blobs', 'b'.repeat(64)));
+    const link = join(h.root, 'download-cache/blobs', 'b'.repeat(64));
+    const outside = join(h.root, 'outside');
+    await fs.mkdir(outside);
+    await fs.writeFile(join(outside, id), 'outside copy');
+    await fs.symlink(outside, link, process.platform === 'win32' ? 'junction' : 'dir');
     const old = await previewDownloadCache(); expect(old.items).toHaveLength(2);
     await cleanDownloadCache(old.reviewToken);
     expect(await fs.readFile(join(h.root, 'original.vpk'), 'utf8')).toBe('installed original');
+    expect((await fs.lstat(link)).isSymbolicLink()).toBe(true);
+    expect(await fs.readFile(join(outside, id), 'utf8')).toBe('outside copy');
   });
 });

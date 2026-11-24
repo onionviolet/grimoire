@@ -29,6 +29,7 @@ const apiMock = vi.hoisted(() => ({
   getMods: vi.fn(async () => []),
   readChatWheel: vi.fn(async () => ''),
   saveChatWheel: vi.fn(async () => null),
+  exportChatWheel: vi.fn(async () => null),
   // The real starter shape (resources/chatlane/starter.yml): both override
   // maps ship as inline `{}`, so the round-trip tests below exercise the
   // inline-to-block path rather than an append-at-end path that never runs.
@@ -97,7 +98,7 @@ describe('ChatWheel page gate', () => {
     expect(document.querySelector('textarea')).toBeNull();
     expect(
       Array.from(document.querySelectorAll('button')).some((button) =>
-        button.textContent?.includes('Save & install')
+        button.textContent?.includes('Activate in Deadlock')
       )
     ).toBe(false);
   });
@@ -110,9 +111,23 @@ describe('ChatWheel page gate', () => {
     expect(document.querySelector('textarea')).not.toBeNull();
     expect(
       Array.from(document.querySelectorAll('button')).some((button) =>
-        button.textContent?.includes('Save & install')
+        button.textContent?.includes('Activate in Deadlock')
       )
     ).toBe(true);
+  });
+
+  it('saves an offline draft without installing a wheel', async () => {
+    appStoreMock.settings = { experimentalChatWheel: true };
+    await renderPage();
+    try {
+      const save = Array.from(host.querySelectorAll('button')).find(button => button.textContent?.includes('Save draft'))!;
+      await act(async () => save.click());
+      expect(host.textContent).toContain('Draft saved locally.');
+      expect(JSON.parse(localStorage.getItem('grimoire.chatWheel.draft')!).yaml).toContain('override_bindable: {}');
+      expect(apiMock.saveChatWheel).not.toHaveBeenCalled();
+    } finally {
+      localStorage.removeItem('grimoire.chatWheel.draft');
+    }
   });
 
   it('keeps YAML editing and export available without offering VPK actions on unsupported platforms', async () => {
@@ -153,7 +168,7 @@ describe('ChatWheel page gate', () => {
     else Reflect.deleteProperty(HTMLAnchorElement.prototype, 'click');
     expect(createObjectUrl).toHaveBeenCalledOnce();
     expect(anchorClick).toHaveBeenCalledOnce();
-    expect(Array.from(document.querySelectorAll('button')).some((button) => button.textContent?.includes('Save & install'))).toBe(false);
+    expect(Array.from(document.querySelectorAll('button')).some((button) => button.textContent?.includes('Activate in Deadlock'))).toBe(false);
     const load = Array.from(document.querySelectorAll('button')).find((button) => button.textContent?.includes('Load selected'))!;
     const open = Array.from(document.querySelectorAll('button')).find((button) => button.textContent?.includes('Open VPK'))!;
     expect(load.disabled).toBe(true);
@@ -273,8 +288,8 @@ describe('ChatWheel menu building', () => {
       ['archmotherOrder', 'placeholderVoice', 'slotSelect', 'topSlot', 'unbindCrash']
     );
     // Placement: the menu notes precede the menu editor, the wheel notes sit
-    // with the preview, and the crash note sits beside Save & install.
-    const save = Array.from(document.querySelectorAll('button')).find((button) => button.textContent?.includes('Save & install'))!;
+    // with the preview, and the crash note sits beside activation.
+    const save = Array.from(document.querySelectorAll('button')).find((button) => button.textContent?.includes('Activate in Deadlock'))!;
     const crash = document.querySelector('[data-limitation="unbindCrash"]')!;
     expect(crash.compareDocumentPosition(save) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     const wheel = document.querySelector('svg[aria-label="Chat wheel preview"]')!;

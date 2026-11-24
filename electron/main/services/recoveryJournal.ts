@@ -9,6 +9,7 @@ import { getAutoexecPath } from './autoexec';
 import { fingerprintFile } from './fileMatch';
 import { assertRecoveryPath, isWithinRecoveryRoot, placeRecoveryFile, hasRecoveryFile, recoveryDirectory, retainRecoveryFile, writeRecoveryJson } from './recoveryBackup';
 import type { InterruptedRecovery } from '../../../src/types/profileRecovery';
+import { isLockerVpkName, LOCKER_VPK_SLOTS } from './lockerVpkSlots';
 
 interface JournalFile { path: string; before: string | null; allowed: string[] }
 export interface RecoveryJournal {
@@ -19,6 +20,7 @@ export interface RecoveryJournal {
   metadataBefore: Record<string, ModMetadata | null>;
   isolation?: { before: string | null; allowed: Array<string | null> };
   launchOptions?: { before: string; after: string };
+  modTrial?: { requestedAt: number | null };
 }
 const mutationJournal = new AsyncLocalStorage<RecoveryJournal>();
 export const withRecoveryMutationJournal = <T>(journal: RecoveryJournal, operation: () => Promise<T>): Promise<T> => mutationJournal.run(journal, operation);
@@ -28,13 +30,15 @@ export async function journalModRename(from: string, to: string): Promise<void> 
   if (!journal) return;
   const hash = await fileHash(from);
   if (!hash) throw new Error('Reviewed mod disappeared before rename');
-  await journalRecoveryPaths(journal, [{ path: from, hash }, { path: to, hash }]);
+  await captureRecoveryPaths(journal, [{ path: from, hash }, { path: to, hash }]);
   const key = (path: string) => {
     const folder = basename(dirname(path));
     return folder === 'grimoire' || /^addons[1-9]$/.test(folder) ? `${folder}/${basename(path)}` : basename(path);
   };
-  if (from.endsWith('_dir.vpk')) await journalRecoveryMetadata(journal, [key(from), key(to)]);
-  await beginRecoveryMutation(journal);
+  if (from.endsWith('_dir.vpk')) captureRecoveryMetadata(journal, [key(from), key(to)]);
+  // Persist the paths, metadata and start marker together before the rename.
+  journal.mutationStarted = true;
+  await writeRecoveryJson(journalPath(), journal);
 }
 export async function writeJournaledModConfig(path: string, next: string, before: string): Promise<void> {
   const journal = mutationJournal.getStore();
@@ -65,12 +69,14 @@ export async function readRecoveryJournal(gamePath: string): Promise<RecoveryJou
       (journal.activeProfileId !== null && typeof journal.activeProfileId !== 'string')) throw new Error('Invalid recovery journal');
   if (journal.isolation && (!Array.isArray(journal.isolation.allowed) || [journal.isolation.before, ...journal.isolation.allowed].some(hash => hash !== null && (typeof hash !== 'string' || !/^[0-9a-f]{64}$/.test(hash))))) throw new Error('Invalid isolation journal');
   if (journal.launchOptions && [journal.launchOptions.before, journal.launchOptions.after].some(value => typeof value !== 'string' || value.length > 8192 || /[\r\n\0]/.test(value))) throw new Error('Invalid launch options journal');
+  if (journal.modTrial && journal.modTrial.requestedAt !== null && !Number.isSafeInteger(journal.modTrial.requestedAt)) throw new Error('Invalid mod trial journal');
   const roots = [...getModScanRootPaths(gamePath), getDisabledPath(gamePath)].map(root => resolve(root));
   const configs = [getGameinfoPath(gamePath), getAutoexecPath(gamePath), join(dirname(getGameinfoPath(gamePath)), 'grimoire-performance.json')];
   const seen = new Set<string>();
   for (const file of journal.files) {
+    const locker = file && typeof file.path === 'string' && dirname(file.path) === join(resolve(gamePath), 'game', 'citadel', 'grimoire') && isLockerVpkName(basename(file.path));
     if (!file || typeof file.path !== 'string' || resolve(file.path) !== file.path || !isWithinRecoveryRoot(file.path, gamePath) || seen.has(file.path) ||
-        (!configs.includes(file.path) && (!roots.includes(dirname(file.path)) || (basename(dirname(file.path)) === 'grimoire' && isReservedPriorityVpkArtifact(basename(file.path))) || !/^(?:[^/\\]+_(?:dir|[0-9]{3})\.vpk|recovery-[0-9a-f-]{36}\.tmp)$/.test(basename(file.path)))) ||
+        (!locker && !configs.includes(file.path) && (!roots.includes(dirname(file.path)) || (basename(dirname(file.path)) === 'grimoire' && isReservedPriorityVpkArtifact(basename(file.path))) || !/^(?:[^/\\]+_(?:dir|[0-9]{3})\.vpk|recovery-[0-9a-f-]{36}\.tmp)$/.test(basename(file.path)))) ||
         (file.before !== null && (typeof file.before !== 'string' || !/^[0-9a-f]{64}$/.test(file.before))) || !Array.isArray(file.allowed) ||
         !file.allowed.every(hash => typeof hash === 'string' && /^[0-9a-f]{64}$/.test(hash))) throw new Error('Invalid recovery journal path');
     await assertRecoveryPath(file.path);
@@ -82,20 +88,31 @@ export async function readRecoveryJournal(gamePath: string): Promise<RecoveryJou
         !/^(?:(?:grimoire|addons[1-9])\/)?[^/\\]+_dir\.vpk$/i.test(move.to)) throw new Error('Invalid recovery metadata move');
   }
   for (const [key, value] of Object.entries(journal.metadataBefore)) {
-    if (!/^(?:(?:grimoire|addons[1-9])\/)?[^/\\]+_dir\.vpk$/i.test(key) ||
+    if ((!Object.hasOwn(LOCKER_VPK_SLOTS, key) && !/^(?:(?:grimoire|addons[1-9])\/)?[^/\\]+_dir\.vpk$/i.test(key)) ||
         (key.startsWith('grimoire/') && isReservedPriorityVpkArtifact(key.slice(9))) ||
         (value !== null && (!value || typeof value !== 'object' || Array.isArray(value)))) throw new Error('Invalid recovery metadata snapshot');
   }
   return journal;
 }
-export async function createRecoveryJournal(gamePath: string, activeProfileId: string | null): Promise<RecoveryJournal> {
+export async function createRecoveryJournal(gamePath: string, activeProfileId: string | null, modTrial?: RecoveryJournal['modTrial']): Promise<RecoveryJournal> {
   if (await readRecoveryJournal(gamePath)) throw new Error('An interrupted recovery must be resolved first');
-  const journal: RecoveryJournal = { version: 1, gamePath: resolve(gamePath), createdAt: new Date().toISOString(), files: [], activeProfileId, metadataMoves: [], metadataBefore: {}, mutationStarted: false };
+  const journal: RecoveryJournal = { version: 1, gamePath: resolve(gamePath), createdAt: new Date().toISOString(), files: [], activeProfileId, metadataMoves: [], metadataBefore: {}, mutationStarted: false, modTrial };
   await writeRecoveryJson(journalPath(), journal);
   return journal;
 }
+export async function markModTrialLaunchRequested(journal: RecoveryJournal): Promise<void> {
+  journal.modTrial = { requestedAt: Date.now() };
+  await writeRecoveryJson(journalPath(), journal);
+}
+type RecoveryPathEntry = { path: string; hash?: string; expectedBefore?: string | null };
+
 /** Record both the preimage and permitted transaction bytes before touching a path. */
-export async function journalRecoveryPaths(journal: RecoveryJournal, paths: Array<{ path: string; hash?: string; expectedBefore?: string | null }>): Promise<void> {
+export async function journalRecoveryPaths(journal: RecoveryJournal, paths: RecoveryPathEntry[]): Promise<void> {
+  await captureRecoveryPaths(journal, paths);
+  await writeRecoveryJson(journalPath(), journal);
+}
+
+async function captureRecoveryPaths(journal: RecoveryJournal, paths: RecoveryPathEntry[]): Promise<void> {
   for (const entry of paths) {
     if (!isWithinRecoveryRoot(entry.path, journal.gamePath)) throw new Error('Recovery path escapes game installation');
     let file = journal.files.find(file => file.path === entry.path);
@@ -108,7 +125,6 @@ export async function journalRecoveryPaths(journal: RecoveryJournal, paths: Arra
     }
     if (entry.hash && !file.allowed.includes(entry.hash)) file.allowed.push(entry.hash);
   }
-  await writeRecoveryJson(journalPath(), journal);
 }
 export async function beginRecoveryMutation(journal: RecoveryJournal): Promise<void> {
   if (journal.mutationStarted) return;
@@ -116,8 +132,15 @@ export async function beginRecoveryMutation(journal: RecoveryJournal): Promise<v
   await writeRecoveryJson(journalPath(), journal);
 }
 export async function journalRecoveryMetadata(journal: RecoveryJournal, keys: string[]): Promise<void> {
-  for (const key of keys) if (!Object.hasOwn(journal.metadataBefore, key)) journal.metadataBefore[key] = getModMetadata(key) ? JSON.parse(JSON.stringify(getModMetadata(key))) as ModMetadata : null;
+  captureRecoveryMetadata(journal, keys);
   await writeRecoveryJson(journalPath(), journal);
+}
+function captureRecoveryMetadata(journal: RecoveryJournal, keys: string[]): void {
+  for (const key of keys) {
+    if (Object.hasOwn(journal.metadataBefore, key)) continue;
+    const metadata = getModMetadata(key);
+    journal.metadataBefore[key] = metadata ? JSON.parse(JSON.stringify(metadata)) as ModMetadata : null;
+  }
 }
 export function rollbackRecoveryMetadata(journal: RecoveryJournal): void {
   for (const key of Object.keys(journal.metadataBefore)) removeModMetadata(key);

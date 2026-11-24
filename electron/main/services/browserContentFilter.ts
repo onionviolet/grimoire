@@ -409,10 +409,19 @@ async function syncBlockerState(): Promise<void> {
         try {
             if (!blocker.isBlockingEnabled(session)) {
                 blocker.enableBlockingInSession(session);
+                state.fallbackSessions.delete(session);
             }
         } catch (err) {
             state.engineError = String(err);
             console.warn('[Adblocker] Failed to enable blocking on session:', err);
+            // Ghostery stores the context before registering its native hooks.
+            // Discard a partial registration so the next reload can retry.
+            try {
+                if (blocker.isBlockingEnabled(session)) blocker.disableBlockingInSession(session);
+            } finally {
+                state.fallbackSessions.delete(session);
+                attachDomainFallback(session);
+            }
         }
     }
     state.status = state.engineError ? 'error' : activeBundle ? 'active' : 'fallback';
@@ -573,48 +582,33 @@ export function attachBrowserFilter(session: Session): void {
         session.setPermissionCheckHandler((_wc, permission) => ALLOWED.has(permission));
     }
 
-    // WebRequest fallback listener for host matching and unit test
-    // compatibility. Electron keeps a single webRequest listener per event per
-    // session: re-registering here on every webview attach would replace the
-    // Ghostery engine's own listener (registered once when blocking was first
-    // enabled, and never again because enableBlockingInSession is idempotent),
-    // leaving the session with a fallback that defers to a listener that no
-    // longer exists. Register once per session and let the engine own the slot
-    // afterwards.
-    if (session?.webRequest?.onBeforeRequest && !state.fallbackSessions.has(session)) {
-        state.fallbackSessions.add(session);
-        session.webRequest.onBeforeRequest((details, callback) => {
-            if (details.resourceType === 'mainFrame') {
-                callback({ cancel: false });
-                return;
-            }
-            if (!state.enabled || pausedRequest(details)) {
-                callback({ cancel: false });
-                return;
-            }
-            if (blockerInstance && blockerInstance.isBlockingEnabled(session)) {
-                callback({ cancel: false });
-                return;
-            }
-            let host: string;
-            try {
-                host = new URL(details.url).hostname;
-            } catch {
-                callback({ cancel: false });
-                return;
-            }
-            if (isBlockedHost(host, state.domains)) {
-                state.blocked += 1;
-                callback({ cancel: true });
-                return;
-            }
-            callback({ cancel: false });
-        });
-    }
+    // Electron allows one listener per event. Leave Ghostery's listener in
+    // place when a new webview attaches to an already filtered session.
+    if (session && !blockerInstance?.isBlockingEnabled(session)) attachDomainFallback(session);
 
     void scheduleSync().catch(() => {});
 }
 
+function attachDomainFallback(session: Session): void {
+    if (!session.webRequest?.onBeforeRequest || state.fallbackSessions.has(session)) return;
+    session.webRequest.onBeforeRequest((details, callback) => {
+        if (details.resourceType === 'mainFrame' || !state.enabled || pausedRequest(details)) {
+            callback({ cancel: false });
+            return;
+        }
+        let host: string;
+        try {
+            host = new URL(details.url).hostname;
+        } catch {
+            callback({ cancel: false });
+            return;
+        }
+        const cancel = isBlockedHost(host, state.domains);
+        if (cancel) state.blocked += 1;
+        callback({ cancel });
+    });
+    state.fallbackSessions.add(session);
+}
 
 export function inspectCustomList(text: string): BrowserCustomListInfo {
     let accepted = 0;

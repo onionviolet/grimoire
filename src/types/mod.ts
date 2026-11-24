@@ -478,6 +478,7 @@ export interface InstalledBodyModelDetection {
   modifiedAt: string;
   sha256?: string;
   heroes: string[];
+  hasAnimationClips?: boolean;
 }
 export type LockerHeroSource = 'manual' | 'title' | 'vpk' | 'download-title' | 'download-vpk';
 
@@ -740,6 +741,8 @@ export interface Mod {
   propTypes?: GlobalModType[];
   /** Heroes whose body model this file's own assets change. Gates the hero 3D preview. */
   bodyModelHeroes?: string[];
+  /** This VPK contains loose clips under a recognized hero model. */
+  hasAnimationClips?: boolean;
   /** Explicit user classification, retained independently of automatic tags. */
   globalTypeSource?: 'manual';
   /** Set when this mod was produced by mergeMods. Carries the unroll payload
@@ -1358,6 +1361,8 @@ export interface AppSettings {
   /** Ask GitHub for a newer release on launch. Off by default: a fresh install
    *  sends nothing until the user opts in or checks by hand. */
   checkUpdatesOnStartup: boolean;
+  /** Show a play badge on the Windows taskbar while Deadlock is running. */
+  taskbarGameIndicatorEnabled: boolean;
   /** Set once the user saves the Launch Options card. Until then (or while the
    *  string is non-empty) an empty `steamLaunchOptions` is just the default and
    *  must never overwrite what the user set in Steam themselves. */

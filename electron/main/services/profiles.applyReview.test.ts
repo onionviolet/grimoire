@@ -23,7 +23,7 @@ vi.mock('./modSafety', () => ({ assertVpkSafety: async () => {} }));
 vi.mock('./autoexec', () => ({ readAutoexec: () => ({ commands: ['original'] }), writeAutoexec: h.writeAutoexec, getAutoexecPath: (game: string) => join(game, 'game/citadel/cfg/autoexec.cfg'), buildAutoexec: () => 'original' }));
 import { journalModRename } from './recoveryJournal';
 
-import { applyProfile, previewProfile } from './profiles';
+import { applyProfile, loadProfiles, previewProfile, updateProfileNotes } from './profiles';
 
 beforeEach(() => {
     vi.clearAllMocks();
@@ -37,6 +37,17 @@ beforeEach(() => {
     }]));
 });
 afterEach(() => rmSync(h.userData, { recursive: true, force: true }));
+
+it('persists and clears private notes without modifying the saved setup', () => {
+    const [original] = loadProfiles();
+    expect(updateProfileNotes('saved', '  Steady FPS\nMuted effects  ')).toEqual({
+        ...original, notes: 'Steady FPS\nMuted effects',
+    });
+    expect(loadProfiles()[0].notes).toBe('Steady FPS\nMuted effects');
+    expect(() => updateProfileNotes('saved', 'x'.repeat(2001))).toThrow('Invalid profile notes');
+    expect(updateProfileNotes('saved', ' ')).toEqual(original);
+    expect(loadProfiles()).toEqual([original]);
+});
 
 describe('apply preflight runs before writes', () => {
     it('keeps an explicitly mapped local replacement in the reviewed order after an enable rename', async () => {

@@ -10,7 +10,7 @@ ship in `resources/chatlane` on every platform. See
 [converter provenance](../resources/chatlane/PROVENANCE.md) for source pins,
 independent C# fixtures and the precise validation limits.
 
-Saving compiles the complete pinned voice-command table, overrides and custom
+Activation and VPK export compile the complete pinned voice-command table, overrides and custom
 menus into `scripts/ping_wheel_messages.vdata_c`. It also embeds the original
 YAML byte for byte, so comments, unknown fields and CRLF survive save/reopen.
 The native game resource matches independent original CLI fixtures byte for
@@ -20,16 +20,14 @@ ValveResourceFormat. This proves the converter contract; current in-match
 behavior still depends on the game and its existing limitations.
 
 Open a compatible ChatLane VPK to recover its embedded `chatlane.yml`, edit
-the YAML, then save. Grimoire validates it with the converter before changing
-the managed add-on: saving a selected wheel replaces that VPK in its current
-slot, while a new wheel is allocated through the normal managed-mod flow.
-The page never edits `gameinfo.gi`.
+the YAML, then activate it. Grimoire validates it with the converter before changing the managed add-on. A loaded enabled wheel is replaced in its current slot through a recovery journal. A fresh activation uses the normal managed-mod flow. Another enabled provider of the game's wheel resource must be handled first.
+Saving a draft or exporting a VPK leaves Deadlock untouched. Activation uses the normal mod slot allocator, which can configure an overflow mount when needed.
 
 ## Current editor
 
 `Create new wheel` resets to the bundled starter configuration after confirming
 that unsaved changes may be discarded. It creates only a draft; installation
-still happens only when the user chooses `Save & install`.
+still happens only when the user chooses `Activate in Deadlock`. `Save draft` keeps the current YAML and display name locally. `Export VPK` creates a shareable file outside the game installation, and `Export YAML` remains available without the converter.
 
 The page has a form editor and a live, non-destructive radial preview for the
 ChatLane fields it understands. Advanced YAML remains available for every
@@ -82,8 +80,7 @@ not a guarantee about any given match.
   the game's Chat Wheel settings first.
 - Selecting a custom menu itself, without picking one of its entries, plays a
   placeholder voice line.
-- A custom menu holds at most 12 entries, filling the whole circle (the preview
-  already shows this as the overflow warning).
+- A custom menu holds at most 12 entries. The preview shows excess entries and the converter blocks activation and VPK export until they are removed.
 
 ## Base command catalogue
 
@@ -117,12 +114,9 @@ Deadlock binds a custom menu to the add-on that defines it, and only the
 game's own Chat Wheel settings can unbind it. Removing the add-on while a
 custom menu is still bound can crash the game when the chat wheel or the
 settings screen opens, and Grimoire cannot repair that binding afterwards.
-So `Remove wheel` on this page, and deleting a chat wheel add-on from the
-Installed page (singly or inside a bulk selection), first shows the unbind
-warning and removes nothing until it is confirmed. Ordinary mods keep their
-usual delete flow. The detection (`sourceSection === "ChatWheel"`) lives in
-`src/lib/chatWheelAddon.ts` and the dialog in
-`src/components/chatwheel/unbindWarning.ts`, so both surfaces share one copy.
+Unbind all custom menus while the old wheel still loads. Close Deadlock, confirm the unbind when disabling the wheel in Installed, then remove it. The main process blocks removal of an enabled provider that may define custom menus. Profile apply, setup restore, assisted isolation and vanilla launch also check for enabled providers before dropping them. Imports can be recognized by the wheel resource even without Grimoire metadata.
+
+**Chat Wheel sources and recovery** is available in Chat Wheel and Recovery. It shows the known mod mount order and option IDs from readable ChatLane YAML. If a game update removed a mount, restore a compatible provider and launch modded before opening the game's settings. The panel also lists the slot-specific console reset documented by ChatLane. That fallback and the current game behavior still need a private Deadlock check. Grimoire cannot intercept a Steam-only launch.
 
 ## Game-asset dressing (spike, behind the Foundry flag)
 

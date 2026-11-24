@@ -35,10 +35,13 @@ export interface CompatibilityModEvidence {
   sensitiveCount: number;
   missingCount: number;
   missingPaths: string[];
+  changedPaths?: string[];
+  relatedPaths?: string[];
 }
 export interface CompatibilityReview {
   reviewedAt: string;
   baseFingerprint: string;
+  patchBaseline?: boolean;
   mods: CompatibilityModEvidence[];
 }
 export interface ModIsolationSession {

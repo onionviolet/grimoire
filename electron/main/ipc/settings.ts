@@ -2,6 +2,7 @@ import { ipcMain } from 'electron';
 import { getActiveDeadlockPath, loadSettings, saveSettings, type AppSettings } from '../services/settings';
 import { auditInstalledSafety } from '../services/modSafetyAudit';
 import { syncWindowBackgroundWithSettings } from '../services/windowBackground';
+import { syncTaskbarGameIndicatorWithSettings } from '../services/taskbarGameIndicator';
 import { detectDeadlockPath, looksLikeDeadlockPath } from '../services/deadlock';
 import { ensureDevDeadlockPath } from '../services/dev';
 import { configureFilter, filterStats, reloadBrowserFilter, checkBrowserFilterUpdate, applyBrowserFilterUpdate } from '../services/browserContentFilter';
@@ -67,6 +68,9 @@ ipcMain.handle('set-settings', async (_, patch: Partial<AppSettings>): Promise<A
         exceptions: saved.browserFilterExceptions,
     });
     syncWindowBackgroundWithSettings();
+    if (saved.taskbarGameIndicatorEnabled !== previous.taskbarGameIndicatorEnabled) {
+        syncTaskbarGameIndicatorWithSettings();
+    }
     // Bring the DeadlockForge bridge up or down to match. Toggling it off must
     // actually close the socket, not just start refusing requests on it.
     void syncForgeBridgeWithSettings();

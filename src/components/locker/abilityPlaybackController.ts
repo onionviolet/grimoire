@@ -11,6 +11,7 @@ export interface AbilityPlaybackSnapshot {
 interface AbilityPlaybackOptions {
   scene: THREE.Object3D;
   clip: THREE.AnimationClip;
+  repetitions?: 1 | 3;
   soundUrl?: string | null;
   pitch?: number;
   volumeDb?: number;
@@ -40,6 +41,7 @@ export class AbilityPlaybackController {
   private originTime = 0;
   private originPosition = 0;
   private lastNotification = -Infinity;
+  private repetitionsLeft = 1;
   private snapshot: AbilityPlaybackSnapshot;
   private readonly options: AbilityPlaybackOptions;
 
@@ -95,6 +97,7 @@ export class AbilityPlaybackController {
     }
     if (this.disposed || revision !== this.revision) return;
     const position = this.snapshot.status === 'finished' ? 0 : this.snapshot.position;
+    if (this.snapshot.status === 'finished' || position === 0) this.repetitionsLeft = this.options.repetitions ?? 1;
     this.originTime = this.clock();
     this.originPosition = position;
     this.snapshot = { ...this.snapshot, status: 'playing', position };
@@ -158,6 +161,16 @@ export class AbilityPlaybackController {
     this.sample(position);
     if (position >= this.snapshot.duration) {
       this.stopSound();
+      if (this.repetitionsLeft > 1 && this.snapshot.duration > 0) {
+        this.repetitionsLeft--;
+        this.originTime = this.clock();
+        this.originPosition = 0;
+        this.snapshot = { ...this.snapshot, position: 0 };
+        this.sample(0);
+        this.startSound(0);
+        this.publish();
+        return;
+      }
       this.snapshot = { ...this.snapshot, status: 'finished' };
       this.publish();
     } else if (this.clock() - this.lastNotification >= 0.05) this.publish();

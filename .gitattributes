@@ -8,3 +8,7 @@
 # and fail that check on every Windows release build. Keep the bytes as committed.
 resources/chatlane/base-commands.json -text
 resources/chatlane/red2.bin binary
+
+# The original ChatLane VPK fixtures embed these YAML files with LF endings.
+resources/chatlane/starter.yml text eol=lf
+electron/main/services/fixtures/chatwheel/overrides.yml text eol=lf

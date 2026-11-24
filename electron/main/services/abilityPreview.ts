@@ -61,6 +61,7 @@ export async function listHeroAbilityPreviews(deadlockPath: string, heroName: st
 const pending = new Map<string, Promise<HeroAbilityPlayback>>();
 export async function prepareHeroAbilityPreview(deadlockPath: string, heroName: string, slot: AbilitySlot, options: HeroAbilityPreviewOptions = {}): Promise<HeroAbilityPlayback> {
     if (options.sourceMode !== undefined && !['base', 'applied'].includes(options.sourceMode)) throw new Error('Invalid ability preview source');
+    if (options.soundMode !== undefined && options.soundMode !== 'base') throw new Error('Invalid ability preview sound source');
     const baseOnly = options.sourceMode === 'base';
     const ability = (await listHeroAbilityPreviews(deadlockPath, heroName)).find(ability => ability.slot === slot);
     if (!ability) throw new Error('No known ability slot for this hero.');
@@ -76,6 +77,8 @@ export async function prepareHeroAbilityPreview(deadlockPath: string, heroName: 
         let modelUrl: string | null = null;
         let skinApplied = false, skinFallback = false;
         let clipEvents: HeroAbilityPlayback['clipEvents'] = null;
+        let modelEntry: string | undefined;
+        let modelInputVpks: string[] | undefined;
         if (ability.clip) {
             const path = join(cache.dir, 'ability.glb');
             const temporary = join(cache.dir, `${randomUUID()}.glb`);
@@ -90,14 +93,18 @@ export async function prepareHeroAbilityPreview(deadlockPath: string, heroName: 
                 modelUrl = cache.url + `ability.glb?v=${createHash('sha256').update(bytes).digest('hex')}`;
                 skinApplied = source.skinApplied; skinFallback = source.skinFallback;
                 clipEvents = source.clipEvents ?? null;
+                modelEntry = source.modelEntry;
+                modelInputVpks = source.inputVpks;
             } finally { await fs.rm(temporary, { force: true }); }
             if (!modelUrl) throw new Error('The selected ability animation could not be exported.');
         }
-        const applied = ability.soundPath && !baseOnly ? await previewAppliedHeroSound(deadlockPath, heroName, slot, ability.soundPath) : null;
+        const applied = ability.soundPath && !baseOnly && options.soundMode !== 'base'
+            ? await previewAppliedHeroSound(deadlockPath, heroName, slot, ability.soundPath) : null;
         const soundUrl = ability.soundPath ? applied?.selected ? applied.url : await ensureVoiceclip(deadlockPath, ability.soundPath) : null;
         if (cache.key !== await foundryBuildFingerprintKey(deadlockPath)) throw new Error('The game files changed during ability export. Refresh the catalog.');
         return { ability, modelUrl, soundUrl, soundSource: soundUrl ? applied?.selected ? 'applied' : 'base' : 'unavailable',
-            soundParams: applied?.params, skinApplied, skinFallback, effect: null, recolor: baseOnly ? null : getActiveHeroColor(heroName), clipEvents };
+            soundParams: applied?.params, soundVpk: soundUrl ? applied?.selected ? applied.vpk : 'pak01_dir.vpk' : undefined,
+            modelEntry, modelInputVpks, skinApplied, skinFallback, effect: null, recolor: baseOnly ? null : getActiveHeroColor(heroName), clipEvents };
     })();
     pending.set(cache.dir, work);
     try { return await work; } finally { pending.delete(cache.dir); release(); await pruneInspectionCaches(cache.dir).catch(() => {}); }

@@ -67,6 +67,13 @@ export interface SoulPreviewThumbnailCapture {
   modelMtimeMs: number;
 }
 
+export interface AnimationModPreview {
+    heroName: string;
+    key: string;
+    clips: string[];
+    meshGroup: string | null;
+}
+
 export interface HeroPoseSkinSource {
   /** Identity of the source. Normally an installed mod's `pakNN_dir.vpk` name,
    *  resolved against the addons folder. For a preview source (below) it is a

@@ -18,13 +18,12 @@ You do not have to write YAML. There is a visual editor with a live preview, and
 2. Under **Menus and commands**, click **Add menu**, name it, and pick an **Icon**.
 3. **Add command** for each entry you want on that wheel.
 4. Watch **Live wheel preview** as you go. Pick a menu, then a slot, to edit that slot's command.
-5. Click **Save & install**.
-
-A new wheel is a draft until step 5. The page says so: nothing reaches your game until you save.
+5. Click **Save draft** to keep your edits locally or **Export VPK** to share the wheel.
+6. Click **Activate in Deadlock** when you want it loaded on the next modded launch. Bind custom menus from Deadlock's settings after the wheel loads.
 
 ## Twelve slots, and no more
 
-The game draws **twelve commands per wheel**. Add a thirteenth and the preview warns you that the extras exist in the menu but will never appear.
+The game draws **twelve commands per menu**. If you add a thirteenth, the preview warns you and Grimoire blocks VPK export and activation until the menu fits.
 
 Split them across menus rather than fighting the limit. Menus are how ChatLane gets you more than twelve commands.
 
@@ -34,7 +33,7 @@ Split them across menus rather than fighting the limit. Menus are how ChatLane g
 
 ## Editing one you already have
 
-Pick it under **Installed wheels** and click **Load selected**. **Save & install** replaces that wheel in place rather than adding a second copy.
+Pick it under **Installed wheels** and click **Load selected**. **Activate in Deadlock** replaces the loaded wheel in place if it is enabled. If the edit changes existing menu IDs, first unbind the old custom menus in Deadlock.
 
 **Open VPK...** loads a wheel from a file. **Only VPKs made by ChatLane can be opened**, and the embedded `chatlane.yml` is preserved on every save, so round-tripping a wheel does not lose the source.
 
@@ -42,7 +41,11 @@ Creating a new wheel with unsaved edits asks before discarding them.
 
 ## Validation happens first
 
-**Save & install** runs your YAML through ChatLane before touching your game. If it is bad, you get told and nothing is installed. If it is good, the page says the YAML is valid and, explicitly, that nothing has been installed yet.
+Grimoire validates the YAML before VPK export or activation. An invalid configuration stays in the editor, where you can fix it or save it as a draft.
+
+## Turning the wheel off
+
+Unbind custom menus in Deadlock while the wheel is still loaded, then close Deadlock. Disable the wheel in **Installed** and confirm that you unbound it. You can remove it after that. If a patch leaves the wheel unavailable, open **Recovery > Chat Wheel sources and recovery** to check the mount and see ChatLane's console fallback.
 
 ## If the converter is missing
 

@@ -1,4 +1,8 @@
 import { ipcMain } from 'electron';
+import { open, unlink } from 'node:fs/promises';
+import type { LocalizationTokenChoice } from '../../../src/types/localizationMerge';
+import { showSaveDialog } from '../services/dialogs';
+import { buildLocalizationMods, reviewLocalizationMods } from '../services/localizationMods';
 import { loadSettings, saveSettings, getActiveDeadlockPath } from '../services/settings';
 import {
     detectConflicts,
@@ -16,6 +20,33 @@ ipcMain.handle('get-conflicts', async (): Promise<ModConflict[]> => {
         return [];
     }
     return await detectConflicts(deadlockPath);
+});
+
+ipcMain.handle('review-localization-merge', async (_, modIds: string[]) => {
+    const gamePath = getActiveDeadlockPath();
+    if (!gamePath) throw new Error('No Deadlock path configured');
+    return reviewLocalizationMods(gamePath, modIds);
+});
+
+ipcMain.handle('export-localization-merge', async (_, modIds: string[], reviewToken: string, choices: LocalizationTokenChoice[]) => {
+    const gamePath = getActiveDeadlockPath();
+    if (!gamePath) throw new Error('No Deadlock path configured');
+    const destination = await showSaveDialog({ defaultPath: 'localization_merge_dir.vpk' });
+    if (destination.canceled || !destination.filePath) return null;
+    if (getActiveDeadlockPath() !== gamePath) throw new Error('Deadlock path changed during review');
+    const selectedPath = destination.filePath;
+    const filePath = /\.vpk$/i.test(selectedPath) ? selectedPath : `${selectedPath}.vpk`;
+    const bytes = await buildLocalizationMods(gamePath, modIds, reviewToken, choices);
+    const file = await open(filePath, 'wx');
+    try {
+        await file.writeFile(bytes);
+        await file.close();
+    } catch (error) {
+        await file.close().catch(() => {});
+        await unlink(filePath).catch(() => {});
+        throw error;
+    }
+    return filePath;
 });
 
 function sameKeys(a: string[], b: string[]): boolean {

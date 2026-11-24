@@ -165,6 +165,31 @@ jobs:
             pnpm exec electron-vite build && pnpm exec electron-builder --win --publish never
           fi
 
+      - name: Verify Windows signatures when signing is configured
+        if: matrix.platform == 'win'
+        working-directory: grimoire
+        shell: pwsh
+        env:
+          EXPECT_WINDOWS_SIGNATURES: ${{ secrets.WINDOWS_CERTIFICATE != '' }}
+        run: |
+          if ($env:EXPECT_WINDOWS_SIGNATURES -ne 'true') {
+            Write-Output 'Windows certificate is not configured. This candidate is unsigned.'
+            exit 0
+          }
+          $artifacts = @(Get-ChildItem -LiteralPath release -File -Filter '*.exe')
+          if (!$artifacts.Count) { throw 'No Windows executables found for signature verification.' }
+          foreach ($artifact in $artifacts) {
+            $signature = Get-AuthenticodeSignature -FilePath $artifact.FullName
+            if ($signature.Status -ne 'Valid') {
+              throw "Invalid Authenticode signature for $($artifact.Name): $($signature.Status)"
+            }
+            Write-Output "Verified $($artifact.Name) signed by $($signature.SignerCertificate.Subject)"
+          }
+
+      - name: Smoke-test packaged app
+        working-directory: grimoire
+        run: pnpm smoke:packaged
+
       - name: List release directory
         if: always()
         working-directory: grimoire
@@ -217,7 +242,15 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.platform }}-build
-          path: grimoire/release/*
+          path: |
+            grimoire/release/*.exe
+            grimoire/release/*.AppImage
+            grimoire/release/*.deb
+            grimoire/release/*.dmg
+            grimoire/release/*.zip
+            grimoire/release/*.blockmap
+            grimoire/release/latest*.yml
+            grimoire/release/SHA256SUMS-*.txt
           if-no-files-found: error
           retention-days: 1
 

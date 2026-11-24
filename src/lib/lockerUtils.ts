@@ -606,7 +606,7 @@ export function countGlobalMods(mods: Mod[]): number {
   return mods.reduce((n, mod) => (getEffectiveGlobalType(mod) ? n + 1 : n), 0);
 }
 
-export function groupModsByCategory(mods: Mod[], heroList?: readonly HeroCategory[]) {
+export function groupModsByCategory(mods: Mod[], heroList?: readonly HeroCategory[], includeAudioHeroes = false) {
   const map = new Map<number, Mod[]>();
   const unassigned: Mod[] = [];
 
@@ -625,7 +625,13 @@ export function groupModsByCategory(mods: Mod[], heroList?: readonly HeroCategor
 
   for (const mod of mods) {
     const heroIds = new Set<number>();
-    for (const hero of modHeroNames(mod)) {
+    const heroNames = modHeroNames(mod);
+    if (includeAudioHeroes) {
+      for (const contribution of mod.abilitySounds?.perHero ?? []) {
+        if (Object.values(contribution.slots).some(count => count > 0)) heroNames.push(contribution.hero);
+      }
+    }
+    for (const hero of heroNames) {
       const id = heroNameToId.get(hero.toLowerCase());
       if (id !== undefined) heroIds.add(id);
     }

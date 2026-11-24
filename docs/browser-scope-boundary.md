@@ -13,11 +13,12 @@ missing should find a decision here, not conclude the app forgot.
 |---|---|
 | Back | Steps the guest's own navigation history backward, via `<webview>.goBack()`. |
 | Forward | Steps the guest's own navigation history forward, via `<webview>.goForward()`. |
-| Reload / Stop | One button that reloads the current page without cached resources while idle and cancels an in-flight load while loading, mirroring what the load state actually allows. |
+| Reload / Stop | One button reloads the current page or stops an in-flight load. Shift-click Reload to bypass the cache. |
 | Home | Navigates to `HOME_DESTINATION_URL`, the catalog's named Home destination (see below), not whatever happens to load first. |
 | Address bar | Accepts a typed URL or bare host, normalizes it to `https://` when no scheme is given, and refuses anything that isn't `http(s)` before it ever reaches the guest. |
 | Open externally | Hands the current URL to the user's real, unsandboxed browser via `window.open`, for anything the in-app guest's deliberately narrow feature set can't do. |
 | Destination catalog | The collapsible Site shortcuts list groups Mod hosts, Tools, Reference and Community from `BROWSER_DESTINATIONS`. It starts closed and its expanded list scrolls within a bounded height to leave room for the guest page. |
+| Bookmarks | The star saves the current page title and address. The manager searches and groups local bookmarks by folder, and an optional bar opens pinned entries. Ctrl/Cmd+D, Ctrl/Cmd+L, and Ctrl/Cmd+Shift+B also work while the guest has focus. |
 | Find in page | Searches the guest through Electron's native find API, with live match counts, previous/next controls, Enter/Shift+Enter and Escape. Empty searches and closing clear the selection. Full page navigation clears the query and ignores late results from the previous search. |
 | Zoom | Changes the guest's actual zoom from 50% to 200%, with a percentage/reset control. The displayed value is read back from the guest and refreshed when its document becomes ready, including Chromium's per-origin zoom behavior. |
 

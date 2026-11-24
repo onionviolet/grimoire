@@ -16,8 +16,8 @@ import { installedMotionTarget, type MotionPreviewTarget } from '../../lib/insta
 import type { SkinEditSource } from '../../types/skinEditor';
 import type { Mod } from '../../types/mod';
 
-const HeroPoseViewer = lazy(() => import('../locker/HeroPoseViewer'));
 const PropModelViewer = lazy(() => import('./PropModelViewer'));
+const SkinComparisonViewer = lazy(() => import('./MotionModViewers').then(module => ({ default: module.SkinComparisonViewer })));
 const MovementModViewer = lazy(() => import('./MotionModViewers').then(module => ({ default: module.MovementModViewer })));
 const AnimationModViewer = lazy(() => import('./MotionModViewers').then(module => ({ default: module.AnimationModViewer })));
 type PreviewTarget = { kind: 'hero'; source: SkinEditSource } | ({ kind: 'prop' } & PropPreviewTarget) | MotionPreviewTarget;
@@ -96,6 +96,13 @@ function PreviewCache({ hideNsfw, pin, setPin, floating }: {
   const taxonomyContext = useCategoryStore(useShallow(state => ({
     heroByCategoryId: state.heroByCategoryId, heroNames: state.heroNames, pathsByModel: state.pathsByModel,
   })));
+  const skinsForHero = useCallback((heroName: string) => mods.flatMap(mod => {
+    if (hideNsfw && mod.nsfw) return [];
+    const source = installedSkinPreviewTarget(mod, mods, taxonomyContext);
+    if (source?.heroName !== heroName) return [];
+    const label = mod.variantLabel ? `${mod.name} (${mod.variantLabel})` : mod.name;
+    return [{ key: mod.metaKey, label, source }];
+  }), [hideNsfw, mods, taxonomyContext]);
   const [peek, setPeek] = useState<Peek | null>(null);
   const [cached, setCached] = useState<Shown[]>([]);
   const cachedKeys = useRef(new Set<string>());
@@ -326,11 +333,12 @@ function PreviewCache({ hideNsfw, pin, setPin, floating }: {
         <div className="relative min-h-0 flex-1">
           <ErrorBoundary><Suspense fallback={<p role="status" className="p-4 text-xs text-text-secondary">{t('foundry.skin.loading')}</p>}>
             {item.target.kind === 'hero'
-              ? <HeroPoseViewer {...item.target.source} compact active={shown} turn={turn} />
+              ? <SkinComparisonViewer source={item.target.source} active={shown} turn={turn} expanded={isPinned} />
               : item.target.kind === 'movement'
                 ? <MovementModViewer choice={item.target.choice} active={shown} turn={turn} />
                 : item.target.kind === 'animation'
-                  ? <AnimationModViewer metaKey={item.target.metaKey} active={shown} turn={turn} expanded={isPinned} />
+                  ? <AnimationModViewer key={item.target.metaKey} metaKey={item.target.metaKey} active={shown} turn={turn}
+                    expanded={isPinned} skinsForHero={skinsForHero} />
                   : <PropModelViewer metaKey={item.target.metaKey} cacheKey={item.target.cacheKey} entry={item.target.entry} active={shown} turn={turn} />}
           </Suspense></ErrorBoundary>
           {!isPinned && peek && shown && <div className="absolute inset-x-0 bottom-0 flex items-center gap-2 border-t border-border bg-bg-secondary/95 py-1 pr-1 pl-3 text-xs">

@@ -131,6 +131,7 @@ import './ipc/conflicts';
 import './ipc/profiles';
 import './ipc/snapshots';
 import './ipc/modBackups';
+import './ipc/disabledCompression';
 import './ipc/modDatabase';
 import './ipc/crosshairPresets';
 import './ipc/cursorPacks';
@@ -181,6 +182,7 @@ import { healModFolders, runExclusiveModMutation } from './services/mods';
 import { backfillMissingMetadataHashes, recoverPrunedIdentities } from './services/metadata';
 import { backfillImprintedFlags } from './services/imprintMods';
 import { destroyDiscordRpc } from './services/discordRpc';
+import { destroyTaskbarGameIndicator } from './services/taskbarGameIndicator';
 import { releaseAllPreviewVpks } from './services/previewVpkRegistry';
 import { startSaltIngest } from './services/saltIngest';
 import {
@@ -456,6 +458,17 @@ function createWindow(): void {
             exceptions: settings.browserFilterExceptions,
         });
         attachBrowserFilter(guest.session);
+        const host = mainWindow?.webContents;
+        guest.on('before-input-event', (event, input) => {
+            if (!host || host.isDestroyed() || input.type !== 'keyDown' || input.isAutoRepeat || input.alt) return;
+            if (process.platform === 'darwin' ? !input.meta || input.control : !input.control || input.meta) return;
+            const key = input.key.toLowerCase();
+            const shortcut = input.shift ? key === 'b' ? 'bar' : null
+                : key === 'l' ? 'address' : key === 'd' ? 'bookmark' : null;
+            if (!shortcut) return;
+            event.preventDefault();
+            host.send('browser:shortcut', shortcut);
+        });
 
         guest.setWindowOpenHandler((details) => {
             openExternalSafe(details.url);
@@ -808,6 +821,7 @@ if (!gotTheLock) {
     // user's profile the moment Grimoire quits (no-op if RPC was never enabled).
     app.on('before-quit', () => {
         destroyDiscordRpc();
+        destroyTaskbarGameIndicator();
         // Backstop for Foundry's 3D tray previews: the renderer releases each
         // build when the panel closes, but a renderer that dies without doing
         // so must not leave its temp VPKs behind.

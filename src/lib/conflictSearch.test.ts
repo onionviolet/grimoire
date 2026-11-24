@@ -16,7 +16,7 @@ const priorityConflict: ModConflict = {
 const conflicts = [soundConflict, priorityConflict];
 const mods = new Map([
   ['a', { name: 'Custom weapon audio', fileName: 'pak05_dir.vpk' }],
-  ['b', { name: 'Sound pack', fileName: 'pak06_dir.vpk' }],
+  ['b', { name: 'Sound pack', fileName: 'pak06_dir.vpk', variant: 'Quiet variant' }],
 ]);
 
 describe('searchConflicts', () => {
@@ -38,6 +38,10 @@ describe('searchConflicts', () => {
 
   it('finds either VPK filename', () => {
     expect(searchConflicts(conflicts, mods, 'PAK06_DIR').map((result) => result.conflict)).toEqual([soundConflict]);
+  });
+
+  it('finds a conflict by its displayed variant name', () => {
+    expect(searchConflicts(conflicts, mods, 'quiet').map(result => result.conflict)).toEqual([soundConflict]);
   });
 
   it('can find a priority conflict by either mod name without loaded mod metadata', () => {

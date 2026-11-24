@@ -20,6 +20,7 @@ beforeEach(() => {
     mock.stats = { status: 'active', filters: 100, domains: 1, blocked: 7, error: null, list: null,
         custom: { accepted: 0, rejected: 0, rejectedLines: [] }, exceptions: [] };
     mock.state.settings.browserBlockTrackers = true;
+    mock.state.settings.browserFilterExceptions = [];
     mock.state.saveSettings.mockResolvedValue(undefined); mock.reloadFilter.mockResolvedValue(mock.stats);
     Object.defineProperty(window, 'electronAPI', { configurable: true, value: { browser: { reloadFilter: mock.reloadFilter } } });
     host = document.createElement('div'); document.body.append(host); root = createRoot(host); render();
@@ -32,8 +33,8 @@ describe('Browser blocker control', () => {
         expect(mock.reloadFilter).toHaveBeenCalledOnce(); expect(reload).toHaveBeenCalledOnce();
         expect(mock.reloadFilter.mock.invocationCallOrder[0]).toBeLessThan(reload.mock.invocationCallOrder[0]);
     });
-    it('removes only this exception when resuming and reflects live request counts', async () => {
-        mock.stats!.exceptions = ['https://site.test', 'https://other.test']; render();
+    it('resumes using saved exceptions while the polled stats are still stale', async () => {
+        mock.state.settings.browserFilterExceptions = ['https://site.test', 'https://other.test']; render();
         expect(host.textContent).toContain('Resume for this site');
         await act(async () => host.querySelector('button')!.click());
         expect(mock.state.saveSettings).toHaveBeenCalledWith({ browserBlockTrackers: true, browserFilterExceptions: ['https://other.test'] });

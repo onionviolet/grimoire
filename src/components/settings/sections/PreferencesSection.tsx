@@ -1,13 +1,15 @@
 import { FilterDivider } from '../../common/FilteredContent';
 import { useEffect, useState } from 'react';
-import { Download, SlidersHorizontal, Wrench } from 'lucide-react';
+import { Download, ExternalLink, SlidersHorizontal, Wrench } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../../../stores/appStore';
-import { Card, Toggle } from '../../common/ui';
+import { Button, Card, Toggle } from '../../common/ui';
 import Tx from '../../translation/Tx';
 import type { AppSettings } from '../../../types/mod';
 import type { ForgeBridgeStatus } from '../../../types/electron';
 import { IGNORE_OVERLAP_SETTING_ID } from '../settingsHighlight';
+import { getActiveDeadlockPath } from '../../../lib/appSettings';
+import DisabledVpkCompression from '../DisabledVpkCompression';
 
 // General preferences, mod installation and updates, and external integrations.
 export default function PreferencesSection() {
@@ -26,13 +28,20 @@ export default function PreferencesSection() {
   // time from a small range, so showing it is the only way a user can tell
   // which one to expect, and it confirms the toggle really took effect.
   const forgeEnabled = settings?.forgeLocalInstallEnabled ?? false;
+  const gamePath = settings ? getActiveDeadlockPath(settings) : undefined;
   useEffect(() => {
+    if (!forgeEnabled) return;
     let cancelled = false;
-    void window.electronAPI.getForgeBridgeStatus().then((status) => {
-      if (!cancelled) setForgeStatus(status);
-    });
+    const refresh = () => {
+      void window.electronAPI.getForgeBridgeStatus().then(status => {
+        if (!cancelled) setForgeStatus(status);
+      }, () => { if (!cancelled) setForgeStatus(null); });
+    };
+    refresh();
+    window.addEventListener('focus', refresh);
     return () => {
       cancelled = true;
+      window.removeEventListener('focus', refresh);
     };
   }, [forgeEnabled]);
 
@@ -40,6 +49,16 @@ export default function PreferencesSection() {
     <>
       <Card id="settings-preferences-settings-sections-preferences-card" title={<Tx k="settings.sections.preferences" fallback="Preferences" />} icon={SlidersHorizontal}>
         <div className="space-y-6">
+          <Toggle id="settings-preferences-taskbar-game-indicator-toggle"
+            checked={settings?.taskbarGameIndicatorEnabled ?? false}
+            disabled={window.electronAPI.platform !== 'win32'}
+            onChange={(checked) => update({ taskbarGameIndicatorEnabled: checked })}
+            label={t('settings.preferences.taskbarGameIndicator')}
+            description={t('settings.toggles.taskbarGameIndicator')}
+          />
+
+          <FilterDivider className="h-px bg-hl/5" />
+
           <Toggle id="settings-preferences-settings-preferences-expandLocker-toggle"
             checked={settings?.lockerCardsExpandedByDefault ?? false}
             onChange={(checked) => update({ lockerCardsExpandedByDefault: checked })}
@@ -147,6 +166,12 @@ export default function PreferencesSection() {
             label={t('settings.preferences.swapManualReplacementActions')}
             description={t('settings.toggles.swapManualReplacementActions')}
           />
+          {window.electronAPI.platform === 'win32' && gamePath && (
+            <>
+              <FilterDivider className="h-px bg-hl/5" />
+              <DisabledVpkCompression key={gamePath} gamePath={gamePath} />
+            </>
+          )}
         </div>
       </Card>
 
@@ -156,22 +181,22 @@ export default function PreferencesSection() {
             checked={forgeEnabled}
             onChange={(checked) => update({ forgeLocalInstallEnabled: checked })}
             label={<Tx k="forge.settings.toggleLabel" fallback="Allow DeadlockForge 1-click installs" />}
-            description={
-              <span>
-                <Tx
-                  k="forge.settings.description"
-                  fallback="Let deadlockforge.net send freshly forged mods straight to Grimoire, so you do not have to download and move the file yourself. Grimoire listens only on your own machine, accepts requests only from deadlockforge.net, and always asks before installing anything."
-                />
-                {forgeEnabled && forgeStatus && (
-                  <span className="mt-1 block font-mono text-xs opacity-70">
-                    {forgeStatus.listening && forgeStatus.port !== null
-                      ? t('forge.settings.listening', { port: forgeStatus.port })
-                      : t('forge.settings.notListening')}
-                  </span>
-                )}
-              </span>
-            }
+            description={<Tx
+              k="forge.settings.description"
+              fallback="Let deadlockforge.net send freshly forged mods straight to Grimoire, so you do not have to download and move the file yourself. Grimoire listens only on your own machine, accepts requests only from deadlockforge.net, and always asks before installing anything."
+            />}
           />
+          <div className="flex flex-wrap items-center gap-2">
+            <Button size="sm" variant="secondary" icon={ExternalLink}
+              onClick={() => window.open('https://deadlockforge.net/texture/', '_blank')}>
+              {t('forge.settings.openTextureForge')}
+            </Button>
+            {forgeEnabled && forgeStatus && <span role="status" className="text-xs text-text-secondary">
+              {forgeStatus.listening && forgeStatus.port !== null
+                ? t(forgeStatus.receivedForgeProbe ? 'forge.settings.probeReceived' : 'forge.settings.waitingForForge', { port: forgeStatus.port })
+                : t('forge.settings.notListening')}
+            </span>}
+          </div>
 
           <FilterDivider className="h-px bg-hl/5" />
 

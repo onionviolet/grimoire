@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readdirSync, copyFileSync, unlinkSync, writeFileSync, readFileSync, rmdirSync } from 'fs';
-import { join, extname, basename, dirname } from 'path';
+import { join, extname, basename, dirname, relative } from 'path';
 import { randomBytes } from 'crypto';
 import { isUtf8 } from 'buffer';
 import AdmZip from 'adm-zip';
@@ -129,6 +129,8 @@ export interface ExtractedVpk {
     /** Immediate parent folder inside the archive, when present. Multi-variant
      *  mods use these folders as the per-variant label. */
     archiveFolder?: string;
+    /** Full path inside the archive, for display only. */
+    archivePath?: string;
 }
 
 /**
@@ -337,6 +339,7 @@ async function validateExtractedVpks(
                         path: vpk.path,
                         fileName: vpk.fileName,
                         archiveFolder: vpk.archiveFolder ?? label,
+                        archivePath: `${entry.archivePath ?? entry.fileName}/${vpk.archivePath ?? vpk.fileName}`,
                     });
                 }
                 continue;
@@ -444,7 +447,8 @@ function extractZip(archivePath: string, destDir: string, accept: (fileName: str
         // VPKs from sibling variant folders.
         const destPath = join(destDir, uniqueDestName(fileName, taken));
         writeFileSync(destPath, entry.getData());
-        extracted.push({ path: destPath, fileName, archiveFolder: archiveParentFolder(entry.entryName) });
+        extracted.push({ path: destPath, fileName, archiveFolder: archiveParentFolder(entry.entryName),
+            archivePath: entry.entryName.split(/[\\/]/).filter(Boolean).join('/') });
     }
 
     return extracted;
@@ -503,7 +507,8 @@ async function extractRar(archivePath: string, destDir: string, accept: (fileNam
             const fileName = basename(file.fileHeader.name);
             const destPath = join(destDir, uniqueDestName(fileName, taken));
             writeFileSync(destPath, Buffer.from(file.extraction));
-            extractedVpks.push({ path: destPath, fileName, archiveFolder: archiveParentFolder(file.fileHeader.name) });
+            extractedVpks.push({ path: destPath, fileName, archiveFolder: archiveParentFolder(file.fileHeader.name),
+                archivePath: file.fileHeader.name.split(/[\\/]/).filter(Boolean).join('/') });
         }
 
         if (extractedVpks.length > 0) {
@@ -631,6 +636,7 @@ function copyVpksToDest(vpks: string[], destDir: string, rootDir: string): Extra
             path: destPath,
             fileName,
             archiveFolder: parent === rootDir ? undefined : basename(parent),
+            archivePath: relative(rootDir, vpk).split(/[\\/]/).join('/'),
         });
     }
 

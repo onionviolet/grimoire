@@ -24,6 +24,7 @@ vi.mock('./settings', () => ({
 import {
     configureForgeBridge,
     getForgeBridgePort,
+    hasReceivedForgeProbe,
     requestForgeEnable,
     resolveForgeEnable,
     resolveForgeInstallConfirmation,
@@ -212,17 +213,22 @@ describe('bind', () => {
 
 describe('ping', () => {
     it('reports readiness and nothing else', async () => {
+        expect(hasReceivedForgeProbe()).toBe(false);
         const res = await ping();
         const body = await res.json();
         // No version string, no game path, no username, no mod counts: an
         // allowlisted page learns only that the app is here.
         expect(body).toEqual({ app: 'grimoire', protocol: 1, ready: true });
+        expect(hasReceivedForgeProbe()).toBe(true);
+        await stopForgeBridge();
+        expect(hasReceivedForgeProbe()).toBe(false);
     });
 
     it('rejects an unknown origin', async () => {
         const res = await ping({ Origin: 'https://evil.com' });
         expect(res.status).toBe(403);
         expect(res.headers['access-control-allow-origin']).toBeUndefined();
+        expect(hasReceivedForgeProbe()).toBe(false);
     });
 
     it('rejects a missing origin', async () => {

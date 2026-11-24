@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Loader2, Pause, Play, RotateCcw, Volume2 } from 'lucide-react';
 
 import { foundryVoiceclip } from '../../lib/api';
+import { Button } from '../common/ui';
 import { useAppStore } from '../../stores/appStore';
 import {
     MAX_GAIN_DB,
@@ -50,21 +51,19 @@ const WAVE_BUCKETS = 600;
 // near-silent import cannot be boosted into noise) live in ./soundTuning so the
 // seeding math and this editor cannot drift apart.
 
-/** Peak (abs-max) amplitude per horizontal bucket of channel 0, for the
- *  waveform. */
+/** Peak amplitude across channels per waveform bucket. */
 function computePeaks(buffer: AudioBuffer, buckets: number): Float32Array {
-    const ch = buffer.getChannelData(0);
-    const out = new Float32Array(buckets);
-    const size = Math.max(1, Math.floor(ch.length / buckets));
-    for (let i = 0; i < buckets; i++) {
-        let max = 0;
-        const start = i * size;
-        const end = Math.min(ch.length, start + size);
-        for (let j = start; j < end; j++) {
-            const a = Math.abs(ch[j]);
-            if (a > max) max = a;
+    const count = Math.min(buffer.length, buckets);
+    const out = new Float32Array(count);
+    for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
+        const samples = buffer.getChannelData(channel);
+        for (let i = 0; i < count; i++) {
+            const start = Math.floor(i * samples.length / count);
+            const end = Math.floor((i + 1) * samples.length / count);
+            let max = out[i];
+            for (let j = start; j < end; j++) max = Math.max(max, Math.abs(samples[j]));
+            out[i] = max;
         }
-        out[i] = max;
     }
     return out;
 }
@@ -123,7 +122,10 @@ export function SoundImportEditor({
     const [endMs, setEndMs] = useState(0);
 
     const [normalize, setNormalize] = useState(false);
-    const [targetRms, setTargetRms] = useState<number | null>(null);
+    const [targetBuffer, setTargetBuffer] = useState<AudioBuffer | null>(null);
+    const [compareRequested, setCompareRequested] = useState(false);
+    const [zoomed, setZoomed] = useState(false);
+    const targetRms = useMemo(() => targetBuffer ? rmsOf(targetBuffer, 0, targetBuffer.length) : null, [targetBuffer]);
     const [targetState, setTargetState] = useState<'idle' | 'loading' | 'missing'>('idle');
     const [gainDb, setGainDb] = useState(0);
     /** Hand-dialed loudness, added on top of any normalizer match. This is the
@@ -142,7 +144,7 @@ export function SoundImportEditor({
     const containerRef = useRef<HTMLDivElement | null>(null);
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const srcRef = useRef<AudioBufferSourceNode | null>(null);
-    const [playing, setPlaying] = useState(false);
+    const [playing, setPlaying] = useState<'stock' | 'edited' | null>(null);
     const [playheadMs, setPlayheadMs] = useState<number | null>(null);
 
     const acquireCtx = useCallback((): AudioContext => {
@@ -159,8 +161,7 @@ export function SoundImportEditor({
         let cancelled = false;
         setBuffer(null);
         setDecodeError(null);
-        setTargetRms(null);
-        setTargetState('idle');
+        setZoomed(false);
         setSeeded(null);
         (async () => {
             try {
@@ -197,9 +198,12 @@ export function SoundImportEditor({
     const durationMs = buffer ? buffer.duration * 1000 : 0;
     const peaks = useMemo(() => (buffer ? computePeaks(buffer, WAVE_BUCKETS) : null), [buffer]);
 
-    // Fetch + decode the replaced clip once, when the normalizer is first enabled.
+    // Load a reference on demand for A/B playback or volume matching.
+    const needsReference = normalize || compareRequested;
     useEffect(() => {
-        if (!normalize || !targetClipPath || targetRms !== null || targetState !== 'idle') return;
+        setTargetBuffer(null);
+        setTargetState('idle');
+        if (!needsReference || !targetClipPath) return;
         let cancelled = false;
         setTargetState('loading');
         (async () => {
@@ -212,7 +216,7 @@ export function SoundImportEditor({
                 const ab = await (await fetch(url)).arrayBuffer();
                 const decoded = await acquireCtx().decodeAudioData(ab.slice(0));
                 if (cancelled) return;
-                setTargetRms(rmsOf(decoded, 0, decoded.length));
+                setTargetBuffer(decoded);
                 setTargetState('idle');
             } catch {
                 if (!cancelled) setTargetState('missing');
@@ -221,7 +225,7 @@ export function SoundImportEditor({
         return () => {
             cancelled = true;
         };
-    }, [normalize, targetClipPath, targetRms, targetState, acquireCtx]);
+    }, [needsReference, targetClipPath, acquireCtx]);
 
     // Recompute the match gain from the selected region whenever it (or the
     // target) changes. Gain matches what actually ships: the trimmed region.
@@ -278,7 +282,7 @@ export function SoundImportEditor({
             }
             srcRef.current = null;
         }
-        setPlaying(false);
+        setPlaying(null);
         setPlayheadMs(null);
     }, []);
 
@@ -292,26 +296,25 @@ export function SoundImportEditor({
         [stopPlayback]
     );
 
-    const playSelection = useCallback(() => {
-        if (!buffer) return;
-        if (playing) {
-            stopPlayback();
-            return;
-        }
+    const playPreview = useCallback((mode: 'stock' | 'edited') => {
+        const audio = mode === 'stock' ? targetBuffer : buffer;
+        if (!audio) return;
+        stopPlayback();
+        if (playing === mode) return;
         const ctx = acquireCtx();
         if (ctx.state === 'suspended') void ctx.resume();
         const src = ctx.createBufferSource();
-        src.buffer = buffer;
+        src.buffer = audio;
         const gainNode = ctx.createGain();
-        gainNode.gain.value = 10 ** (effectiveGainDb / 20) * soundVolume;
+        gainNode.gain.value = mode === 'stock' ? soundVolume : 10 ** (effectiveGainDb / 20) * soundVolume;
         src.connect(gainNode).connect(ctx.destination);
 
-        const offset = startMs / 1000;
-        const span = Math.max(0, (endMs - startMs) / 1000);
+        const offset = mode === 'stock' ? 0 : startMs / 1000;
+        const span = mode === 'stock' ? audio.duration : Math.max(0, (endMs - startMs) / 1000);
         const startedAt = ctx.currentTime;
         src.start(0, offset, span);
         srcRef.current = src;
-        setPlaying(true);
+        setPlaying(mode);
         src.onended = () => {
             if (srcRef.current === src) stopPlayback();
         };
@@ -321,14 +324,14 @@ export function SoundImportEditor({
             setPlayheadMs(startMs + elapsed * 1000);
             if (elapsed < span) requestAnimationFrame(tick);
         };
-        requestAnimationFrame(tick);
-    }, [buffer, playing, stopPlayback, acquireCtx, effectiveGainDb, soundVolume, startMs, endMs]);
+        if (mode === 'edited') requestAnimationFrame(tick);
+    }, [buffer, targetBuffer, playing, stopPlayback, acquireCtx, effectiveGainDb, soundVolume, startMs, endMs]);
 
     // Stop a running preview if the window moves under it.
     useEffect(() => {
         if (playing) stopPlayback();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [startMs, endMs]);
+    }, [startMs, endMs, buffer, targetBuffer, effectiveGainDb]);
 
     // Draw the waveform, the dimmed out-of-selection regions, and the playhead.
     useEffect(() => {
@@ -369,7 +372,23 @@ export function SoundImportEditor({
             g.fillStyle = '#ffffff';
             g.fillRect(px - 0.5, 0, 1.5, h);
         }
-    }, [peaks, startMs, endMs, durationMs, playheadMs]);
+    }, [peaks, startMs, endMs, durationMs, playheadMs, zoomed]);
+
+    const trimBounds = (which: 'start' | 'end') => {
+        const total = Math.round(durationMs);
+        const minimumWindow = Math.min(total, MIN_WINDOW_MS);
+        return which === 'start' ? [0, Math.max(0, endMs - minimumWindow)] : [startMs + minimumWindow, total];
+    };
+
+    const nudgeTrim = (which: 'start' | 'end') => (event: React.KeyboardEvent) => {
+        const [min, max] = trimBounds(which);
+        const current = which === 'start' ? startMs : endMs;
+        const step = event.shiftKey ? 100 : 10;
+        const next = { ArrowLeft: current - step, ArrowDown: current - step, ArrowRight: current + step, ArrowUp: current + step, Home: min, End: max }[event.key];
+        if (next === undefined) return;
+        event.preventDefault();
+        (which === 'start' ? setStartMs : setEndMs)(Math.max(min, Math.min(max, next)));
+    };
 
     const dragHandle = useCallback(
         (which: 'start' | 'end') => (e: React.PointerEvent) => {
@@ -426,16 +445,23 @@ export function SoundImportEditor({
     const leftPct = durationMs ? (startMs / durationMs) * 100 : 0;
     const rightPct = durationMs ? (endMs / durationMs) * 100 : 100;
     const trimmed = startMs > 0 || endMs < Math.round(buffer.duration * 1000);
+    const selectionPeaks = peaks?.slice(Math.floor(leftPct * peaks.length / 100), Math.ceil(rightPct * peaks.length / 100));
+    const gain = 10 ** (effectiveGainDb / 20);
+    const clippingRisk = selectionPeaks?.some(peak => peak * gain > 1);
 
     return (
         <div className="mt-2 space-y-2">
             {/* Waveform + draggable in/out handles */}
-            <div ref={containerRef} className="relative select-none" style={{ height: WAVE_HEIGHT }}>
+            <div className="overflow-x-auto">
+            <div ref={containerRef} className="relative select-none" style={{ height: WAVE_HEIGHT, width: zoomed ? '300%' : '100%' }}>
                 <canvas ref={canvasRef} className="block h-full w-full rounded-sm bg-bg-secondary" />
                 <div
                     role="slider"
                     aria-label={t('foundry.sound.import.trimStart', 'Trim start')}
+                    aria-valuemin={trimBounds('start')[0]}
+                    aria-valuemax={trimBounds('start')[1]}
                     aria-valuenow={Math.round(startMs)}
+                    onKeyDown={nudgeTrim('start')}
                     tabIndex={0}
                     onPointerDown={dragHandle('start')}
                     className="absolute top-0 z-10 h-full w-2 -translate-x-1/2 cursor-ew-resize rounded-sm bg-accent/80 hover:bg-accent"
@@ -444,28 +470,38 @@ export function SoundImportEditor({
                 <div
                     role="slider"
                     aria-label={t('foundry.sound.import.trimEnd', 'Trim end')}
+                    aria-valuemin={trimBounds('end')[0]}
+                    aria-valuemax={trimBounds('end')[1]}
                     aria-valuenow={Math.round(endMs)}
+                    onKeyDown={nudgeTrim('end')}
                     tabIndex={0}
                     onPointerDown={dragHandle('end')}
                     className="absolute top-0 z-10 h-full w-2 -translate-x-1/2 cursor-ew-resize rounded-sm bg-accent/80 hover:bg-accent"
                     style={{ left: `${rightPct}%` }}
                 />
             </div>
-
+            </div>
             {/* Transport + trim readout */}
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
                 <button
                     type="button"
-                    onClick={playSelection}
+                    onClick={() => playPreview('edited')}
                     className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-bg-tertiary text-accent transition-colors hover:bg-accent/15"
                     title={t('foundry.sound.import.playSelection', 'Play selection')}
                 >
-                    {playing ? <Pause size={14} /> : <Play size={14} className="translate-x-px" />}
+                    {playing === 'edited' ? <Pause size={14} /> : <Play size={14} className="translate-x-px" />}
                 </button>
                 <span className="text-2xs tabular-nums text-text-secondary">
                     {fmt(startMs)} - {fmt(endMs)}
                     <span className="text-text-secondary/60"> ({fmt(endMs - startMs)})</span>
                 </span>
+                <Button size="sm" variant="ghost" aria-pressed={zoomed} onClick={() => setZoomed(value => !value)}>
+                    {zoomed ? t('foundry.sound.import.zoomOut') : t('foundry.sound.import.zoomIn')}
+                </Button>
+                {targetClipPath && <Button size="sm" variant="ghost" disabled={targetState === 'missing'} isLoading={targetState === 'loading'}
+                    onClick={() => targetBuffer ? playPreview('stock') : setCompareRequested(true)}>
+                    {playing === 'stock' ? t('foundry.sound.import.stopStock') : targetBuffer ? t('foundry.sound.import.playStock') : t('foundry.sound.import.loadStock')}
+                </Button>}
                 {trimmed && (
                     <button
                         type="button"
@@ -478,6 +514,7 @@ export function SoundImportEditor({
                     </button>
                 )}
             </div>
+            {clippingRisk && <p className="text-xs text-state-warning">{t('foundry.sound.import.clippingRisk')}</p>}
 
             {/* What the seed did, when the editor was opened on an existing
                 change. Says so even when the recorded window did not fit, which

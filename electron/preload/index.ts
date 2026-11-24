@@ -1,4 +1,5 @@
 import type { ProfileShuffle } from '../../src/lib/profileShuffle';
+import type { LocalizationTokenChoice } from '../../src/types/localizationMerge';
 import { themeFromArguments } from '../../src/lib/theme';
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type { ChooseModUpdateReplacementArgs, ModUpdateState, StartModUpdatesArgs } from '../../src/types/modUpdates';
@@ -132,6 +133,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
     getSettings: () => ipcRenderer.invoke('get-settings'),
     setSettings: (patch: Partial<AppSettings>) => ipcRenderer.invoke('set-settings', patch),
+    disabledCompression: {
+        inspect: () => ipcRenderer.invoke('disabled-compression:inspect'),
+        apply: (mode: 'compress' | 'expand') => ipcRenderer.invoke('disabled-compression:apply', mode),
+    },
 
     // Mod transfer between mod managers (neutral interchange format; no cloud)
     interchange: {
@@ -152,6 +157,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     chatWheelStarter: () => ipcRenderer.invoke('chat-wheel:starter'),
     chatWheelValidate: (yaml: string) => ipcRenderer.invoke('chat-wheel:validate', yaml),
     chatWheelSave: (args: ChatWheelSaveArgs) => ipcRenderer.invoke('chat-wheel:save', args),
+    chatWheelExport: (yaml: string, name: string) => ipcRenderer.invoke('chat-wheel:export', yaml, name),
+    chatWheelInspect: () => ipcRenderer.invoke('chat-wheel:inspect'),
     chatWheelStatus: () => ipcRenderer.invoke('chat-wheel:status'),
     chatWheelDressing: () => ipcRenderer.invoke('chat-wheel:dressing'),
 
@@ -279,7 +286,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
         ipcRenderer.invoke('get-soul-model-info', key),
     exportSoulModel: (metaKey: string, cacheKey: string, entry?: string, options?: { animated?: boolean }) =>
         ipcRenderer.invoke('export-soul-model', metaKey, cacheKey, entry, options),
-    exportAnimationModPreview: (metaKey: string) => ipcRenderer.invoke('export-animation-mod-preview', metaKey),
+    exportAnimationModPreview: (metaKey: string, stock?: boolean) => ipcRenderer.invoke('export-animation-mod-preview', metaKey, stock),
     getHeroShaderNoise: () => ipcRenderer.invoke('get-hero-shader-noise'),
     getHeroPoseInfo: (heroName: string, skinSources?: unknown[]) =>
         ipcRenderer.invoke('get-hero-pose-info', heroName, skinSources),
@@ -516,6 +523,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     // Launch
     launchModded: () => ipcRenderer.invoke('launch-modded'),
+    launchModTrial: (id: string, replaceIds: string[]) => ipcRenderer.invoke('launch-mod-trial', id, replaceIds),
+    reviewModTrial: (id: string, replaceIds: string[]) => ipcRenderer.invoke('review-mod-trial', id, replaceIds),
+    onModTrialFinished: (callback: (restored: boolean) => void) => {
+        const listener = (_event: Electron.IpcRendererEvent, restored: boolean) => callback(restored);
+        ipcRenderer.on('mod-trial-finished', listener);
+        return () => ipcRenderer.removeListener('mod-trial-finished', listener);
+    },
     launchVanilla: () => ipcRenderer.invoke('launch-vanilla'),
     getGameRunningStatus: () => ipcRenderer.invoke('get-game-running-status'),
     stopGame: () => ipcRenderer.invoke('stop-game'),
@@ -668,7 +682,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // Download Queue
     getDownloadQueue: () => ipcRenderer.invoke('get-download-queue'),
     getDownloadJobs: () => ipcRenderer.invoke('get-download-jobs'),
-    retryDownloadJob: (id: string) => ipcRenderer.invoke('retry-download-job', id),
+    retryDownloadJob: (id: string, successors?: string[]) => ipcRenderer.invoke('retry-download-job', id, successors),
+    removeWaitingDownload: target => ipcRenderer.invoke('remove-waiting-download', target),
     moveQueuedDownload: (jobId: string, beforeJobId: string | null) =>
         ipcRenderer.invoke('move-queued-download', jobId, beforeJobId),
     prioritizeQueuedDownload: (jobId: string) => ipcRenderer.invoke('prioritize-queued-download', jobId),
@@ -736,6 +751,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     // Conflicts
     getConflicts: () => ipcRenderer.invoke('get-conflicts'),
+    reviewLocalizationMerge: (modIds: string[]) => ipcRenderer.invoke('review-localization-merge', modIds),
+    exportLocalizationMerge: (modIds: string[], reviewToken: string, choices: LocalizationTokenChoice[]) =>
+        ipcRenderer.invoke('export-localization-merge', modIds, reviewToken, choices),
     getIgnoredConflicts: () => ipcRenderer.invoke('get-ignored-conflicts'),
     ignoreConflict: (modA: string, modB: string) =>
         ipcRenderer.invoke('ignore-conflict', modA, modB),
@@ -785,6 +803,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
     deleteProfile: (profileId: string) => ipcRenderer.invoke('delete-profile', profileId),
     renameProfile: (profileId: string, newName: string) => ipcRenderer.invoke('rename-profile', profileId, newName),
+    updateProfileNotes: (profileId: string, notes: string) => ipcRenderer.invoke('update-profile-notes', profileId, notes),
     removeProfileCrosshair: (profileId: string) => ipcRenderer.invoke('remove-profile-crosshair', profileId),
     exportPortableProfile: (profileId: string) => ipcRenderer.invoke('export-portable-profile', profileId),
     parsePortableProfile: (input: string) => ipcRenderer.invoke('parse-portable-profile', input),
@@ -1012,6 +1031,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     // In-app browser: read-only view of the ad/tracker filter's state.
     browser: {
+        onShortcut: (callback: (shortcut: 'address' | 'bookmark' | 'bar') => void) => {
+            const listener = (_event: Electron.IpcRendererEvent, shortcut: 'address' | 'bookmark' | 'bar') => callback(shortcut);
+            ipcRenderer.on('browser:shortcut', listener);
+            return () => ipcRenderer.removeListener('browser:shortcut', listener);
+        },
         filterStats: () => ipcRenderer.invoke('browser:filterStats'),
         reloadFilter: () => ipcRenderer.invoke('browser:reload-filter'),
         checkFilterUpdate: () => ipcRenderer.invoke('browser:check-filter-update'),

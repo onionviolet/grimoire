@@ -20,6 +20,7 @@ import { restoreModBackup, revealModInFolder } from '../../lib/api';
 import { ModBackupsSubmenu } from './ModBackupsSubmenu';
 import type { ModConflict } from '../../lib/api';
 import type { Mod, GlobalModType } from '../../types/mod';
+import type { GameBananaRemoval } from '../../types/gamebanana';
 import { isCardSelectClick } from './selection';
 import ModThumbnail from '../ModThumbnail';
 import { RevealImage } from '../common/RevealImage';
@@ -35,6 +36,7 @@ import { canOpenImageSource, copyImageToClipboard, resolveImageSource } from '..
 import type { ModList } from '../../lib/modLists';
 import { ModListSubmenu } from './ModListMenu';
 import { Tag, CheckboxMark } from '../common/ui';
+import { RemovedTag } from './RemovedTag';
 import type { InstalledWindowView as ViewMode } from './installedWindowing';
 import { HeroIconStack, RepairIssueIcons, FittingTagList, MOD_TAG_CHIP_CLASS, MOD_TAG_SURFACE_CLASS } from './chips';
 import { EMPTY_LIST_IDS } from './emptyIds';
@@ -96,6 +98,8 @@ interface ModCardProps {
   conflicts: ModConflict[];
   soundVolume: number;
   updateAvailable?: boolean;
+  /** Set when the mod's GameBanana page was trashed, withheld or made private. */
+  removal?: GameBananaRemoval;
   /** Absorbed merge sources whose GameBanana file was replaced or removed. */
   staleSourceCount?: number;
   /** The part of `staleSourceCount` the merged-contents dialog can update.
@@ -121,6 +125,9 @@ interface ModCardProps {
   /** Disable every other mod, enable only this one, and launch the game. Used
    *  for A/B testing a single skin. */
   onSoloLaunch?: () => void;
+  onOpenOverlap?: () => void;
+  trialTargets?: readonly { id: string; name: string }[];
+  onTrialLaunch?: (id: string) => void;
   soloBusy?: boolean;
   onDelete: () => void;
   /** Import local VPKs as variants of this mod. */
@@ -397,6 +404,7 @@ export function ModCard({
   conflicts,
   soundVolume,
   updateAvailable,
+  removal,
   staleSourceCount = 0,
   updatableSourceCount = 0,
   onOpenDetails,
@@ -411,6 +419,9 @@ export function ModCard({
   swapTargets = [],
   onSwap,
   onSoloLaunch,
+  onOpenOverlap,
+  trialTargets = [],
+  onTrialLaunch,
   soloBusy = false,
   onDelete,
   onAddVariant,
@@ -760,6 +771,19 @@ export function ModCard({
           {t('installed.card.soloLaunch')}
         </MenuItem>
       )}
+      {onTrialLaunch && trialTargets.length === 1 && (
+        <MenuItem icon={Beaker} disabled={soloBusy} onSelect={() => onTrialLaunch(trialTargets[0].id)}>
+          {t('installed.trial.action')}
+        </MenuItem>
+      )}
+      {onTrialLaunch && trialTargets.length > 1 && (
+        <MenuSub>
+          <MenuSubTrigger icon={Beaker}>{t('installed.trial.action')}</MenuSubTrigger>
+          <MenuSubContent>
+            {trialTargets.map(target => <MenuItem key={target.id} disabled={soloBusy} onSelect={() => onTrialLaunch(target.id)}>{target.name}</MenuItem>)}
+          </MenuSubContent>
+        </MenuSub>
+      )}
       {onFixUnknown && (
         <MenuItem
           icon={fixingUnknown ? Loader2 : mod.isUnknown ? Wrench : Link2}
@@ -988,15 +1012,19 @@ export function ModCard({
                 </Tag>
               )}
               {hasConflicts && (
-                <Tag
-                  tone="warning"
-                  variant="overlay"
-                  icon={AlertTriangle}
-                  title={conflicts.map((c) => c.details).join(', ')}
-                  className="uppercase tracking-wide"
+                <button
+                  type="button"
+                  disabled={!onOpenOverlap || selectMode}
+                  onClick={event => { event.stopPropagation(); onOpenOverlap?.(); }}
+                  title={t('overlap.focus.open')}
+                  aria-label={t('overlap.focus.open')}
+                  data-card-action="true"
+                  className="pointer-events-auto cursor-pointer rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                 >
-                  {t('installed.card.overlap')}
-                </Tag>
+                  <Tag tone="warning" variant="overlay" icon={AlertTriangle}>
+                    {t('installed.card.overlap')}
+                  </Tag>
+                </button>
               )}
               {mod.isUnknown && (
                 <Tag
@@ -1019,6 +1047,7 @@ export function ModCard({
                   {t('profiles.actions.update')}
                 </Tag>
               )}
+              {removal && <RemovedTag removal={removal} variant="overlay" />}
               {mod.merged && (
                 <Tag
                   variant="overlay"

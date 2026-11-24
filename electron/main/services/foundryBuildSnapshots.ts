@@ -8,6 +8,7 @@ import type { VpkEntryIndex } from './vpk';
 const compress = promisify(gzip);
 const decompress = promisify(gunzip);
 const RETAINED_SNAPSHOTS = 3;
+const pendingSnapshots = new Map<string, Promise<FoundryBuildSnapshotResult>>();
 
 export type FoundryBuildChangeKind = 'added' | 'removed' | 'changed' | 'resized-only';
 
@@ -80,6 +81,18 @@ export async function recordBuildSnapshot(
     fingerprint: string,
     entries: readonly VpkEntryIndex[]
 ): Promise<FoundryBuildSnapshotResult> {
+    const prior = pendingSnapshots.get(root);
+    const update = () => writeBuildSnapshot(root, fingerprint, entries);
+    const result = prior ? prior.then(update, update) : update();
+    pendingSnapshots.set(root, result);
+    try {
+        return await result;
+    } finally {
+        if (pendingSnapshots.get(root) === result) pendingSnapshots.delete(root);
+    }
+}
+
+async function writeBuildSnapshot(root: string, fingerprint: string, entries: readonly VpkEntryIndex[]): Promise<FoundryBuildSnapshotResult> {
     await fs.mkdir(root, { recursive: true });
     const index = await readIndex(root);
     const existingIndex = index.snapshots.findIndex((snapshot) => snapshot.fingerprint === fingerprint);

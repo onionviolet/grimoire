@@ -28,6 +28,16 @@ async function select(label: string, value: string) {
   await act(async () => { control.value = value; control.dispatchEvent(new Event('change', { bubbles: true })); });
 }
 describe('explicit animation auditions', () => {
+  it('requests stock audio on the selected model and restores selected audio on the next comparison', async () => {
+    h.list.mockResolvedValue([{ ...ability, clip: 'manual_cast', soundPath: 'sounds/test.vsnd_c' }]);
+    await click('locker.abilityPreview.open');
+    await click('locker.abilityPreview.repeatThree');
+    expect(h.prepare).toHaveBeenLastCalledWith('Test hero', 1, { sourceMode: 'applied' });
+    await click('locker.abilityPreview.playStockSound');
+    expect(h.prepare).toHaveBeenLastCalledWith('Test hero', 1, { sourceMode: 'applied', soundMode: 'base' });
+    await click('locker.abilityPreview.playSelectedSound');
+    expect(h.prepare).toHaveBeenLastCalledWith('Test hero', 1, { sourceMode: 'applied' });
+  });
   it('lets a person choose an unresolved clip and stock source, without claiming an effect join or exporting on replay', async () => {
     await click('locker.abilityPreview.open');
     await select('locker.abilityPreview.source', 'base');

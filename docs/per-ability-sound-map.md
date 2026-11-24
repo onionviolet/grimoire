@@ -9,6 +9,11 @@ still need a manual slot (newest heroes use renamed dev-tokens the API does not 
 
 **45 heroes, 2533 ability sound files. Auto-slotted 2348 (92%).**
 
+The Rat King supplement uses build `26875936`. His stock VPK has 86 ability
+clips, 84 with a slot assignment. The `charge` sound-event family is his
+ultimate, Rule, Ratannia. The mixed flag-and-sound pack's cast-delay and
+explosion clips are both in that family.
+
 Slot source per file (priority): `aN` path token > deadlock-api ability name/display match > hand-curated override.
 Residual is classified: _non-ability_ (weapon/movement, correctly has no slot),
 _orphaned_ (sounds from removed/reworked abilities), _uncertain_ (verify in-game; no real mod exists to confirm).

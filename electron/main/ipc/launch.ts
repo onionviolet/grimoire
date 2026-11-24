@@ -17,10 +17,13 @@ import { healLockerVpks } from '../services/lockerVpk';
 import { reconcileCursorPack } from '../services/cursorPacks';
 import { ensureReplayFolderLink } from '../services/replayFolder';
 import { getMainWindow } from '../index';
-import { scanMods } from '../services/mods';
+import { clearTaskbarGameStatus, taskbarGameStatusRevision, updateTaskbarGameStatus } from '../services/taskbarGameIndicator';
+import { scanMods, scanModsReadOnly } from '../services/mods';
+import { CHAT_WHEEL_UNBIND_REQUIRED, mayHaveCustomChatWheelBindings } from '../services/chatWheel';
 import { recordCrashLaunchConfiguration, recordVanillaCrashLaunch } from '../services/crashAdvisories';
 import { auditInstalledSafety } from '../services/modSafetyAudit';
 import { pruneModQuarantine, pruneModSafetyPathCache } from '../services/modSafety';
+import { assertNoModTrial, launchModTrial, resumeModTrial, reviewModTrial } from '../services/modTrial';
 import {
     captureEmptyGameMods,
     captureLoadedGameMods,
@@ -36,16 +39,13 @@ function emitRestore(result: RestoreResult): void {
     win?.webContents.send('vanilla-restore-complete', result);
 }
 
-ipcMain.handle('launch-modded', async (): Promise<void> => {
-    const deadlockPath = getActiveDeadlockPath();
-    if (!deadlockPath) {
-        throw new Error('No Deadlock path configured');
-    }
+async function launchConfiguredModded(deadlockPath: string, markTrialRequested?: () => Promise<void>): Promise<void> {
     try {
         await launchModded({
             deadlockPath,
             onRestoreComplete: emitRestore,
             beforeLaunch: async () => {
+                await markTrialRequested?.();
                 await reconcileCursorPack(deadlockPath).catch((err) =>
                     console.error('[launch] Cursor pack reconcile failed:', err));
                 const mods = await scanMods(deadlockPath);
@@ -58,6 +58,32 @@ ipcMain.handle('launch-modded', async (): Promise<void> => {
         clearLoadedGameMods();
         throw err;
     }
+}
+
+function emitModTrialFinished(restored: boolean): void {
+    getMainWindow()?.webContents.send('mod-trial-finished', restored);
+}
+
+ipcMain.handle('launch-modded', async (): Promise<void> => {
+    const path = getActiveDeadlockPath();
+    if (!path) throw new Error('No Deadlock path configured');
+    await assertNoModTrial(path);
+    await launchConfiguredModded(path);
+});
+
+function trialPath(id: string, replaceIds: string[]): string {
+    const path = getActiveDeadlockPath();
+    if (!path) throw new Error('No Deadlock path configured');
+    if (typeof id !== 'string' || !Array.isArray(replaceIds) || replaceIds.length > 999 ||
+        replaceIds.some(id => typeof id !== 'string')) throw new Error('Invalid trial mod selection');
+    return path;
+}
+
+ipcMain.handle('review-mod-trial', (_event, id: string, replaceIds: string[]) =>
+    reviewModTrial(trialPath(id, replaceIds), id, replaceIds));
+ipcMain.handle('launch-mod-trial', async (_event, id: string, replaceIds: string[]): Promise<void> => {
+    const path = trialPath(id, replaceIds);
+    await launchModTrial(path, id, replaceIds, mark => launchConfiguredModded(path, mark), emitModTrialFinished);
 });
 
 ipcMain.handle('launch-vanilla', async (): Promise<void> => {
@@ -65,9 +91,15 @@ ipcMain.handle('launch-vanilla', async (): Promise<void> => {
     if (!deadlockPath) {
         throw new Error('No Deadlock path configured');
     }
+    await assertNoModTrial(deadlockPath);
     try {
         await launchVanilla({
             deadlockPath,
+            beforeStash: async () => {
+                for (const mod of await scanModsReadOnly(deadlockPath)) {
+                    if (await mayHaveCustomChatWheelBindings(mod)) throw new Error(CHAT_WHEEL_UNBIND_REQUIRED);
+                }
+            },
             onRestoreComplete: emitRestore,
             beforeLaunch: () => {
                 captureEmptyGameMods();
@@ -82,7 +114,9 @@ ipcMain.handle('launch-vanilla', async (): Promise<void> => {
 });
 
 ipcMain.handle('get-game-running-status', async (): Promise<GameRunningStatus> => {
+    const taskbarRevision = taskbarGameStatusRevision();
     const running = await isDeadlockRunning();
+    updateTaskbarGameStatus(getMainWindow(), running, taskbarRevision);
     const deadlockPath = running ? getActiveDeadlockPath() : null;
     const mods = deadlockPath && !hasRunningGameModSnapshot() ? await scanMods(deadlockPath) : [];
     if (!running || deadlockPath) {
@@ -96,6 +130,7 @@ ipcMain.handle('stop-game', async (): Promise<StopDeadlockResult & {
 }> => {
     const stopResult = await stopDeadlockGame();
     if (stopResult.stopped) {
+        clearTaskbarGameStatus();
         clearLoadedGameMods();
     }
     const deadlockPath = getActiveDeadlockPath();
@@ -165,6 +200,7 @@ export async function runStartupRecovery(): Promise<void> {
     void pruneModSafetyPathCache();
     const deadlockPath = getActiveDeadlockPath();
     if (!deadlockPath) return;
+    await resumeModTrial(deadlockPath, emitModTrialFinished).catch(error => console.error('[mod trial] Startup check failed:', error));
     if (loadSettings().experimentalModSafety) {
         try {
             await auditInstalledSafety(deadlockPath);

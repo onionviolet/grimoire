@@ -18,9 +18,10 @@ interface CrosshairPreviewProps {
     settings?: Partial<CrosshairSettings>;
     // Render with transparent background instead of gray
     transparent?: boolean;
+    spreadPreview?: boolean;
 }
 
-export default memo(function CrosshairPreview({ size = 200, scale = 1, zoom = 1, settings, transparent }: CrosshairPreviewProps) {
+export default memo(function CrosshairPreview({ size = 200, scale = 1, zoom = 1, settings, transparent, spreadPreview }: CrosshairPreviewProps) {
     // Preset canvases do not subscribe to edits in the live editor. Live canvases
     // only redraw when crosshair settings change, not preset/loading metadata.
     const s = useCrosshairStore(useShallow((state) => settings ?? normalizeCrosshairSettings(state)));
@@ -41,8 +42,20 @@ export default memo(function CrosshairPreview({ size = 200, scale = 1, zoom = 1,
         if (canvas.height !== pixels) canvas.height = pixels;
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-        drawCrosshair(ctx, s, { size, scale, zoom, background: transparent ? null : '#555' });
-    }, [s, size, scale, zoom, transparent]);
+        const options = { size, scale, zoom, background: transparent ? null : '#555' };
+        drawCrosshair(ctx, s, options);
+        if (!spreadPreview) return;
+        const start = performance.now();
+        let frame: number;
+        const draw = (now: number) => {
+            const progress = Math.min(1, (now - start) / 850);
+            const spread = progress < 0.18 ? progress / 0.18 : ((1 - progress) / 0.82) ** 2;
+            drawCrosshair(ctx, { ...s, pipGap: (s.pipGap ?? 0) + spread * 12 }, options);
+            if (progress < 1) frame = requestAnimationFrame(draw);
+        };
+        frame = requestAnimationFrame(draw);
+        return () => cancelAnimationFrame(frame);
+    }, [s, size, scale, zoom, transparent, spreadPreview]);
 
     return (
         <canvas

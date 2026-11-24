@@ -11,6 +11,7 @@ export interface HeroAbilityPreview {
 }
 export interface HeroAbilityPreviewOptions {
   sourceMode?: 'base' | 'applied';
+  soundMode?: 'base';
   clipName?: string;
   skinSources?: import('./portrait').HeroPoseSkinSource[];
   fallbackSkinMetaKey?: string;
@@ -21,6 +22,9 @@ export interface HeroAbilityPlayback {
   soundUrl: string | null;
   soundSource: 'base' | 'applied' | 'unavailable';
   soundParams?: AbilitySoundParams;
+  soundVpk?: string;
+  modelEntry?: string;
+  modelInputVpks?: string[];
   skinApplied: boolean;
   skinFallback: boolean;
   effect: import('./assetInspection').AssetInspectionResult | null;

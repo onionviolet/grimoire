@@ -67,17 +67,19 @@ repeatable while preserving a usable rollback path.
    Expected outputs are `release/Grimoire-Setup-<version>.exe`,
    `release/Grimoire-Portable-<version>.exe`, and the installer blockmap.
 
-6. The GitHub workflow currently produces Windows artifacts automatically when
-   a `v<version>` tag is pushed. It checks out the pinned `onionviolet/vpkmerge`
+6. The GitHub workflow builds Windows x64, Linux x64 and macOS arm64 when
+   a `v<version>` tag is pushed. Use a branch ref for a manual build-only run.
+   Each platform runs the packaged smoke before attestation and uploads the
+   distributables, update manifests and checksums to the run. The workflow checks
+   out the pinned `onionviolet/vpkmerge`
    revision, builds it, and copies that engine into the app before packaging.
    This is required for Foundry's global-sound catalog and safe icon replacement.
    Advance the pinned revision in `.github/workflows/release.yml` deliberately,
    after validating the engine change locally.
 
-   The cross-platform publishing blocks remain retained below for a future
-   release expansion; do not describe Linux or macOS artifacts as shipped until
-   their build matrix is re-enabled. Before the first macOS release, add these
-   repository secrets so Gatekeeper accepts the app:
+   The matrix can build without publisher credentials. For a Developer ID signed
+   and notarized macOS package, enable signing in the build configuration and
+   configure the certificate and notarization credentials the workflow reads:
 
    - `MACOS_CERTIFICATE` â€” base64-encoded Developer ID Application `.p12`;
    - `MACOS_CERTIFICATE_PASSWORD`;
@@ -85,8 +87,9 @@ repeatable while preserving a usable rollback path.
      notarization.
 
    The macOS build is arm64-only because the bundled `vpkmerge` engine does not
-   yet ship a darwin-x64 binary. The workflow publishes both a DMG and ZIP; the
-   ZIP and `latest-mac.yml` are required for in-app updates.
+   yet ship a darwin-x64 binary. The workflow publishes both a DMG and ZIP with `latest-mac.yml`. The app
+   can check for updates, and macOS users install them manually under the
+   current updater policy.
 
 7. Verify the artifacts before publishing:
 
@@ -94,6 +97,11 @@ repeatable while preserving a usable rollback path.
    Get-FileHash release/Grimoire-Setup-<version>.exe -Algorithm SHA256
    Get-FileHash release/Grimoire-Portable-<version>.exe -Algorithm SHA256
    ```
+
+   Run `pnpm smoke:packaged` after local packaging too. It launches an isolated
+   profile and exercises SQLite through the packaged Electron runtime. A Windows
+   checkout used for Vitest can still hold a Node build of `better-sqlite3` even
+   when the packager reports that native dependency installation completed.
 
    Smoke-test the portable build with an existing profile: launch it, open the
    Locker (including Global), Browse, and Foundry. In Foundry, open **Global
@@ -103,9 +111,11 @@ repeatable while preserving a usable rollback path.
    (c34fadf)`). Install the setup executable only when its upgrade path also
    needs testing.
 
-8. Push the release commit and an immutable version tag; the Release workflow
-   creates the GitHub Release and uploads the Windows assets, checksums, and
-   generated release notes:
+8. Validate the candidate commit with a branch-dispatch build-only run before
+   pushing the immutable version tag. Tag pushes trigger the publishing run,
+   which creates the GitHub Release and uploads the platform assets, checksums,
+   and generated release notes. Recheck the upstream stable version before
+   tagging when the fork candidate is one patch above it.
 
    ```powershell
    git push origin main

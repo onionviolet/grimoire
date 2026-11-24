@@ -1294,7 +1294,7 @@ export async function exportRiggedHeroPose(
 export async function exportHeroAbilityPose(
     deadlockPath: string, heroName: string, clipName: string, out: string,
     skinSources?: HeroPoseSkinSource[], fallbackSkinMetaKey?: string,
-): Promise<{ skinApplied: boolean; skinFallback: boolean; clipEvents?: EmbeddedClipEventMetadata }> {
+): Promise<{ skinApplied: boolean; skinFallback: boolean; modelEntry?: string; inputVpks: string[]; clipEvents?: EmbeddedClipEventMetadata }> {
     const normalized = normalizeSkinSources(skinSources);
     const pak01 = join(getCitadelPath(deadlockPath), 'pak01_dir.vpk');
     const run = async (sources: HeroPoseSkinSource[], skinFallback: boolean) => {
@@ -1319,7 +1319,9 @@ export async function exportHeroAbilityPose(
                             clipEvents = await readEmbeddedClipEvents(pak01, selector[1], clipName, join(tmpdir(), 'grimoire-clip-events'), expected);
                         }
                     }
-                    return { skinApplied: source.sources.length > 0, skinFallback, ...(clipEvents ? { clipEvents } : {}) };
+                    return { skinApplied: source.sources.length > 0, skinFallback,
+                        modelEntry: selector[0] === '--entry' ? selector[1] : undefined,
+                        inputVpks: source.sources.map(layer => layer.metaKey), ...(clipEvents ? { clipEvents } : {}) };
                 } catch (error) { lastError = error; }
             }
             throw lastError instanceof Error ? lastError : new Error('Selected source has no supported ability clip.');

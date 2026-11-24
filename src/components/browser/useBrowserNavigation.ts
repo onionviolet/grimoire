@@ -7,7 +7,9 @@ import type { BrowserWebview } from './webview';
 function normalizeUrl(input: string): string | null {
     const raw = input.trim();
     if (!raw) return null;
-    const candidate = /^[a-z][a-z0-9+.-]*:/i.test(raw) ? raw : `https://${raw}`;
+    const hasScheme = /^[a-z][a-z0-9+.-]*:/i.test(raw);
+    const hostWithPort = /^(?:localhost|[a-z0-9-]+(?:\.[a-z0-9-]+)+):\d+(?:[/?#]|$)/i.test(raw);
+    const candidate = hasScheme && !hostWithPort ? raw : `https://${raw}`;
     try {
         const url = new URL(candidate);
         return url.protocol === 'https:' || url.protocol === 'http:' ? url.href : null;

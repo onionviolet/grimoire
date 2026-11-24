@@ -6,11 +6,12 @@ export interface ProfileRecoverySummary {
   modCount: number;
   enabledCount: number;
   retainedBytes?: boolean;
+  includesLocker?: boolean;
   purpose?: 'isolation';
 }
 export interface ProfileRecoveryIssue {
   name: string;
-  reason: 'missing' | 'changed' | 'ambiguous';
+  reason: 'missing' | 'changed' | 'ambiguous' | 'chat-wheel-bound';
 }
 export interface ProfileRecoveryPreview {
   point: ProfileRecoverySummary;

@@ -2,6 +2,39 @@
 
 All notable changes to this project are documented here. Format is loosely based on [Keep a Changelog](https://keepachangelog.com/), and the project adheres to semantic versioning.
 
+## [1.35.2]
+
+This fork release incorporates Grimoire upstream v1.35.1 and subsequent fixes
+on its main branch. It also brings the fork's work since v1.28.2 into one release.
+
+- **Installed, Browse and downloads.** Browse Mods, Sounds and WIPs together,
+  filter by hero or category, and pick the file you want at install or update.
+  See when a GameBanana source disappears while keeping the installed mod.
+  Restore a waiting download removed by mistake, resume interrupted downloads,
+  and review which cached archives can be cleaned up.
+- **Profiles and Recovery.** Review missing or changed mods before applying a
+  profile, choose local replacements, and copy a compatibility report. Local
+  restore points preserve retained mod files, load order, configuration, and
+  the reserved Locker slots. Recovery can compare game builds for changes
+  to files your mods override. Try an installed mod for one launch with a
+  reviewed restore back to your usual setup.
+- **Locker and Foundry.** Compare stock and modded motion on the same body.
+  Inspect model, texture and particle assets, stage compiled model replacements,
+  and combine edits in the build tray. The sound editor adds stock A/B,
+  precise keyboard trim and waveform zoom. You can also review and stage
+  a folder of voice replacements by exact clip or event name.
+- **Chat Wheel and Config.** The experimental wheel editor saves drafts,
+  exports VPKs, and applies changes through a separate activation step.
+  Recovery shows which wheel providers are mounted and how to clear stale
+  bindings. Unbind custom menus in Deadlock before disabling their provider.
+  Config shows which settings win and previews edits before writing them.
+- **Browser.** Star pages to save them locally. Search and group bookmarks
+  by folder, or pin them to the optional bookmarks bar. Find and zoom
+  controls and site-specific filtering are available in the embedded browser.
+
+On macOS, install updates manually from the Apple Silicon download. Exact
+cast-effect timing and live Chat Wheel preset switching remain follow-up work.
+
 ## [1.28.2] - 2026-09-05
 
 The fork's release after absorbing upstream v1.28.0 and v1.28.1. The version

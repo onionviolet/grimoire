@@ -10,23 +10,15 @@ import { PackageStack } from './heroParticleSources';
 import { MODEL_ENTRY_OVERRIDES } from './heroPoseModels';
 import { resolveModVpk } from './soulContainerModels';
 import { previewBodyChoice, type ClipBodyEvents } from './animationBodyGroups';
+import type { AnimationModPreview } from '../../../src/types/portrait';
 
 /** Bump when the exported clips change for the same inputs. */
-const VERSION = 'anim-mod-v2';
+const VERSION = 'anim-mod-v3';
 const CLIPS_FILENAME = 'clips.glb';
 /** Same bounds as the skin animation donor: `workshop motions` has a frame budget. */
 const MAX_CLIPS = 8;
 const MAX_FRAMES = 2400;
 const KEEP_ENTRIES = 24;
-
-export interface AnimationModPreview {
-    heroName: string;
-    /** Cache entry served at `grimoire-hero://a/<key>/clips.glb`. */
-    key: string;
-    clips: string[];
-    /** The body group choice the hero wears for these clips (Seven without his gun), or null for his default body. */
-    meshGroup: string | null;
-}
 
 const clipSchema = z.object({
     m_nNumFrames: z.number().int().nonnegative(), m_flDuration: z.number().finite().nonnegative(), m_bIsAdditive: z.boolean(),
@@ -72,10 +64,24 @@ export function animationModClips(entries: readonly string[]): { heroName: strin
         if (hero) byHero.set(hero, [...(byHero.get(hero) ?? []), entry]);
     }
     const [best] = [...byHero.entries()].sort((a, b) => b[1].length - a[1].length);
-    return best ? { heroName: best[0], clips: best[1].sort() } : null;
+    if (!best) return null;
+    const [, clips] = best;
+    // The player selects by GLB clip name. Do not export two clips with the same name.
+    const seen = new Set<string>();
+    return { heroName: best[0], clips: clips.sort().filter(path => {
+        const name = posix.basename(path);
+        if (seen.has(name)) return false;
+        seen.add(name);
+        return true;
+    }) };
 }
 
-const fingerprint = async (path: string) => { const stat = await fs.stat(path); return [stat.size, stat.mtimeMs]; };
+export function matchingStockClips(clips: readonly string[], stockEntries: readonly string[]): string[] {
+    const entries = new Set(stockEntries);
+    return clips.filter(path => entries.has(path));
+}
+
+const fingerprint = async (path: string) => { const stat = await fs.stat(path); return [path, stat.size, stat.mtimeMs, stat.ctimeMs]; };
 const inFlight = new Map<string, Promise<AnimationModPreview | null>>();
 
 /**
@@ -84,24 +90,26 @@ const inFlight = new Map<string, Promise<AnimationModPreview | null>>();
  * animation graph; additive layers are left out because they only make sense on top of another clip.
  * Null when the mod has no clip this can play.
  */
-export async function exportAnimationModPreview(deadlockPath: string, metaKey: string): Promise<AnimationModPreview | null> {
+export async function exportAnimationModPreview(deadlockPath: string, metaKey: string, stock = false): Promise<AnimationModPreview | null> {
     const vpk = await resolveModVpk(deadlockPath, metaKey);
     if (!vpk) return null;
     const found = animationModClips(parseVpkDirectoryCached(vpk) ?? []);
     const model = found ? MODEL_ENTRY_OVERRIDES[found.heroName] : undefined;
     if (!found || !model) return null;
     const pak01 = join(getCitadelPath(deadlockPath), 'pak01_dir.vpk');
-    // Content, not the pakNN slot a toggle reuses, names the entry.
-    const key = createHash('sha256').update(JSON.stringify([VERSION, await fingerprint(vpk), await fingerprint(pak01),
-        await fingerprint(vpkmergeBinaryPath()), found])).digest('hex');
+    const clips = stock ? matchingStockClips(found.clips, parseVpkDirectoryCached(pak01) ?? []) : found.clips;
+    if (!clips.length) return null;
+    const packages = stock ? [pak01] : [vpk, pak01];
+    const key = createHash('sha256').update(JSON.stringify([VERSION, await Promise.all(packages.map(fingerprint)),
+        await fingerprint(vpkmergeBinaryPath()), found.heroName, clips])).digest('hex');
     const running = inFlight.get(key);
     if (running) return running;
-    const work = build(vpk, pak01, model, found.heroName, found.clips, key);
+    const work = build(packages, model, found.heroName, clips, key);
     inFlight.set(key, work);
     try { return await work; } finally { inFlight.delete(key); void sweep().catch(() => {}); }
 }
 
-async function build(vpk: string, pak01: string, model: string, heroName: string, clips: string[], key: string): Promise<AnimationModPreview | null> {
+async function build(packages: string[], model: string, heroName: string, clips: string[], key: string): Promise<AnimationModPreview | null> {
     const dir = join(root(), key);
     const out = join(dir, CLIPS_FILENAME);
     const listed = join(dir, 'clips.json');
@@ -112,7 +120,7 @@ async function build(vpk: string, pak01: string, model: string, heroName: string
         return cached.clips.length ? { heroName, key, ...cached } : null;
     }
     await fs.mkdir(dir, { recursive: true });
-    const stack = new PackageStack([vpk, pak01], { stdout: runVpkmergeStdout }, join(dir, '.scratch'));
+    const stack = new PackageStack(packages, { stdout: runVpkmergeStdout }, join(dir, '.scratch'));
     try {
         let frames = 0;
         const playable: string[] = [];
@@ -125,7 +133,7 @@ async function build(vpk: string, pak01: string, model: string, heroName: string
             playable.push(clip);
             bodyEvents.set(clip, { durationSeconds: meta.data.m_flDuration, events: meta.data.m_events });
         }
-        const args = (list: string[], file: string) => ['workshop', 'motions', '--vpk', vpk, '--vpk', pak01, '--entry', model,
+        const args = (list: string[], file: string) => ['workshop', 'motions', ...packages.flatMap(path => ['--vpk', path]), '--entry', model,
             ...list.flatMap((clip) => ['--clip', `${posix.basename(clip, '.vnmclip_c')}=${clip}`]), '--out', file];
         let exported = playable;
         try {

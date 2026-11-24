@@ -87,6 +87,7 @@ export interface ModMetadata {
      *  hero ability/VO sounds, `null` when classified and it has none, and
      *  `undefined` when not yet classified (so enrichMod skips the re-parse). */
     abilitySounds?: import('../../../src/types/mod').AbilitySoundClassification | null;
+    abilitySoundClassifierVersion?: number;
     /** Set when this VPK was built from a user GLB via the soul-container
      *  import. The orientation/glow transform + tracking status; presence marks
      *  the slot for idempotent re-import (replace the previous build). */

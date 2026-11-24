@@ -276,6 +276,7 @@
       "Wip": "WiPs"
     },
     "loading": "Loading saved mods...",
+    "loadFailed": "Saved mods could not be loaded.",
     "empty": {
       "title": "Nothing saved yet",
       "description": "Use Save mod for later in Browse to build a watchlist.",
@@ -533,6 +534,10 @@
       "replaceHint": "Drop a PNG here, or click to choose one",
       "replaceDone": "Installed texture replacement. Enable it in Installed.",
       "defaultReplacementName": "{{label}} replacement",
+      "hideoutPaintings": {
+        "category": "Hideout paintings",
+        "description": "Open a texture and save its PNG before editing. The two square sheets contain several paintings: keep their layout to change individual pictures. The large portrait keeps the game's existing glow mask. Replace PNG stages your image for the build tray."
+      },
       "categories": {
         "heroModel": "Hero models",
         "abilityVfx": "Ability VFX"
@@ -591,6 +596,21 @@
         "title": "No gameplay sounds",
         "description": "This hero has no gameplay sounds in your installed game files."
       },
+      "voiceBatch": {
+        "title": "Replace voice lines from a folder",
+        "instructions": "Use exact clip or event names as audio filenames. Review the match for each file before staging. Choose up to {{max}} audio files in one folder.",
+        "choose": "Choose a voice replacement folder",
+        "limit": "Choose a folder with {{max}} audio files or fewer.",
+        "empty": "The folder has no supported audio files.",
+        "path": "Grimoire could not read the path of a selected audio file. Choose the folder again.",
+        "summary": "{{matched}} of {{total}} audio files have a unique match.",
+        "ambiguous": "Multiple matches or files claim this clip. Skipped.",
+        "unmatched": "No exact clip or event name matched. Skipped.",
+        "audition": "Audition replacement",
+        "defaultName": "{{hero}} voice replacements",
+        "stage": "Stage matching voice lines",
+        "staged": "Voice replacements added to the build tray."
+      },
       "voiceLines": {
         "title": "Voice lines",
         "hint": "optional, large list",
@@ -628,6 +648,12 @@
         "trimStart": "Trim start",
         "trimEnd": "Trim end",
         "playSelection": "Play selection",
+        "loadStock": "Load stock reference",
+        "playStock": "Play stock",
+        "stopStock": "Stop stock",
+        "zoomIn": "Zoom waveform",
+        "zoomOut": "Reset waveform zoom",
+        "clippingRisk": "The selected audio may clip with this gain. Lower the gain for more headroom.",
         "resetTrim": "Use the whole clip",
         "reset": "Reset",
         "matchVolume": "Match the original volume",
@@ -1256,6 +1282,11 @@
     }
   },
   "downloadQueue": {
+    "noLongerWaiting": "That file is no longer waiting. Use the active download controls if it has started.",
+    "removedFile": "Removed {{name}} from the queue.",
+    "undoRemove": "Undo",
+    "undoFailed": "Could not requeue the download. {{error}}",
+    "removeFailed": "Could not remove that download.",
     "cancelAll": "Cancel all",
     "cancelAllFailed": "Could not cancel all queued downloads.",
     "cancelDownload": "Cancel download",
@@ -1723,9 +1754,14 @@
       "missingPaths": "{{count}} of {{total}} sensitive paths are absent from the current base index.",
       "noMissingPaths": "All {{count}} checked sensitive paths are present in the current base index.",
       "showPaths": "Show up to 30 missing paths",
+      "patchBaseline": "This is the first recorded build for this installation. Run the review after the next game update to compare builds.",
+      "patchEvidence": "This mod may be affected by a game update",
+      "changedBasePaths": "Game resources this mod replaces also changed. Up to 30 paths shown.",
+      "changedRelatedPaths": "Related Panorama resources changed and the mod leaves them stock. Up to 30 paths shown.",
       "isolationTitle": "Assisted mod isolation",
       "isolationDescription": "Test smaller groups of enabled user mods and report what happened yourself.",
       "isolationScope": "The original setup is backed up first. Close Deadlock before each change, launch it yourself, then select Works or Crashes. Locker managed artifacts stay active. Group results can miss interactions between mods, so a candidate is a lead to test, not a proven cause. Launcher exit codes are never used as crash evidence.",
+      "crashSuspect": "Crash advisory flagged {{name}}. A reviewed isolation trial can help check the mod.",
       "startIsolation": "Back up and prepare isolation",
       "baselineReady": "First test: disable all user mods to establish a baseline.",
       "baselineTesting": "All user mods are disabled. Test Deadlock yourself, close it, then report the result.",
@@ -2028,6 +2064,7 @@
       "swapManualReplacementActions": "Swap Install and Replace in manual updates",
       "keepModBackups": "Keep removed mod files for 24 hours",
       "enableAfterDownload": "Enable mods after download",
+      "taskbarGameIndicator": "Show running game in taskbar",
       "confirmProfileUpdate": "Confirm before updating a profile",
       "promptOptionalRequirements": "Prompt for optional requirements",
       "cycleTagFilters": "Cycle tag filters",
@@ -2196,6 +2233,16 @@
       "description": "Ensure autoexec.cfg exists for crosshairs and commands.",
       "createFile": "Create File"
     },
+    "vpkCompression": {
+      "title": "Disabled VPK storage",
+      "description": "Compress or expand currently disabled VPK files with Windows file compression. Compressed files stay readable and may remain compressed after you enable them.",
+      "unavailable": "Windows file compression is unavailable for this mod folder.",
+      "compress": "Compress disabled VPKs",
+      "expand": "Expand disabled VPKs",
+      "files_one": "{{count}} eligible file",
+      "files_other": "{{count}} eligible files",
+      "result": "Processed {{processed}}, skipped {{skipped}}, failed {{failed}}."
+    },
     "toggles": {
       "expandLocker": "Start Locker list view with hero cards expanded.",
       "groupClickOpensDetails": "Clicking a mod with more than one file on Installed opens its GameBanana page. Off opens the file picker.",
@@ -2205,6 +2252,7 @@
       "swapManualReplacementActions": "Make Replace the main action and Install the icon button when choosing manual replacements.",
       "keepModBackups": "Back up updated, replaced, and deleted mod files. Restore them as disabled files from a mod's Backups menu. Backups older than 24 hours are removed at startup. Turning this off stops new backups.",
       "enableAfterDownload": "Enable mods as soon as they finish downloading. Stays disabled if no slot is free.",
+      "taskbarGameIndicator": "Show a play badge on Grimoire's Windows taskbar icon while Deadlock is running.",
       "confirmProfileUpdate": "Confirm before overwriting a profile's saved mods. Off overwrites immediately.",
       "promptOptionalRequirements": "Show the requirements dialog when enabling a mod with optional or recommended requirements too.",
       "cycleTagFilters": "Left-click Installed tags to cycle through included, excluded, and unselected. Right-click clears a selected tag.",
@@ -2450,6 +2498,9 @@
         "street": "Street"
       },
       "followHint": "Move your cursor over the scene: the crosshair follows it",
+      "testSpread": "Test spread",
+      "stopSpread": "Reset spread",
+      "spreadHint": "Illustrative spread motion. It does not change your crosshair settings.",
       "pinned": "Pinned",
       "pinTitle": "Keep the mod manager window on top of the game for quick adjustments",
       "pinWindow": "Pin Window",
@@ -2967,7 +3018,17 @@
       "resize": "Resize",
       "unavailable": "No 3D preview for this file",
       "clips": "Clips",
-      "allClips": "All"
+      "allClips": "All clips",
+      "modelSource": "Model source",
+      "stockSkin": "Stock skin",
+      "modSkin": "Modded skin",
+      "animationSource": "Animation source",
+      "stockMotion": "Stock animation",
+      "loadingStock": "Loading stock animation…",
+      "modMotion": "Modded animation",
+      "stockClipUnavailable": "This clip has no playable match at the same path in the base game.",
+      "partialClipBinding": "Some animation tracks do not match this skin. The preview plays the tracks that match.",
+      "restart": "Restart animation"
     },
     "card": {
       "soundPreview": "Sound Preview",
@@ -3004,7 +3065,7 @@
       "variantStatusTitle": "{{labels}} - click card to choose files",
       "variantFilesTitle": "{{labels}} (right-click the card to choose files)",
       "revealInFolder": "Reveal in folder",
-      "soloLaunch": "Test in-game",
+      "soloLaunch": "Launch with only this mod",
       "openDoorStuck": "Open in Door Stuck",
       "preview3d": "3D preview of {{name}}",
       "pinPreview": "3D preview",
@@ -3012,6 +3073,33 @@
       "openAuthorPageFailed": "Couldn't open author page: {{error}}",
       "installedAt": "Installed {{date}}",
       "gridMetaTitle": "{{file}} | {{size}} | installed {{date}}"
+    },
+    "removed": {
+      "trashed": "Trashed",
+      "withheld": "Withheld",
+      "private": "Private",
+      "trashedTitle": "This mod was removed from GameBanana.",
+      "trashedByAuthorTitle": "The author removed this mod from GameBanana.",
+      "trashedByModeratorTitle": "A GameBanana moderator removed this mod.",
+      "withheldTitle": "GameBanana moderators are holding this mod back until its author fixes a problem.",
+      "privateTitle": "The author made this mod private on GameBanana.",
+      "reason": "Reason given: {{reason}}",
+      "goneNote": "Your copy still works. It can no longer be updated or downloaded again.",
+      "hiddenNote": "Your copy still works. It can't be updated or downloaded again until it comes back.",
+      "filter": "Removed from GameBanana",
+      "filterTitle": "Show only mods whose GameBanana page was trashed, withheld or made private"
+    },
+    "trial": {
+      "action": "Try for one launch",
+      "title": "Try {{name}} for one launch?",
+      "message": "Start Deadlock with this mod added to your setup. It may overlap files from other mods. Grimoire restores your setup after Deadlock closes and resumes the restore check if you reopen Grimoire.",
+      "replaced": "Temporarily disabled variants",
+      "overlaps": "Shares game files with {{names}}.",
+      "moreOverlaps": "Plus {{count}} more.",
+      "incomplete": "Some archives could not be checked for shared game files.",
+      "started": "One-launch trial started. Exit Deadlock to restore your setup.",
+      "restored": "Restored your setup after the one-launch trial.",
+      "restoreFailed": "The one-launch setup needs attention. Open Recovery to review it."
     },
     "solo": {
       "banner": "Testing {{name}} solo: every other mod is disabled.",
@@ -3985,6 +4073,9 @@
       "deleteMessage": "This removes the cursor pack from Grimoire. If it is the active one, the default cursors come back."
     },
     "abilityPreview": {
+      "repeatThree": "Play three times",
+      "playSelectedSound": "Play selected sound",
+      "playStockSound": "Play stock sound",
       "open": "Preview abilities",
       "title": "{{hero}} ability inspection",
       "hint": "Experimental animation and sound audition with a shared playback timeline. Uses the viewer’s selected outfit and applied slot sound when available. Source 2 cast effects are not reproduced.",
@@ -4017,6 +4108,10 @@
       "baseSkin": "Model source: base-game outfit",
       "skinFallback": "The full outfit stack could not export. This uses the same selected single-outfit fallback as the viewer.",
       "appliedSound": "Sound source: applied Locker slot",
+      "previewSources": "Preview source files",
+      "modelEntry": "Exact model entry: {{entry}}",
+      "modelInputs": "Model export inputs: {{names}}",
+      "soundVpk": "Auditioned sound VPK: {{name}}",
       "baseSound": "Sound source: base game (no Locker slot selection)",
       "tuningHint": "Uses the slot’s saved pitch and volume. Playback speed changes the whole audition; sound pitch remains a separate setting.",
       "source": "Audition source",
@@ -4055,6 +4150,11 @@
   },
   "profiles": {
     "loading": "Loading profiles...",
+    "notes": {
+      "label": "Private notes",
+      "add": "Add notes",
+      "edit": "Edit notes"
+    },
     "thisProfile": "this profile",
     "updated": "Updated",
     "errors": {
@@ -4196,6 +4296,9 @@
       "noMatches": "No enabled entries can be matched. Cancel and repair the profile or install its missing mods first.",
       "partial": "Applied the reviewed matches. Skipped saved entries: {{count}}. This setup is not marked as a complete profile.",
       "mappingHint": "Choose a local replacement explicitly, then review the updated counts. Mappings apply only to this operation; the saved profile is unchanged.",
+      "copyReport": "Copy compatibility report",
+      "reportCopied": "Report copied.",
+      "reportCopyFailed": "Could not copy the report.",
       "mappingFailed": "The mapping is stale, unavailable, or uses a local mod twice. Review your selection again.",
       "mapEntry": "Local replacement for {{name}}",
       "keepResolution": "Keep automatic resolution"
@@ -4215,11 +4318,14 @@
       "missing": "Missing file",
       "changed": "File contents changed",
       "ambiguous": "Multiple matching files",
+      "chatWheelBound": "Unbind its custom menus in Deadlock and disable the wheel before restoring this setup.",
       "restored": "Local state restored.",
       "loadFailed": "Could not load local restore points.",
       "previewFailed": "Could not preview this restore point.",
       "restoreFailed": "Restore failed. {{error}}",
       "retainedBytes": "VPK and chunk copies retained",
+      "includesLocker": "Includes applied Locker cards, sounds, colors, and skins",
+      "replaceLocker": "This also restores the saved applied Locker cards, sounds, colors, and skins.",
       "identityOnly": "Legacy restore point: original files must still exist",
       "isolationPoint": "Before assisted isolation"
     }
@@ -4574,6 +4680,7 @@
     "unmerge": "Unmerge"
   },
   "multiVpk": {
+    "archiveRoot": "Archive root",
     "uncheckHint": "Uncheck any you don't want to install.",
     "title": "Multiple VPKs in archive",
     "deselectAll": "Deselect all",
@@ -5411,6 +5518,28 @@
   },
   "browser": {
     "addressPlaceholder": "Enter a web address",
+    "bookmarks": {
+      "add": "Bookmark this page",
+      "edit": "Edit bookmark",
+      "editNamed": "Edit {{title}}",
+      "manage": "Bookmarks",
+      "bar": "Bookmarks bar",
+      "showBar": "Show bookmarks bar",
+      "pin": "Show on bookmarks bar",
+      "emptyBar": "Bookmark a page to add it here.",
+      "search": "Search bookmarks",
+      "empty": "Use the star next to the address bar to save a page.",
+      "noMatches": "No bookmarks match your search.",
+      "unfiled": "Unfiled",
+      "name": "Name",
+      "url": "Address",
+      "folder": "Folder",
+      "invalidUrl": "Enter a full HTTP or HTTPS address without sign-in credentials.",
+      "duplicate": "That address is already bookmarked.",
+      "storage": "Could not save changes to your bookmarks.",
+      "remove": "Remove bookmark",
+      "confirmRemove": "Confirm removal"
+    },
     "back": "Back",
     "forward": "Forward",
     "reload": "Reload",
@@ -5494,16 +5623,45 @@
       "confirm_one": "Remove add-on",
       "confirm_other": "Remove {{count}} add-ons"
     },
-    "newWheelDraft": "New wheel draft: this is not installed yet. Save & install creates the managed add-on.",
+    "newWheelDraft": "Draft only. Activate it when you want Deadlock to load it.",
     "loadSelected": "Load selected",
     "openVpk": "Open VPK…",
-    "helpNote": "Only VPKs made by ChatLane can be opened. The embedded chatlane.yml is preserved on every save. Installation happens only when you choose Save & install.",
+    "helpNote": "Open a VPK with embedded ChatLane YAML to edit it. Exporting preserves that YAML.",
     "validationChecking": "Checking YAML with ChatLane…",
     "validationValid": "ChatLane YAML is valid. Nothing has been installed.",
     "nameLabel": "Name",
     "yamlLabel": "ChatLane YAML",
     "validationNote": "Validation happens in ChatLane before any add-on is installed.",
-    "saveAndInstall": "Save & install",
+    "saveDraft": "Save draft",
+    "draftSaved": "Draft saved locally.",
+    "exportVpk": "Export VPK",
+    "vpkExported": "Chat Wheel VPK exported.",
+    "activate": "Activate in Deadlock",
+    "activateUnbound": "I unbound the menus. Activate.",
+    "confirmActivation": "Activate this wheel for your next modded launch. Bind custom menus in Deadlock after it loads.",
+    "confirmMenuChanges": "This edit can change the IDs of existing custom menus. Unbind all custom menus in Deadlock while the old wheel is still active, then close the game before activating this edit.",
+    "wheelActivated": "Wheel enabled for the next modded launch.",
+    "enabledProviders": "Enabled managed wheels: {{names}}",
+    "noEnabledWheel": "No managed wheel is enabled.",
+    "unknownCommands": "Some commands are outside the pinned catalog",
+    "unknownCommandsDetail": "These entries stay in the YAML. The converter ignores unknown override names. Verify unrecognized menu commands in Deadlock before relying on them.",
+    "inspector": {
+      "title": "Chat Wheel sources and recovery",
+      "scan": "Inspect wheel providers",
+      "failed": "Could not inspect Chat Wheel providers.",
+      "noGame": "Set a Deadlock installation path first.",
+      "unknownMounts": "Game search order could not be read.",
+      "noProvider": "No installed mod claims the Chat Wheel resource.",
+      "disabled": "Disabled",
+      "mounted": "Enabled with a configured mount",
+      "firstMounted": "First enabled provider in the known mod mount order",
+      "mountUnconfirmed": "Enabled, but its mount could not be confirmed",
+      "noYaml": "This provider has no readable ChatLane configuration.",
+      "menu": "Option {{id}} · {{menu}}",
+      "recovery": "If Settings or Chat Wheel crashes after a game update, restore the previous compatible wheel and launch modded. Unbind its custom menus in Deadlock before removing it.",
+      "consoleTitle": "ChatLane’s documented console fallback",
+      "consoleInstructions": "If you cannot open Settings, open the Deadlock console. Run the command for each affected slot only. This resets the slot. Verify the wheel in Settings afterwards."
+    },
     "dialogTitle": "Open ChatLane VPK",
     "wheelName": "Wheel name",
     "menus": "Menus and commands",
@@ -5865,7 +6023,9 @@
     "settings": {
       "description": "Let deadlockforge.net send freshly forged mods straight to Grimoire, so you do not have to download and move the file yourself. Grimoire listens only on your own machine, accepts requests only from deadlockforge.net, and always asks before installing anything.",
       "toggleLabel": "Allow DeadlockForge 1-click installs",
-      "listening": "Listening on 127.0.0.1:{{port}}",
+      "openTextureForge": "Open Texture Forge",
+      "waitingForForge": "Listening on port {{port}}. Waiting for a Forge connection.",
+      "probeReceived": "Forge reached Grimoire on port {{port}}.",
       "notListening": "Not listening"
     },
     "enable": {
@@ -6068,6 +6228,29 @@
     "requiredBy": "Requires this mod"
   },
   "overlap": {
+    "focus": {
+      "open": "Show overlaps for this mod",
+      "back": "Back to Installed",
+      "showAll": "Show all overlaps",
+      "empty": "This mod has no active overlaps."
+    },
+    "localization": {
+      "title": "Merge localization",
+      "description": "Choose which text to use, then export one VPK. Import it as a local mod and give it higher load priority than the source mods.",
+      "loading": "Comparing mod text with the game files…",
+      "chooseSingle": "Choose all changes with one candidate",
+      "keepStockForRemaining": "Keep game text for the rest",
+      "chooseText": "Choose text",
+      "stockMissing": "Keep game text (token absent)",
+      "stock": "Game: {{text}}",
+      "candidate": "{{names}}: {{text}}",
+      "page": "Page {{page}} of {{total}}",
+      "previous": "Previous",
+      "next": "Next",
+      "progress": "{{chosen}} of {{total}} chosen",
+      "export": "Export VPK",
+      "saved": "Saved localization VPK to {{path}}"
+    },
     "title": "Overlap",
     "about": "This shows if overlapping files are present in any mods. This feature is really only needed if you run a million mods and need to see what has shared files. The creator of Grimoire keeps this option turned off via <settingsLink>Settings</settingsLink>.",
     "errorTitle": "Couldn't check for overlap",

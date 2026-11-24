@@ -27,7 +27,7 @@ class FakeAudioContext {
   });
 }
 
-function fixture(overrides: { sound?: boolean; pitch?: number; fetchAudio?: (url: string, signal: AbortSignal) => Promise<ArrayBuffer> } = {}) {
+function fixture(overrides: { sound?: boolean; pitch?: number; repetitions?: 1 | 3; fetchAudio?: (url: string, signal: AbortSignal) => Promise<ArrayBuffer> } = {}) {
   const scene = new THREE.Object3D();
   const clip = new THREE.AnimationClip('cast', 4, [new THREE.NumberKeyframeTrack('.position[x]', [0, 4], [0, 40])]);
   const context = new FakeAudioContext();
@@ -35,7 +35,7 @@ function fixture(overrides: { sound?: boolean; pitch?: number; fetchAudio?: (url
   const change = vi.fn();
   const controller = new AbilityPlaybackController({
     scene, clip, soundUrl: overrides.sound === false ? null : 'grimoire-hero://audio/cast.wav',
-    pitch: overrides.pitch, volumeDb: -6, onChange: change,
+    pitch: overrides.pitch, repetitions: overrides.repetitions, volumeDb: -6, onChange: change,
     createAudioContext: () => context as unknown as AudioContext,
     fetchAudio: overrides.fetchAudio ?? (async () => new ArrayBuffer(2)), now: () => elapsed,
   });
@@ -43,6 +43,19 @@ function fixture(overrides: { sound?: boolean; pitch?: number; fetchAudio?: (url
 }
 
 describe('ability playback with a real Three.AnimationMixer', () => {
+  it('runs three tuned casts and waits for each sound tail', async () => {
+    const f = fixture({ repetitions: 3, pitch: 1.25 });
+    await f.controller.play();
+    f.advance(5); f.controller.update();
+    expect(f.context.sources).toHaveLength(1);
+    for (const seconds of [1.5, 6.5, 6.5]) {
+      f.advance(seconds);
+      f.controller.update();
+    }
+    expect(f.context.sources.map(source => source.playbackRate.value)).toEqual([1.25, 1.25, 1.25]);
+    expect(f.controller.getSnapshot().status).toBe('finished');
+    f.controller.dispose();
+  });
   it('waits for decoded sound before starting either track', async () => {
     let decode!: (buffer: AudioBuffer) => void;
     const f = fixture();

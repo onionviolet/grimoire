@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle, CircleHelp, EyeOff, RefreshCw, Search, X } from 'lucide-react';
 import { Trans, useTranslation } from 'react-i18next';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { focusModPath } from '../lib/provenance';
 import { useScrollRestore } from '../lib/useScrollRestore';
 import {
@@ -29,6 +29,8 @@ import { useAppStore } from '../stores/appStore';
 import { showToast } from '../stores/toastStore';
 import { modLoadOrder } from '../lib/lockerUtils';
 import { searchConflicts } from '../lib/conflictSearch';
+import { deriveVariantLabel } from '../lib/customModImport';
+import { installedVariantGroupKey } from '../lib/localVariantEligibility';
 import { Button, IconButton } from '../components/common/ui';
 import { Input } from '../components/common/forms';
 import { Skeleton } from '../components/common/Skeleton';
@@ -36,6 +38,7 @@ import { PageHeader, EmptyState, ConfirmModal, PageLayout } from '../components/
 import OverlapCard, { type OverlapMod } from '../components/overlap/OverlapCard';
 import IgnoredOverlaps, { type IgnoredTab } from '../components/overlap/IgnoredOverlaps';
 import OverlapExplainer from '../components/overlap/OverlapExplainer';
+import LocalizationMergeModal from '../components/overlap/LocalizationMergeModal';
 import { IGNORE_OVERLAP_SETTING_ID, type SettingsLocationState } from '../components/settings/settingsHighlight';
 
 function normalizeIdentityPart(value: string): string {
@@ -115,8 +118,14 @@ function OverlapSkeleton() {
 export default function Overlap() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const { state } = useLocation();
+  const [params, setParams] = useSearchParams();
+  const focusedIds = useMemo(() => new Set(params.getAll('mod')), [params]);
   const loadMods = useAppStore((s) => s.loadMods);
   const [conflicts, setConflicts] = useState<ModConflict[]>([]);
+  const focusedConflicts = useMemo(() => focusedIds.size
+    ? conflicts.filter(conflict => focusedIds.has(conflict.modA) || focusedIds.has(conflict.modB))
+    : conflicts, [focusedIds, conflicts]);
   // Keyed by both mod id and conflict identity, since ignore lists store identities.
   const [modsMap, setModsMap] = useState<Map<string, OverlapMod>>(new Map());
   // Enabled mod ids in true load order (index 0 loads first and wins).
@@ -131,6 +140,7 @@ export default function Overlap() {
   // Pair key, path or identity of the row whose action is in flight.
   const [pending, setPending] = useState<string | null>(null);
   const [disableTarget, setDisableTarget] = useState<OverlapMod | null>(null);
+  const [localizationMods, setLocalizationMods] = useState<[OverlapMod, OverlapMod] | null>(null);
   const [disabling, setDisabling] = useState(false);
   const [confirm, setConfirm] = useState<Confirm | null>(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
@@ -152,12 +162,12 @@ export default function Overlap() {
   };
   const searchNeedle = debouncedSearch.trim().toLowerCase();
   const searchResults = useMemo(() => {
-    const results = searchConflicts(conflicts, modsMap, searchNeedle);
+    const results = searchConflicts(focusedConflicts, modsMap, searchNeedle);
     // Same-slot pairs have no defined winner, so they go first.
     return results.sort(
       (a, b) => Number(b.conflict.conflictType === 'priority') - Number(a.conflict.conflictType === 'priority'),
     );
-  }, [conflicts, modsMap, searchNeedle]);
+  }, [focusedConflicts, modsMap, searchNeedle]);
   const loadIndex = useMemo(() => new Map(orderedEnabledIds.map((id, i) => [id, i])), [orderedEnabledIds]);
 
   const load = async () => {
@@ -172,14 +182,15 @@ export default function Overlap() {
           getIgnoredConflictMods(),
         ]);
 
-      const gameBananaCounts = new Map<number, number>();
+      const groupCounts = new Map<string, number>();
       for (const mod of modsResult) {
-        if (typeof mod.gameBananaId !== 'number' || mod.gameBananaId <= 0) continue;
-        gameBananaCounts.set(mod.gameBananaId, (gameBananaCounts.get(mod.gameBananaId) ?? 0) + 1);
+        const groupKey = installedVariantGroupKey(mod);
+        if (groupKey) groupCounts.set(groupKey, (groupCounts.get(groupKey) ?? 0) + 1);
       }
       const map = new Map<string, OverlapMod>();
       for (const mod of modsResult) {
-        const hasSiblingVariants = (gameBananaCounts.get(mod.gameBananaId ?? 0) ?? 0) > 1;
+        const groupKey = installedVariantGroupKey(mod);
+        const hasSiblingVariants = groupKey !== null && (groupCounts.get(groupKey) ?? 0) > 1;
         const info: OverlapMod = {
           id: mod.id,
           name: mod.name,
@@ -187,7 +198,8 @@ export default function Overlap() {
           identity: getModConflictIdentity(mod),
           thumbnailUrl: mod.thumbnailUrl,
           variant: hasSiblingVariants
-            ? mod.variantLabel?.trim() || mod.fileDescription?.trim() || mod.sourceFileName?.trim() || null
+            ? mod.variantLabel?.trim() || mod.fileDescription?.trim() || mod.sourceFileName?.trim()
+              || (mod.localGroupId ? deriveVariantLabel(mod.fileName) : null)
             : null,
           global: mod.priorityMod,
         };
@@ -345,7 +357,7 @@ export default function Overlap() {
   const hasIgnored =
     ignored.length > 0 || Object.keys(ignoredFiles).length > 0 || ignoredFilesGlobal.length > 0 || ignoredMods.length > 0;
 
-  if (conflicts.length === 0 && !hasIgnored) {
+  if (conflicts.length === 0 && !hasIgnored && !focusedIds.size) {
     return (
       <>
         <EmptyState
@@ -388,7 +400,7 @@ export default function Overlap() {
             <Button variant="ghost" icon={CircleHelp} onClick={() => setExplainerOpen(true)}>
               {t('overlap.actions.help')}
             </Button>
-            {conflicts.length > 1 && (
+            {!focusedIds.size && conflicts.length > 1 && (
               <Button
                 variant="ghost"
                 icon={EyeOff}
@@ -403,7 +415,13 @@ export default function Overlap() {
         }
       />
 
-      {conflicts.length > 0 && (
+      {focusedIds.size > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          {state?.fromInstalled && <Button variant="secondary" onClick={() => navigate(-1)}>{t('overlap.focus.back')}</Button>}
+          <Button variant="ghost" onClick={() => setParams({}, { replace: true })}>{t('overlap.focus.showAll')}</Button>
+        </div>
+      )}
+      {focusedConflicts.length > 0 && (
         <div className="flex flex-wrap items-center gap-3">
           <div className="relative min-w-0 flex-1">
             <Input
@@ -430,13 +448,15 @@ export default function Overlap() {
           </div>
           {searchNeedle && (
             <p className="text-xs text-text-secondary" role="status">
-              {t('overlap.search.resultCount', { count: searchResults.length, total: conflicts.length })}
+              {t('overlap.search.resultCount', { count: searchResults.length, total: focusedConflicts.length })}
             </p>
           )}
         </div>
       )}
 
-      {searchNeedle && searchResults.length === 0 ? (
+      {focusedIds.size > 0 && focusedConflicts.length === 0 ? (
+        <EmptyState icon={CheckCircle} title={t('overlap.focus.empty')} />
+      ) : searchNeedle && searchResults.length === 0 ? (
         <EmptyState
           icon={Search}
           title={t('overlap.search.noResults')}
@@ -492,12 +512,16 @@ export default function Overlap() {
                   }
                   isInstalled={(mod) => modsMap.has(mod.id)}
                   onOpenInInstalled={(mod) => navigate(focusModPath(mod.id))}
+                  onMergeLocalization={conflict.files?.some(path => /^resource\/localization\/.+\.txt$/i.test(path))
+                    ? () => setLocalizationMods([a, b]) : undefined}
                 />
               );
             })}
           </ul>
         )
       )}
+
+      {localizationMods && <LocalizationMergeModal mods={localizationMods} onClose={() => setLocalizationMods(null)} />}
 
       <IgnoredOverlaps
         pairs={livePairs}

@@ -19,6 +19,7 @@ import { AbilityEventDetails } from './AbilityEventDetails';
 
 interface PlaybackProps {
   playback: HeroAbilityPlayback;
+  repetitions?: 1 | 3;
   onController: (controller: AbilityPlaybackController) => void;
   onSnapshot: (controller: AbilityPlaybackController, snapshot: AbilityPlaybackSnapshot) => void;
   onFailure: (key: 'missingClip' | 'audioFailed' | 'audioResumeFailed' | 'failed') => void;
@@ -36,7 +37,7 @@ function PlaybackFailure({ onFailure }: Pick<PlaybackProps, 'onFailure'>) {
   return <p className="p-4 text-sm text-state-danger">{t('locker.abilityPreview.failed')}</p>;
 }
 
-export function AbilityPlaybackScene({ playback, gltf, onController, onSnapshot, onFailure }: PlaybackProps & { gltf: GLTF }) {
+export function AbilityPlaybackScene({ playback, gltf, repetitions, onController, onSnapshot, onFailure }: PlaybackProps & { gltf: GLTF }) {
   const scene = gltf.scene;
   const controllerRef = useRef<AbilityPlaybackController | null>(null);
   const normalization = useMemo(() => normalizeHeroPreview(scene, { bindPose: true }), [scene]);
@@ -46,6 +47,7 @@ export function AbilityPlaybackScene({ playback, gltf, onController, onSnapshot,
     let active = true;
     const controller = new AbilityPlaybackController({
       scene, clip, soundUrl: playback.soundUrl,
+      repetitions,
       pitch: playback.soundParams?.pitch, volumeDb: playback.soundParams?.volumeDb,
       onChange: snapshot => { if (active) onSnapshot(controller, snapshot); },
     });
@@ -57,7 +59,7 @@ export function AbilityPlaybackScene({ playback, gltf, onController, onSnapshot,
       catch { if (active) onFailure('audioResumeFailed'); }
     }).catch(() => { controller.dispose(); if (active) onFailure('audioFailed'); });
     return () => { active = false; controller.dispose(); controllerRef.current = null; };
-  }, [gltf.animations, scene, playback, onController, onSnapshot, onFailure]);
+  }, [gltf.animations, scene, playback, repetitions, onController, onSnapshot, onFailure]);
   useFrame(() => controllerRef.current?.update());
   return <>
     <group scale={normalization.scale}>
@@ -86,7 +88,7 @@ export default function AbilityPreview({ heroName, skinSources, fallbackSkinMeta
   const [preparingFor, setPreparingFor] = useState<string | null>(null);
   const preparing = preparingFor === context;
   const [generation, setGeneration] = useState(0);
-  const [request, setRequest] = useState<{ context: string; id: number } | null>(null);
+  const [request, setRequest] = useState<{ context: string; repetitions: 1 | 3; stockSound: boolean } | null>(null);
   const [runtimeData, setRuntimeData] = useState<{ playback: HeroAbilityPlayback; controller: AbilityPlaybackController; snapshot: AbilityPlaybackSnapshot } | null>(null);
   const runtime = runtimeData?.playback === playback ? runtimeData : null;
   const ready = runtime && runtime.snapshot.status !== 'loading' && runtime.snapshot.status !== 'disposed';
@@ -124,12 +126,20 @@ export default function AbilityPreview({ heroName, skinSources, fallbackSkinMeta
   useEffect(() => {
     if (!open || !request || request.context !== context) return;
     let active = true;
-    prepareHeroAbilityPreview(heroName, selected as 1 | 2 | 3 | 4, JSON.parse(sourceKey) as HeroAbilityPreviewOptions).then(result => {
+    const options = JSON.parse(sourceKey) as HeroAbilityPreviewOptions;
+    if (request.stockSound) options.soundMode = 'base';
+    prepareHeroAbilityPreview(heroName, selected as 1 | 2 | 3 | 4, options).then(result => {
       if (active) { setPlaybackData({ context, result }); setGeneration(value => value + 1); setPreparingFor(null); }
     }).catch(error => { if (active) { setError(String(error)); setPreparingFor(null); } });
     return () => { active = false; };
   }, [heroName, open, request, selected, sourceKey, context]);
   const ability = abilities?.find(ability => ability.slot === selected);
+  const startPreview = (repetitions: 1 | 3, stockSound = false) => {
+    setPlaybackData(null);
+    setError(null);
+    setPreparingFor(context);
+    setRequest({ context, repetitions, stockSound });
+  };
   const close = () => { runtime?.controller.dispose(); setOpen(false); setPlaybackData(null); setRuntimeData(null); setRequest(null); setPreparingFor(null); };
   return <>
     <Button size="sm" variant="secondary" onClick={() => { setOpen(true); setError(null); }}>{t('locker.abilityPreview.open')}</Button>
@@ -152,8 +162,18 @@ export default function AbilityPreview({ heroName, skinSources, fallbackSkinMeta
             <option value="">{t('locker.abilityPreview.clipAutomatic')}</option>
             {ability.clipChoices.map(name => <option key={name} value={name}>{name}</option>)}
           </Select>}
-          <Button size="sm" variant="secondary" disabled={!(clipName || ability?.clip) || preparing} isLoading={preparing} onClick={() => { setPlaybackData(null); setError(null); setPreparingFor(context); setRequest(value => ({ context, id: (value?.id ?? 0) + 1 })); }}>{t('locker.abilityPreview.play')}</Button>
-          <Button size="sm" variant="ghost" disabled={!ready} onClick={() => runtime?.controller.stop()}>{t('locker.abilityPreview.stop')}</Button>
+          <Button size="sm" variant="secondary" disabled={!(clipName || ability?.clip) || preparing} isLoading={preparing} onClick={() => startPreview(1)}>{t('locker.abilityPreview.play')}</Button>
+          {ability?.soundPath && <>
+            <Button size="sm" variant="secondary" disabled={!(clipName || ability.clip) || preparing} onClick={() => startPreview(3)}>{t('locker.abilityPreview.repeatThree')}</Button>
+            {sourceMode === 'applied' && <Button size="sm" variant="ghost" disabled={!(clipName || ability.clip) || preparing}
+              onClick={() => startPreview(request?.repetitions ?? 1, !request?.stockSound)}>
+              {request?.stockSound ? t('locker.abilityPreview.playSelectedSound') : t('locker.abilityPreview.playStockSound')}
+            </Button>}
+          </>}
+          <Button size="sm" variant="ghost" disabled={!ready && !preparing} onClick={() => {
+            if (preparing) { setRequest(null); setPreparingFor(null); }
+            else runtime?.controller.stop();
+          }}>{t('locker.abilityPreview.stop')}</Button>
           {playback && <>
             <Button size="sm" variant="secondary" disabled={!ready} onClick={() => {
               if (runtime?.snapshot.status === 'playing') runtime.controller.pause(); else playOrReplay();
@@ -173,11 +193,17 @@ export default function AbilityPreview({ heroName, skinSources, fallbackSkinMeta
           {playback.skinFallback && <p className="mb-2 text-xs text-state-warning">{t('locker.abilityPreview.skinFallback')}</p>}
           <p className="mb-2 text-xs text-text-secondary">{playback.soundSource === 'applied' ? t('locker.abilityPreview.appliedSound') : playback.soundSource === 'base' ? t('locker.abilityPreview.baseSound') : t('locker.abilityPreview.noSound')}</p>
           {playback.soundParams && <p className="mb-2 text-xs text-text-secondary">{t('locker.abilityPreview.tuningHint')}</p>}
+          {(playback.modelEntry || playback.modelInputVpks?.length || playback.soundVpk) ? <details className="mb-3 space-y-1 text-xs text-text-secondary">
+            <summary className="cursor-pointer">{t('locker.abilityPreview.previewSources')}</summary>
+            {playback.modelEntry && <p className="break-all">{t('locker.abilityPreview.modelEntry', { entry: playback.modelEntry })}</p>}
+            {!!playback.modelInputVpks?.length && <p className="break-all">{t('locker.abilityPreview.modelInputs', { names: playback.modelInputVpks.join(', ') })}</p>}
+            {playback.soundVpk && <p className="break-all">{t('locker.abilityPreview.soundVpk', { name: playback.soundVpk })}</p>}
+          </details> : null}
           <AbilityEventDetails metadata={playback.clipEvents} />
           <div className="h-96 overflow-hidden rounded-sm bg-bg-sunken"><ErrorBoundary key={generation} fallback={<PlaybackFailure onFailure={onFailure} />}>
             <Canvas camera={HERO_PREVIEW_CAMERA} gl={HERO_PREVIEW_GL} dpr={[1, 1.5]}>
               <HeroPreviewLighting bloom />
-              <Suspense fallback={null}><Playback playback={playback} onController={onController} onSnapshot={onSnapshot} onFailure={onFailure} /></Suspense>
+              <Suspense fallback={null}><Playback playback={playback} repetitions={request?.repetitions} onController={onController} onSnapshot={onSnapshot} onFailure={onFailure} /></Suspense>
               <OrbitControls makeDefault enablePan={false} minDistance={1.2} maxDistance={6} />
             </Canvas>
           </ErrorBoundary></div>

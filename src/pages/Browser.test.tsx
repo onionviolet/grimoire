@@ -6,6 +6,8 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import i18n from '../i18n';
 import { HOME_DESTINATION_URL } from '../lib/browserCatalog';
+import { BROWSER_BOOKMARKS_KEY } from '../lib/browserBookmarks';
+import { resetPref } from '../lib/uiPrefs';
 import type { BrowserWebview } from '../components/browser/webview';
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -41,7 +43,7 @@ function attachGuest() {
     guest = host.querySelector('webview') as BrowserWebview;
     let zoom = 1;
     Object.assign(guest, {
-        getURL: vi.fn(() => url), canGoBack: vi.fn(() => true), canGoForward: vi.fn(() => false),
+        getURL: vi.fn(() => url), getTitle: vi.fn(() => 'Modding reference'), canGoBack: vi.fn(() => true), canGoForward: vi.fn(() => false),
         goBack: vi.fn(), goForward: vi.fn(), reload: vi.fn(), reloadIgnoringCache: vi.fn(), stop: vi.fn(),
         findInPage: vi.fn(() => ++searchId), stopFindInPage: vi.fn(),
         getZoomFactor: vi.fn(() => zoom), setZoomFactor: vi.fn((value: number) => { zoom = value; }),
@@ -57,6 +59,8 @@ beforeEach(() => {
 });
 afterEach(async () => {
     act(() => root.unmount()); host.remove();
+    localStorage.removeItem(BROWSER_BOOKMARKS_KEY);
+    resetPref('browserBookmarkBar');
     await act(() => i18n.changeLanguage('en'));
 });
 
@@ -120,6 +124,71 @@ describe('Browser navigation lifecycle', () => {
         expect(guest.getAttribute('src')).toBe(HOME_DESTINATION_URL);
         expect(mock.grant).not.toHaveBeenCalled();
         expect(host.querySelector('[role="alert"]')?.textContent).toContain('That does not look like a web address.');
+    });
+    it.each(['localhost:8443', 'example.com:8443/path'])('opens the bare host and port %s', address => {
+        input('Enter a web address', address);
+        act(() => host.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+        expect(guest.src).toBe(new URL(`https://${address}`).href);
+        expect(host.querySelector('[role="alert"]')).toBeNull();
+    });
+});
+
+describe('Browser bookmarks', () => {
+    const shortcut = (key: string, shiftKey = false) => act(() => {
+        window.dispatchEvent(new KeyboardEvent('keydown', { key, ctrlKey: true, shiftKey, cancelable: true }));
+    });
+    const dialogButton = (label: string) => act(() => {
+        const button = [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')]
+            .find(candidate => candidate.textContent?.trim() === label);
+        expect(button, label).toBeDefined();
+        button!.click();
+    });
+    it('bookmarks a committed page by title, persists it and opens it from the bar', () => {
+        url = 'https://example.com/guide#mods';
+        event('dom-ready');
+        shortcut('d');
+        expect(document.querySelector('[role="dialog"] input')?.getAttribute('value')).toBe('Modding reference');
+        dialogButton('Save');
+        expect(JSON.parse(localStorage.getItem(BROWSER_BOOKMARKS_KEY)!)).toEqual([
+            { title: 'Modding reference', url, folder: '', onBar: true },
+        ]);
+        expect(host.querySelector('[aria-label="Edit bookmark"]')?.getAttribute('aria-pressed')).toBe('true');
+        shortcut('B', true);
+        act(() => root.unmount()); root = createRoot(host); render(); attachGuest();
+        expect(host.querySelector('[aria-label="Bookmarks bar"]')).not.toBeNull();
+        click('Modding reference');
+        expect(guest.src).toBe(url);
+    });
+
+    it('filters the manager by folder and removes an edited bookmark with confirmation', () => {
+        localStorage.setItem(BROWSER_BOOKMARKS_KEY, JSON.stringify([
+            { title: 'Modding reference', url: 'https://example.com/guide', folder: 'Guides', onBar: true },
+            { title: 'Build tool', url: 'https://example.com/tool', folder: 'Tools', onBar: false },
+        ]));
+        act(() => root.unmount()); root = createRoot(host); render(); attachGuest();
+        click('Bookmarks');
+        const search = document.querySelector<HTMLInputElement>('[aria-label="Search bookmarks"]')!;
+        act(() => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(search, 'guides');
+            search.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        expect(document.querySelector('[aria-label="Edit Build tool"]')).toBeNull();
+        act(() => document.querySelector<HTMLButtonElement>('[aria-label="Edit Modding reference"]')!.click());
+        dialogButton('Remove bookmark'); dialogButton('Confirm removal');
+        expect(JSON.parse(localStorage.getItem(BROWSER_BOOKMARKS_KEY)!)).toHaveLength(1);
+        expect(document.body.textContent).toContain('No bookmarks match your search.');
+    });
+
+    it('focuses and selects the address, and only bypasses cache on Shift+Reload', () => {
+        event('dom-ready');
+        shortcut('l');
+        const field = host.querySelector<HTMLInputElement>('[aria-label="Enter a web address"]')!;
+        expect(document.activeElement).toBe(field);
+        expect(field.selectionEnd).toBe(field.value.length);
+        click('Reload');
+        expect(guest.reload).toHaveBeenCalledOnce();
+        act(() => host.querySelector('[aria-label="Reload"]')!.dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true })));
+        expect(guest.reloadIgnoringCache).toHaveBeenCalledOnce();
     });
 });
 

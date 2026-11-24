@@ -1,4 +1,4 @@
-import { useId } from 'react';
+import { useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ProfileApplyPreview } from '../../types/electron';
 import { Modal, ModalBody, ModalFooter } from '../common/Modal';
@@ -15,6 +15,17 @@ export default function ProfileApplyReview({ preview, busy, onClose, onApply, on
 }) {
     const { t } = useTranslation();
     const titleId = useId();
+    const [reportStatus, setReportStatus] = useState<'copied' | 'error'>();
+    const copyReport = async () => {
+        const lines = [t('profiles.review.title', { name: preview.profileName }), ...preview.issues.map(entry =>
+            `${entry.fileName} (${t(`profiles.review.status.${entry.status}`)})${entry.modName ? ` · ${entry.modName}` : ''}`)];
+        try {
+            await navigator.clipboard.writeText(lines.join('\n'));
+            setReportStatus('copied');
+        } catch {
+            setReportStatus('error');
+        }
+    };
     const available = preview.entries.filter((entry) => entry.enabled && entry.modId).length;
     return (
         <Modal onClose={onClose} labelledBy={titleId} dismissable={!busy} size="lg">
@@ -42,6 +53,10 @@ export default function ProfileApplyReview({ preview, busy, onClose, onApply, on
                         </li>
                     ))}
                 </ul>
+                {!!preview.issues.length && <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <Button size="sm" variant="secondary" disabled={busy} onClick={() => void copyReport()}>{t('profiles.review.copyReport')}</Button>
+                    {reportStatus && <span role="status" className="text-sm text-text-secondary">{reportStatus === 'copied' ? t('profiles.review.reportCopied') : t('profiles.review.reportCopyFailed')}</span>}
+                </div>}
                 {available === 0 && <p className="mt-3 text-sm text-state-warning">{t('profiles.review.noMatches')}</p>}
             </ModalBody>
             <ModalFooter>

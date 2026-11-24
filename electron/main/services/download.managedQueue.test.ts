@@ -7,6 +7,7 @@ import type { BrowserWindow } from 'electron';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DownloadModArgs } from '../../../src/types/electron';
 import { buildCategoryPaths, type CategoryPaths } from '../../../src/lib/categoryPaths';
+import { runExclusiveModMutation } from './mods';
 
 const harness = vi.hoisted(() => ({
     userData: '',
@@ -77,7 +78,9 @@ import {
     isDownloadTargetQueued,
     moveQueuedDownload,
     prioritizeQueuedDownload,
+    removeWaitingDownload,
     resolveMultiVpkPick,
+    retryDownloadJob,
 } from './download';
 
 function deferred<T = void>() {
@@ -585,6 +588,41 @@ describe('managed download FIFO', () => {
         expect(harness.send.mock.calls.filter(([channel]) => channel === 'download-error')).toHaveLength(1);
     });
 
+    it('allows serialized mod mutations while a network download is still active', async () => {
+        const transfer = controlledTransfer(97);
+        const download = downloadMod('/game', args(97), mainWindow);
+        const releaseMutation = deferred();
+        const order: string[] = [];
+        const mutations: Promise<unknown>[] = [];
+        try {
+            await vi.waitFor(() => expect(transfer.requests).toHaveLength(1));
+            expect(getCurrentDownload()).toMatchObject({ modId: 97, phase: 'downloading' });
+
+            // This is the real lock used by enableMod and disableMod, rather
+            // than the mocked auto-enable hook used by download fixtures.
+            mutations.push(runExclusiveModMutation(async () => {
+                order.push('first-start');
+                await releaseMutation.promise;
+                order.push('first-end');
+            }));
+            await vi.waitFor(() => expect(order).toEqual(['first-start']));
+            mutations.push(runExclusiveModMutation(async () => { order.push('second'); }));
+            await Promise.resolve();
+            expect(order).toEqual(['first-start']);
+
+            releaseMutation.resolve();
+            await Promise.all(mutations);
+            expect(order).toEqual(['first-start', 'first-end', 'second']);
+            expect(getCurrentDownload()).toMatchObject({ modId: 97, phase: 'downloading' });
+            expect(completions()).toEqual([]);
+        } finally {
+            releaseMutation.resolve();
+            finishTransfer(transfer);
+            await Promise.allSettled([...mutations, download]);
+        }
+        expect(completions()).toEqual([97]);
+    });
+
     it('moves one waiting job without replacing newer enqueues and rejects stale or active targets', async () => {
         const release = deferred();
         const first = enqueueManagedDownload('/game', args(40), mainWindow, {
@@ -937,6 +975,34 @@ describe('managed download FIFO', () => {
         } finally {
             finishTransfer(transfer);
             await Promise.allSettled([first, second, chosen]);
+        }
+    });
+
+    it('returns a removed file ahead of its surviving queue neighbor without cancelling the active transfer', async () => {
+        const transfer = controlledTransfer(190);
+        const active = downloadMod('/game', args(190), mainWindow).catch((error: unknown) => error);
+        const removed = downloadMod('/game', args(191), mainWindow).catch((error: unknown) => error);
+        const next = downloadMod('/game', args(192), mainWindow).catch((error: unknown) => error);
+        let requeued: ReturnType<typeof downloadMod> | undefined;
+        try {
+            const activeId = getCurrentDownload()!.jobId!;
+            const removedId = queuedJobId(191);
+            const nextId = queuedJobId(192);
+            expect(removeWaitingDownload(activeId, '/game')).toEqual({ removed: false });
+            const result = removeWaitingDownload(removedId, '/game');
+            expect(result).toEqual({ removed: true, jobId: removedId, successors: [nextId] });
+            expect(isDownloadCancelled(await removed)).toBe(true);
+            requeued = retryDownloadJob(removedId, '/game', mainWindow, result.successors);
+            void requeued.catch(() => {});
+            expect(getDownloadQueue().map(item => item.jobId)).toEqual([removedId, nextId]);
+            expect(getCurrentDownload()?.jobId).toEqual(activeId);
+            expect(() => retryDownloadJob(removedId, '/game', mainWindow, result.successors)).toThrow();
+        } finally {
+            cancelQueuedDownloads();
+            await vi.waitFor(() => expect(getCurrentDownload()?.progress?.downloaded).toBe(64 * 1024));
+            cancelActiveDownload();
+            finishTransfer(transfer);
+            await Promise.allSettled([active, removed, next, requeued]);
         }
     });
 

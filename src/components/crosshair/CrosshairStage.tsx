@@ -16,6 +16,7 @@ interface CrosshairStageProps {
   /** Magnification of the whole stage (scene and crosshair together). */
   zoom: number;
   background: StageBackground;
+  spreadPreview?: boolean;
 }
 
 /**
@@ -35,7 +36,7 @@ interface CrosshairStageProps {
  * the scene, the crosshair, and the hint. `inset-0` resolves against the
  * parent's used size, so it holds regardless of how that height was arrived at.
  */
-export default memo(function CrosshairStage({ scale, zoom, background }: CrosshairStageProps) {
+export default memo(function CrosshairStage({ scale, zoom, background, spreadPreview }: CrosshairStageProps) {
   const { t } = useTranslation();
   const stageRef = useRef<HTMLDivElement>(null);
   const followRef = useRef<HTMLDivElement>(null);
@@ -59,7 +60,7 @@ export default memo(function CrosshairStage({ scale, zoom, background }: Crossha
   // wide gap at 3x zoom isn't clipped by a fixed-size backing store (and a
   // tiny dot doesn't allocate a huge one). Kept EVEN so the canvas centre sits
   // on a whole pixel and the snapped device pixels land crisp.
-  const canvasSize = Math.min(1400, Math.max(120, 2 * Math.ceil(reach * scale * deviceToCss)));
+  const canvasSize = Math.min(1400, Math.max(120, 2 * Math.ceil((reach + (spreadPreview ? 12 : 0)) * scale * deviceToCss)));
 
   const write = useCallback(() => {
     frameRef.current = null;
@@ -145,7 +146,7 @@ export default memo(function CrosshairStage({ scale, zoom, background }: Crossha
           transitionDuration: `${RECENTER_MS}ms`,
         }}
       >
-        <CrosshairPreview size={canvasSize} scale={scale} zoom={deviceToCss} transparent />
+        <CrosshairPreview size={canvasSize} scale={scale} zoom={deviceToCss} transparent spreadPreview={spreadPreview} />
       </div>
 
       {/* Fades out on hover: once the crosshair is tracking, the hint has done

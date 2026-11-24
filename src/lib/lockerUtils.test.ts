@@ -39,6 +39,18 @@ function mod(over: Partial<Mod> & { id: string; metaKey: string; priority: numbe
  * folder; this used to be mirrored by hand on the Conflicts page and went stale.
  */
 describe('tag selections in Locker', () => {
+  it('places a mixed skin pack in the audio hero shelf when its VPK supplies an ability slot', () => {
+    const pack = mod({ id: 'pack', metaKey: 'pack.vpk', priority: 1, lockerHero: 'Haze',
+      tagOverrides: { base: ['Skins'] }, abilitySounds: {
+        dominantHero: 'Viscous', abilitySoundFiles: 1, voSoundFiles: 0, shipsHeroVsndevts: false,
+        perHero: [{ hero: 'Viscous', slots: { 1: 1 }, unclassified: 0, voFiles: 0, total: 1 }],
+      },
+    });
+    const roster = buildHeroList(skinCategories);
+    expect(groupModsByCategory([pack], roster).map.get(33325)).toBeUndefined();
+    expect(groupModsByCategory([pack], roster, true).map.get(33325)).toEqual([pack]);
+  });
+
   it('routes every selected Base destination and keeps cleared tags out of Locker', () => {
     const target = mod({ id: 'tags', metaKey: 'tags.vpk', priority: 1, sourceSection: 'Mod',
       categoryName: 'Skins', lockerHeroes: ['Haze'], tagOverrides: { base: ['HUD', 'Maps'], heroes: ['Ivy'] } });

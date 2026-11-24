@@ -7,6 +7,15 @@ waves and are kept as shipped history; the gap and verification sections were
 rewritten on 2026-09-01, when eleven entries turned out to have shipped during
 v1.27 and v1.27.1 without ever being trued up here.
 
+For the November 23 source and Windows verification, see the
+[current project state](../.planning/STATE.md),
+[feature audit](./feature-audit-2026-11-23.md), and
+[Discord implementation follow-through](./discord-feature-requests-audit-2026-11-23.md#implementation-follow-through).
+
+The [November 24 internal release note](./internal-release-note-2026-11-24.md)
+reconciles the candidate since v1.28.2, including the player improvements,
+3D playback findings, and remaining release checks.
+
 This is an implementation inventory, not a substitute for in-game validation.
 It holds **no forward plan**: see [.planning/ROADMAP.md](../.planning/ROADMAP.md)
 for the current milestone and [.planning/BACKLOG.md](../.planning/BACKLOG.md)
@@ -27,7 +36,7 @@ diffs, stock/applied animation audition controls, reviewed download-cache cleanu
 release-channel selection and optional publisher-certificate hooks. These are
 source changes, not a signed or published release.
 
-The current source takes upstream through v1.30.1. The intake and verification
+The October 3 source took upstream through v1.30.1. The intake and verification
 record is [upstream-absorption-1.30.md](./upstream-absorption-1.30.md).
 
 - Profile apply previews missing, changed, replaced and ambiguous entries from

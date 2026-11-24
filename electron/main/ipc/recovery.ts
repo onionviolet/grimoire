@@ -4,11 +4,15 @@ import { scanInstallationHealth } from '../services/installationHealth';
 import { getSetupTestHistory, recordSetupTest } from '../services/setupTestHistory';
 import { previewDownloadCache, cleanDownloadCache } from '../services/downloadCacheManagement';
 
-let pending: ReturnType<typeof scanInstallationHealth> | null = null;
+const pendingScans = new Map<ReturnType<typeof getActiveDeadlockPath>, ReturnType<typeof scanInstallationHealth>>();
 ipcMain.handle('recovery:scan', () => {
-  // Repeated clicks share one read so a large library cannot flood the main process.
-  if (!pending) pending = scanInstallationHealth(getActiveDeadlockPath()).finally(() => { pending = null; });
-  return pending;
+  const path = getActiveDeadlockPath();
+  const running = pendingScans.get(path);
+  if (running) return running;
+  // A scan for the previous game path may still be running after a settings change.
+  const scan = scanInstallationHealth(path).finally(() => { pendingScans.delete(path); });
+  pendingScans.set(path, scan);
+  return scan;
 });
 
 import { getInterruptedProfileRecovery, recoverInterruptedProfileRecovery } from '../services/profileRecovery';

@@ -11,6 +11,7 @@ import {
 import { allHeroIdentities } from './heroIdentity';
 import { HERO_SOUND_CODENAMES } from '../../electron/main/services/heroSoundCodenames';
 import { HERO_ABILITY_SLOTS } from '../../electron/main/services/heroAbilitySlots';
+import { classifyAbilitySounds, getHeroAbilitySlots } from '../../electron/main/services/abilitySounds';
 
 /**
  * The join is data, so the tests are the only thing standing between it and a
@@ -74,7 +75,17 @@ describe('the hero codename join', () => {
       (hero) => hero.sound && !HERO_ABILITY_SLOTS[hero.sound],
     ).map((hero) => hero.displayName);
     // This batch ships VO directories, but no verified ability sound catalog.
-    expect(withoutSlots).toEqual(['Baba', 'Deadman Danny', 'Nurse Harrow', 'Rat King', 'Solomon', 'Violet']);
+    expect(withoutSlots).toEqual(['Baba', 'Deadman Danny', 'Nurse Harrow', 'Solomon', 'Violet']);
+  });
+
+  it('classifies both clips in the mixed Rat King pack under his ultimate', () => {
+    const classified = classifyAbilitySounds([
+      'sounds/abilities/ratking/ratking_charge_cast_delay_01.vsnd_c',
+      'sounds/abilities/ratking/ratking_charge_explosion_01.vsnd_c',
+      'models/ratking/materials/flag.vtex_c',
+    ]);
+    expect(classified.perHero).toMatchObject([{ hero: 'Rat King', slots: { 4: 2 }, unclassified: 0 }]);
+    expect(getHeroAbilitySlots('Rat King')[3]).toMatchObject({ slot: 4, token: 'standard_bearer' });
   });
 
   it('pins the six heroes whose namespaces genuinely diverge', () => {

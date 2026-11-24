@@ -12,8 +12,11 @@ import { moveSafetySnapshot, assertVpkSafety } from './modSafety';
 import { assertCanMoveLoadedGameMods, syncRunningGameModSnapshotFromMods } from './gameSessionMods';
 import { loadSettings, saveSettings } from './settings';
 import { assertRecoveryPath, hasRecoveryFile, placeRecoveryFile, pruneRecoveryFiles, retainRecoveryFile, writeRecoveryJson } from './recoveryBackup';
-import { clearRecoveryJournal, createRecoveryJournal, journalMetadataMoves, journalRecoveryMetadata, journalIsolationState, rollbackRecoveryMetadata, beginRecoveryMutation, journalRecoveryPaths, previewInterruptedRecovery, readRecoveryJournal, rollbackRecoveryJournal, type RecoveryJournal } from './recoveryJournal';
+import { clearRecoveryJournal, createRecoveryJournal, journalMetadataMoves, journalRecoveryMetadata, journalIsolationState, journalLaunchOptions, rollbackRecoveryMetadata, beginRecoveryMutation, journalRecoveryPaths, previewInterruptedRecovery, readRecoveryJournal, rollbackRecoveryJournal, type RecoveryJournal } from './recoveryJournal';
 import type { InterruptedRecovery, ProfileRecoveryPreview, ProfileRecoverySummary } from '../../../src/types/profileRecovery';
+import { applyLockerRecovery, checkLockerRecovery, isLockerRecovery, readLockerRecovery, type LockerRecovery } from './lockerRecovery';
+import { mayHaveCustomChatWheelBindings } from './chatWheel';
+import { gameSearchPaths } from './gameinfoSearchPaths';
 
 interface RecoveryMod {
   id: string;
@@ -33,6 +36,8 @@ interface RecoveryPoint extends ProfileRecoverySummary {
   autoexec: string | null;
   gameinfo: string | null;
   performanceState?: string | null;
+  locker?: LockerRecovery;
+  steamLaunchOptions?: string;
 }
 const HISTORY_LIMIT = 10;
 const MAX_CONFIG_BYTES = 4 * 1024 * 1024;
@@ -101,6 +106,10 @@ export async function captureProfileRecoveryUnlocked(deadlockPath: string, profi
   if (await readRecoveryJournal(deadlockPath)) throw new Error('Resolve interrupted recovery before creating another restore point');
   const point = await capture(deadlockPath, profileName, current);
   point.purpose = purpose;
+  if (purpose !== 'isolation') {
+    point.locker = await readLockerRecovery(deadlockPath, true);
+    point.steamLaunchOptions = loadSettings().steamLaunchOptions ?? '';
+  }
   await fs.mkdir(directory(), { recursive: true });
   await writeRecoveryJson(pointPath(point.id), point);
   await cleanupRecoveryHistory(point.id);
@@ -132,7 +141,10 @@ async function cleanupRecoveryHistory(newId: string): Promise<void> {
     const remove = points.filter(point => point.id !== newId && point.id !== protectedId).slice(HISTORY_LIMIT - 1);
     const removedIds = new Set(remove.map(point => point.id));
     const keep = new Set<string>();
-    for (const point of points.filter(point => !removedIds.has(point.id))) for (const mod of point.mods) for (const hash of mod.hashes) keep.add(hash);
+    for (const point of points.filter(point => !removedIds.has(point.id))) {
+      for (const mod of point.mods) for (const hash of mod.hashes) keep.add(hash);
+      for (const slot of Object.values(point.locker ?? {})) for (const hash of Object.values(slot.files)) keep.add(hash);
+    }
     for (const point of remove) await fs.unlink(pointPath(point.id));
     await pruneRecoveryFiles(keep);
   } catch {
@@ -153,6 +165,9 @@ async function readPoint(id: string): Promise<RecoveryPoint> {
     (point.purpose !== undefined && point.purpose !== 'isolation') || typeof point.profileName !== 'string' || typeof point.createdAt !== 'string' || !Number.isFinite(Date.parse(point.createdAt)) ||
     (point.activeProfileId !== null && typeof point.activeProfileId !== 'string') ||
     !validConfig(point.autoexec) || !validConfig(point.gameinfo) ||
+    (point.steamLaunchOptions !== undefined && (point.version !== 2 || point.purpose === 'isolation' ||
+      typeof point.steamLaunchOptions !== 'string' || point.steamLaunchOptions.length > MAX_CONFIG_BYTES || point.steamLaunchOptions.includes('\0'))) ||
+    (point.locker !== undefined && (point.version !== 2 || point.purpose === 'isolation' || !isLockerRecovery(point.locker))) ||
     (point.performanceState !== undefined && !validConfig(point.performanceState)) || point.modCount !== point.mods.length ||
     point.enabledCount !== point.mods.filter(mod => mod?.enabled === true).length) throw new Error('Invalid recovery point');
   const roots = [...getModScanRootPaths(point.deadlockPath), getDisabledPath(point.deadlockPath)].map(root => resolve(root));
@@ -177,7 +192,7 @@ async function readPoint(id: string): Promise<RecoveryPoint> {
   return point;
 }
 function summary(point: RecoveryPoint): ProfileRecoverySummary {
-  return { id: point.id, createdAt: point.createdAt, profileName: point.profileName, modCount: point.modCount, enabledCount: point.enabledCount, retainedBytes: point.version === 2, purpose: point.purpose };
+  return { id: point.id, createdAt: point.createdAt, profileName: point.profileName, modCount: point.modCount, enabledCount: point.enabledCount, retainedBytes: point.version === 2, purpose: point.purpose, includesLocker: !!point.locker };
 }
 export async function listProfileRecoveryPoints(): Promise<ProfileRecoverySummary[]> {
   const result: ProfileRecoverySummary[] = [];
@@ -188,7 +203,7 @@ export async function listProfileRecoveryPoints(): Promise<ProfileRecoverySummar
   return result.sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id));
 }
 interface ReviewedConfig { path: string; value: string | null }
-interface Resolution { configs: ReviewedConfig[]; preview: ProfileRecoveryPreview; matches: Map<RecoveryMod, Mod>; retained: RecoveryMod[] }
+interface Resolution { configs: ReviewedConfig[]; locker?: LockerRecovery; launchOptions?: string; preview: ProfileRecoveryPreview; matches: Map<RecoveryMod, Mod>; retained: RecoveryMod[] }
 async function resolvePoint(point: RecoveryPoint, deadlockPath: string, current: Mod[]): Promise<Resolution> {
   if (resolve(deadlockPath) !== point.deadlockPath) throw new Error('Recovery point belongs to a different game installation');
   const live = new Map<Mod, string[]>();
@@ -229,8 +244,27 @@ async function resolvePoint(point: RecoveryPoint, deadlockPath: string, current:
   }
   const configs: ReviewedConfig[] = [];
   for (const path of [getAutoexecPath(deadlockPath), getGameinfoPath(deadlockPath), performanceStatePath(deadlockPath)]) configs.push({ path, value: await readConfig(path) });
-  const state = { point, retained: retained.map(mod => mod.id), live: current.map(mod => ({ id: mod.id, path: mod.path, enabled: mod.enabled, hashes: live.get(mod) })), configs, activeProfileId: loadSettings().activeProfileId };
-  return { matches, retained, configs, preview: { point: summary(point), issues, canRestore: issues.length === 0,
+  const locker = point.locker ? await readLockerRecovery(deadlockPath) : undefined;
+  for (const [name, slot] of Object.entries(point.locker ?? {})) {
+    for (const hash of Object.values(slot.files)) if (!await hasRecoveryFile(hash)) {
+      issues.push({ name, reason: 'missing' });
+      break;
+    }
+  }
+  for (const mod of current) {
+    if (!await mayHaveCustomChatWheelBindings(mod)) continue;
+    const saved = [...matches].find(([, candidate]) => candidate.id === mod.id)?.[0];
+    const gameinfo = configs.find(config => config.path === getGameinfoPath(deadlockPath))?.value;
+    const readMounts = (value: string | null | undefined) => value ? gameSearchPaths(Buffer.from(value, 'base64').toString('utf8')) : null;
+    const mountOrderChanges = gameinfo !== point.gameinfo && JSON.stringify(readMounts(gameinfo)) !== JSON.stringify(readMounts(point.gameinfo));
+    if (!saved || !saved.enabled || saved.path !== mod.path || mountOrderChanges) {
+      issues.push({ name: mod.name, reason: 'chat-wheel-bound' });
+    }
+  }
+  const settings = loadSettings();
+  const launchOptions = point.steamLaunchOptions === undefined ? undefined : settings.steamLaunchOptions ?? '';
+  const state = { point, retained: retained.map(mod => mod.id), live: current.map(mod => ({ id: mod.id, path: mod.path, enabled: mod.enabled, hashes: live.get(mod) })), configs, locker, launchOptions, activeProfileId: settings.activeProfileId };
+  return { matches, retained, configs, locker, launchOptions, preview: { point: summary(point), issues, canRestore: issues.length === 0,
     reviewToken: createHash('sha256').update(JSON.stringify(state)).digest('hex'),
     recoverCount: retained.length, disableCount: current.filter(mod => mod.enabled && !used.has(mod.id)).length } };
 }
@@ -322,6 +356,7 @@ async function applyPointUnlocked(point: RecoveryPoint, deadlockPath: string, jo
       }
     }
   } finally { await fs.rm(checkRoot, { recursive: true, force: true }); }
+  if (point.locker && resolution.locker) await checkLockerRecovery(point.locker, resolution.locker);
   const afterSafety = await resolvePoint(point, deadlockPath, await scanMods(deadlockPath));
   if (afterSafety.preview.reviewToken !== token) throw new Error('Recovery review changed during safety check');
   await verifyReviewedState?.();
@@ -373,9 +408,17 @@ async function applyPointUnlocked(point: RecoveryPoint, deadlockPath: string, jo
   await writeConfig(getAutoexecPath(deadlockPath), point.autoexec, journal, reviewedValue(getAutoexecPath(deadlockPath)));
   await writeConfig(getGameinfoPath(deadlockPath), point.gameinfo, journal, reviewedValue(getGameinfoPath(deadlockPath)));
   if (point.version === 2 && point.performanceState !== undefined) await writeConfig(performanceStatePath(deadlockPath), point.performanceState, journal, reviewedValue(performanceStatePath(deadlockPath)));
+  if (point.locker && resolution.locker) await applyLockerRecovery(deadlockPath, point.locker, resolution.locker, journal);
   const settings = loadSettings();
   settings.activeProfileId = point.activeProfileId;
-  saveSettings(settings);
+  if (point.steamLaunchOptions !== undefined && resolution.launchOptions !== undefined) {
+    if ((settings.steamLaunchOptions ?? '') !== resolution.launchOptions) throw new Error('Launch options changed during recovery review');
+    await journalLaunchOptions(journal, resolution.launchOptions, point.steamLaunchOptions);
+    await beginRecoveryMutation(journal);
+    const current = loadSettings();
+    if ((current.steamLaunchOptions ?? '') !== resolution.launchOptions) throw new Error('Launch options changed during recovery');
+    saveSettings({ ...current, activeProfileId: point.activeProfileId, steamLaunchOptions: point.steamLaunchOptions });
+  } else saveSettings(settings);
 }
 export async function restoreProfileRecovery(deadlockPath: string, id: string, reviewToken: string): Promise<void> {
   return runExclusiveModMutation(async () => {

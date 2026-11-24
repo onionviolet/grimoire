@@ -1,5 +1,7 @@
 import { isLocalMod } from '../../../src/lib/localVariantEligibility';
-import { ipcMain, shell } from 'electron';
+import { dialog, ipcMain, shell } from 'electron';
+import { CHAT_WHEEL_UNBIND_REQUIRED } from '../services/chatWheel';
+import { isDeadlockRunning } from '../services/launch';
 import { listMergeRecipes, saveMergeRecipe, reviewMergeRecipe } from '../services/mergeRecipes';
 import { modSafetySnapshot } from '../services/modSafety';
 import { reserveOutputSlot } from '../services/modMerger';
@@ -45,6 +47,7 @@ import {
 import { inspectFoundrySoundWriteSet } from '../services/foundrySoundConflicts';
 import { inspectFoundryAssetSources } from '../services/foundryAssetSources';
 import { bodyModelHeroes } from '../services/heroPoseModels';
+import { animationModClips } from '../services/animationModPreview';
 import { resolveModClassification, needsModHeroDetection } from '../services/modHeroDetection';
 import { fetchCategoryTreeCached, readCachedCategoryPaths, observeCategoryTreeChanges } from '../services/gamebanana';
 import { baseTagGlobalType, categoryModelForSection, GLOBAL_MOD_TYPE_LABELS, normalizeCategoryLabel, resolveCategoryPath, type CategoryPaths } from '../../../src/lib/categoryPaths';
@@ -102,7 +105,7 @@ import { refreshEmbedAfterMetadataChange, toLocalVariantGroupMember } from '../s
 import { planLocalImport } from '../../../src/lib/customModImport';
 import type { PreparedLocalModImport, ImportCustomModArgs, ImportCustomModsBatchArgs, ImportCustomModsBatchResult, ImportCustomModResult, ImportCustomModsProgress, ImportSoulContainerGlbArgs, LocalVariantGroupTarget, PreviewSoulContainerGlbArgs, SetLocalVariantGroupResult, SoulContainerPreview, ImportSpiritUrnGlbArgs, PreviewSpiritUrnGlbArgs, SpiritUrnPreview } from '../../../src/types/electron';
 import type { VpkExportResult, HeroSoundSwapRequest, TextureReplacementRequest, FoundryForgeRequest, FoundrySoundConflictInspection, FoundryAssetSourcesInspection } from '../../../src/types/foundry';
-import type { AbilitySoundClassification, AddMergeSourcesResult, DeleteModEntry, ModSwapPlacement, DeleteModsResult, MergeSourceReplacement, ReplaceMergeSourcesResult, ApplyUnknownCustomModArgs, ApplyUnknownModMatchArgs, AssociateUnknownModArgs, EditLocalModArgs, GlobalModType, LockerHeroSource, MergeAnalysisResult, MergeModsArgs, Mod as WireMod, SoulContainerImportInfo, SoundSwapInfo, UrnImportInfo, UnmergeModResult, ExtractMergeSourceResult, UnknownModFileList, ImprintPreflightResult, ImprintDetails, PeekImprintResult, ModelCompatibilityReport } from '../../../src/types/mod';
+import type { AddMergeSourcesResult, DeleteModEntry, ModSwapPlacement, DeleteModsResult, MergeSourceReplacement, ReplaceMergeSourcesResult, ApplyUnknownCustomModArgs, ApplyUnknownModMatchArgs, AssociateUnknownModArgs, EditLocalModArgs, GlobalModType, LockerHeroSource, MergeAnalysisResult, MergeModsArgs, Mod as WireMod, SoulContainerImportInfo, SoundSwapInfo, UrnImportInfo, UnmergeModResult, ExtractMergeSourceResult, UnknownModFileList, ImprintPreflightResult, ImprintDetails, PeekImprintResult, ModelCompatibilityReport } from '../../../src/types/mod';
 
 const unknownDetectionControllers = new Map<string, AbortController>();
 
@@ -180,7 +183,8 @@ async function copyIntoModSlot(
     }
 }
 
-const BODY_MODEL_DETECTION_VERSION = 1;
+const BODY_MODEL_DETECTION_VERSION = 2;
+const ABILITY_SOUND_CLASSIFIER_VERSION = 1;
 
 function hasBodyModelDetection(mod: Mod, metadata: ModMetadata | undefined): boolean {
     const previous = metadata?.bodyModelDetection;
@@ -213,24 +217,25 @@ function enrichMod(mod: Mod, categoryPaths = new Map<string, CategoryPaths | und
     // Ability-slot analysis shares the warmed VPK directory with hero
     // detection. Null records a successful check with no recognized audio.
     let abilitySounds = metadata.abilitySounds;
-    if (abilitySounds === undefined) {
-        let classified: AbilitySoundClassification | null = null;
+    if (abilitySounds === undefined || metadata.abilitySoundClassifierVersion !== ABILITY_SOUND_CLASSIFIER_VERSION) {
         try {
             const result = classifyAbilitySoundsFromVpk(mod.path);
             // Store null ("checked, none") unless a recognized hero matched,
             // so skins and non-sound mods skip the re-parse on later scans.
-            classified = result && result.dominantHero ? result : null;
+            if (result) {
+                abilitySounds = result.dominantHero ? result : null;
+                patch.abilitySounds = abilitySounds;
+                patch.abilitySoundClassifierVersion = ABILITY_SOUND_CLASSIFIER_VERSION;
+            }
         } catch (err) {
             console.warn(`[enrichMod] VPK ability-sound classification failed for ${mod.fileName}:`, err);
         }
-        patch.abilitySounds = classified;
-        abilitySounds = classified;
     }
     let bodyModels = metadata.bodyModelDetection;
     if (!hasBodyModelDetection(mod, metadata)) {
         const paths = parseVpkDirectoryCached(mod.path);
         bodyModels = paths ? { version: BODY_MODEL_DETECTION_VERSION, size: mod.size, modifiedAt: mod.installedAt,
-            sha256: metadata.sha256, heroes: bodyModelHeroes(paths) } : undefined;
+            sha256: metadata.sha256, heroes: bodyModelHeroes(paths), hasAnimationClips: animationModClips(paths) !== null } : undefined;
         if (bodyModels) patch.bodyModelDetection = bodyModels;
     }
     if (Object.keys(patch).length > 0) setModMetadata(mod.metaKey, patch);
@@ -269,6 +274,7 @@ function enrichMod(mod: Mod, categoryPaths = new Map<string, CategoryPaths | und
         globalType: globalType ?? undefined,
         propTypes,
         bodyModelHeroes: bodyModels?.heroes,
+        hasAnimationClips: bodyModels?.hasAnimationClips,
         merged: metadata.merged,
         forgeInstall: metadata.forgeInstall,
         lockerCosmetics: metadata.lockerCosmetics,
@@ -524,7 +530,21 @@ ipcMain.handle('disable-mod', async (_, modId: string): Promise<Mod> => {
     if (!deadlockPath) {
         throw new Error('No Deadlock path configured');
     }
-    const mod = await disableMod(deadlockPath, modId);
+    const mod = await disableMod(deadlockPath, modId, async (wheel) => {
+        const result = await dialog.showMessageBox({
+            type: 'warning',
+            message: `Disable ${wheel.name}?`,
+            detail: CHAT_WHEEL_UNBIND_REQUIRED,
+            buttons: ['Cancel', 'I unbound the menus. Disable.'],
+            defaultId: 0,
+            cancelId: 0,
+        });
+        if (result.response !== 1) return false;
+        if (getActiveDeadlockPath() !== deadlockPath || await isDeadlockRunning()) {
+            throw new Error('Close Deadlock and review the wheel again before disabling it.');
+        }
+        return true;
+    });
     return enrichMod(mod);
 });
 

@@ -1,11 +1,22 @@
 import { describe, it, expect, vi } from 'vitest';
-vi.mock('./mods', () => ({ scanMods: vi.fn(), runExclusiveModMutation: (fn: () => Promise<unknown>) => fn() }));
+vi.mock('./mods', () => ({ scanModsReadOnly: vi.fn(), runExclusiveModMutation: (fn: () => Promise<unknown>) => fn() }));
 vi.mock('./deadlock', () => ({ getCitadelPath: vi.fn() }));
 vi.mock('./vpk', () => ({ parseVpkDirectory: vi.fn() }));
-vi.mock('../utils/paths', () => ({ getUserDataPath: () => '/unused' }));
-import { isPatchSensitivePath, reviewReplacementPaths } from './compatibility';
+vi.mock('./foundryCatalog', () => ({ foundryBuildDiff: vi.fn() }));
+import { indexPatchChanges, isPatchSensitivePath, reviewPatchChanges, reviewReplacementPaths } from './compatibility';
 
 describe('replacement path evidence', () => {
+  it('finds changed overrides and changed stock siblings without attributing unrelated files', () => {
+    const changes = indexPatchChanges([
+      { path: 'panorama/layout/post_game/result.vxml_c', kind: 'changed' },
+      { path: 'panorama/scripts/post_game/result.vts_c', kind: 'changed' },
+      { path: 'panorama/scripts/other.vts_c', kind: 'changed' },
+    ]);
+    expect(reviewPatchChanges(['Panorama/layout/post_game/result.vxml_c'], changes)).toEqual({
+      changedPaths: ['panorama/layout/post_game/result.vxml_c'],
+      relatedPaths: ['panorama/scripts/post_game/result.vts_c'],
+    });
+  });
   it('compares paths case-insensitively and bounds evidence without dropping the count', () => {
     const paths = ['Models/Hero.vmdl_c', ...Array.from({ length: 40 }, (_, n) => `materials/added${n}.vmat_c`), 'sounds/audio.vsnd_c'];
     const evidence = reviewReplacementPaths(paths, new Set(['models/hero.vmdl_c']));

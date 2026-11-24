@@ -13,6 +13,9 @@ import type { HeroInfo, TextureCategory, TextureEntry, TextureGridItem } from '.
 import TextureLightbox from './TextureLightbox';
 import { prepareVisualStagedEdit, type VisualStagedEdit } from './visualEdits';
 import ResultSummary from '../common/ResultSummary';
+import { hideoutPaintings } from '../../lib/hideoutPaintings';
+
+type BrowseCategory = TextureCategory | 'hideout-paintings';
 
 interface TextureBrowseProps {
   /** Full roster, used to populate the hero filter the list is scoped by. */
@@ -53,7 +56,8 @@ export default function TextureBrowse({ heroes, heroNames, hero, onStage }: Text
   const { t } = useTranslation();
   const confirm = useConfirm();
   const draftKey = `textures:${hero ?? 'catalog'}`;
-  const [category, setCategory] = useFoundryDraft<TextureCategory>(`${draftKey}:category`, z.enum(['hero-model', 'ability-vfx']), 'hero-model');
+  const [category, setCategory] = useFoundryDraft<BrowseCategory>(`${draftKey}:category`, z.enum(['hero-model', 'ability-vfx', 'hideout-paintings']), 'hero-model');
+  const paintings = category === 'hideout-paintings';
   // The embedder's hero is the default, not a suggestion the panel may drop.
   const [heroFilter, setHeroFilter] = useFoundryDraft(`${draftKey}:hero`, z.string().max(100), hero ?? '');
   const [search, setSearch] = useFoundryDraft(`${draftKey}:search`, z.string().max(512), '');
@@ -115,23 +119,23 @@ export default function TextureBrowse({ heroes, heroNames, hero, onStage }: Text
 
   // Unbounded hero-model is thousands of entries, so refuse to fetch until the
   // list is narrowed by a hero or a search term.
-  const ready = heroFilter !== '' || search.trim().length > 0;
+  const ready = paintings || heroFilter !== '' || search.trim().length > 0;
 
   const load = useCallback(
-    async (cat: TextureCategory, hero: string, term: string) => {
+    async (cat: BrowseCategory, hero: string, term: string) => {
       const revision = ++requestRevision.current;
       setLoading(true);
       setError(null);
       try {
         const rows = await foundryTextures({
-          category: cat,
-          hero: hero || undefined,
-          search: term.trim() || undefined,
+          category: cat === 'hideout-paintings' ? 'other' : cat,
+          hero: cat === 'hideout-paintings' ? undefined : hero || undefined,
+          search: cat === 'hideout-paintings' ? 'hideout_portrait' : term.trim() || undefined,
           limit: LIMIT,
         });
         if (revision !== requestRevision.current) return;
-        setItems(rows);
-        setTruncated(rows.length >= LIMIT);
+        setItems(cat === 'hideout-paintings' ? hideoutPaintings(rows, term) : rows);
+        setTruncated(cat !== 'hideout-paintings' && rows.length >= LIMIT);
       } catch (e) {
         if (revision !== requestRevision.current) return;
         setError(e instanceof Error ? e.message : String(e));
@@ -164,7 +168,7 @@ export default function TextureBrowse({ heroes, heroNames, hero, onStage }: Text
           <ImageIcon size={14} className="text-text-secondary" />
           <select
             value={category}
-            onChange={(e) => setCategory(e.target.value as TextureCategory)}
+            onChange={(e) => setCategory(e.target.value as BrowseCategory)}
             className="bg-transparent text-sm text-text-primary focus:outline-none"
           >
             {CATEGORIES.map((c) => (
@@ -172,10 +176,13 @@ export default function TextureBrowse({ heroes, heroNames, hero, onStage }: Text
                 {t(c.labelKey, c.fallback)}
               </option>
             ))}
+            {hero === null && <option value="hideout-paintings" className="bg-bg-secondary">
+              {t('foundry.texture.hideoutPaintings.category')}
+            </option>}
           </select>
         </div>
 
-        <div className="flex items-center gap-1.5 rounded-sm border border-border bg-bg-tertiary px-2 py-1.5">
+        {!paintings && <div className="flex items-center gap-1.5 rounded-sm border border-border bg-bg-tertiary px-2 py-1.5">
           <Users size={14} className="text-text-secondary" />
           <select
             value={heroFilter}
@@ -191,7 +198,7 @@ export default function TextureBrowse({ heroes, heroNames, hero, onStage }: Text
               </option>
             ))}
           </select>
-        </div>
+        </div>}
 
         <div className="relative min-w-[200px] flex-1">
           <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" />
@@ -203,6 +210,10 @@ export default function TextureBrowse({ heroes, heroNames, hero, onStage }: Text
           />
         </div>
       </div>
+
+      {paintings && <p className="text-sm text-text-secondary">
+        {t('foundry.texture.hideoutPaintings.description')}
+      </p>}
 
       {/* List / states */}
       {!ready ? (

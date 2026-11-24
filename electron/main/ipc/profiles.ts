@@ -10,6 +10,7 @@ import {
     previewProfile,
     deleteProfile,
     renameProfile,
+    updateProfileNotes,
     removeProfileCrosshair,
     type Profile,
     type ProfileCrosshairSettings,
@@ -117,6 +118,10 @@ ipcMain.handle('delete-profile', (_, profileId: string): void => {
 // rename-profile
 ipcMain.handle('rename-profile', (_, profileId: string, newName: string): Profile => {
     return renameProfile(profileId, newName);
+});
+
+ipcMain.handle('update-profile-notes', (_, profileId: string, notes: string): Profile => {
+    return updateProfileNotes(profileId, notes);
 });
 
 // remove-profile-crosshair: drops the crosshair from a profile without

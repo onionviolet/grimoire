@@ -7,7 +7,7 @@ import { getInterruptedProfileRecovery, recoverInterruptedProfileRecovery, revie
 import type { InterruptedRecovery } from '../../types/profileRecovery';
 import type { CompatibilityReview, ModIsolationSession } from '../../types/recovery';
 
-export default function RecoveryTools() {
+export default function RecoveryTools({ suspectName }: { suspectName?: string }) {
   const { t } = useTranslation();
   const [interrupted, setInterrupted] = useState<InterruptedRecovery | null>(null);
   const [compatibility, setCompatibility] = useState<CompatibilityReview | null>(null);
@@ -50,11 +50,19 @@ export default function RecoveryTools() {
         <p className="text-sm text-text-secondary">{t('recovery.tools.compatibilityScope')}</p>
         {compatibility && <>
           <p className="text-xs text-text-tertiary">{t('recovery.scannedAt', { time: new Date(compatibility.reviewedAt).toLocaleString() })}</p>
+          {compatibility.patchBaseline && <p className="text-sm text-text-secondary">{t('recovery.tools.patchBaseline')}</p>}
           <ul className="space-y-3">
             {compatibility.mods.map(mod => <li key={mod.id} className="text-sm">
               <p className="text-text-primary break-words">{mod.name}</p>
               <p className="text-text-secondary">{mod.status === 'unreadable' ? t('recovery.tools.unreadable') : mod.status === 'review'
                 ? t('recovery.tools.missingPaths', { count: mod.missingCount, total: mod.sensitiveCount }) : t('recovery.tools.noMissingPaths', { count: mod.sensitiveCount })}</p>
+              {(mod.changedPaths?.length || mod.relatedPaths?.length) ? <details className="mt-2">
+                <summary className="cursor-pointer text-state-warning">{t('recovery.tools.patchEvidence')}</summary>
+                {!!mod.changedPaths?.length && <p className="mt-2 text-text-secondary">{t('recovery.tools.changedBasePaths')}</p>}
+                <ul className="font-mono text-xs text-text-tertiary">{mod.changedPaths?.map(path => <li className="break-all" key={path}>{path}</li>)}</ul>
+                {!!mod.relatedPaths?.length && <p className="mt-2 text-text-secondary">{t('recovery.tools.changedRelatedPaths')}</p>}
+                <ul className="font-mono text-xs text-text-tertiary">{mod.relatedPaths?.map(path => <li className="break-all" key={path}>{path}</li>)}</ul>
+              </details> : null}
               {!!mod.missingPaths.length && <details className="mt-2"><summary className="cursor-pointer text-text-secondary">{t('recovery.tools.showPaths')}</summary>
                 <ul className="mt-2 space-y-1 font-mono text-xs text-text-tertiary">{mod.missingPaths.map(path => <li className="break-all" key={path}>{path}</li>)}</ul>
               </details>}
@@ -66,6 +74,9 @@ export default function RecoveryTools() {
     <Card title={t('recovery.tools.isolationTitle')} description={t('recovery.tools.isolationDescription')} accentEdge="none">
       <div className="space-y-3">
         <p className="text-sm text-text-secondary">{t('recovery.tools.isolationScope')}</p>
+        {suspectName && <p className="break-words text-sm text-text-primary">
+          {t('recovery.tools.crashSuspect', { name: suspectName })}
+        </p>}
         {session?.strategy === 'delta' && <p className="text-xs text-text-secondary">{t('recovery.tools.deltaScope')}</p>}
         {!session ? <Button variant="secondary" disabled={busy || !!interrupted} onClick={() => void run(startModIsolation)}>{t('recovery.tools.startIsolation')}</Button>
           : <>

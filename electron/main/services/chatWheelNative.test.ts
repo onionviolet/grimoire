@@ -62,6 +62,11 @@ describe('native ChatLane conversion', () => {
         expect(() => applyChatLaneYaml(yaml, [])).toThrow(message);
     });
 
+    it('rejects a custom menu with more than twelve entries', () => {
+        const commands = Array.from({ length: 13 }, () => '      - Thanks').join('\n');
+        expect(() => applyChatLaneYaml(`name: Test\ncustom_menus:\n  - name: Too many\n    items:\n${commands}`, [])).toThrow('at most 12 commands');
+    });
+
     it('uses the standard CRC32 polynomial', () => expect(chatLaneCrc32(Buffer.from('123456789'))).toBe(0xcbf43926));
 
     it.each([1, 2])('reads v%s config with preload plus an external archive chunk', async (version) => {

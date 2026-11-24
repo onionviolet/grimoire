@@ -50,7 +50,7 @@ describe('extractArchive (multi-variant VPK folders)', () => {
 
     // Two variant folders share the same pakNN name; a third VPK sits at the root.
     const zip = new AdmZip();
-    zip.addFile('Tailed_mod_Beard/pak83_dir.vpk', vpkBytes('BEARD-CONTENT'));
+    zip.addFile('Variants/Tailed_mod_Beard/pak83_dir.vpk', vpkBytes('BEARD-CONTENT'));
     zip.addFile('Tailed_mod/pak83_dir.vpk', vpkBytes('NO-BEARD-CONTENT'));
     zip.addFile('root_skin_dir.vpk', vpkBytes('ROOT-CONTENT'));
     const zipPath = join(root, 'tailed.zip');
@@ -80,6 +80,10 @@ describe('extractArchive (multi-variant VPK folders)', () => {
       Tailed_mod: 'NO-BEARD-CONTENT',
       '(root)': 'ROOT-CONTENT',
     });
+  });
+
+  it('retains the full archive path separately from the existing variant label', () => {
+    expect(extracted.map((entry) => entry.archivePath)).toContain('Variants/Tailed_mod_Beard/pak83_dir.vpk');
   });
 
   it('reports the original basename for naming, even when the path was suffixed', () => {

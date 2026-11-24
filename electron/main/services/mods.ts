@@ -8,13 +8,14 @@ import { getModMetadata, setModMetadata, removeModMetadata, migrateModMetadata, 
 import { compareFileContents } from './fileMatch';
 import { resolveVpkIdentity, readEmbeddedAddonInfo, carryForwardOriginalIdentity } from './vpkIdentity';
 import { findChunkSiblingNames } from './vpk';
+import { CHAT_WHEEL_UNBIND_REQUIRED, mayHaveCustomChatWheelBindings, suppliesChatWheel } from './chatWheel';
 import { getActiveDeadlockPath, loadSettings } from './settings';
 import { assertVpkSafety, moveSafetySnapshot, forgetSafetySnapshot } from './modSafety';
 import { forgetVdataSnapshot, moveVdataSnapshot } from './vdataCheck';
 import { notifyModChanges } from './modChangeObservation';
 import { captureModBackup } from './modBackups';
 import { readStash } from './launch';
-import { isVanillaWindowActive, VANILLA_WINDOW_LOCK_MESSAGE } from './vanillaWindow';
+import { isModTrialWindowActive, isVanillaWindowActive, VANILLA_WINDOW_LOCK_MESSAGE } from './vanillaWindow';
 import { isStaleModTemp, modTempPath } from './modTemps';
 import {
     assertCanMoveLoadedGameMod,
@@ -1219,6 +1220,7 @@ export async function setModPriorityFolderUnlocked(deadlockPath: string, modId: 
 let modMutationQueue: Promise<unknown> = Promise.resolve();
 export interface ModMutationOptions {
     exemptFromVanillaWindow?: boolean;
+    exemptFromModTrial?: boolean;
     healPath?: string;
 }
 function withModMutationLock<T>(fn: (healedMods?: Mod[]) => Promise<T>, opts: ModMutationOptions = {}): Promise<T> {
@@ -1235,6 +1237,9 @@ function withModMutationLock<T>(fn: (healedMods?: Mod[]) => Promise<T>, opts: Mo
         }
         if (!opts.exemptFromVanillaWindow && isVanillaWindowActive()) {
             throw new Error(VANILLA_WINDOW_LOCK_MESSAGE);
+        }
+        if (!opts.exemptFromModTrial && isModTrialWindowActive()) {
+            throw new Error('Exit Deadlock to finish the one-launch mod trial.');
         }
         await beginModMutationRunningScope();
         try {
@@ -1385,6 +1390,9 @@ async function enableModImpl(deadlockPath: string, modId: string): Promise<Mod> 
         return targetMod;
     }
 
+    if (suppliesChatWheel(targetMod) && mods.some(mod => mod.enabled && suppliesChatWheel(mod))) {
+        throw new Error('A chat wheel provider is already enabled. Unbind its custom menus and disable it before enabling another wheel.');
+    }
     const disabledPath = getDisabledPath(deadlockPath);
 
     // A still-disabled mod with a legacy pakNN name shares the bare-filename id
@@ -1499,11 +1507,11 @@ export function swapEnabledMods(deadlockPath: string, enableIds: string[], disab
 /**
  * Disable a mod by moving it to the disabled folder (async)
  */
-export function disableMod(deadlockPath: string, modId: string): Promise<Mod> {
-    return withModMutationLock(() => disableModImpl(deadlockPath, modId), { healPath: deadlockPath });
+export function disableMod(deadlockPath: string, modId: string, confirmUnbound?: (mod: Mod) => Promise<boolean>): Promise<Mod> {
+    return withModMutationLock(() => disableModImpl(deadlockPath, modId, confirmUnbound), { healPath: deadlockPath });
 }
 
-async function disableModImpl(deadlockPath: string, modId: string): Promise<Mod> {
+async function disableModImpl(deadlockPath: string, modId: string, confirmUnbound?: (mod: Mod) => Promise<boolean>): Promise<Mod> {
     const mods = await scanMods(deadlockPath);
     await syncRunningGameModSnapshotFromMods(mods);
     const targetMod = mods.find((m) => m.id === modId);
@@ -1516,6 +1524,9 @@ async function disableModImpl(deadlockPath: string, modId: string): Promise<Mod>
         return targetMod;
     }
     assertCanMoveLoadedGameMod(targetMod);
+    if (await mayHaveCustomChatWheelBindings(targetMod) && !await confirmUnbound?.(targetMod)) {
+        throw new Error(CHAT_WHEEL_UNBIND_REQUIRED);
+    }
 
     const disabledPath = getDisabledPath(deadlockPath);
 
@@ -1589,6 +1600,11 @@ export async function deleteModsUnlocked(
         return mod && mod.size === entry.size && mod.installedAt === entry.installedAt ? mod : undefined;
     });
     assertCanMoveLoadedGameMods(resolved.filter((m) => m !== undefined));
+    for (const mod of resolved) {
+        if (mod && await mayHaveCustomChatWheelBindings(mod)) {
+            throw new Error(`${CHAT_WHEEL_UNBIND_REQUIRED} Disable the wheel before deleting it.`);
+        }
+    }
 
     const skipped: string[] = [];
     for (const [i, target] of resolved.entries()) {

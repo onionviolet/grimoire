@@ -169,8 +169,9 @@ describe('variant hero indicators', () => {
     });
 
     it('keeps a single local file uncluttered and puts file additions in the header menu', async () => {
-        props = { ...props, onAddVariant: vi.fn(), onGalleryChange: vi.fn(async () => {}) };
-        await render([variant('local', [], { gameBananaId: undefined, thumbnailUrl: 'data:image/png;base64,old' })]);
+        props = { ...props, onAddVariant: vi.fn(), onDetachVariant: vi.fn(), onGalleryChange: vi.fn(async () => {}) };
+        await render([variant('local', [], { gameBananaId: undefined, localGroupId: 'group', thumbnailUrl: 'data:image/png;base64,old' })]);
+        expect(row('local').querySelector('[aria-label="variantPicker.detachVariant"]')).toBeNull();
         const gallery = document.querySelector('[aria-label="installed.batchImport.gallery"]')!;
         expect(gallery.className).toContain('overflow-x-auto');
         expect(gallery.querySelector('.outline-accent')).toBeNull();

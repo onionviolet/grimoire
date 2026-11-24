@@ -31,6 +31,14 @@ export default function MultiVpkPickerModal({ data, onConfirm, onCancel }: Props
     const { t } = useTranslation();
     const titleId = useId();
     const [selected, setSelected] = useState<Set<string>>(() => new Set(data.vpkFileNames));
+    const filesByFolder = new Map<string, string[]>();
+    for (const vpk of data.vpkFileNames) {
+        const archivePath = data.vpkArchivePaths?.[vpk] ?? vpk;
+        const folder = archivePath.slice(0, Math.max(0, archivePath.lastIndexOf('/')));
+        const files = filesByFolder.get(folder) ?? [];
+        files.push(vpk);
+        filesByFolder.set(folder, files);
+    }
 
     const allSelected = selected.size === data.vpkFileNames.length;
     const toggle = (vpk: string) => {
@@ -85,9 +93,17 @@ export default function MultiVpkPickerModal({ data, onConfirm, onCancel }: Props
                     </div>
 
                     <div className="max-h-64 overflow-y-auto space-y-1.5 pr-1">
-                        {data.vpkFileNames.map((vpk) => {
+                        {Array.from(filesByFolder, ([folder, files]) => (
+                          <div key={folder} className="space-y-1.5">
+                            {(folder || filesByFolder.size > 1) && (
+                              <p className="break-all px-1 pt-2 text-xs text-text-secondary">
+                                {folder || t('multiVpk.archiveRoot')}
+                              </p>
+                            )}
+                            {files.map((vpk) => {
                             const isChecked = selected.has(vpk);
                             const label = data.vpkLabels?.[vpk];
+                            const originalFile = data.vpkArchivePaths?.[vpk]?.split('/').at(-1) ?? vpk;
                             const size = data.vpkFileSizes?.[vpk];
                             const sizeLabel = typeof size === 'number' ? formatBytes(size, '') : '';
                             return (
@@ -110,10 +126,10 @@ export default function MultiVpkPickerModal({ data, onConfirm, onCancel }: Props
                                         {label ? (
                                             <>
                                                 <div className="text-sm font-medium truncate" title={label}>{label}</div>
-                                                <div className="font-mono text-2xs text-text-secondary/80 truncate" title={vpk}>{vpk}</div>
+                                                <div className="font-mono text-2xs text-text-secondary/80 truncate" title={originalFile}>{originalFile}</div>
                                             </>
                                         ) : (
-                                            <span className="font-mono text-xs truncate block" title={vpk}>{vpk}</span>
+                                            <span className="font-mono text-xs truncate block" title={originalFile}>{originalFile}</span>
                                         )}
                                     </div>
                                     {sizeLabel && (
@@ -123,7 +139,9 @@ export default function MultiVpkPickerModal({ data, onConfirm, onCancel }: Props
                                     )}
                                 </label>
                             );
-                        })}
+                            })}
+                          </div>
+                        ))}
                     </div>
                 </ModalBody>
 

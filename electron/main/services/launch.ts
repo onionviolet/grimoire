@@ -216,7 +216,7 @@ async function inspectWindowsDeadlock(): Promise<WindowsDeadlockProcesses> {
  * Match against the full cmdline (pgrep -f) instead, which finds both the game
  * and its Proton wrapper chain.
  */
-async function probeDeadlockRunning(): Promise<boolean | null> {
+export async function probeDeadlockRunning(): Promise<boolean | null> {
     if (process.platform === 'win32') {
         try {
             const { listed, game } = await inspectWindowsDeadlock();
@@ -523,6 +523,9 @@ export async function restoreFromStash(
  * state is still mutating.
  */
 let launchInFlight = false;
+export function isLaunchInFlight(): boolean {
+    return launchInFlight;
+}
 
 /**
  * Background task: wait for the game to actually start (polls tasklist), then
@@ -618,6 +621,7 @@ export interface LaunchOptions {
     deadlockPath: string;
     onRestoreComplete?: (result: RestoreResult) => void;
     beforeLaunch?: () => void | Promise<void>;
+    beforeStash?: () => void | Promise<void>;
 }
 
 /**
@@ -667,6 +671,7 @@ export async function launchVanilla({
     deadlockPath,
     onRestoreComplete,
     beforeLaunch,
+    beforeStash,
 }: LaunchOptions): Promise<void> {
     if (launchInFlight) {
         throw new Error('Another launch is already in progress');
@@ -687,6 +692,7 @@ export async function launchVanilla({
         // Inside the lock so batches already running finish first and queued ones see the window.
         stash = await runExclusiveModMutation(
             async () => {
+                await beforeStash?.();
                 beginVanillaWindow();
                 return stashEnabledMods(deadlockPath);
             },

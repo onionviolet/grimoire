@@ -16,6 +16,10 @@ It is a convenience, not a mod source. Installing still happens through [Browse]
 
 Type an address in the bar, or open **Site shortcuts**, which groups known destinations as **Mod hosts**, **Tools**, **Reference**, and **Community**. **Home** opens GameBanana's Deadlock page.
 
+Use the star next to the address bar to save or edit the current page. The page title is filled in for you. You can change the name, edit the address, or type a folder name to group related links. Open **Bookmarks** to search by name, address or folder and edit your saved pages. Turn on **Show bookmarks bar** for quick access to bookmarks marked for the bar. Bookmarks are stored locally.
+
+Use **Ctrl+D** to bookmark the page, **Ctrl+L** to select the address, and **Ctrl+Shift+B** to toggle the bookmarks bar. On macOS, use **Command** in place of **Ctrl**. Click Reload to refresh normally, or hold **Shift** while clicking to bypass the cache.
+
 **Open in your browser** hands the current page to your real browser, which is what you want for anything involving a login.
 
 ## Reading a page

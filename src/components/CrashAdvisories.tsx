@@ -37,6 +37,10 @@ export function CrashAdvisoryHost() {
         <Button variant="ghost" onClick={() => void dismiss(finding.id)}>{t('crashAdvisory.dismiss')}</Button>
         <Button variant="secondary" onClick={() => {
           closeDetail();
+          navigate('/recovery', { state: { crashAdvisoryId: finding.id } });
+        }}>{t('recovery.title')}</Button>
+        <Button variant="secondary" onClick={() => {
+          closeDetail();
           navigate('/', { state: { crashSuspectId: finding.modId } });
         }}>{t('crashAdvisory.showMod')}</Button>
       </div>

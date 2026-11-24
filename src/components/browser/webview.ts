@@ -9,6 +9,7 @@ export interface BrowserWebview extends HTMLElement {
     reloadIgnoringCache(): void;
     stop(): void;
     getURL(): string;
+    getTitle(): string;
     findInPage(text: string, options?: { forward?: boolean; findNext?: boolean }): number;
     stopFindInPage(action: 'clearSelection'): void;
     getZoomFactor(): number;

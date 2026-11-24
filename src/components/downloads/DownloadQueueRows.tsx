@@ -18,7 +18,7 @@ interface Props {
   items: DownloadQueueItem[];
   manualRequests: ModUpdateManualRequest[];
   priorityDeferred: boolean;
-  onCancel: (modId: number, fileId: number, jobId?: string) => Promise<void>;
+  onCancel: (modId: number, fileId: number, jobId?: string, fileName?: string) => Promise<void>;
   onOpenReplacement: (requestId: string) => void;
 }
 
@@ -71,7 +71,7 @@ function DownloadRowContent({ item, number, priorityDeferred, onCancel, renderCo
         label={priorityDeferred ? t('downloadQueue.downloadNext') : t('downloadQueue.downloadNow')}
         onClick={() => void prioritize()} />
       <IconButton icon={X} size="sm" label={t('downloadQueue.removeFromQueue')} disabled={overlay}
-        onClick={() => void onCancel(item.modId, item.fileId, item.jobId)} />
+        onClick={() => void onCancel(item.modId, item.fileId, item.jobId, item.fileName)} />
     </QueueRow>;
 }
 

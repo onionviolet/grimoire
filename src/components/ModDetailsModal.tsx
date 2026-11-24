@@ -41,6 +41,7 @@ import type {
   GameBananaFile,
   GameBananaModUpdate,
   GameBananaItemRef,
+  GameBananaRemoval,
 } from '../types/gamebanana';
 import { isModOutdated, formatDate, parseGameBananaItemUrl } from '../types/gamebanana';
 import type { DeleteModEntry } from '../types/mod';
@@ -63,6 +64,7 @@ import { categoryModelForSection, resolveCategoryPath } from '../lib/categoryPat
 import { heroNameForLabel } from '../lib/heroNames';
 import { useCategoryStore } from '../stores/categoryStore';
 import { HeroTagLabel } from './installed/chips';
+import { RemovedNotice } from './installed/RemovedTag';
 
 type ModDetailsNavigationDirection = 'previous' | 'next';
 
@@ -95,6 +97,7 @@ interface ModDetailsModalProps {
   navigationDirection?: ModDetailsNavigationDirection;
   navigationLabel?: string;
   updateAvailable?: boolean;
+  removal?: GameBananaRemoval;
   /** Browse-only local bookmark. This does not imply a download or install. */
   saved?: boolean;
   onToggleSaved?: () => void;
@@ -175,6 +178,7 @@ function ModDetailsModal({
   navigationDirection = 'next',
   navigationLabel,
   updateAvailable,
+  removal,
   saved = false,
   onToggleSaved,
   savedFileIds = new Set(),
@@ -1364,6 +1368,8 @@ function ModDetailsModal({
             }
           />
         )}
+
+        {removal && <RemovedNotice removal={removal} />}
 
         {offline && (
           <div className="flex items-center gap-2 border-b border-state-warning/20 bg-state-warning/10 px-5 py-2 text-xs text-state-warning">

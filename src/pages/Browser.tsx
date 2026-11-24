@@ -1,7 +1,7 @@
 // Third-party pages use the main-process-hardened guest partition.
 // Control and download contracts live in docs/browser-scope-boundary.md.
-import { createElement, useMemo } from 'react';
-import { ArrowLeft, ArrowRight, RotateCw, Home, ExternalLink, Globe, X, Download } from 'lucide-react';
+import { createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowLeft, ArrowRight, RotateCw, Home, ExternalLink, Globe, X, Download, Star, BookOpen } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../stores/appStore';
@@ -10,6 +10,9 @@ import { Button, IconButton } from '../components/common/ui';
 import { Input } from '../components/common/forms';
 import { BrowserReaderControls } from '../components/browser/BrowserReaderControls';
 import { useBrowserNavigation } from '../components/browser/useBrowserNavigation';
+import { BookmarkBar, BookmarkEditor, BookmarkManager } from '../components/browser/BrowserBookmarks';
+import { bookmarkUrl, readBrowserBookmarks, writeBrowserBookmarks, type BrowserBookmark } from '../lib/browserBookmarks';
+import { readPref, writePref } from '../lib/uiPrefs';
 import Tx from '../components/translation/Tx';
 import { BrowserBlockerControl } from '../components/browser/BrowserBlockerControl';
 import { getGameBananaImportHandoff } from '../lib/browserImportHandoff';
@@ -32,6 +35,55 @@ export default function Browser() {
     const settings = useAppStore((s) => s.settings);
     const { ref, address, setAddress, current, loading, ready, canBack, canForward, failure, go } =
         useBrowserNavigation(!!settings?.experimentalBrowser);
+    const addressInput = useRef<HTMLInputElement>(null);
+    const [bookmarks, setBookmarks] = useState(readBrowserBookmarks);
+    const [showBar, setShowBar] = useState(() => readPref('browserBookmarkBar'));
+    const [manager, setManager] = useState(false);
+    const [editor, setEditor] = useState<{ bookmark: BrowserBookmark; existing: boolean }>();
+    const currentUrl = bookmarkUrl(current);
+    const saved = bookmarks.find(bookmark => bookmark.url === currentUrl);
+    const canBookmark = ready && !loading && !failure && !!currentUrl;
+    const editCurrent = useCallback(() => {
+        if (!canBookmark || !currentUrl || editor || manager) return;
+        let title = '';
+        try { title = ref.current?.getTitle()?.trim() ?? ''; } catch { /* The guest may have detached. */ }
+        setEditor({ bookmark: saved ?? { url: currentUrl, title: title.slice(0, 250) || new URL(currentUrl).hostname, folder: '', onBar: true }, existing: !!saved });
+    }, [canBookmark, currentUrl, editor, manager, ref, saved]);
+    const focusAddress = useCallback(() => {
+        if (editor || manager) return;
+        addressInput.current?.focus();
+        addressInput.current?.select();
+    }, [editor, manager]);
+    const changeBarVisibility = useCallback((visible: boolean) => {
+        setShowBar(visible);
+        writePref('browserBookmarkBar', visible);
+    }, []);
+    useEffect(() => {
+        if (!settings?.experimentalBrowser) return;
+        const runShortcut = (shortcut: 'address' | 'bookmark' | 'bar') => {
+            if (shortcut === 'address') focusAddress();
+            if (shortcut === 'bookmark') editCurrent();
+            if (shortcut === 'bar') changeBarVisibility(!showBar);
+        };
+        const onKey = (event: KeyboardEvent) => {
+            if (event.defaultPrevented || !(event.ctrlKey || event.metaKey) || event.altKey || event.repeat) return;
+            const key = event.key.toLowerCase();
+            const shortcut = event.shiftKey ? key === 'b' ? 'bar' : null
+                : key === 'l' ? 'address' : key === 'd' ? 'bookmark' : null;
+            if (!shortcut) return;
+            event.preventDefault();
+            runShortcut(shortcut);
+        };
+        const unsubscribe = window.electronAPI?.browser?.onShortcut?.(runShortcut);
+        window.addEventListener('keydown', onKey);
+        return () => { window.removeEventListener('keydown', onKey); unsubscribe?.(); };
+    }, [settings?.experimentalBrowser, focusAddress, editCurrent, changeBarVisibility, showBar]);
+    const storeBookmarks = (next: BrowserBookmark[]) => {
+        try { writeBrowserBookmarks(next); } catch { return false; }
+        setBookmarks(next);
+        setEditor(undefined);
+        return true;
+    };
     const refusal = useBrowserToolDownloadStore((s) => s.refusal);
     const handoff = useMemo(() => getGameBananaImportHandoff(current), [current]);
     const groups = useMemo(
@@ -56,20 +108,36 @@ export default function Browser() {
                 <IconButton icon={ArrowRight} label={t('browser.forward')} disabled={!ready || !canForward}
                     onClick={() => ref.current?.goForward()} />
                 <IconButton icon={loading ? X : RotateCw} label={loading ? t('browser.stop') : t('browser.reload')}
-                    disabled={!ready} onClick={() => loading ? ref.current?.stop() : ref.current?.reloadIgnoringCache()} />
+                    disabled={!ready} onClick={event => loading ? ref.current?.stop() : event.shiftKey ? ref.current?.reloadIgnoringCache() : ref.current?.reload()} />
                 <IconButton icon={Home} label={t('browser.home')} onClick={() => go(HOME_DESTINATION_URL)} />
                 <form className="min-w-0 basis-48 flex-1" onSubmit={event => {
                     event.preventDefault(); go(address);
                 }}>
-                    <Input inputSize="sm" value={address} onChange={event => setAddress(event.target.value)}
+                    <Input ref={addressInput} inputSize="sm" value={address} onChange={event => setAddress(event.target.value)}
                         spellCheck={false} aria-label={t('browser.addressPlaceholder')}
                         placeholder={t('browser.addressPlaceholder')} />
                 </form>
+                <IconButton icon={Star} label={saved ? t('browser.bookmarks.edit') : t('browser.bookmarks.add')}
+                    aria-keyshortcuts="Control+D Meta+D" aria-pressed={!!saved} disabled={!canBookmark}
+                    className={saved ? 'text-accent [&>svg]:fill-current' : ''} onClick={editCurrent} />
+                <IconButton icon={BookOpen} label={t('browser.bookmarks.manage')} onClick={() => setManager(true)} />
                 <Button variant="ghost" size="sm" icon={ExternalLink} onClick={() => window.open(current, '_blank')}
                     title={t('browser.openExternal')}>
                     <Tx k="browser.openExternalLabel" />
                 </Button>
             </div>
+
+            {showBar && <BookmarkBar bookmarks={bookmarks} onOpen={go} />}
+            {manager && <BookmarkManager bookmarks={bookmarks} showBar={showBar}
+                onShowBar={changeBarVisibility}
+                onOpen={url => { go(url); setManager(false); }}
+                onEdit={bookmark => setEditor({ bookmark, existing: true })} onClose={() => setManager(false)} />}
+            {editor && <BookmarkEditor initial={editor.bookmark} existing={editor.existing} bookmarks={bookmarks}
+                onClose={() => setEditor(undefined)}
+                onSave={bookmark => storeBookmarks(editor.existing
+                    ? bookmarks.map(previous => previous.url === editor.bookmark.url ? bookmark : previous)
+                    : [...bookmarks, bookmark])}
+                onRemove={() => storeBookmarks(bookmarks.filter(bookmark => bookmark.url !== editor.bookmark.url))} />}
 
             <BrowserBlockerControl url={current} reload={() => ref.current?.reloadIgnoringCache()} />
             <BrowserReaderControls guest={ref} ready={ready}>

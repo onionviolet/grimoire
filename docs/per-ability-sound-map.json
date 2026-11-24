@@ -2907,6 +2907,136 @@
   },
   "total": 41
  },
+ "ratking": {
+  "display": "Rat King",
+  "codename": "ratking",
+  "has_api": true,
+  "scaffold": {
+   "1": {
+    "token": "scrap_grenade",
+    "display": "Scrap Grenade",
+    "image": "https://assets-bucket.deadlock-api.com/assets-api-res/images/abilities/ratking/ratking_grenade.png",
+    "class": "ability_ratking_scrap_grenade"
+   },
+   "2": {
+    "token": "ratnibble",
+    "display": "Rat Swarm",
+    "image": "https://assets-bucket.deadlock-api.com/assets-api-res/images/abilities/ratking/ratking_swarm.png",
+    "class": "ability_ratking_ratnibble"
+   },
+   "3": {
+    "token": "ratarmor",
+    "display": "Royal Pestments",
+    "image": "https://assets-bucket.deadlock-api.com/assets-api-res/images/abilities/ratking/ratking_shield.png",
+    "class": "ability_ratking_ratarmor"
+   },
+   "4": {
+    "token": "standard_bearer",
+    "display": "Rule, Ratannia!",
+    "image": "https://assets-bucket.deadlock-api.com/assets-api-res/images/abilities/ratking/ratking_flag.png",
+    "class": "ability_ratking_standard_bearer"
+   }
+  },
+  "slotfiles": {
+   "1": [
+    "sounds/abilities/ratking/ratking_scrap_grenade_bounce_01.vsnd_c",
+    "sounds/abilities/ratking/ratking_scrap_grenade_bounce_02.vsnd_c",
+    "sounds/abilities/ratking/ratking_scrap_grenade_bounce_03.vsnd_c",
+    "sounds/abilities/ratking/ratking_scrap_grenade_bounce_04.vsnd_c",
+    "sounds/abilities/ratking/ratking_scrap_grenade_cast_01.vsnd_c",
+    "sounds/abilities/ratking/ratking_scrap_grenade_cast_02.vsnd_c",
+    "sounds/abilities/ratking/ratking_scrap_grenade_cast_03.vsnd_c",
+    "sounds/abilities/ratking/ratking_scrap_grenade_clock_hit_01.vsnd_c",
+    "sounds/abilities/ratking/ratking_scrap_grenade_clock_hit_02.vsnd_c",
+    "sounds/abilities/ratking/ratking_scrap_grenade_clock_hit_03.vsnd_c",
+    "sounds/abilities/ratking/ratking_scrap_grenade_clock_proj_whizby_01.vsnd_c",
+    "sounds/abilities/ratking/ratking_scrap_grenade_clock_proj_whizby_02.vsnd_c",
+    "sounds/abilities/ratking/ratking_scrap_grenade_clock_proj_whizby_03.vsnd_c",
+    "sounds/abilities/ratking/ratking_scrap_grenade_explode_01.vsnd_c",
+    "sounds/abilities/ratking/ratking_scrap_grenade_explode_02.vsnd_c",
+    "sounds/abilities/ratking/ratking_scrap_grenade_explode_03.vsnd_c",
+    "sounds/abilities/ratking/ratking_scrap_grenade_explosion_big.vsnd_c",
+    "sounds/abilities/ratking/ratking_scrap_grenade_final_timer.vsnd_c",
+    "sounds/abilities/ratking/ratking_scrap_grenade_hit_01.vsnd_c",
+    "sounds/abilities/ratking/ratking_scrap_grenade_hit_02.vsnd_c",
+    "sounds/abilities/ratking/ratking_scrap_grenade_hit_03.vsnd_c",
+    "sounds/abilities/ratking/ratking_scrap_grenade_hit_04.vsnd_c",
+    "sounds/abilities/ratking/ratking_scrap_grenade_hit_05.vsnd_c",
+    "sounds/abilities/ratking/ratking_scrap_grenade_melee_hit_01.vsnd_c",
+    "sounds/abilities/ratking/ratking_scrap_grenade_melee_hit_02.vsnd_c",
+    "sounds/abilities/ratking/ratking_scrap_grenade_melee_hit_03.vsnd_c",
+    "sounds/abilities/ratking/ratking_scrap_grenade_melee_hit_04.vsnd_c",
+    "sounds/abilities/ratking/ratking_scrap_grenade_melee_hit_05.vsnd_c",
+    "sounds/abilities/ratking/ratking_scrap_grenade_melee_hit_06.vsnd_c",
+    "sounds/abilities/ratking/ratking_scrap_grenade_proj_lp.vsnd_c",
+    "sounds/abilities/ratking/ratking_scrap_grenade_select.vsnd_c",
+    "sounds/abilities/ratking/ratking_scrap_grenade_select_lp.vsnd_c",
+    "sounds/abilities/ratking/ratking_scrap_grenade_timer_01.vsnd_c",
+    "sounds/abilities/ratking/ratking_scrap_grenade_timer_02.vsnd_c",
+    "sounds/abilities/ratking/ratking_scrap_grenade_timer_03.vsnd_c",
+    "sounds/abilities/ratking/ratking_scrap_grenade_unselect.vsnd_c"
+   ],
+   "2": [
+    "sounds/abilities/ratking/ratking_nibble_cast_01.vsnd_c",
+    "sounds/abilities/ratking/ratking_nibble_debuff_expire.vsnd_c",
+    "sounds/abilities/ratking/ratking_nibble_debuff_lp.vsnd_c",
+    "sounds/abilities/ratking/ratking_nibble_hit_01.vsnd_c",
+    "sounds/abilities/ratking/ratking_nibble_hit_02.vsnd_c",
+    "sounds/abilities/ratking/ratking_nibble_hit_03.vsnd_c",
+    "sounds/abilities/ratking/ratking_nibble_rat_escape_01.vsnd_c",
+    "sounds/abilities/ratking/ratking_nibble_rat_escape_02.vsnd_c",
+    "sounds/abilities/ratking/ratking_nibble_rat_escape_03.vsnd_c",
+    "sounds/abilities/ratking/ratking_nibble_rat_escape_04.vsnd_c",
+    "sounds/abilities/ratking/ratking_nibble_rat_escape_05.vsnd_c",
+    "sounds/abilities/ratking/ratking_nibble_rat_escape_06.vsnd_c",
+    "sounds/abilities/ratking/ratking_nibble_rat_remove_01.vsnd_c",
+    "sounds/abilities/ratking/ratking_nibble_rat_remove_02.vsnd_c",
+    "sounds/abilities/ratking/ratking_nibble_rat_remove_03.vsnd_c",
+    "sounds/abilities/ratking/ratking_nibble_rat_remove_04.vsnd_c",
+    "sounds/abilities/ratking/ratking_nibble_rat_remove_05.vsnd_c",
+    "sounds/abilities/ratking/ratking_nibble_rat_remove_06.vsnd_c",
+    "sounds/abilities/ratking/ratking_nibble_tick_01.vsnd_c",
+    "sounds/abilities/ratking/ratking_nibble_tick_02.vsnd_c",
+    "sounds/abilities/ratking/ratking_nibble_tick_03.vsnd_c"
+   ],
+   "3": [
+    "sounds/abilities/ratking/ratking_armor_block_damage_01.vsnd_c",
+    "sounds/abilities/ratking/ratking_armor_block_damage_02.vsnd_c",
+    "sounds/abilities/ratking/ratking_armor_block_damage_03.vsnd_c",
+    "sounds/abilities/ratking/ratking_armor_block_damage_04.vsnd_c",
+    "sounds/abilities/ratking/ratking_armor_block_damage_05.vsnd_c",
+    "sounds/abilities/ratking/ratking_armor_block_damage_06.vsnd_c",
+    "sounds/abilities/ratking/ratking_armor_block_damage_07.vsnd_c",
+    "sounds/abilities/ratking/ratking_armor_block_damage_08.vsnd_c",
+    "sounds/abilities/ratking/ratking_armor_block_damage_09.vsnd_c",
+    "sounds/abilities/ratking/ratking_armor_block_damage_10.vsnd_c",
+    "sounds/abilities/ratking/ratking_armor_block_damage_11.vsnd_c",
+    "sounds/abilities/ratking/ratking_armor_block_damage_12.vsnd_c",
+    "sounds/abilities/ratking/ratking_armor_cast_01.vsnd_c",
+    "sounds/abilities/ratking/ratking_armor_expire_01.vsnd_c",
+    "sounds/abilities/ratking/ratking_armor_expire_02.vsnd_c",
+    "sounds/abilities/ratking/ratking_armor_expire_03.vsnd_c",
+    "sounds/abilities/ratking/ratking_armor_rat_destroy_01.vsnd_c",
+    "sounds/abilities/ratking/ratking_armor_rat_destroy_02.vsnd_c",
+    "sounds/abilities/ratking/ratking_armor_rat_destroy_03.vsnd_c"
+   ],
+   "4": [
+    "sounds/abilities/ratking/ratking_charge_aoe_expire.vsnd_c",
+    "sounds/abilities/ratking/ratking_charge_aoe_water.vsnd_c",
+    "sounds/abilities/ratking/ratking_charge_buildup.vsnd_c",
+    "sounds/abilities/ratking/ratking_charge_cast_01.vsnd_c",
+    "sounds/abilities/ratking/ratking_charge_cast_delay_01.vsnd_c",
+    "sounds/abilities/ratking/ratking_charge_cast_jump.vsnd_c",
+    "sounds/abilities/ratking/ratking_charge_explosion_01.vsnd_c",
+    "sounds/abilities/ratking/ratking_charge_travel_lp.vsnd_c"
+   ]
+  },
+  "unslotted": {
+   "rats": 1,
+   "storm": 1
+  },
+  "total": 86
+ },
  "shiv": {
   "display": "Shiv",
   "codename": "shiv",

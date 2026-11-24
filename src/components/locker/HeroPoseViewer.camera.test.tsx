@@ -114,6 +114,32 @@ describe('hero preview camera fitting', () => {
     expect(state.camera.position.toArray()).toEqual([2, 1, 4]);
     await renderer.unmount();
   });
+  it('keeps a manually framed camera across comparison models and refits on reset', async () => {
+    const stock = new THREE.Mesh(new THREE.BoxGeometry(1, 2, 1));
+    const modded = new THREE.Mesh(new THREE.BoxGeometry(2, 3, 1));
+    const custom = [2, 1, 4] as const;
+    let state!: RootState;
+    function Figure({ shown, reset }: { shown: THREE.Mesh; reset: number }) {
+      const current = useThree();
+      useLayoutEffect(() => {
+        state = current;
+        Object.assign(current.gl.domElement, { setAttribute: vi.fn() });
+      }, [current]);
+      return <><primitive object={shown} /><Controls interaction={{ current: { dragging: false, paused: true } }}
+        reset={reset} label="camera" model={shown} fitKey="hero" preserveView /></>;
+    }
+    const renderer = await ReactThreeTestRenderer.create(<Figure shown={stock} reset={0} />);
+    try {
+      await renderer.advanceFrames(1, 1 / 60);
+      state.camera.position.set(...custom);
+      await renderer.update(<Figure shown={modded} reset={0} />);
+      await renderer.advanceFrames(1, 1 / 60);
+      expect(state.camera.position.toArray()).toEqual(custom);
+      await renderer.update(<Figure shown={modded} reset={1} />);
+      await renderer.advanceFrames(1, 1 / 60);
+      expect(state.camera.position.toArray()).not.toEqual(custom);
+    } finally { await renderer.unmount(); }
+  });
   it.each(['static', 'skinned'])('fits the first %s pose and refits when the canvas narrows', async (kind) => {
     const model = new THREE.Group();
     const geometry = new THREE.BoxGeometry(80, 100, 20);

@@ -44,6 +44,12 @@ export default function Crosshair() {
     const [resolution, setResolution] = useState(detectResolutionHeight);
     const [zoom, setZoom] = useState(1);
     const [background, setBackground] = useState<StageBackground>('street');
+    const [spreadPreview, setSpreadPreview] = useState(false);
+    useEffect(() => {
+        if (!spreadPreview) return;
+        const timeout = setTimeout(() => setSpreadPreview(false), 900);
+        return () => clearTimeout(timeout);
+    }, [spreadPreview]);
     const [gamePath, setGamePath] = useState<string | null>(null);
     const [alwaysOnTop, setAlwaysOnTop] = useState(false);
 
@@ -295,7 +301,7 @@ export default function Crosshair() {
                         the window instead of collapsing. From xl it goes back to
                         taking whatever the row leaves over. */}
                     <div className="always-dark relative h-[clamp(220px,42vh,560px)] overflow-hidden rounded-sm border border-hl/5 xl:h-auto xl:min-h-[280px] xl:flex-1">
-                        <CrosshairStage scale={resolution / 1080} zoom={zoom} background={background} />
+                        <CrosshairStage scale={resolution / 1080} zoom={zoom} background={background} spreadPreview={spreadPreview} />
 
                         {/* Both overlay bars share one wrapping row so they move
                             onto separate lines on a narrow window instead of
@@ -334,6 +340,10 @@ export default function Crosshair() {
                             {/* Resolution + zoom. Stepped zoom instead of a fiddly
                                 80px track: the useful values are few and discrete. */}
                             <div className="pointer-events-auto flex flex-wrap items-center gap-2 rounded-sm border border-hl/10 bg-black/50 px-2 py-1.5 backdrop-blur-md">
+                                <Button variant="ghost" size="sm" title={t('crosshair.preview.spreadHint')}
+                                    onClick={() => setSpreadPreview(active => !active)}>
+                                    {spreadPreview ? t('crosshair.preview.stopSpread') : t('crosshair.preview.testSpread')}
+                                </Button>
                                 <SegmentedControl
                                     options={RESOLUTIONS.map((r) => ({ value: String(r.height), label: r.label }))}
                                     value={String(resolution)}

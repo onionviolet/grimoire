@@ -118,7 +118,7 @@ describe('get-mods read path', () => {
         // The only permitted write is the fork's identity sidecar: a scan mints
         // a modUid for each file it has not seen. Nothing else may change.
         const after = await snapshotTree(root);
-        const metaPath = 'userdata/mod-metadata.json';
+        const metaPath = join('userdata', 'mod-metadata.json');
         const afterMeta = JSON.parse(after[metaPath]) as Record<string, Record<string, unknown>>;
         for (const key of ['grimoire/pak06_dir.vpk', 'pak01_dir.vpk', 'pak02_dir.vpk']) {
             expect(Object.keys(afterMeta[key])).toEqual(['modUid']);

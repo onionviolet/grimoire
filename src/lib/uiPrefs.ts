@@ -114,6 +114,7 @@ const cardSize = clamped(CARD_SIZE_MIN, CARD_SIZE_MAX);
  *   only exist on their own page.
  */
 export const UI_PREFS = {
+  browserBookmarkBar: def({ key: 'grimoire:browser-bookmark-bar', fallback: false, codec: boolean }),
   /** Shared across the Browse and Installed grids. */
   cardSize: def({
     key: 'grimoire:cardSize',

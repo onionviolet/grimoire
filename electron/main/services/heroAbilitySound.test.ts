@@ -16,7 +16,7 @@ const selected = () => h.selection.mockReturnValue({ lockerSounds: { sounds: [{ 
 describe('applied ability sound audition', () => {
   it('reads the managed artifact bytes for the applied slot', async () => {
     selected(); h.clip.mockResolvedValue('data:audio/mpeg;base64,applied');
-    expect(await previewAppliedHeroSound('game', 'Holliday', 4, 'sounds/lasso.vsnd_c')).toEqual({ url: 'data:audio/mpeg;base64,applied', selected: true, params: { pitch: 1.2, volumeDb: -3 } });
+    expect(await previewAppliedHeroSound('game', 'Holliday', 4, 'sounds/lasso.vsnd_c')).toMatchObject({ url: 'data:audio/mpeg;base64,applied', selected: true, params: { pitch: 1.2, volumeDb: -3 }, vpk: expect.stringMatching(/_dir\.vpk$/) });
     expect(h.clip).toHaveBeenCalledWith('/game/grimoire/pak02_dir.vpk', 'sounds/lasso.vsnd_c');
   });
   it('keeps an unavailable applied clip explicit instead of silently claiming base audio', async () => {

@@ -6,3 +6,15 @@ export type ChatWheelConverterStatus = {
     platform: ChatWheelPlatform;
     reason?: 'unsupported-platform' | 'missing-resource' | 'status-error';
 };
+
+export interface ChatWheelInspection {
+    mountOrderKnown: boolean;
+    providers: Array<{
+        id: string;
+        name: string;
+        enabled: boolean;
+        mount: string;
+        order: number | null;
+        menus: string[] | null;
+    }>;
+}

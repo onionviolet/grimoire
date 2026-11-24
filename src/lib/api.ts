@@ -153,6 +153,10 @@ export async function validateChatWheel(yaml: string): Promise<void> {
   return window.electronAPI.chatWheelValidate(yaml);
 }
 
+export async function exportChatWheel(yaml: string, name: string): Promise<string | null> {
+  return window.electronAPI.chatWheelExport(yaml, name);
+}
+
 export async function saveChatWheel(args: import('../types/electron').ChatWheelSaveArgs): Promise<Mod | null> {
   return withGameRunningWarning(() => window.electronAPI.chatWheelSave(args));
 }
@@ -365,8 +369,8 @@ export async function exportSoulModel(metaKey: string, cacheKey: string, entry?:
 }
 
 /** An animation mod's clips on its hero's stock model, for the Installed preview. Null when it has none to play. */
-export async function exportAnimationModPreview(metaKey: string): Promise<{ heroName: string; key: string; clips: string[]; meshGroup: string | null } | null> {
-  return window.electronAPI.exportAnimationModPreview(metaKey);
+export async function exportAnimationModPreview(metaKey: string, stock?: boolean): Promise<import('../types/portrait').AnimationModPreview | null> {
+  return window.electronAPI.exportAnimationModPreview(metaKey, stock);
 }
 
 /** Whether a hero's posed 3D still exists for the given active skin stack (+ mtime, key). */
@@ -1411,6 +1415,10 @@ export async function deleteProfile(profileId: string): Promise<void> {
 
 export async function renameProfile(profileId: string, newName: string): Promise<Profile> {
   return window.electronAPI.renameProfile(profileId, newName);
+}
+
+export async function updateProfileNotes(profileId: string, notes: string): Promise<Profile> {
+  return window.electronAPI.updateProfileNotes(profileId, notes);
 }
 
 export async function removeProfileCrosshair(profileId: string): Promise<Profile> {

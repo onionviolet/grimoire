@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { ShieldCheck, AlertTriangle, RefreshCw, Copy } from 'lucide-react';
 import { buildDiagnosticReport, scanInstallationHealth } from '../lib/api';
 import type { InstallationHealthReport } from '../types/recovery';
@@ -8,14 +8,18 @@ import { PageLayout, PageHeader, EmptyState, LoadingState, SectionHeader } from 
 import { Button } from '../components/common/ui';
 import { Textarea } from '../components/common/forms';
 import HealthIssues from '../components/recovery/HealthIssues';
+import ChatWheelInspector from '../components/chatwheel/ChatWheelInspector';
 import RecoveryTools from '../components/recovery/RecoveryTools';
 import DownloadHistory from '../components/downloads/DownloadHistory';
 import SetupTestHistory from '../components/recovery/SetupTestHistory';
 import DownloadCacheManager from '../components/downloads/DownloadCacheManager';
+import { useCrashAdvisoryStore } from '../stores/crashAdvisoryStore';
 
 export default function Recovery() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const advisoryId: unknown = useLocation().state?.crashAdvisoryId;
+  const advisory = useCrashAdvisoryStore(state => state.findings.find(finding => finding.id === advisoryId));
   const [health, setHealth] = useState<InstallationHealthReport | null>(null);
   const [scanning, setScanning] = useState(false);
   const [scanError, setScanError] = useState(false);
@@ -70,6 +74,9 @@ export default function Recovery() {
       <PageHeader title={t('recovery.title')} description={t('recovery.description')}
         action={<Button icon={RefreshCw} isLoading={scanning} disabled={scanning || building} onClick={scan}>{health ? t('recovery.refresh') : t('recovery.scan')}</Button>} />
       <p className="text-sm text-text-secondary">{t('recovery.readOnly')}</p>
+      {!health && advisory && <p className="break-words text-sm text-text-secondary">
+        {t('recovery.tools.crashSuspect', { name: advisory.modName })}
+      </p>}
       {scanning ? <LoadingState label={t('recovery.scanning')} />
         : scanError ? <EmptyState icon={AlertTriangle} variant="error" title={t('recovery.scanFailed')} description={t('recovery.scanFailedHelp')} />
         : !health ? <EmptyState icon={ShieldCheck} title={t('recovery.startTitle')} description={t('recovery.startDescription')} />
@@ -89,8 +96,9 @@ export default function Recovery() {
             : <EmptyState icon={ShieldCheck} title={t('recovery.noIssues')} description={t('recovery.noIssuesDescription')} />}
           <p className="text-xs text-text-tertiary">{t('recovery.scope')}</p>
         </section>}
-      {health?.pathState === 'ready' && <RecoveryTools />}
+      {health?.pathState === 'ready' && <RecoveryTools suspectName={advisory?.modName} />}
       {health?.pathState === 'ready' && <SetupTestHistory />}
+      <ChatWheelInspector />
       <DownloadHistory />
       <DownloadCacheManager />
       <section className="space-y-3 rounded-sm border border-border bg-bg-secondary p-4">

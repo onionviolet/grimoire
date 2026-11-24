@@ -3,16 +3,26 @@ import { promises as fs } from 'fs';
 import { join, basename } from 'path';
 import { tmpdir } from 'os';
 
-const state = vi.hoisted(() => ({ root: '', active: 'original' as string | null, slotIds: false }));
+const state = vi.hoisted(() => ({
+  root: '', active: 'original' as string | null, launchOptions: '', slotIds: false, sameVariantGroup: false, lockerMetadata: new Map<string, object>(),
+  probe: vi.fn<() => Promise<boolean | null>>(), delay: vi.fn<() => Promise<void>>(),
+}));
 vi.mock('../utils/paths', () => ({ getUserDataPath: () => join(state.root, 'data') }));
-vi.mock('./settings', () => ({ loadSettings: () => ({ activeProfileId: state.active }), saveSettings: (s: { activeProfileId: string | null }) => { state.active = s.activeProfileId; } }));
-vi.mock('./metadata', () => ({ getModMetadata: () => ({}), migrateModMetadata: vi.fn(), setModMetadata: vi.fn(), removeModMetadata: vi.fn() }));
-vi.mock('./gameSessionMods', () => ({ syncRunningGameModSnapshotFromMods: vi.fn(), assertCanMoveLoadedGameMods: vi.fn() }));
+vi.mock('./settings', () => ({ getActiveDeadlockPath: () => join(state.root, 'game'), loadSettings: () => ({ activeProfileId: state.active, steamLaunchOptions: state.launchOptions }), saveSettings: (s: { activeProfileId: string | null; steamLaunchOptions?: string }) => { state.active = s.activeProfileId; state.launchOptions = s.steamLaunchOptions ?? ''; } }));
+vi.mock('./launch', () => ({ isLaunchInFlight: () => false, readStash: async () => null, probeDeadlockRunning: state.probe }));
+vi.mock('node:timers/promises', () => ({ setTimeout: state.delay }));
+vi.mock('./metadata', () => ({
+  getModMetadata: (key: string) => key.startsWith('locker:') ? state.lockerMetadata.get(key) : {},
+  migrateModMetadata: vi.fn(),
+  setModMetadata: vi.fn((key: string, value: object) => { if (key.startsWith('locker:')) state.lockerMetadata.set(key, value); }),
+  removeModMetadata: vi.fn((key: string) => state.lockerMetadata.delete(key)),
+}));
+vi.mock('./gameSessionMods', () => ({ syncRunningGameModSnapshotFromMods: vi.fn(), assertCanMoveLoadedGameMods: vi.fn(), hasPendingGameLaunch: () => false }));
 vi.mock('./modSafety', () => ({ moveSafetySnapshot: vi.fn(), assertVpkSafety: vi.fn() }));
 vi.mock('./autoexec', () => ({ getAutoexecPath: () => join(state.root, 'game', 'autoexec.cfg') }));
 vi.mock('./deadlock', () => ({ getGameinfoPath: () => join(state.root, 'game', 'gameinfo.gi'),
   getModScanRootPaths: () => [join(state.root, 'game', 'addons')], isReservedPriorityVpkArtifact: () => false, getDisabledPath: () => join(state.root, 'game', '.disabled'), metaKeyFor: (path: string) => basename(path) }));
-vi.mock('./vpk', () => ({ findChunkSiblingNames: (name: string, names: string[]) => {
+vi.mock('./vpk', () => ({ parseVpkDirectoryCached: () => null, findChunkSiblingNames: (name: string, names: string[]) => {
   const stem = name.replace(/_dir\.vpk$/, '');
   return names.filter(n => n.startsWith(stem + '_') && /_\d{3}\.vpk$/.test(n));
 } }));
@@ -27,6 +37,7 @@ vi.mock('./mods', () => ({
         const path = join(root, name);
         const content = await fs.readFile(path, 'utf8');
         result.push({ id: state.slotIds ? `${folder}/${name}` : content.split(':')[0], name: content.split(':')[0], fileName: name, metaKey: name, path,
+          localGroupId: state.sameVariantGroup ? 'fixture' : undefined,
           enabled: folder === 'addons', priority: Number(name.match(/pak(\d+)/)?.[1] ?? 0) });
       }
     }
@@ -37,13 +48,24 @@ vi.mock('./mods', () => ({
     for (const name of await fs.readdir(root)) {
       if (!name.endsWith('_dir.vpk')) continue;
       if ((await fs.readFile(join(root, name), 'utf8')).split(':')[0] === id) {
-        await fs.rename(join(root, name), join(state.root, 'game', '.disabled', `${id}_dir.vpk`));
+        const from = join(root, name);
+        const to = join(state.root, 'game', '.disabled', `${id}_dir.vpk`);
+        await journalModRename(from, to);
+        await fs.rename(from, to);
       }
     }
   },
+  enableModUnlocked: async (_path: string, id: string) => {
+    const from = asset('.disabled', `${id}_dir.vpk`);
+    const to = asset('addons', 'pak02_dir.vpk');
+    await journalModRename(from, to);
+    await fs.rename(from, to);
+  },
 }));
 import { captureProfileRecoveryUnlocked, listProfileRecoveryPoints, previewProfileRecovery, restoreProfileRecovery, getInterruptedProfileRecovery, recoverInterruptedProfileRecovery } from './profileRecovery';
-import { beginRecoveryMutation, createRecoveryJournal, journalRecoveryPaths } from './recoveryJournal';
+import { beginRecoveryMutation, createRecoveryJournal, journalModRename, journalRecoveryPaths, readRecoveryJournal, withRecoveryMutationJournal } from './recoveryJournal';
+import { launchModTrial, resumeModTrial } from './modTrial';
+import { isModTrialWindowActive } from './vanillaWindow';
 import { assertVpkSafety } from './modSafety';
 import { fingerprintFile } from './fileMatch';
 import { startModIsolation, getModIsolationSession, applyModIsolationTrial, recordModIsolationResult, finishModIsolation } from './modIsolation';
@@ -55,7 +77,12 @@ async function capturePoint() {
 beforeEach(async () => {
   state.root = await fs.realpath(await fs.mkdtemp(join(tmpdir(), 'grimoire-recovery-')));
   state.active = 'original';
+  state.launchOptions = '';
   state.slotIds = false;
+  state.sameVariantGroup = false;
+  state.lockerMetadata.clear();
+  state.probe.mockReset().mockResolvedValue(false);
+  state.delay.mockReset().mockResolvedValue(undefined);
   for (const folder of ['addons', '.disabled']) await fs.mkdir(asset(folder, ''), { recursive: true });
   await fs.writeFile(asset('addons', 'pak01_dir.vpk'), 'local:a');
   await fs.writeFile(asset('.disabled', 'foundry_dir.vpk'), 'foundry:b');
@@ -64,7 +91,110 @@ beforeEach(async () => {
 });
 afterEach(async () => { vi.restoreAllMocks(); await fs.rm(state.root, { recursive: true, force: true }); });
 
+describe('one-launch mod recovery', () => {
+  it('mounts the trial alongside the setup and restores exact files when Deadlock exits', async () => {
+    const game = join(state.root, 'game');
+    state.probe.mockResolvedValueOnce(false).mockResolvedValueOnce(false).mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    const launch = vi.fn(async (markRequested: () => Promise<void>) => {
+      expect(await fs.readFile(asset('addons', 'pak02_dir.vpk'), 'utf8')).toBe('foundry:b');
+      expect(await fs.readFile(asset('addons', 'pak01_dir.vpk'), 'utf8')).toBe('local:a');
+      expect(isModTrialWindowActive()).toBe(true);
+      await markRequested();
+    });
+    const notify = vi.fn();
+    await launchModTrial(game, 'foundry', [], launch, notify);
+    await vi.waitFor(() => expect(notify).toHaveBeenCalledExactlyOnceWith(true));
+    expect(await fs.readFile(asset('.disabled', 'foundry_dir.vpk'), 'utf8')).toBe('foundry:b');
+    await expect(fs.access(asset('addons', 'pak02_dir.vpk'))).rejects.toThrow();
+    expect(await readRecoveryJournal(game)).toBeNull();
+    expect(isModTrialWindowActive()).toBe(false);
+  });
+
+  it('rolls back a failed Steam launch', async () => {
+    const game = join(state.root, 'game');
+    await expect(launchModTrial(game, 'foundry', [], async () => { throw new Error('Steam unavailable'); }, vi.fn()))
+      .rejects.toThrow('Steam unavailable');
+    expect(await fs.readFile(asset('.disabled', 'foundry_dir.vpk'), 'utf8')).toBe('foundry:b');
+    expect(await readRecoveryJournal(game)).toBeNull();
+  });
+
+  it('rejects a stale variant review and restores the explicitly replaced variant after a trial', async () => {
+    const game = join(state.root, 'game');
+    state.sameVariantGroup = true;
+    const notify = vi.fn();
+    const launch = vi.fn(async (markRequested: () => Promise<void>) => {
+      await expect(fs.access(asset('addons', 'pak01_dir.vpk'))).rejects.toThrow();
+      expect(await fs.readFile(asset('addons', 'pak02_dir.vpk'), 'utf8')).toBe('foundry:b');
+      await markRequested();
+    });
+    await expect(launchModTrial(game, 'foundry', [], launch, notify)).rejects.toThrow('variants changed');
+    expect(launch).not.toHaveBeenCalled();
+    expect(await readRecoveryJournal(game)).toBeNull();
+    state.probe.mockResolvedValueOnce(false).mockResolvedValueOnce(false).mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    await launchModTrial(game, 'foundry', ['local'], launch, notify);
+    await vi.waitFor(() => expect(notify).toHaveBeenCalledExactlyOnceWith(true));
+    expect(await fs.readFile(asset('addons', 'pak01_dir.vpk'), 'utf8')).toBe('local:a');
+    expect(await fs.readFile(asset('.disabled', 'foundry_dir.vpk'), 'utf8')).toBe('foundry:b');
+  });
+
+  it('resumes the restore check from a journal left by a prior app session', async () => {
+    const game = join(state.root, 'game');
+    const journal = await createRecoveryJournal(game, 'original', { requestedAt: 0 });
+    const from = asset('.disabled', 'foundry_dir.vpk');
+    const to = asset('addons', 'pak02_dir.vpk');
+    await withRecoveryMutationJournal(journal, async () => {
+      await journalModRename(from, to);
+      await fs.rename(from, to);
+    });
+    const notify = vi.fn();
+    await resumeModTrial(game, notify);
+    await vi.waitFor(() => expect(notify).toHaveBeenCalledExactlyOnceWith(true));
+    expect(await fs.readFile(from, 'utf8')).toBe('foundry:b');
+    await expect(fs.access(to)).rejects.toThrow();
+  });
+});
+
 describe('local profile recovery', () => {
+  it('restores a reserved Locker VPK, its chunks and its owning selections together', async () => {
+    const game = join(state.root, 'game');
+    const locker = join(game, 'game', 'citadel', 'grimoire');
+    await fs.mkdir(locker, { recursive: true });
+    await fs.writeFile(join(locker, 'pak01_dir.vpk'), 'cards:old');
+    await fs.writeFile(join(locker, 'pak01_000.vpk'), 'chunk:old');
+    state.lockerMetadata.set('locker:cards', { modName: 'Original cards' });
+    const point = await capturePoint();
+    expect(point.includesLocker).toBe(true);
+
+    await fs.writeFile(join(locker, 'pak01_dir.vpk'), 'cards:new');
+    await fs.unlink(join(locker, 'pak01_000.vpk'));
+    await fs.writeFile(join(locker, 'pak02_dir.vpk'), 'sound:new');
+    state.lockerMetadata.set('locker:cards', { modName: 'Changed cards' });
+    state.lockerMetadata.set('locker:sounds', { modName: 'New sounds' });
+    const reviewed = await previewProfileRecovery(game, point.id);
+    expect(reviewed.canRestore).toBe(true);
+    state.lockerMetadata.set('locker:cards', { modName: 'Changed after review' });
+    await expect(restoreProfileRecovery(game, point.id, reviewed.reviewToken)).rejects.toThrow('stale');
+    const updated = await previewProfileRecovery(game, point.id);
+    await restoreProfileRecovery(game, point.id, updated.reviewToken);
+
+    expect(await fs.readFile(join(locker, 'pak01_dir.vpk'), 'utf8')).toBe('cards:old');
+    expect(await fs.readFile(join(locker, 'pak01_000.vpk'), 'utf8')).toBe('chunk:old');
+    await expect(fs.access(join(locker, 'pak02_dir.vpk'))).rejects.toThrow();
+    expect(state.lockerMetadata.get('locker:cards')).toEqual({ modName: 'Original cards' });
+    expect(state.lockerMetadata.has('locker:sounds')).toBe(false);
+  });
+  it('restores launch options and rejects a review made before they changed', async () => {
+    const game = join(state.root, 'game');
+    state.launchOptions = '-novid';
+    const point = await capturePoint();
+    const before = await previewProfileRecovery(game, point.id);
+    state.launchOptions = '-console';
+    await expect(restoreProfileRecovery(game, point.id, before.reviewToken)).rejects.toThrow('stale');
+    const after = await previewProfileRecovery(game, point.id);
+    await restoreProfileRecovery(game, point.id, after.reviewToken);
+    expect(state.launchOptions).toBe('-novid');
+  });
+
   it('restores local and Foundry state, swapped slots, exact configuration and active marker', async () => {
     const point = await capturePoint();
     await fs.rename(asset('addons', 'pak01_dir.vpk'), asset('.disabled', 'local_dir.vpk'));
@@ -199,6 +329,8 @@ describe('retained bytes and interrupted recovery', () => {
     const path = join(state.root, 'data', 'profile-recovery', `${point.id}.json`);
     const saved = JSON.parse(await fs.readFile(path, 'utf8'));
     saved.version = 1;
+    delete saved.locker;
+    delete saved.steamLaunchOptions;
     await fs.writeFile(path, JSON.stringify(saved));
     expect((await listProfileRecoveryPoints())[0].retainedBytes).toBe(false);
     await fs.unlink(asset('addons', 'pak01_dir.vpk'));
@@ -211,9 +343,23 @@ describe('retained bytes and interrupted recovery', () => {
     await fs.unlink(asset('addons', 'pak01_dir.vpk'));
     expect((await previewProfileRecovery(join(state.root, 'game'), point.id)).canRestore).toBe(false);
   });
-  it('rejects symlinked VPKs and roots', async () => {
+  it('rejects a symlinked mod root', async () => {
+    const modRoot = asset('addons', '');
+    const outside = join(state.root, 'outside');
+    await fs.rename(modRoot, outside);
+    await fs.symlink(outside, modRoot, process.platform === 'win32' ? 'junction' : 'dir');
+    await expect(capturePoint()).rejects.toThrow('symbolic link');
+  });
+  it('rejects symlinked VPKs', async ({ skip }) => {
     await fs.rename(asset('addons', 'pak01_dir.vpk'), join(state.root, 'outside.vpk'));
-    await fs.symlink(join(state.root, 'outside.vpk'), asset('addons', 'pak01_dir.vpk'));
+    try {
+      await fs.symlink(join(state.root, 'outside.vpk'), asset('addons', 'pak01_dir.vpk'));
+    } catch (error) {
+      if (process.platform === 'win32' && (error as NodeJS.ErrnoException).code === 'EPERM') {
+        return skip('Creating file symlinks requires Windows Developer Mode or an elevated process');
+      }
+      throw error;
+    }
     await expect(capturePoint()).rejects.toThrow('symbolic link');
   });
   it('offers persistent explicit rollback after a process interruption', async () => {
@@ -256,7 +402,7 @@ describe('manual assisted isolation', () => {
     const rename = fs.rename.bind(fs);
     let failed = false;
     vi.spyOn(fs, 'rename').mockImplementation(async (from, to) => {
-      if (!failed && String(to).endsWith('/isolation.json')) {
+      if (!failed && String(to) === join(state.root, 'data', 'profile-recovery', 'isolation.json')) {
         failed = true;
         expect(await fs.readFile(join(state.root, 'data', 'profile-recovery', 'interrupted.json'), 'utf8')).toContain('"isolation"');
         throw new Error('session disk failure');
@@ -345,7 +491,7 @@ describe('performance preset owner state', () => {
     const point = await capturePoint();
     const pointFile = join(state.root, 'data', 'profile-recovery', `${point.id}.json`);
     const saved = JSON.parse(await fs.readFile(pointFile, 'utf8'));
-    saved.version = version; delete saved.performanceState;
+    saved.version = version; delete saved.performanceState; delete saved.locker; delete saved.steamLaunchOptions;
     await fs.writeFile(pointFile, JSON.stringify(saved));
     const sidecar = join(state.root, 'game', 'grimoire-performance.json');
     await fs.writeFile(sidecar, '{"keep":"existing"}');

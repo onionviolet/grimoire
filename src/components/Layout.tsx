@@ -103,6 +103,12 @@ export default function Layout() {
       void state.loadMods({ afterCurrent: true, silent: true });
     }
   }), []);
+  useEffect(() => window.electronAPI.onModTrialFinished?.(restored => {
+    void useAppStore.getState().loadMods({ afterCurrent: true, silent: true });
+    showToast(restored ? t('installed.trial.restored') : t('installed.trial.restoreFailed'), {
+      tone: restored ? 'success' : 'error',
+    });
+  }), [t]);
   useEffect(() => {
     applyAccentColor(accentColor);
   }, [accentColor]);
