@@ -65,6 +65,7 @@ interface HeroWorkshopProps {
   stagedEdits: readonly FoundryStagedEdit[];
   onStage: (edit: FoundryStagedEdit) => void;
   onRemoveStagedEdit: (id: string) => void;
+  onRelinkSoundPaths?: (paths: Map<string, string>) => void;
   outputName: string;
   onOutputNameChange: (name: string) => void;
   onForge: (request: FoundryForgeRequest) => Promise<void>;
@@ -112,6 +113,7 @@ export default function HeroWorkshop({
   stagedEdits,
   onStage,
   onRemoveStagedEdit,
+  onRelinkSoundPaths,
   outputName,
   onOutputNameChange,
   onForge,
@@ -372,6 +374,7 @@ export default function HeroWorkshop({
                   onForge={onForge}
                   onInstall={onInstall}
                   onRemove={onRemoveStagedEdit}
+                  onRelinkSoundPaths={onRelinkSoundPaths}
                   className="h-full bg-bg-secondary/80"
                 />
               </div>
@@ -427,7 +430,7 @@ export default function HeroWorkshop({
             )}
           </div>
         ) : section === 'mechanics' ? (
-          <MovementFxEditor heroName={hero.name} skinSources={skinSources} />
+          <MovementFxEditor heroName={hero.name} skinSources={skinSources} onStageSound={stage} />
         ) : section === 'abilities' ? (
           <div className="space-y-6">
             <HeroSoundPicker

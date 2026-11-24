@@ -10,7 +10,7 @@ import { healModAttachments } from '../services/attachmentHeal';
 import { repairModCompatibility, reviewModCompatibility } from '../services/compatibilityHeal';
 import { importDisabledVpk, prepareLocalImport, getPreparedLocalImport, withPreparedLocalImport, releaseLocalImport } from '../services/importDisabledVpk';
 import { getLocalModGallery, hasLocalModGallery, localModGalleryThumbnail, setLocalModGallery } from '../services/lockerModImages';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { promises as fs, existsSync } from 'fs';
 import { extname, basename, join, resolve, sep } from 'path';
 import { tmpdir } from 'os';
@@ -18,6 +18,11 @@ import { loadSettings, saveSettings, getActiveDeadlockPath } from '../services/s
 import {
     scanMods,
     scanModsAfterMutations,
+    scanModsReadOnly,
+    previewEnabledVpkOrder,
+    modLoadOrder,
+    disableModUnlocked,
+    restoreDisabledModToSlotUnlocked,
     healModFolders,
     enableMod,
     enableModUnlocked,
@@ -92,9 +97,9 @@ import {
 } from '../services/imprintMods';
 import { parseAddonInfo, readEmbeddedAddonInfoText, readEmbeddedAddonInfo, carryForwardOriginalIdentity } from '../services/vpkIdentity';
 import { readEmbeddedModinfo, readLegacyGrimoireMergeMeta, hasLegacyGrimoireMergeMetaEntry } from '../services/modinfoFormat';
-import { buildHeroSoundSwapVpk, cleanupHeroSoundSwapBuild } from '../services/foundryCatalog';
+import { buildHeroSoundSwapVpk, cleanupHeroSoundSwapBuild, foundryBuildFingerprintKey, sharedStockSoundEvents } from '../services/foundryCatalog';
 import { buildTextureReplacementVpk, cleanupTextureReplacementBuild } from '../services/foundryTextureReplace';
-import { buildFoundryForgeVpk, describeFoundryBuild } from '../services/foundryForge';
+import { buildFoundryForgeVpk, describeFoundryBuild, reviewFoundryForge } from '../services/foundryForge';
 import { buildSoulContainerVpk, cleanupSoulContainerBuild, previewSoulContainerGlb } from '../services/soulContainerImport';
 import { buildSpiritUrnVpk, cleanupSpiritUrnBuild, previewSpiritUrnGlb } from '../services/spiritUrnImport';
 import { resolveModVpk, clearSoulModelCache } from '../services/soulContainerModels';
@@ -104,7 +109,7 @@ import { planLocalVariantGroup, resolveLocalVariantGroupProfile, type LocalVaria
 import { refreshEmbedAfterMetadataChange, toLocalVariantGroupMember } from '../services/modReplacement';
 import { planLocalImport } from '../../../src/lib/customModImport';
 import type { PreparedLocalModImport, ImportCustomModArgs, ImportCustomModsBatchArgs, ImportCustomModsBatchResult, ImportCustomModResult, ImportCustomModsProgress, ImportSoulContainerGlbArgs, LocalVariantGroupTarget, PreviewSoulContainerGlbArgs, SetLocalVariantGroupResult, SoulContainerPreview, ImportSpiritUrnGlbArgs, PreviewSpiritUrnGlbArgs, SpiritUrnPreview } from '../../../src/types/electron';
-import type { VpkExportResult, HeroSoundSwapRequest, TextureReplacementRequest, FoundryForgeRequest, FoundrySoundConflictInspection, FoundryAssetSourcesInspection } from '../../../src/types/foundry';
+import type { VpkExportResult, HeroSoundSwapRequest, TextureReplacementRequest, FoundryForgeRequest, FoundrySoundConflictInspection, FoundryAssetSourcesInspection, FoundrySoundInstallReview } from '../../../src/types/foundry';
 import type { AddMergeSourcesResult, DeleteModEntry, ModSwapPlacement, DeleteModsResult, MergeSourceReplacement, ReplaceMergeSourcesResult, ApplyUnknownCustomModArgs, ApplyUnknownModMatchArgs, AssociateUnknownModArgs, EditLocalModArgs, GlobalModType, LockerHeroSource, MergeAnalysisResult, MergeModsArgs, Mod as WireMod, SoulContainerImportInfo, SoundSwapInfo, UrnImportInfo, UnmergeModResult, ExtractMergeSourceResult, UnknownModFileList, ImprintPreflightResult, ImprintDetails, PeekImprintResult, ModelCompatibilityReport } from '../../../src/types/mod';
 
 const unknownDetectionControllers = new Map<string, AbortController>();
@@ -1906,9 +1911,10 @@ ipcMain.handle(
  * truth: locally dropped and third-party VPKs are first-class owners. */
 async function inspectInstalledSoundWriteSet(
     deadlockPath: string,
-    writeSet: string[]
+    writeSet: string[],
+    mods?: Mod[],
 ): Promise<FoundrySoundConflictInspection> {
-    const mods = await scanMods(deadlockPath);
+    mods ??= await scanMods(deadlockPath);
     const entriesByPath = await parseVpkDirectoriesAsync(mods.map((mod) => mod.path));
     return inspectFoundrySoundWriteSet(writeSet, mods.map((mod) => ({
         mod: (() => {
@@ -1918,7 +1924,7 @@ async function inspectInstalledSoundWriteSet(
                 name: enriched.name,
                 metaKey: mod.metaKey,
                 enabled: mod.enabled,
-                priority: mod.priority,
+                priority: modLoadOrder(mod.path, mod.priority),
                 gameBananaId: enriched.gameBananaId,
                 isUnknown: enriched.isUnknown,
             };
@@ -1936,6 +1942,85 @@ ipcMain.handle('foundry:inspectSoundConflicts', async (_, writeSet: string[]): P
     }
     return inspectInstalledSoundWriteSet(deadlockPath, writeSet);
 });
+
+async function reviewSoundInstall(
+    deadlockPath: string, paths: string[], includeReferences: boolean, replacementId?: string,
+): Promise<FoundrySoundInstallReview> {
+    const [mods, newSlotOrder, fingerprint] = await Promise.all([
+        scanModsReadOnly(deadlockPath),
+        previewEnabledVpkOrder(deadlockPath),
+        foundryBuildFingerprintKey(deadlockPath),
+    ]);
+    const replacement = findFoundryBuildReplacement(mods, replacementId, paths);
+    const order = replacement?.enabled ? modLoadOrder(replacement.path, replacement.priority) : newSlotOrder;
+    const inspection = await inspectInstalledSoundWriteSet(deadlockPath, paths, mods.filter((mod) => mod !== replacement));
+    const entries = inspection.expectedWinners.map(({ entry: path, modName, modId, priority }) => ({
+        path,
+        currentModId: modId,
+        contenders: inspection.conflicts.filter((mod) => mod.entries.some((entry) =>
+            entry.replace(/\\/g, '/').replace(/^\/+/, '').toLowerCase() === path))
+            .map((mod) => ({ name: mod.modName, enabled: mod.enabled }))
+            .sort((a, b) => Number(b.enabled) - Number(a.enabled) || a.name.localeCompare(b.name)),
+        winner: priority != null && (order === null || priority <= order) ? modName ?? null : null,
+    }));
+    const unreadableMods = inspection.unreadableMods.filter((mod) => mod.enabled).map((mod) => mod.modName).sort();
+    const token = createHash('sha256').update(JSON.stringify({
+        deadlockPath, fingerprint, order, unreadableMods, paths,
+        replacement: replacement && { id: replacement.id, path: replacement.path, enabled: replacement.enabled },
+        conflicts: inspection.conflicts.map(({ metaKey, enabled, priority, entries }) => ({ metaKey, enabled, priority, entries }))
+            .sort((a, b) => a.metaKey.localeCompare(b.metaKey)),
+    })).digest('hex');
+    return {
+        token, entries, unreadableMods,
+        sharedEvents: includeReferences ? await sharedStockSoundEvents(deadlockPath, fingerprint, paths) : [],
+    };
+}
+
+function soundPathsForBuild(request: FoundryForgeRequest): string[] {
+    return reviewFoundryForge(request.edits).writeSet.filter((path) => path.endsWith('.vsnd_c'));
+}
+
+ipcMain.handle('foundry:reviewSoundInstall', async (_, request: FoundryForgeRequest) => {
+    const deadlockPath = getActiveDeadlockPath();
+    if (!deadlockPath) throw new Error('No Deadlock path configured');
+    const paths = soundPathsForBuild(request);
+    return paths.length ? reviewSoundInstall(deadlockPath, paths, true, request.replaceBuildId) : null;
+});
+
+function findFoundryBuildReplacement(mods: Mod[], id: string | undefined, paths: string[]): Mod | undefined {
+    if (!id) return undefined;
+    const existing = mods.find((mod) => mod.id === id);
+    if (existing) {
+        const writeSet = getModMetadata(existing.metaKey)?.foundryBuild?.writeSet ?? [];
+        if (writeSet.filter((path) => path.endsWith('.vsnd_c')).sort().join('\0') === paths.join('\0')) return existing;
+    }
+    throw new Error('The installed Foundry build no longer matches this sound review.');
+}
+
+async function parkFoundryMod(deadlockPath: string, original: Mod) {
+    const lastPriority = getModMetadata(original.metaKey)?.lastPriority;
+    const disabled = await disableModUnlocked(deadlockPath, original.id);
+    return { original, disabled, lastPriority };
+}
+
+/** Caller holds the mod mutation lock. Clean up only a slot this call owns. */
+async function registerFoundryVpk(deadlockPath: string, source: string, metadata: ModMetadata, slot?: string): Promise<WireMod[]> {
+    const destination = slot ?? await allocateEnabledVpkPath(deadlockPath);
+    const key = metaKeyFor(destination);
+    await reserveOutputSlot(destination);
+    try {
+        await fs.copyFile(source, destination);
+        removeModMetadata(key);
+        await setModMetadataWithHash(key, metadata, destination);
+        return enrichMods(await scanMods(deadlockPath));
+    } catch (error) {
+        const rollbackErrors: unknown[] = [];
+        try { removeModMetadata(key); } catch (cause) { rollbackErrors.push(cause); }
+        try { await fs.unlink(destination); } catch (cause) { rollbackErrors.push(cause); }
+        if (rollbackErrors.length) throw new AggregateError([error, ...rollbackErrors], 'Foundry install failed and could not fully roll back.', { cause: error });
+        throw error;
+    }
+}
 
 // Read-only exact-path inspection for visual catalog assets. Both enabled and
 // disabled VPKs are scanned; display labels are never used as ownership proof.
@@ -1996,6 +2081,7 @@ ipcMain.handle(
             clipPaths,
             audioPath,
             assignments,
+            stockDonor,
             poolMode,
             poolSeed,
             name,
@@ -2014,16 +2100,17 @@ ipcMain.handle(
         if (!name?.trim()) {
             throw new Error('A name is required');
         }
-        if (!event?.trim() && !hasClips) {
+        const explicitAssignments = Array.isArray(assignments) ? assignments : [];
+        if (!event?.trim() && !hasClips && !explicitAssignments.length) {
             throw new Error('A sound event or clip is required');
         }
-        if (!audioPath || !existsSync(audioPath)) {
+        if (!audioPath || (!stockDonor && !existsSync(audioPath))) {
             throw new Error('Audio file not found');
         }
-        const explicitAssignments = Array.isArray(assignments) ? assignments : [];
         if (explicitAssignments.length > 0) {
             for (const assignment of explicitAssignments) {
-                if (!assignment?.clipPath?.trim() || !assignment.audioPath || !existsSync(assignment.audioPath)) {
+                if (!assignment?.clipPath?.trim() || !assignment.audioPath ||
+                    (!(stockDonor && assignment.audioPath === audioPath) && !existsSync(assignment.audioPath))) {
                     throw new Error('Each pool target needs an existing audio file');
                 }
             }
@@ -2039,120 +2126,110 @@ ipcMain.handle(
             clipPaths: hasClips ? clipPaths : undefined,
             audioPath,
             assignments: explicitAssignments,
+            stockDonor,
             loop: loop ?? 'auto',
             trimStartMs,
             trimEndMs,
             gainDb,
         });
 
-        let destPath: string | undefined;
-        let destMetaKey: string | undefined;
-        const disabledForResolution: string[] = [];
         try {
-            // Build output, rather than event names or mod metadata, is the
-            // only authoritative write-set. This catches untracked third-party
-            // VPKs and disabled VPKs just as reliably as managed swaps.
-            const writeSet = parseVpkDirectory(built.vpkPath);
-            if (!writeSet) throw new Error('Could not inspect the generated sound VPK write-set');
-            const inspection = await inspectInstalledSoundWriteSet(deadlockPath, writeSet);
-            if (inspection.unreadableMods.length) {
-                throw new Error(`Cannot safely forge: ${inspection.unreadableMods.map((mod) => mod.modName).join(', ')} could not be inspected for entry-path conflicts.`);
-            }
-            if (inspection.conflicts.length) {
-                const expectedIds = inspection.conflicts.map((conflict) => conflict.modId).sort();
-                const resolution = args.conflictResolution;
-                const resolvedIds = [...(resolution?.conflictModIds ?? [])].sort();
-                if (!resolution || expectedIds.join('\0') !== resolvedIds.join('\0') || resolution.action === 'cancel') {
-                    throw new Error(`Sound VPK conflicts require an explicit resolution: ${JSON.stringify(inspection)}`);
-                }
-                if (resolution.action === 'replace-managed' && inspection.conflicts.some((conflict) => !conflict.managed)) {
-                    throw new Error('Only Grimoire-managed sound changes can be replaced; resolve third-party VPK conflicts explicitly.');
-                }
-                if (resolution.action === 'disable-conflicts') {
-                    for (const conflict of inspection.conflicts) {
-                        if (conflict.enabled) {
-                            await disableMod(deadlockPath, conflict.modId);
-                            disabledForResolution.push(conflict.modId);
+            return await runExclusiveModMutation(async () => {
+                const disabledForResolution: Array<Awaited<ReturnType<typeof parkFoundryMod>>> = [];
+                let priorSlot: string | undefined;
+                try {
+                    if (getActiveDeadlockPath() !== deadlockPath) throw new Error('The active mod installation changed. Please try again.');
+                    // Build output, rather than event names or mod metadata, is the
+                    // only authoritative write-set. This catches untracked third-party
+                    // VPKs and disabled VPKs just as reliably as managed swaps.
+                    const writeSet = parseVpkDirectory(built.vpkPath);
+                    if (!writeSet) throw new Error('Could not inspect the generated sound VPK write-set');
+                    const installed = await scanMods(deadlockPath);
+                    const inspection = await inspectInstalledSoundWriteSet(deadlockPath, writeSet, installed);
+                    const unreadable = inspection.unreadableMods.filter((mod) => mod.enabled);
+                    if (unreadable.length) {
+                        throw new Error(`Cannot safely forge: ${unreadable.map((mod) => mod.modName).join(', ')} could not be inspected for entry-path conflicts.`);
+                    }
+                    if (args.conflictResolution?.replaceModId && !inspection.conflicts.some((mod) => mod.modId === args.conflictResolution?.replaceModId)) {
+                        throw new Error('The recorded sound no longer owns any of the rebuilt paths. Review the current game targets.');
+                    }
+                    if (inspection.conflicts.length) {
+                        const expectedIds = inspection.conflicts.map((conflict) => conflict.modId).sort();
+                        const resolution = args.conflictResolution;
+                        const resolvedIds = [...(resolution?.conflictModIds ?? [])].sort();
+                        if (!resolution || expectedIds.join('\0') !== resolvedIds.join('\0') ||
+                            !['replace-managed', 'disable-conflicts', 'forge-above', 'forge-below'].includes(resolution.action)) {
+                            throw new Error(`Sound VPK conflicts require an explicit resolution: ${JSON.stringify(inspection)}`);
+                        }
+                        const replacing = resolution.action === 'replace-managed'
+                            ? inspection.conflicts.filter((conflict) => !resolution.replaceModId || conflict.modId === resolution.replaceModId)
+                            : [];
+                        if (resolution.action === 'replace-managed' && (!replacing.length || replacing.some((conflict) => !conflict.managed))) {
+                            throw new Error('Only Grimoire-managed sound changes can be replaced.');
+                        }
+                        if (resolution.action === 'forge-above' || resolution.action === 'forge-below') {
+                            const order = await previewEnabledVpkOrder(deadlockPath) ?? Infinity;
+                            const priorities = inspection.expectedWinners.flatMap(({ priority }) => priority == null ? [] : [priority]);
+                            const below = resolution.action === 'forge-below';
+                            if (priorities.some((priority) => below ? order <= priority : order >= priority)) {
+                                throw new Error('The available mod slot cannot satisfy the reviewed precedence.');
+                            }
+                        }
+                        const parking = resolution.action === 'disable-conflicts' ? inspection.conflicts : replacing;
+                        for (const conflict of parking.filter((candidate) => candidate.enabled)) {
+                            const original = installed.find((mod) => mod.id === conflict.modId)!;
+                            disabledForResolution.push(await parkFoundryMod(deadlockPath, original));
+                            if (conflict.modId === resolution.replaceModId) priorSlot = original.path;
                         }
                     }
+
+                    const soundSwap: SoundSwapInfo = {
+                        heroCodename: built.soundCodename,
+                        event: event?.trim() || clipPaths?.[0] || explicitAssignments[0]?.clipPath || '',
+                        audioFileName: basename(audioPath),
+                        loop: loop ?? 'auto',
+                        pool: poolMode === 'selected-targets' ? 'selected'
+                            : poolMode === 'n-to-n' ? 'mapped'
+                            : poolMode === 'seeded-library' ? 'randomized' : 'all',
+                        poolMode,
+                        poolSeed,
+                        // Enough to rebuild this change byte-for-byte later, minus the
+                        // conflict resolution (which is a decision about the library at
+                        // one moment in time, not a property of the edit).
+                        reforge: {
+                            heroName: heroName?.trim() ?? '',
+                            soundeventsEntry: globalEntry,
+                            event: event?.trim(),
+                            clipPaths: hasClips ? clipPaths : undefined,
+                            audioPath,
+                            stockDonor,
+                            assignments: explicitAssignments,
+                            trimStartMs,
+                            trimEndMs,
+                            gainDb,
+                        },
+                    };
+
+                    return await registerFoundryVpk(deadlockPath, built.vpkPath, {
+                        modName: name.trim(),
+                        thumbnailUrl: thumbnailDataUrl,
+                        nsfw: !!nsfw,
+                        // The Sound section and hero tag file this under Locker Sounds.
+                        sourceSection: 'Sound',
+                        categoryName: 'Sounds',
+                        ...(heroName?.trim() ? { lockerHero: heroName.trim(), lockerHeroSource: 'manual' as LockerHeroSource } : {}),
+                        soundSwap,
+                    }, priorSlot);
+                } catch (error) {
+                    const failures: unknown[] = [];
+                    for (const { original, disabled, lastPriority } of disabledForResolution.reverse()) {
+                        try { await restoreDisabledModToSlotUnlocked(original, disabled, lastPriority); } catch (cause) { failures.push(cause); }
+                    }
+                    if (failures.length) throw new AggregateError([error, ...failures], 'Sound rebuild failed and some mods could not be restored.', { cause: error });
+                    throw error;
                 }
-                // forge-above / forge-below are an acknowledged precedence
-                // choice. A caller must select one; this handler never layers
-                // a collision by default.
-            }
-            // 2. Allocate the next free ENABLED slot (same as import-custom-mod).
-            destPath = await allocateEnabledVpkPath(deadlockPath);
-            destMetaKey = metaKeyFor(destPath);
-
-            const soundSwap: SoundSwapInfo = {
-                heroCodename: built.soundCodename,
-                event: event?.trim() || clipPaths?.[0] || '',
-                audioFileName: basename(audioPath),
-                loop: loop ?? 'auto',
-                pool: poolMode === 'selected-targets' ? 'selected'
-                    : poolMode === 'n-to-n' ? 'mapped'
-                    : poolMode === 'seeded-library' ? 'randomized' : 'all',
-                poolMode,
-                poolSeed,
-                // Enough to rebuild this change byte-for-byte later, minus the
-                // conflict resolution (which is a decision about the library at
-                // one moment in time, not a property of the edit).
-                reforge: {
-                    heroName: heroName?.trim() ?? '',
-                    soundeventsEntry: globalEntry,
-                    event: event?.trim(),
-                    clipPaths: hasClips ? clipPaths : undefined,
-                    audioPath,
-                    assignments: explicitAssignments,
-                    trimStartMs,
-                    trimEndMs,
-                    gainDb,
-                },
-            };
-
-            // 3. Scrub orphan metadata, then write the local-import entry. Tag it
-            //    with lockerHero (display name) so it groups under the hero in the
-            //    Locker; sourceSection marks it a Foundry sound swap.
-            removeModMetadata(destMetaKey);
-            await setModMetadataWithHash(
-                destMetaKey,
-                {
-                    modName: name.trim(),
-                    thumbnailUrl: thumbnailDataUrl,
-                    nsfw: !!nsfw,
-                    // 'Sound' routes the mod through the Locker's Sounds bucket
-                    // (isLockerManagedSound) instead of the hero-skin pile
-                    // (isLockerManagedMod treats any non-'Sound' + lockerHero mod
-                    // as a skin card). The lockerHero tag makes it hero-specific,
-                    // which short-circuits the global-sound-category drop. The
-                    // Foundry-swap provenance lives in `soundSwap`, not the section.
-                    sourceSection: 'Sound',
-                    categoryName: 'Sounds',
-                    ...(heroName?.trim()
-                        ? { lockerHero: heroName.trim(), lockerHeroSource: 'manual' as LockerHeroSource }
-                        : {}),
-                    soundSwap,
-                },
-                destPath
-            );
-
-            const mods = await scanMods(deadlockPath);
-            return enrichMods(mods);
-        } catch (err) {
-            // The output VPK and its metadata form one observable install.  Do
-            // not leave a half-installed override behind if metadata/scanning
-            // fails after the copy, and never touch a source VPK on rollback.
-            if (destMetaKey) removeModMetadata(destMetaKey);
-            if (destPath) await fs.unlink(destPath).catch(() => {});
-            // Disabling a conflicting source is part of this transaction, not a
-            // side effect to strand if allocation/copy/metadata fails.
-            for (const modId of disabledForResolution.reverse()) {
-                await enableMod(deadlockPath, modId).catch(() => {});
-            }
-            throw err;
+            });
         } finally {
-            // 4. Always remove the temp staging dir (the installed copy is
-            //    byte-identical, so nothing is lost).
             await cleanupHeroSoundSwapBuild(built.vpkPath);
         }
     }
@@ -2182,34 +2259,39 @@ ipcMain.handle(
         // before any slot is allocated.
         const built = await buildFoundryForgeVpk(deadlockPath, request);
         const provenance = describeFoundryBuild(request);
-        let destPath: string | null = null;
-        let destMetaKey: string | null = null;
         try {
-            destPath = await allocateEnabledVpkPath(deadlockPath);
-            destMetaKey = metaKeyFor(destPath);
-            await copyIntoModSlot(built.vpkPath, destPath, true);
-            removeModMetadata(destMetaKey);
-            await setModMetadataWithHash(
-                destMetaKey,
-                {
-                    modName: name,
-                    sourceSection: 'Mod',
-                    categoryName: 'Foundry build',
-                    // A build is hero-scoped only when every part agrees on one
-                    // hero. A mixed build files under the global bucket rather
-                    // than claiming a hero it only partly belongs to.
-                    ...(soleHeroOf(provenance) ? { lockerHero: soleHeroOf(provenance)!, lockerHeroSource: 'manual' as LockerHeroSource } : {}),
-                    foundryBuild: provenance,
-                },
-                destPath
-            );
-            return enrichMods(await scanMods(deadlockPath));
-        } catch (err) {
-            // The VPK and its metadata are one observable install; never leave
-            // half of it behind.
-            if (destMetaKey) removeModMetadata(destMetaKey);
-            if (destPath) await fs.unlink(destPath).catch(() => {});
-            throw err;
+            return await runExclusiveModMutation(async () => {
+                if (getActiveDeadlockPath() !== deadlockPath) throw new Error('The active mod installation changed. Please review the build again.');
+                const paths = soundPathsForBuild(request);
+                let parked: Awaited<ReturnType<typeof parkFoundryMod>> | undefined;
+                if (paths.length) {
+                    const current = await reviewSoundInstall(deadlockPath, paths, false, request.replaceBuildId);
+                    if (current.unreadableMods.length || current.token !== request.soundInstallReview) {
+                        throw new Error('Sound install review changed. Review the current providers and try again.');
+                    }
+                    if (request.replaceBuildId) {
+                        const target = findFoundryBuildReplacement(await scanModsReadOnly(deadlockPath), request.replaceBuildId, paths);
+                        if (target?.enabled) parked = await parkFoundryMod(deadlockPath, target);
+                    }
+                }
+                try {
+                    return await registerFoundryVpk(deadlockPath, built.vpkPath, {
+                        modName: name,
+                        sourceSection: 'Mod',
+                        categoryName: 'Foundry build',
+                        ...(soleHeroOf(provenance) ? { lockerHero: soleHeroOf(provenance)!, lockerHeroSource: 'manual' as LockerHeroSource } : {}),
+                        foundryBuild: provenance,
+                    }, parked?.original.path);
+                } catch (error) {
+                    const failures: unknown[] = [];
+                    if (parked) {
+                        try { await restoreDisabledModToSlotUnlocked(parked.original, parked.disabled, parked.lastPriority); }
+                        catch (cause) { failures.push(cause); }
+                    }
+                    if (failures.length) throw new AggregateError([error, ...failures], 'Sound rebuild failed and the prior install could not be restored.', { cause: error });
+                    throw error;
+                }
+            });
         } finally {
             await built.cleanup().catch(() => {});
         }

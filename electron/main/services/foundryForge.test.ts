@@ -2,11 +2,12 @@ import { promises as fs } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { buildFoundryForgeVpk, describeFoundryBuild, forgeAndExportFoundryVpk, reviewFoundryForge } from './foundryForge';
+import { auditionFoundryBuildSound, buildFoundryForgeVpk, describeFoundryBuild, forgeAndExportFoundryVpk, reviewFoundryForge } from './foundryForge';
 import type { FoundryForgeEdit, FoundryForgeRequest } from '../../../src/types/foundry';
 import { runVpkmerge } from './modMerger';
 import { parseVpkDirectory } from './vpk';
 import { buildRecolorVpk } from './foundryRecolor';
+import { buildHeroSoundSwapVpk, cleanupHeroSoundSwapBuild } from './foundryCatalog';
 
 // The end-to-end three-kind case drives every builder through the merged
 // output. Mock the per-kind builders and the engine so the test asserts the
@@ -97,6 +98,34 @@ describe('reviewFoundryForge', () => {
         // Equal precedence: the later staged edit is the deliberate last writer.
         expect(reviewFoundryForge([recolorEdit, { ...textureAtSamePath, precedence: 3 }]).collisionWinners)
             .toEqual([{ file: 'particles/hero/ult.vpcf_c', editId: 'visual' }]);
+    });
+});
+
+describe('auditionFoundryBuildSound', () => {
+    it('mints only the winning assignment and returns the audio extracted from its VPK', async () => {
+        const dir = await fs.mkdtemp(join(tmpdir(), 'grimoire-audition-test-'));
+        const file = join(dir, 'sound_dir.vpk');
+        const path = 'sounds/dash.vsnd_c';
+        const winner: FoundryForgeEdit = {
+            ...soundEdit, id: 'winner', precedence: 3,
+            request: { ...soundEdit.request, assignments: [{ clipPath: path, audioPath: 'winner.mp3' }] },
+        };
+        const edits = [soundEdit, winner];
+        vi.mocked(buildHeroSoundSwapVpk).mockResolvedValueOnce({ vpkPath: file, soundCodename: 'hero', loops: { [path]: false } });
+        vi.mocked(runVpkmerge).mockImplementationOnce(async (args) => {
+            expect(args.slice(0, -1)).toEqual(['catalog', 'voiceclip', '--vpk', file, '--entry', path, '--out']);
+            await fs.writeFile(args.at(-1)!, 'baked bytes');
+        });
+        try {
+            const preview = await auditionFoundryBuildSound('/game', { name: 'build', edits, confirmation: reviewFoundryForge(edits) }, path);
+            expect(preview).toEqual({ audio: `data:audio/mpeg;base64,${Buffer.from('baked bytes').toString('base64')}`, looping: false });
+            expect(buildHeroSoundSwapVpk).toHaveBeenCalledWith('/game', expect.objectContaining({
+                audioPath: 'winner.mp3', assignments: [{ clipPath: path, audioPath: 'winner.mp3' }],
+            }));
+            expect(cleanupHeroSoundSwapBuild).toHaveBeenCalledWith(file);
+        } finally {
+            await fs.rm(dir, { recursive: true, force: true });
+        }
     });
 });
 

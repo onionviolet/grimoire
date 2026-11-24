@@ -14,6 +14,7 @@ import { useAppStore } from '../../stores/appStore';
 import type { HeroPoseSkinSource } from '../../types/portrait';
 import { WorkshopWorkbench } from './WorkshopWorkbench';
 import { SharedSoundSwaps } from './SoundBrowse';
+import type { FoundryStagedSoundEdit } from './soundStagedEdit';
 
 /** The parry's sound clips (soundevents/player.vsndevts: Player.Melee.Parry.Shared and .Success.Shared). */
 const PARRY_SOUNDS = [
@@ -64,7 +65,11 @@ function paletteSwatch(color: string, palette: MovementPalette, original: boolea
   return { backgroundColor: color };
 }
 
-export default function MovementFxEditor({ heroName, skinSources }: { heroName: string; skinSources?: HeroPoseSkinSource[] }) {
+export default function MovementFxEditor({ heroName, skinSources, onStageSound }: {
+  heroName: string;
+  skinSources?: HeroPoseSkinSource[];
+  onStageSound?: (edit: FoundryStagedSoundEdit) => void;
+}) {
   const { t } = useTranslation();
   const [kind, setKind] = useFoundryDraft('movement:kind', z.enum(['dash', 'heavy-melee', 'parry']), 'dash');
   // Undo and redo answer anywhere in the section, the kind switch included
@@ -74,12 +79,13 @@ export default function MovementFxEditor({ heroName, skinSources }: { heroName: 
       { value: 'dash', label: t('foundry.movement.dash') }, { value: 'heavy-melee', label: t('foundry.movement.heavy-melee') },
       { value: 'parry', label: t('foundry.movement.parry') },
     ]} />
-    <MovementSession key={`${kind}:${heroName}`} kind={kind} heroName={heroName} skinSources={skinSources} root={sectionRef} />
+    <MovementSession key={`${kind}:${heroName}`} kind={kind} heroName={heroName} skinSources={skinSources} root={sectionRef} onStageSound={onStageSound} />
   </section>;
 }
 
-function MovementSession({ kind, heroName, skinSources, root }: {
+function MovementSession({ kind, heroName, skinSources, root, onStageSound }: {
   kind: MovementFxChoice['kind']; heroName: string; skinSources?: HeroPoseSkinSource[]; root: RefObject<HTMLElement | null>;
+  onStageSound?: (edit: FoundryStagedSoundEdit) => void;
 }) {
   const { t } = useTranslation();
   const initial: MovementFxChoice = { kind, color: '#ff70cf', palette: { mode: 'solid' }, parts: null, image: null, stunImage: null,
@@ -232,7 +238,7 @@ function MovementSession({ kind, heroName, skinSources, root }: {
         </fieldset>}
         {kind === 'parry' && <section className="min-w-0 space-y-2 border-t border-border pt-2">
           <h3 className="text-sm font-semibold text-text-primary">{t('foundry.movement.parrySounds')}</h3>
-          <SharedSoundSwaps sounds={PARRY_SOUNDS.map(({ labelKey, event, vsnd }) => ({ label: t(labelKey), event, vsnd: [...vsnd] }))} />
+          <SharedSoundSwaps onStage={onStageSound} sounds={PARRY_SOUNDS.map(({ labelKey, event, vsnd }) => ({ label: t(labelKey), event, vsnd: [...vsnd] }))} />
         </section>}
     </WorkshopWorkbench>
   </div>;

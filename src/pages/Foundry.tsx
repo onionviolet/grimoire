@@ -42,7 +42,8 @@ import FoundryBuildTray from '../components/foundry/FoundryBuildTray';
 import MyChanges from '../components/foundry/MyChanges';
 import NonStandardReportView from '../components/foundry/NonStandardReport';
 import type { FoundryChangeFilter } from '../components/foundry/changeList';
-import type { FoundryStagedEdit } from '../components/foundry/buildTray';
+import { isStagedSoundEdit, type FoundryStagedEdit } from '../components/foundry/buildTray';
+import { replaceSoundSourcePaths } from '../components/foundry/soundRebuildSources';
 
 // Sub-tools shown in the left rail of the Catalog (tool-first) mode. Library /
 // Sound / Global sounds / Texture / Recolor are live; Items rides the Library
@@ -111,8 +112,17 @@ export default function Foundry() {
   // The tray is intentionally ephemeral until all forge flows can hand a single
   // typed build request to main. Merely browsing Foundry never mutates a mod.
   const [stagedEdits, setStagedEdits] = useState<FoundryStagedEdit[]>([]);
-  const [outputName, setOutputName] = useState('Foundry mod');
-  const stageEdit = useCallback((edit: FoundryStagedEdit) => setStagedEdits((current) => [...current.filter((item) => item.id !== edit.id), { ...edit, precedence: current.length }]), []);
+  const [outputName, setOutputName] = useState('');
+  const stageEdit = useCallback((edit: FoundryStagedEdit) => setStagedEdits((current) => [
+    ...current.filter((item) => item.id !== edit.id),
+    { ...edit, precedence: Math.max(-1, ...current.map((item) => item.precedence)) + 1 },
+  ]), []);
+  const clearBuiltEdits = useCallback((request: import('../types/foundry').FoundryForgeRequest) => {
+    const built = new Map(request.edits.map((edit) => [edit.id, edit.precedence]));
+    setStagedEdits((current) => current.filter((edit) => built.get(edit.id) !== edit.precedence));
+  }, []);
+  const relinkSoundPaths = useCallback((paths: Map<string, string>) => setStagedEdits((current) => current.map((edit) =>
+    isStagedSoundEdit(edit) ? { ...edit, request: replaceSoundSourcePaths(edit.request, paths) } : edit)), []);
   const removeEdit = useCallback((id: string) => setStagedEdits((current) => current.filter((item) => item.id !== id)), []);
   // Cancelling the native save dialog is a normal outcome, not an error: main
   // reports { exported: false } and has already removed its own build temp, so
@@ -121,12 +131,12 @@ export default function Foundry() {
   const forge = useCallback(async (request: import('../types/foundry').FoundryForgeRequest) => {
     const result = await foundryForge(request);
     if (result.exported) {
-      setStagedEdits([]);
+      clearBuiltEdits(request);
       showToast(t('foundry.buildTray.exported', 'Exported {{path}}', { path: result.path }), { tone: 'success', duration: 6000 });
     } else {
       showToast(t('foundry.buildTray.cancelled', 'Nothing was exported. Your staged edits are still here.'), { tone: 'info', duration: 6000 });
     }
-  }, [t]);
+  }, [clearBuiltEdits, t]);
 
   // The other output for the same reviewed build: it becomes a tracked mod, so
   // it keeps its provenance and shows up in My changes. Unlike export there is
@@ -134,9 +144,9 @@ export default function Foundry() {
   const install = useCallback(async (request: import('../types/foundry').FoundryForgeRequest) => {
     await foundryForgeInstall(request);
     await useAppStore.getState().loadMods({ silent: true });
-    setStagedEdits([]);
+    clearBuiltEdits(request);
     showToast(t('foundry.buildTray.installed', 'Installed "{{name}}". Find it in My changes.', { name: request.name }), { tone: 'success', duration: 6000 });
-  }, [t]);
+  }, [clearBuiltEdits, t]);
   const scanNonStandard = useCallback(async () => {
     setScanningNonStandard(true);
     try {
@@ -286,6 +296,7 @@ export default function Foundry() {
         stagedEdits={stagedEdits}
         onStage={stageEdit}
         onRemoveStagedEdit={removeEdit}
+        onRelinkSoundPaths={relinkSoundPaths}
         outputName={outputName}
         onOutputNameChange={setOutputName}
         onForge={forge}
@@ -450,7 +461,7 @@ export default function Foundry() {
           )}
         </PageLayout>
       </div>
-      {(activeTool !== 'assets' && (activeTool !== 'models' || stagedEdits.length > 0)) && <FoundryBuildTray edits={stagedEdits} outputName={outputName} onOutputNameChange={setOutputName} onForge={forge} onInstall={install} onRemove={removeEdit} />}
+      {(activeTool !== 'assets' && (activeTool !== 'models' || stagedEdits.length > 0)) && <FoundryBuildTray edits={stagedEdits} outputName={outputName} onOutputNameChange={setOutputName} onForge={forge} onInstall={install} onRemove={removeEdit} onRelinkSoundPaths={relinkSoundPaths} />}
     </div>
   );
 }

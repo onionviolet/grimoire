@@ -36,6 +36,7 @@ import {
 import { inspectAssetClaims } from '../../lib/inspectedAssetClaims';
 import type { FoundryAssetSourcesInspection, SoundAnnotation } from '../../types/foundry';
 import { SoundChangeDetails } from './MySoundChanges';
+import { prepareSoundRebuild } from './soundRebuildSources';
 import FoundryPoolList from './ChangePools';
 import AlternativePreview from './AlternativesGallery';
 import { foundryShuffleKey, groupFoundryShufflePools } from '../../lib/foundryChanges';
@@ -568,19 +569,26 @@ function ChangeDetails({
     if (!recorded || rebuilding) return;
     setRebuilding(true);
     try {
-      // The recorded sources are the user's own files and may have moved since
-      // the build. Check before starting rather than failing partway through.
-      const wanted = [...new Set(recorded.edits.flatMap((edit) => {
-        if (edit.kind === 'sound') {
-          return [edit.request.audioPath, ...(edit.request.assignments ?? []).map((assignment) => assignment.audioPath)];
-        }
+      const edits = [];
+      for (const edit of recorded.edits) {
+        if (edit.kind !== 'sound') { edits.push(edit); continue; }
+        const request = await prepareSoundRebuild(edit.request, (file) => t('foundry.myChanges.relinkAudio', { file }), (clip) => confirm({
+          title: t('foundry.myChanges.stockUpdated'),
+          message: t('foundry.myChanges.stockUpdatedBody', { clip }),
+          confirmLabel: t('foundry.myChanges.useUpdatedStock'),
+        }));
+        if (!request) return;
+        edits.push({ ...edit, request });
+      }
+      const request = { ...recorded, edits, name: t('foundry.myChanges.reforgedName', { name: entry.mod.name }) };
+      const wanted = [...new Set(edits.flatMap((edit) => {
         if (edit.kind === 'texture') return [edit.request.imagePath];
         if (edit.kind === 'model') return [edit.request.sourcePath];
         // A recolor edit's inputs are numeric picker parameters, resolved to
         // the shared per-hero bake cache main owns; no user file to check.
         return [];
       }).filter(Boolean))];
-      const present = new Set(await foundryCheckAudioPaths(wanted));
+      const present = new Set(wanted.length ? await foundryCheckAudioPaths(wanted) : []);
       const missing = wanted.filter((path) => !present.has(path));
       if (missing.length) {
         showToast(
@@ -592,15 +600,31 @@ function ChangeDetails({
         );
         return;
       }
-      const preflight = await inspectAssetClaims(entries);
-      if (preflight.unreadableMods.length) {
+      const hasSound = request.confirmation.writeSet.some((path) => path.endsWith('.vsnd_c'));
+      const install = hasSound ? { ...request, replaceBuildId: entry.mod.id } : request;
+      const sound = hasSound ? await window.electronAPI.foundry.reviewSoundInstall(install) : null;
+      if (sound?.unreadableMods.length) {
+        showToast(t('foundry.myChanges.reforgeUnreadable', { mods: sound.unreadableMods.join(', ') }), { tone: 'error' });
+        return;
+      }
+      if (sound && !(await confirm({
+        title: t('foundry.buildTray.confirmTitle', { name: request.name }),
+        message: t('foundry.myChanges.replaceSoundBody', { name: entry.mod.name }),
+        items: [
+          ...sound.entries.map(({ path, winner }) => t('foundry.buildTray.soundReview.shadowed', { path, winner: winner ?? request.name })),
+          ...sound.sharedEvents.map(({ events }) => t('foundry.buildTray.soundReview.shared', { names: events.join(', ') })),
+        ],
+        confirmLabel: t('foundry.myChanges.reforge'),
+      }))) return;
+      const preflight = sound ? null : await inspectAssetClaims(request.confirmation.writeSet);
+      if (preflight?.unreadableMods.length) {
         showToast(
           t('foundry.myChanges.reforgeUnreadable', { mods: preflight.unreadableMods.map((mod) => mod.modName).join(', ') }),
           { tone: 'error', duration: 9000 },
         );
         return;
       }
-      const others = preflight.sources.filter((source) => source.modId !== entry.mod.id && source.enabled);
+      const others = preflight?.sources.filter((source) => source.modId !== entry.mod.id && source.enabled) ?? [];
       if (others.length && !(await confirm({
         title: t('foundry.myChanges.reforgeConflictTitle', 'Rebuild as a separate mod?'),
         message: t(
@@ -610,7 +634,7 @@ function ChangeDetails({
         items: others.map((source) => source.modName),
         confirmLabel: t('foundry.myChanges.reforgeConflictConfirm', 'Rebuild'),
       }))) return;
-      await foundryForgeInstall({ ...recorded, name: t('foundry.myChanges.reforgedName', { name: entry.mod.name }) });
+      await foundryForgeInstall({ ...install, soundInstallReview: sound?.token });
       await useAppStore.getState().loadMods({ silent: true });
       setInspection(null);
       showToast(t('foundry.myChanges.reforgeDone', { name: entry.mod.name }), { tone: 'success', duration: 6000 });
@@ -619,7 +643,7 @@ function ChangeDetails({
     } finally {
       setRebuilding(false);
     }
-  }, [recorded, rebuilding, entries, entry.mod.id, entry.mod.name, t, confirm]);
+  }, [recorded, rebuilding, entry.mod.id, entry.mod.name, t, confirm]);
 
   return (
     <div className="mt-1.5 text-2xs text-text-secondary">

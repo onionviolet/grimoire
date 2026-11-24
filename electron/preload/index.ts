@@ -985,6 +985,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
             ipcRenderer.invoke('foundry:ensureThumbnails', category),
         fullImage: (category: TextureCategory, entryPath: string) =>
             ipcRenderer.invoke('foundry:fullImage', category, entryPath),
+        stockSound: (clipPath: string) => ipcRenderer.invoke('foundry:stockSound', clipPath),
+        reviewSoundInstall: (request: import('../../src/types/foundry').FoundryForgeRequest) => ipcRenderer.invoke('foundry:reviewSoundInstall', request),
+        auditionBuildSound: (request: import('../../src/types/foundry').FoundryForgeRequest, entry: string) => ipcRenderer.invoke('foundry:auditionBuildSound', request, entry),
         voiceclip: (vsndPath: string) => ipcRenderer.invoke('foundry:voiceclip', vsndPath),
         voiceclipFile: (vsndPath: string) => ipcRenderer.invoke('foundry:voiceclipFile', vsndPath),
         exportSound: (req: import('../../src/types/foundry').FoundrySoundExportRequest) =>

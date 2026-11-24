@@ -5,10 +5,12 @@ import { AlertTriangle, Check, ChevronDown, ExternalLink, Loader2, Pencil, Refre
 import { useAppStore } from '../../stores/appStore';
 import { showToast } from '../../stores/toastStore';
 import {
+  foundryInspectSoundConflicts,
   foundryCheckAudioPaths,
   foundrySoundAnnotationKey,
   foundrySwapSound,
 } from '../../lib/api';
+import { prepareSoundRebuild } from './soundRebuildSources';
 import { inspectAssetClaims } from '../../lib/inspectedAssetClaims';
 import { SoundImportEditor, type SoundImportEdits } from './SoundImportEditor';
 import {
@@ -38,9 +40,7 @@ function compiledSoundEntry(path: string): string {
  *  Labels and hero names are never used: only normalized entry paths. */
 function writeSetFor(mod: Mod): string[] {
   const recorded = mod.soundSwap?.reforge;
-  const clips = recorded?.assignments.map((assignment) => assignment.clipPath)
-    ?? recorded?.clipPaths
-    ?? [];
+  const clips = recorded?.assignments.length ? recorded.assignments.map((assignment) => assignment.clipPath) : recorded?.clipPaths ?? [];
   return [...new Set(clips.map(compiledSoundEntry))];
 }
 
@@ -118,53 +118,37 @@ export function SoundChangeDetails({
     setReforging(true);
     try {
       const donorPath = options?.audioPath ?? recorded.audioPath;
-      const assignments = recorded.assignments.map((assignment) => ({
-        ...assignment,
-        audioPath: assignment.audioPath === recorded.audioPath ? donorPath : assignment.audioPath,
+      const input = await prepareSoundRebuild({
+        ...recorded,
+        audioPath: donorPath,
+        stockDonor: donorPath === recorded.audioPath ? recorded.stockDonor : undefined,
+        assignments: recorded.assignments.map((assignment) => ({
+          ...assignment,
+          audioPath: assignment.audioPath === recorded.audioPath ? donorPath : assignment.audioPath,
+        })),
+      }, (file) => t('foundry.myChanges.relinkAudio', { file }), (clip) => confirm({
+        title: t('foundry.myChanges.stockUpdated'),
+        message: t('foundry.myChanges.stockUpdatedBody', { clip }),
+        confirmLabel: t('foundry.myChanges.useUpdatedStock'),
       }));
-      const wanted = [...new Set([donorPath, ...assignments.map((a) => a.audioPath)])];
-      const present = new Set(await foundryCheckAudioPaths(wanted));
-      const missing = wanted.filter((path) => !present.has(path));
-      if (missing.length) {
-        showToast(
-          t('foundry.myChanges.reforgeMissing', {
-            count: missing.length,
-            files: missing.map((path) => path.split(/[\\/]/).pop()).join(', '),
-          }),
-          { tone: 'error', duration: 9000 }
-        );
+      if (!input) return;
+      const inspection = writeSet.length ? await foundryInspectSoundConflicts(writeSet) : null;
+      if (inspection?.unreadableMods.some((entry) => entry.enabled)) {
+        showToast(t('foundry.myChanges.reforgeUnreadable', {
+          mods: inspection.unreadableMods.filter((entry) => entry.enabled).map((entry) => entry.modName).join(', '),
+        }), { tone: 'error' });
         return;
       }
-      const preflight = await inspectAssetClaims(writeSet);
-      if (preflight.unreadableMods.length) {
-        showToast(
-          t('foundry.myChanges.reforgeUnreadable', {
-            mods: preflight.unreadableMods.map((entry) => entry.modName).join(', '),
-          }),
-          { tone: 'error', duration: 9000 }
-        );
-        return;
-      }
-      // The rebuild is a new managed mod, exactly like the original forge. The
-      // existing one is left alone: removing it is the user's call in Installed.
-      const others = preflight.sources.filter((source) => source.modId !== mod.id && source.enabled);
-      if (others.length && !(await confirm({
-        title: t('foundry.myChanges.reforgeConflictTitle', 'Rebuild as a separate mod?'),
-        message: t(
-          'foundry.myChanges.reforgeConflictBody',
-          'These installed mods are enabled and change the same thing. The rebuild is a new managed mod layered over them; the existing one is left alone.'
-        ),
-        items: others.map((source) => source.modName),
-        confirmLabel: t('foundry.myChanges.reforgeConflictConfirm', 'Rebuild'),
+      const otherOwners = inspection?.conflicts.filter((entry) => entry.enabled && entry.modId !== mod.id) ?? [];
+      if (!(await confirm({
+        title: t('foundry.myChanges.replaceSoundTitle'),
+        message: t('foundry.myChanges.replaceSoundBody', { name: mod.name }),
+        items: otherOwners.map((owner) => owner.modName),
+        confirmLabel: t('foundry.myChanges.reforge'),
       }))) return;
       await foundrySwapSound({
+        ...input,
         heroCodename: mod.soundSwap!.heroCodename,
-        heroName: recorded.heroName,
-        soundeventsEntry: recorded.soundeventsEntry,
-        event: recorded.event,
-        clipPaths: recorded.clipPaths,
-        audioPath: donorPath,
-        assignments,
         poolMode: mod.soundSwap!.poolMode,
         poolSeed: mod.soundSwap!.poolSeed,
         name: options?.retuned
@@ -174,6 +158,11 @@ export function SoundChangeDetails({
         trimStartMs: options?.edits ? options.edits.trimStartMs : recorded.trimStartMs,
         trimEndMs: options?.edits ? options.edits.trimEndMs : recorded.trimEndMs,
         gainDb: options?.edits ? options.edits.gainDb : recorded.gainDb,
+        conflictResolution: {
+          action: 'replace-managed',
+          replaceModId: mod.id,
+          conflictModIds: inspection?.conflicts.map((entry) => entry.modId) ?? [mod.id],
+        },
       });
       await useAppStore.getState().loadMods({ silent: true });
       setInspection(null);
@@ -218,6 +207,7 @@ export function SoundChangeDetails({
         <SoundRetunePanel
           state={tuning}
           audioPath={recorded.audioPath}
+          stockDonor={recorded.stockDonor}
           targetClipPath={recorded.assignments[0]?.clipPath ?? recorded.clipPaths?.[0] ?? null}
           busy={reforging}
           onCancel={() => setRetuneOpen(false)}
@@ -353,6 +343,7 @@ function tuningSummary(state: SoundTuningState, fallback: string): string {
 function SoundRetunePanel({
   state,
   audioPath,
+  stockDonor,
   targetClipPath,
   busy,
   onCancel,
@@ -361,6 +352,7 @@ function SoundRetunePanel({
   state: SoundTuningState;
   /** The donor recorded on the change. Checked for existence, not read. */
   audioPath: string;
+  stockDonor?: { clipPath: string; fingerprint: string };
   targetClipPath: string | null;
   busy: boolean;
   onCancel: () => void;
@@ -381,12 +373,13 @@ function SoundRetunePanel({
   const seed = useMemo(() => soundSeedFromTuning(state), [state]);
 
   useEffect(() => {
+    if (stockDonor) return;
     let cancelled = false;
     void foundryCheckAudioPaths([audioPath])
       .then((found) => { if (!cancelled) setPresent(found.includes(audioPath)); })
       .catch(() => { if (!cancelled) setPresent(null); });
     return () => { cancelled = true; };
-  }, [audioPath]);
+  }, [audioPath, stockDonor]);
 
   const accept = useCallback((picked: File | undefined | null) => {
     if (!picked) return;
@@ -399,6 +392,19 @@ function SoundRetunePanel({
     setPickedPath(path);
     setEdits({});
   }, [t]);
+
+  const loadStock = async () => {
+    if (!stockDonor) return;
+    try {
+      const stock = await window.electronAPI.foundry.stockSound(stockDonor.clipPath);
+      if (!stock) throw new Error(t('foundry.sound.swap.originalUnavailable'));
+      setFile(new File([await (await fetch(stock.audio)).blob()], fileName, { type: 'audio/mpeg' }));
+      setPickedPath(audioPath);
+      setEdits({});
+    } catch (cause) {
+      showToast(cause instanceof Error ? cause.message : String(cause), { tone: 'error' });
+    }
+  };
 
   // The pending state reuses the same shape the badges read, so "recorded" and
   // "new" are formatted by exactly one set of rules.
@@ -435,6 +441,7 @@ function SoundRetunePanel({
         className="hidden"
         onChange={(event) => { accept(event.target.files?.[0]); event.target.value = ''; }}
       />
+      {stockDonor && <button type="button" onClick={() => void loadStock()} className="text-accent hover:underline">{t('foundry.sound.swap.useOriginal')}</button>}
       <p>{t('soundTools.retune.loadNote')}</p>
       {pickedPath && pickedPath !== audioPath && (
         <p className="text-text-primary">{t('soundTools.retune.differentDonor', { file: pickedPath.split(/[\\/]/).pop() })}</p>

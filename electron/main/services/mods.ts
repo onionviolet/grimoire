@@ -983,11 +983,11 @@ interface AllocatedSlot {
  * the bare-filename metadata-key namespace (overflow folders are folder-namespaced, so they
  * don't). Shared by enableMod and allocateEnabledVpkPath.
  */
-async function allocateSlot(
+async function findExistingAddonSlot(
     deadlockPath: string,
-    opts: { disabledForbidden: Set<number>; preferred: Array<number | undefined> }
-): Promise<AllocatedSlot> {
-    const folders = getAddonFolderPaths(deadlockPath);
+    opts: { disabledForbidden: Set<number>; preferred: Array<number | undefined> },
+    folders = getAddonFolderPaths(deadlockPath),
+): Promise<AllocatedSlot | null> {
     for (let i = 0; i < folders.length; i++) {
         const folder = folders[i];
         const used = await folderPakNumbers(folder);
@@ -1001,6 +1001,28 @@ async function allocateSlot(
         }
         return { folder, fileName: `pak${String(slot).padStart(2, '0')}_dir.vpk` };
     }
+
+    return null;
+}
+
+/** Read the slot a new install would use without creating overflow folders. */
+export async function previewEnabledVpkOrder(deadlockPath: string): Promise<number | null> {
+    const { disabledPath, enabledRoots } = peekModFolders(deadlockPath);
+    const disabledForbidden = await folderPakNumbers(disabledPath);
+    const slot = await findExistingAddonSlot(deadlockPath, { disabledForbidden, preferred: [] }, enabledRoots.slice(1));
+    return slot ? modLoadOrder(join(slot.folder, slot.fileName), parseVpkPriority(slot.fileName)!) : null;
+}
+
+export function modLoadOrder(path: string, priority: number): number {
+    return addonFolderIndex(path) * 100 + priority;
+}
+
+async function allocateSlot(
+    deadlockPath: string,
+    opts: { disabledForbidden: Set<number>; preferred: Array<number | undefined> }
+): Promise<AllocatedSlot> {
+    const existing = await findExistingAddonSlot(deadlockPath, opts);
+    if (existing) return existing;
 
     // Every existing folder is full: spill into a fresh overflow folder. Add it
     // to gameinfo BEFORE the caller writes a VPK in, or the engine won't load it.
@@ -1293,6 +1315,13 @@ export function enableModUnlocked(deadlockPath: string, modId: string): Promise<
 /** Unlocked disable, for use only inside a runExclusiveModMutation batch. */
 export function disableModUnlocked(deadlockPath: string, modId: string): Promise<Mod> {
     return disableModImpl(deadlockPath, modId);
+}
+
+/** Restore a just-disabled mod to its exact slot during transaction rollback. */
+export async function restoreDisabledModToSlotUnlocked(original: Mod, disabled: Mod, lastPriority?: number): Promise<void> {
+    if (existsSync(original.path)) throw new Error(`The original mod slot is occupied: ${original.fileName}`);
+    const restored = await moveModToFolderAs(disabled, dirname(original.path), original.fileName, true);
+    setModMetadata(restored.metaKey, { lastPriority });
 }
 
 /** Unlocked reorder, for use only inside a runExclusiveModMutation batch.

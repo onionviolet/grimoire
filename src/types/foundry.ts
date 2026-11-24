@@ -317,6 +317,8 @@ export interface HeroSoundSwapRequest {
      *  VO has no per-hero soundevents file, so event mode does not apply. */
     clipPaths?: string[];
     audioPath: string;
+    /** Stock donor identity. Audio paths matching audioPath use this clip at build time. */
+    stockDonor?: { clipPath: string; fingerprint: string };
     /** Exact clip-to-audio write set from the pool editor. When supplied it
      *  takes precedence over `audioPath` / event pool expansion, so selected,
      *  N-to-N, and seeded-library edits never accidentally affect another clip. */
@@ -343,6 +345,8 @@ export interface HeroSoundSwapRequest {
 export interface SoundConflictResolution {
     action: 'cancel' | 'forge-above' | 'forge-below' | 'disable-conflicts' | 'replace-managed';
     conflictModIds: string[];
+    /** When rebuilding, park only this managed mod. Other owners stay in place. */
+    replaceModId?: string;
 }
 
 export interface FoundrySoundConflict {
@@ -433,8 +437,17 @@ export type FoundryForgeEdit =
 /** The renderer repeats its reviewed result here. Main derives it again from
  * the requests and rejects stale/tampered confirmation rather than trusting a
  * displayed label or a client supplied VPK path. */
+export interface FoundrySoundInstallReview {
+    token: string;
+    entries: Array<{ path: string; contenders: Array<{ name: string; enabled: boolean }>; winner: string | null; currentModId?: string }>;
+    unreadableMods: string[];
+    sharedEvents: Array<{ path: string; events: string[] }>;
+}
+
 export interface FoundryForgeRequest {
     name: string;
+    soundInstallReview?: string;
+    replaceBuildId?: string;
     edits: FoundryForgeEdit[];
     confirmation: {
         writeSet: string[];

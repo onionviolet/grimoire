@@ -1,64 +1,31 @@
 ---
-title: Replacing a hero's sound with your own
-description: Swap any ability sound or voice line for your own MP3, with trimming and volume matching.
+title: Replace sounds in Door Stuck
+description: Replace ability sounds, voice lines and global cues. Preview the generated audio before installing or exporting.
 slug: door-stuck-sounds
 order: 28
-updated: 2026-07-29
+updated: 2026-11-24
 ---
 
-# Replacing a hero's sound with your own
+# Replace sounds in Door Stuck
 
-The **Door Stuck** tab can replace any of a hero's sounds with an audio file of yours. Pick a hero, find the sound, drop in an MP3, and it installs as a normal mod.
+Enable **Door Stuck** under **Settings > Experimental Features**. Pick a hero to browse abilities and voice lines, or open the full catalog and choose **Global Sounds** for music, UI, ambience and other shared sounds.
 
-Turn it on in **Settings > Experimental Features > Door Stuck**. The tab is called Door Stuck in the sidebar and **Foundry** at the top of the page, which is the same thing mid-rename.
+## Build a replacement
 
-This is the one thing in the tab that creates something. The rest is browsing.
+1. Find the sound and play the stock clip. Use **Swap** to open the editor.
+2. Choose a replacement audio file, or start with the original clip to adjust it. Grimoire accepts MP3, WAV, FLAC, OGG, M4A, AAC and Opus.
+3. For a pool, choose all clips, selected clips, one file per selected clip, or a seeded shuffle. The assignment list shows which file replaces each clip. Clips outside the selection keep their existing sound.
+4. Trim the selection, adjust gain or match the stock volume, and set looping. Name the edit and choose **Add to build tray**.
+5. Select edits in the tray and choose **Review build**. Pick an output clip to hear the baked audio, compare it with stock or the current provider, and see which enabled mod is expected to win after install. If several stock events use the same path, review the event names before continuing.
 
-## Abilities or Voice
+**Install to Grimoire** adds an enabled local mod. **Export VPK** saves a standalone file. Edits left unchecked stay in the tray.
 
-Two sections, and the split matters:
+## Batch-replace voice clips
 
-- **Abilities** holds gameplay sounds: abilities, weapon, movement, melee. Around thirty per hero, with ability rows showing the real ability icon and the ult marked.
-- **Voice** holds spoken lines. Around sixteen hundred per hero.
+Use the folder picker in a hero's **Voice** section. Grimoire matches filenames to exact clip names or single-clip event names. Select the matches you want and audition their stock and replacement audio before staging. Ambiguous and unmatched files stay visible.
 
-Voice is far too long to scroll, so it only renders the first several hundred. **Search is how you find a line**, not scrolling.
+## Revisit a build
 
-## Doing the swap
+Open **My changes** for the installed output, the source record and rebuild actions. If a source audio file moved, locate its replacement during review. When Deadlock updates, review the current stock clip before reusing saved trim and gain. To return to the previous setup, disable or remove the new build in **My changes** or **Installed** and enable your earlier mod if needed.
 
-1. Pick your hero, then open **Abilities** or **Voice**.
-2. **Audition** any row to hear the original first. Worth doing, since names are not always obvious.
-3. Click **Swap** on the row you want.
-4. Drop in an MP3.
-5. Trim it on the waveform with the start and end handles, and use **Play selection** to check.
-6. Optionally tick **Match the original volume** so your clip sits at the same loudness as the sound it replaces.
-7. Name it, choose looping if relevant, and click **Forge & install**.
-
-The result is installed **and already enabled**. Find it under **Installed**, or under that hero in the Locker. Remove it like any other mod.
-
-## MP3 only
-
-No WAV, no OGG, no FLAC. Convert first if you have something else.
-
-## What "replaces all clips" costs you
-
-Many Deadlock sounds are pools that pick randomly between several clips, which is what stops abilities sounding repetitive.
-
-A swap replaces **every clip in the pool** with your single file. The dialog tells you how many. That is usually what you want for an ability, and it is worth thinking about for anything you hear constantly.
-
-There is no way to replace just one clip of a pool, and no undo short of removing the mod.
-
-## The rest of the tab
-
-Everything else in Door Stuck is look-only right now.
-
-**Library**, **Items**, and **Icons & Textures** browse the game's ability icons, item icons, and hero images. **Texture** browses hero model textures and ability VFX textures. You can search, filter by hero, and click to see any of them full size.
-
-**None of them can be swapped, exported, or saved.** If you came looking to replace an icon or a texture, that does not exist yet.
-
-**Appearance** and **Recolor** are not really Door Stuck features. They are the Locker's Effects panel shown here as well, sharing the same one-per-hero slot. See [recoloring abilities and painting skins](./locker-effects.md).
-
-## Rough edges
-
-This tab is experimental in a stronger sense than most. It has no test coverage, and the trim and volume-matching controls were shipped without being clicked through in a running build.
-
-Test your swap in game before assuming it worked, and keep the original file in case you need to redo it.
+Test the edited event in a private Deadlock session. The app preview plays the clip directly. Deadlock can apply event gain and other playback behavior in game.

@@ -25,7 +25,8 @@ import {
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { useConfirm } from '../common/confirmContext';
+import { Button } from '../common/ui';
+import { Input, Select } from '../common/forms';
 import { EmptyState } from '../common/PageComponents';
 import Tx from '../translation/Tx';
 import { SoundImportEditor, type SoundImportEdits } from './SoundImportEditor';
@@ -34,7 +35,6 @@ import AssetSourcesPanel from './AssetSourcesPanel';
 import ShuffleToggleButton from './ShuffleToggleButton';
 import { useAssetSourceInspection } from './assetSourceInspection';
 import { useClipPlayer, type ClipPlayer, type RowState } from './useClipPlayer';
-import { resolveForgeAudioPath } from './resolveForgeAudio';
 import { planSoundPool, type PoolAudio, type SoundPoolMode } from './soundPoolPlan';
 import { heroSoundShuffleRows, soundLockerHref } from '../../lib/foundrySoundShuffle';
 import {
@@ -42,8 +42,6 @@ import {
     foundryInspectSoundConflicts,
     foundryVoicelines,
     foundrySwapSound,
-    foundryVoiceclip,
-    foundryVoiceclipFile,
     getHeroAbilitySlots,
     foundrySoundAnnotations,
     foundryInspectAssetSources,
@@ -1026,8 +1024,8 @@ export function SoundRow({ label, event, clips, duration, state, onToggle, poolI
                     sourceClipPaths={rowClipPaths}
                     selectedTargets={selectedTargets}
                     onToggleTarget={togglePoolTarget}
+                    onSetTargets={setSelectedTargets}
                     label={label}
-                    clips={clips}
                     targetClip={targetClip}
                     onClose={() => setSwapOpen(false)}
                     onStage={onStage}
@@ -1063,9 +1061,11 @@ export function SoundRow({ label, event, clips, duration, state, onToggle, poolI
     );
 }
 
-/** Sounds every hero shares (the parry's), auditioned and swapped clip by clip.
- *  A swap installs as a sound mod for all heroes (Mechanics section). */
-export function SharedSoundSwaps({ sounds }: { sounds: readonly { label: string; event: string; vsnd: string[] }[] }) {
+/** Sounds shared by every hero, such as the parry, use the same build tray. */
+export function SharedSoundSwaps({ sounds, onStage }: {
+    sounds: readonly { label: string; event: string; vsnd: string[] }[];
+    onStage?: (edit: FoundryStagedSoundEdit) => void;
+}) {
     const player = useClipPlayer();
     const swap = useMemo<SwapContext>(() => ({ hero: '', heroName: '' }), []);
     return (
@@ -1073,7 +1073,7 @@ export function SharedSoundSwaps({ sounds }: { sounds: readonly { label: string;
             {sounds.map((sound) => (
                 <SoundRow key={sound.event} label={sound.label} event={sound.event} clips={sound.vsnd.length} duration={null}
                     state={player.stateFor(sound.event)} onToggle={() => player.toggle(sound)} swap={swap}
-                    targetClip={sound.vsnd[0]} clipPaths={sound.vsnd} />
+                    targetClip={sound.vsnd[0]} clipPaths={sound.vsnd} onStage={onStage} />
             ))}
         </div>
     );
@@ -1097,8 +1097,8 @@ function SwapPanel({
     sourceClipPaths,
     selectedTargets,
     onToggleTarget,
+    onSetTargets,
     label,
-    clips,
     targetClip,
     onClose,
     onStage,
@@ -1116,8 +1116,8 @@ function SwapPanel({
      *  editor, rather than the two surfaces keeping separate selections. */
     selectedTargets: Set<string>;
     onToggleTarget: (clipPath: string) => void;
+    onSetTargets: (targets: Set<string>) => void;
     label: string;
-    clips: number;
     /** A clip of the sound being replaced, decoded as the normalizer's loudness
      *  target in the import editor. */
     targetClip?: string;
@@ -1125,7 +1125,6 @@ function SwapPanel({
     onStage?: (edit: FoundryStagedSoundEdit) => void;
 }) {
     const { t } = useTranslation();
-    const confirm = useConfirm();
     const inputRef = useRef<HTMLInputElement | null>(null);
     const [audioPath, setAudioPath] = useState<string | null>(null);
     const [audioName, setAudioName] = useState('');
@@ -1138,7 +1137,7 @@ function SwapPanel({
     // A stock clip lives under a game-build fingerprinted cache directory. Keep
     // its UI File for the editor, but never assume its path will survive until
     // Forge: a Deadlock update can prune that cache in between.
-    const [usingOriginal, setUsingOriginal] = useState(false);
+    const [stockDonor, setStockDonor] = useState<{ clipPath: string; fingerprint: string }>();
     const [edits, setEdits] = useState<SoundImportEdits>({});
     // Default mod name: "<Hero> <Sound>" for a hero swap, just the sound's label
     // for a global one (there is no hero to lead with).
@@ -1147,6 +1146,7 @@ function SwapPanel({
     const [loop, setLoop] = useState<'auto' | 'on' | 'off'>('auto');
     const [busy, setBusy] = useState(false);
     const [dragOver, setDragOver] = useState(false);
+    const auditionTargets = useClipPlayer();
 
     const accept = useCallback(
         (file: File | undefined | null) => {
@@ -1157,7 +1157,7 @@ function SwapPanel({
             setAudioName(file.name);
             setAudioFile(file);
             setLibrary([{ path, name: file.name }]);
-            setUsingOriginal(false);
+            setStockDonor(undefined);
             setEdits({});
         },
         []
@@ -1172,8 +1172,8 @@ function SwapPanel({
     }, []);
 
     const assignments = useMemo(
-        () => planSoundPool(poolMode, sourceClipPaths, selectedTargets, library.length ? library : (audioPath ? [{ path: audioPath, name: audioName }] : []), poolSeed),
-        [poolMode, sourceClipPaths, selectedTargets, library, audioPath, audioName, poolSeed]
+        () => planSoundPool(poolMode, sourceClipPaths, selectedTargets, poolMode === 'replace-all' || poolMode === 'selected-targets' ? library.slice(0, 1) : library, poolSeed),
+        [poolMode, sourceClipPaths, selectedTargets, library, poolSeed]
     );
 
     // "Retune the original": pull the stock clip out of the pak and load it into
@@ -1185,26 +1185,22 @@ function SwapPanel({
         if (!targetClip || loadingOriginal) return;
         setLoadingOriginal(true);
         try {
-            // Sequential on purpose. Both calls land in `ensureVoiceclipFile`,
-            // which extracts to one fingerprint-keyed path; run in parallel on a
-            // cold cache they both miss, and two vpkmerge processes write the
-            // same MP3 at once. The first call warms the cache the second reads.
-            const path = await foundryVoiceclipFile(targetClip);
-            const url = path ? await foundryVoiceclip(targetClip) : null;
-            if (!path || !url) {
+            const stock = await window.electronAPI.foundry.stockSound(targetClip);
+            if (!stock) {
                 showToast(
                     t('foundry.sound.swap.originalUnavailable', 'Could not read the original clip.'),
                     { tone: 'error' }
                 );
                 return;
             }
-            const blob = await (await fetch(url)).blob();
+            const blob = await (await fetch(stock.audio)).blob();
+            const path = `stock:${targetClip}`;
             const fileName = targetClip.split('/').pop() ?? 'original.mp3';
             setAudioPath(path);
             setAudioName(fileName);
             setAudioFile(new File([blob], fileName, { type: 'audio/mpeg' }));
             setLibrary([{ path, name: fileName }]);
-            setUsingOriginal(true);
+            setStockDonor({ clipPath: targetClip, fingerprint: stock.fingerprint });
             setEdits({});
         } catch (e) {
             showToast(e instanceof Error ? e.message : String(e), { tone: 'error' });
@@ -1218,32 +1214,16 @@ function SwapPanel({
         const finalName = name.trim() || defaultName;
         setBusy(true);
         try {
-            // Re-resolve only stock donors. Imported user files are expected to
-            // remain at their selected path; a stock cache is intentionally
-            // invalidated when the installed game build changes.
-            const forgeAudioPath = await resolveForgeAudioPath({
-                audioPath,
-                usingOriginal,
-                targetClip,
-                resolveOriginal: foundryVoiceclipFile,
-            });
-            if (!forgeAudioPath) {
-                throw new Error(t('foundry.sound.swap.originalUnavailable', 'Could not read the original clip.'));
-            }
-            if (!assignments.length) {
-                throw new Error(poolMode === 'n-to-n' ? 'N-to-N needs exactly one audio file for each selected clip.' : 'Select at least one target and audio file.');
-            }
+            if (!assignments.length) return;
             const request = {
                 heroCodename: hero,
                 heroName,
                 soundeventsEntry,
                 event,
                 clipPaths,
-                audioPath: forgeAudioPath,
-                assignments: assignments.map((assignment) => ({
-                    ...assignment,
-                    audioPath: assignment.audioPath === audioPath ? forgeAudioPath : assignment.audioPath,
-                })),
+                audioPath,
+                stockDonor,
+                assignments,
                 poolMode,
                 poolSeed: poolMode === 'seeded-library' ? poolSeed : undefined,
                 name: finalName,
@@ -1253,43 +1233,13 @@ function SwapPanel({
                 gainDb: edits.gainDb,
             };
             if (onStage) {
-                // Staging defers the build, but it is still the authoring
-                // decision, so it runs the same exact-path preflight the visual
-                // flow runs before it stages (LibraryBrowse). Nothing is
-                // installed here, so the install path's disable/replace
-                // resolutions deliberately do not apply: staging must never
-                // change enabled state or precedence. An uninspectable VPK
-                // blocks; an enabled owner only needs an explicit
-                // acknowledgement that this becomes a separate replacement.
-                const preflight = await foundryInspectSoundConflicts(assignments.map((assignment) => compiledSoundEntry(assignment.clipPath)));
-                if (preflight.unreadableMods.length) {
-                    throw new Error(t(
-                        'foundry.sound.swap.stageUnreadable',
-                        'Cannot stage this sound while {{mods}} cannot be inspected. Resolve those VPKs and try again.',
-                        { mods: preflight.unreadableMods.map((mod) => mod.modName).join(', ') }
-                    ));
-                }
-                const enabledOwners = preflight.conflicts.filter((conflict) => conflict.enabled);
-                if (enabledOwners.length && !(await confirm({
-                    title: t('foundry.sound.swap.stageConflictTitle', 'Stage a separate managed replacement?'),
-                    message: t(
-                        'foundry.sound.swap.stageConflictBody',
-                        'These installed mods already provide this sound and are enabled. Staging adds a separate managed replacement; nothing is removed.'
-                    ),
-                    items: enabledOwners.map((conflict) => conflict.modName),
-                    confirmLabel: t('foundry.sound.swap.stageConflictConfirmAction', 'Stage anyway'),
-                }))) {
-                    return;
-                }
                 onStage(serializeSoundStagedEdit({
                     id: `sound:${event}:${assignments.map((assignment) => compiledSoundEntry(assignment.clipPath)).sort().join(',')}`,
                     title: finalName,
                     precedence: 0,
                     request,
                 }));
-                // Distinct from `done`: nothing is installed on this path, so it
-                // must not reuse the install path's "enable it in Installed".
-                showToast(t('foundry.sound.swap.staged', 'Added "{{name}}" to the Foundry build tray. Nothing has been installed.', { name: finalName }), { tone: 'success', duration: 6000 });
+                showToast(t('foundry.sound.swap.staged', { name: finalName }), { tone: 'success', duration: 6000 });
                 onClose();
                 return;
             }
@@ -1320,14 +1270,14 @@ function SwapPanel({
         }
     }, [
         audioPath, busy, name, defaultName, heroName, hero, soundeventsEntry,
-        event, clipPaths, loop, edits, t, onClose, onStage, usingOriginal, targetClip, assignments, poolMode, poolSeed, resolution, conflicts, confirm,
+        event, clipPaths, loop, edits, t, onClose, onStage, stockDonor, assignments, poolMode, poolSeed, resolution, conflicts,
     ]);
 
     return (
         <div className="mt-1.5 rounded-sm border border-accent/30 bg-bg-tertiary/40 p-3">
             <div className="mb-2 flex items-center justify-between">
-                <p className="text-2xs font-medium uppercase tracking-wide text-accent">
-                    <Tx k="foundry.sound.swap.title" fallback="Swap with your own audio" />
+                <p className="text-sm font-medium text-text-primary">
+                    {t('foundry.sound.swap.editEvent', { name: label })}
                 </p>
                 <button
                     type="button"
@@ -1379,61 +1329,69 @@ function SwapPanel({
                 }}
             />
 
-            {sourceClipPaths.length > 1 && audioPath && (
-                <div className="mt-2 rounded-sm border border-border bg-bg-secondary/50 p-2 text-xs text-text-secondary">
-                    <div className="flex flex-wrap items-center gap-2">
-                        <label className="text-text-primary">Pool mode</label>
-                        <select value={poolMode} onChange={(e) => setPoolMode(e.target.value as SoundPoolMode)} className="rounded-sm border border-border bg-bg-secondary px-2 py-1 text-xs text-text-primary">
-                            <option value="replace-all">Replace all clips</option>
-                            <option value="selected-targets">Replace selected targets</option>
-                            <option value="n-to-n">Map N uploaded clips to N targets</option>
-                            <option value="seeded-library">Seeded user-library randomization</option>
-                        </select>
-                        {(poolMode === 'n-to-n' || poolMode === 'seeded-library') && (
-                            <label className="cursor-pointer rounded-sm border border-border px-2 py-1 hover:text-text-primary">
-                                Add audio files
-                                <input type="file" accept="audio/*,.mp3,.wav,.flac,.m4a,.aac,.ogg,.opus" multiple className="hidden" onChange={(e) => { addLibraryFiles(e.target.files ?? []); e.target.value = ''; }} />
-                            </label>
-                        )}
-                        {poolMode === 'seeded-library' && (
-                            <>
-                                <label className="flex items-center gap-1">Seed <input type="number" value={poolSeed} onChange={(e) => setPoolSeed(Number(e.target.value) || 1)} className="w-24 rounded-sm border border-border bg-bg-secondary px-1 py-0.5 text-text-primary" /></label>
-                                {/* A preview, not a build: it redraws the seed so
-                                    the assignment list below re-plans. The seed
-                                    that is shown is the one that gets recorded. */}
-                                <button type="button" onClick={() => setPoolSeed(Math.floor(Math.random() * 0x7fffffff) || 1)} className="flex items-center gap-1 rounded-sm border border-border px-2 py-1 hover:text-text-primary">
-                                    <Shuffle size={11} /> Shuffle now
-                                </button>
-                            </>
-                        )}
-                    </div>
+            {sourceClipPaths.length > 1 && (
+                <fieldset className="mt-3 space-y-2 rounded-sm border border-border p-2 text-xs text-text-secondary">
+                    <legend className="px-1 font-medium text-text-primary">{t('foundry.sound.swap.targets')}</legend>
+                    <Select inputSize="sm" value={poolMode} aria-label={t('foundry.sound.swap.poolMode')} onChange={(e) => setPoolMode(e.target.value as SoundPoolMode)}>
+                        <option value="replace-all">{t('foundry.sound.swap.replaceAll')}</option>
+                        <option value="selected-targets">{t('foundry.sound.swap.replaceSelected')}</option>
+                        <option value="n-to-n">{t('foundry.sound.swap.mapFiles')}</option>
+                        <option value="seeded-library">{t('foundry.sound.swap.seeded')}</option>
+                    </Select>
+                    <p>{t('foundry.sound.swap.targetCount', { count: poolMode === 'replace-all' ? sourceClipPaths.length : selectedTargets.size, total: sourceClipPaths.length })}</p>
                     {poolMode !== 'replace-all' && (
-                        <div className="mt-2 max-h-28 space-y-1 overflow-auto">
-                            {sourceClipPaths.map((path, index) => <label key={path} className="flex items-center gap-2"><input type="checkbox" checked={selectedTargets.has(path)} onChange={() => onToggleTarget(path)} className="accent-accent" />{index + 1}. <span className="truncate" title={path}>{path.split('/').pop()}</span></label>)}
+                        <>
+                            <div className="flex flex-wrap gap-2">
+                                <Button variant="ghost" size="sm" onClick={() => onSetTargets(new Set(sourceClipPaths))}>{t('foundry.buildTray.selectAll')}</Button>
+                                <Button variant="ghost" size="sm" onClick={() => onSetTargets(new Set())}>{t('foundry.buildTray.clearSelection')}</Button>
+                            </div>
+                            <div className="max-h-36 space-y-1 overflow-auto">
+                                {sourceClipPaths.map((path) => {
+                                    const state = auditionTargets.stateFor(path);
+                                    const clip = path.split('/').pop();
+                                    return <div key={path} className="flex items-center gap-2 rounded-sm px-1 hover:bg-bg-tertiary">
+                                        <label className="flex min-w-0 flex-1 items-center gap-2 py-1">
+                                            <input type="checkbox" checked={selectedTargets.has(path)} onChange={() => onToggleTarget(path)} className="accent-accent" />
+                                            <span className="truncate" title={path}>{clip}</span>
+                                        </label>
+                                        <Button size="sm" variant="ghost" disabled={state === 'loading'} icon={state === 'playing' ? Pause : Play}
+                                            aria-label={t('foundry.sound.swap.auditionTarget', { clip })}
+                                            onClick={() => auditionTargets.toggle({ event: path, vsnd: [path] })} />
+                                    </div>;
+                                })}
+                            </div>
+                        </>
+                    )}
+                    {(poolMode === 'n-to-n' || poolMode === 'seeded-library') && (
+                        <div className="space-y-2">
+                            <label className="flex flex-wrap items-center gap-2">
+                                {t('foundry.sound.swap.addFiles')}
+                                <input type="file" disabled={!audioPath} accept="audio/*,.mp3,.wav,.flac,.m4a,.aac,.ogg,.opus" multiple onChange={(e) => { addLibraryFiles(e.target.files ?? []); e.target.value = ''; }} />
+                            </label>
+                            {library.length > 0 && <ol className="list-decimal space-y-1 pl-5">
+                                {library.map((item, index) => <li key={item.path}>
+                                    <span className="break-all">{item.name}</span>
+                                    {index > 0 && <Button size="sm" variant="ghost" onClick={() => setLibrary((current) => current.filter(({ path }) => path !== item.path))}>{t('foundry.sound.swap.removeFile')}</Button>}
+                                </li>)}
+                            </ol>}
+                            {poolMode === 'n-to-n' && <p>{t('foundry.sound.swap.mappingHint', { files: library.length, targets: selectedTargets.size })}</p>}
                         </div>
                     )}
-                    {/* The exact write set, shown before Forge rather than a bare
-                        count: every row below is one clip this build overwrites. */}
-                    <div className="mt-2 max-h-32 space-y-0.5 overflow-auto rounded-sm border border-border/60 bg-bg-primary/40 p-1.5">
-                        {assignments.length === 0 ? (
-                            <p className="text-text-secondary/80">
-                                {poolMode === 'n-to-n'
-                                    ? 'No writes planned: N-to-N needs exactly one audio file per selected target.'
-                                    : 'No writes planned: select at least one target and one audio file.'}
-                            </p>
-                        ) : assignments.map((assignment) => (
-                            <p key={assignment.clipPath} className="flex gap-1 truncate" title={`${compiledSoundEntry(assignment.clipPath)} <- ${assignment.audioPath}`}>
-                                <span className="truncate text-text-primary">{compiledSoundEntry(assignment.clipPath)}</span>
-                                <span className="shrink-0">&lt;-</span>
-                                <span className="truncate">{assignment.audioPath.split(/[\\/]/).pop()}</span>
-                            </p>
-                        ))}
-                    </div>
-                    <p className="mt-1">
-                        {assignments.length} exact clip write{assignments.length === 1 ? '' : 's'}
-                        {poolMode === 'seeded-library' ? ` · seed ${poolSeed} is recorded with the forged mod` : ''}
-                    </p>
-                </div>
+                    {poolMode === 'seeded-library' && (
+                        <div className="flex flex-wrap items-center gap-2">
+                            <label className="flex items-center gap-1">{t('foundry.sound.swap.seed')} <Input inputSize="sm" type="number" value={poolSeed} onChange={(e) => setPoolSeed(Number(e.target.value) || 1)} className="w-24" /></label>
+                            <Button size="sm" variant="secondary" icon={Shuffle} onClick={() => setPoolSeed(Math.floor(Math.random() * 0x7fffffff) || 1)}>{t('foundry.sound.swap.shuffle')}</Button>
+                        </div>
+                    )}
+                    {assignments.length > 0 && <details>
+                        <summary className="cursor-pointer text-text-primary">{t('foundry.sound.swap.assignments', { count: assignments.length })}</summary>
+                        <ul className="mt-1 max-h-36 space-y-1 overflow-auto break-all">
+                            {assignments.map((assignment) => <li key={assignment.clipPath}>
+                                {t('foundry.sound.swap.mapping', { target: assignment.clipPath.split('/').pop(), source: library.find(({ path }) => path === assignment.audioPath)?.name ?? audioName })}
+                            </li>)}
+                        </ul>
+                    </details>}
+                </fieldset>
             )}
             {targetClip && (
                 <button
@@ -1474,13 +1432,14 @@ function SwapPanel({
                 <input
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    placeholder={t('foundry.sound.swap.namePlaceholder', 'Mod name')}
+                    aria-label={t('foundry.sound.swap.namePlaceholder')}
+                    placeholder={t('foundry.sound.swap.namePlaceholder')}
                     className="min-w-[160px] flex-1 rounded-sm border border-border bg-bg-secondary px-2 py-1.5 text-sm text-text-primary placeholder:text-text-secondary/60 focus:border-accent/50 focus:outline-none"
                 />
                 <select
                     value={loop}
                     onChange={(e) => setLoop(e.target.value as 'auto' | 'on' | 'off')}
-                    title={t('foundry.sound.swap.loop', 'Loop the swapped clip')}
+                    aria-label={t('foundry.sound.swap.loop')}
                     className="rounded-sm border border-border bg-bg-secondary px-2 py-1.5 text-sm text-text-primary focus:outline-none"
                 >
                     <option value="auto">{t('foundry.sound.swap.loopAuto', 'Loop: auto')}</option>
@@ -1489,24 +1448,16 @@ function SwapPanel({
                 </select>
                 <button
                     type="button"
-                    disabled={!audioPath || busy}
+                    disabled={!assignments.length || busy || loadingOriginal}
                     onClick={forge}
                     className="flex items-center gap-1.5 rounded-sm bg-accent px-3 py-1.5 text-sm font-medium text-bg-primary transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
                 >
                     {busy ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />}
-                    <Tx k="foundry.sound.swap.forge" fallback="Forge & install" />
+                    {onStage ? t('foundry.sound.swap.stage') : t('foundry.sound.swap.forge')}
                 </button>
             </div>
 
-            <p className="mt-2 text-2xs text-text-secondary">
-                {clips > 1
-                    ? t(
-                          'foundry.sound.swap.poolNote',
-                          'Replaces all {{count}} clips in this sound so it always plays your audio.',
-                          { count: clips }
-                      )
-                    : t('foundry.sound.swap.singleNote', 'Replaces this sound with your audio.')}
-            </p>
+            {onStage && <p className="mt-2 text-2xs text-text-secondary">{t('foundry.sound.swap.stageHint')}</p>}
         </div>
     );
 }

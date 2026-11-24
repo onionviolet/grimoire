@@ -124,6 +124,19 @@ describe('one reviewed write set across both live authoring flows', () => {
     expect(stagedEditSourceFiles([visual, sound])).toEqual(['C:/art/dash.png', 'C:/audio/dash.mp3']);
   });
 
+  it('checks imported sources without treating rebuildable stock references as disk files', () => {
+    const request = {
+      ...sound.request,
+      stockDonor: { clipPath: 'sounds/dash.vsnd', fingerprint: 'stock-build' },
+      assignments: [
+        { clipPath: 'sounds/dash.vsnd', audioPath: sound.request.audioPath },
+        { clipPath: 'sounds/land.vsnd', audioPath: 'C:/audio/land.mp3' },
+      ],
+    };
+    const stockEdit = { ...sound, request };
+    expect(stagedEditSourceFiles([stockEdit])).toEqual(['C:/audio/land.mp3']);
+  });
+
   it('treats an unmentioned source file as missing so the forge is blocked', () => {
     const sources = stagedEditSourceFiles([visual, sound]);
     expect(missingSourceFiles(sources, sources)).toEqual([]);

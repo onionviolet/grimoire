@@ -1,5 +1,5 @@
 import { promises as fs } from 'fs';
-import { join } from 'path';
+import { dirname, join } from 'path';
 import { tmpdir } from 'os';
 import { randomUUID } from 'crypto';
 import type { FoundryForgeEdit, FoundryForgeRequest, VpkExportResult } from '../../../src/types/foundry';
@@ -101,7 +101,8 @@ export function describeFoundryBuild(
         const exhaustive: never = edit;
         throw new Error(`Unsupported Foundry edit kind: ${(exhaustive as FoundryForgeEdit).kind}`);
     });
-    return { writeSet: review.writeSet, parts, reforge: request };
+    const { soundInstallReview: _reviewToken, replaceBuildId: _replacement, ...reforge } = request;
+    return { writeSet: review.writeSet, parts, reforge };
 }
 
 function sameReview(request: FoundryForgeRequest, review: ReturnType<typeof reviewFoundryForge>): boolean {
@@ -163,6 +164,33 @@ export async function buildFoundryForgeVpk(deadlockPath: string, request: Foundr
         // scratch directory must not reject a build that already succeeded, or
         // the merged directory above would be returned to nobody and leak.
         await Promise.all(built.map((part) => part.cleanup().catch(() => {})));
+    }
+}
+
+/** Mint exactly the winning assignment for one entry, using the same path as a real build. */
+export async function auditionFoundryBuildSound(deadlockPath: string, request: FoundryForgeRequest, entry: string) {
+    const path = soundEntry(entry);
+    const review = reviewFoundryForge(request.edits);
+    if (!sameReview(request, review)) throw new Error('The Foundry build review is stale.');
+    const winningId = review.collisionWinners.find(({ file }) => file === path)?.editId;
+    const edit = request.edits.find((part) => part.kind === 'sound' && (!winningId || part.id === winningId)
+        && part.request.assignments?.some(({ clipPath }) => soundEntry(clipPath) === path));
+    if (!edit || edit.kind !== 'sound') throw new Error('Choose a sound entry in the build.');
+    const assignment = edit.request.assignments!.find(({ clipPath }) => soundEntry(clipPath) === path)!;
+    const built = await buildHeroSoundSwapVpk(deadlockPath, {
+        ...edit.request,
+        audioPath: assignment.audioPath,
+        stockDonor: assignment.audioPath === edit.request.audioPath ? edit.request.stockDonor : undefined,
+        assignments: [assignment],
+        loop: edit.request.loop ?? 'auto',
+    });
+    try {
+        const file = join(dirname(built.vpkPath), 'audition.mp3');
+        await runVpkmerge(['catalog', 'voiceclip', '--vpk', built.vpkPath, '--entry', path, '--out', file]);
+        const mp3 = await fs.readFile(file);
+        return { audio: `data:audio/mpeg;base64,${mp3.toString('base64')}`, looping: built.loops[path] ?? null };
+    } finally {
+        await cleanupHeroSoundSwapBuild(built.vpkPath);
     }
 }
 

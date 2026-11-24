@@ -21,6 +21,7 @@ import {
     ensureFullImage,
     ensureVoiceclip,
     ensureVoiceclipFile,
+    foundryBuildFingerprintKey,
     thumbsRoot,
     ensureModClip,
     pruneModClips,
@@ -36,7 +37,7 @@ import { buildHeroEffectVpkForExport } from '../services/heroColors';
 import { discoverRecolorEntries } from '../services/foundryRecolor';
 import { exportVpkViaDialog } from '../services/foundryExport';
 import { exportFoundryAsset } from '../services/foundryAssetExport';
-import { buildFoundryForgeVpk, forgeAndExportFoundryVpk } from '../services/foundryForge';
+import { auditionFoundryBuildSound, buildFoundryForgeVpk, forgeAndExportFoundryVpk } from '../services/foundryForge';
 import {
     listFoundryPortraitImages,
     portraitImageNames,
@@ -312,6 +313,18 @@ ipcMain.handle('foundry:releaseTrayPreview', async (_e, previewId: string): Prom
     await releasePreviewVpk(previewId);
 });
 
+ipcMain.handle('foundry:auditionBuildSound', async (_e, request: FoundryForgeRequest, entry: string) =>
+    auditionFoundryBuildSound(requireDeadlockPath(), request, entry)
+);
+
+ipcMain.handle('foundry:stockSound', async (_e, clipPath: string) => {
+    const game = requireDeadlockPath();
+    const fingerprint = await foundryBuildFingerprintKey(game);
+    const audio = await ensureVoiceclip(game, clipPath);
+    if (!audio || fingerprint !== await foundryBuildFingerprintKey(game)) return null;
+    return { audio, fingerprint };
+});
+
 ipcMain.handle('foundry:exportSoundAnnotations', async () => exportSoundAnnotations());
 ipcMain.handle('foundry:importSoundAnnotations', async (_e, content: string) =>
     importSoundAnnotations(content)
@@ -346,7 +359,7 @@ ipcMain.handle(
             throw new Error('An audition needs an exact VPK entry path');
         }
         const mods = await scanMods(requireDeadlockPath());
-        const owner = mods.find((mod) => mod.id === modId);
+        const owner = mods.find((mod) => mod.id === modId || mod.metaKey === modId);
         if (!owner) throw new Error('That mod is no longer installed.');
         void pruneModClips();
         return ensureModClip(owner.path, entryPath);
@@ -361,7 +374,7 @@ ipcMain.handle('foundry:checkAudioPaths', async (_e, paths: string[]): Promise<s
         throw new Error('An audio-path check requires a list of file paths');
     }
     const checked = await Promise.all(
-        [...new Set(paths)].map(async (path) => (await stat(path).catch(() => null)) ? path : null)
+        [...new Set(paths)].map(async (path) => (await stat(path).catch(() => null))?.isFile() ? path : null)
     );
     return checked.filter((path): path is string => path !== null);
 });

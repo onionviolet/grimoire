@@ -134,14 +134,18 @@ export function unsupportedStagedEditKind(edits: readonly FoundryStagedEdit[]): 
  * and forging would otherwise blow up halfway through the build.  The tray
  * checks these first and blocks with the names.
  */
+export function soundSourceFiles(request: Pick<import('../../types/foundry').HeroSoundSwapRequest, 'audioPath' | 'stockDonor' | 'assignments'>): string[] {
+  const paths = [request.audioPath, ...(request.assignments ?? []).map((assignment) => assignment.audioPath)];
+  return [...new Set(paths.filter((path) => path && (!request.stockDonor || path !== request.audioPath)))];
+}
+
 export function stagedEditSourceFiles(edits: readonly FoundryStagedEdit[]): string[] {
   const files: string[] = [];
   for (const edit of edits) {
     if (isStagedSoundEdit(edit)) {
       // Assignments are the authoritative write set (audioPath is only the
       // single-donor fallback), so collect both and dedupe.
-      files.push(edit.request.audioPath);
-      for (const assignment of edit.request.assignments ?? []) files.push(assignment.audioPath);
+      files.push(...soundSourceFiles(edit.request));
     } else if (isStagedVisualEdit(edit)) {
         files.push(edit.source.imagePath);
     } else if (isStagedModelEdit(edit)) {

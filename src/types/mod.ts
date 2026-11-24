@@ -647,6 +647,7 @@ export interface SoundSwapInfo {
     event?: string;
     clipPaths?: string[];
     audioPath: string;
+    stockDonor?: import('./foundry').HeroSoundSwapRequest['stockDonor'];
     assignments: Array<{ clipPath: string; audioPath: string }>;
     trimStartMs?: number;
     trimEndMs?: number;

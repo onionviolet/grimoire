@@ -1900,6 +1900,9 @@ export interface ElectronAPI {
         swapSound: (
             req: import('./foundry').HeroSoundSwapRequest
         ) => Promise<import('./mod').Mod[]>;
+        stockSound: (clipPath: string) => Promise<{ audio: string; fingerprint: string } | null>;
+        reviewSoundInstall: (request: import('./foundry').FoundryForgeRequest) => Promise<import('./foundry').FoundrySoundInstallReview | null>;
+        auditionBuildSound: (request: import('./foundry').FoundryForgeRequest, entry: string) => Promise<{ audio: string; looping: boolean | null }>;
         inspectSoundConflicts: (writeSet: string[]) => Promise<import('./foundry').FoundrySoundConflictInspection>;
         inspectAssetSources: (paths: string[]) => Promise<import('./foundry').FoundryAssetSourcesInspection>;
         /** Audition the clip an installed VPK actually writes, extracted from

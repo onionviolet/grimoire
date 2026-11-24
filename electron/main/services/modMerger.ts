@@ -182,7 +182,11 @@ export function vpkmergeBinaryPath(): string {
  * `env` adds variables for the child (e.g. a thread cap). `onSpawn` receives the
  * child's pid, e.g. to lower a background job's priority.
  */
-export interface VpkmergeRunOptions { env?: NodeJS.ProcessEnv; onSpawn?: (pid: number) => void }
+export interface VpkmergeRunOptions {
+    env?: NodeJS.ProcessEnv;
+    onSpawn?: (pid: number) => void;
+    onSuccessStderr?: (text: string) => void;
+}
 
 export function runVpkmerge(args: string[], timeoutMs = 300000, options: VpkmergeRunOptions = {}): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -208,6 +212,7 @@ export function runVpkmerge(args: string[], timeoutMs = 300000, options: Vpkmerg
             clearTimeout(timeoutId);
             if (killed) return;
             if (code === 0) {
+                options.onSuccessStderr?.(stderr);
                 resolve();
             } else {
                 reject(new Error(`vpkmerge exited with code ${code}: ${stderr || stdout || '(no output)'}`));

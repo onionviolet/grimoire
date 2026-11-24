@@ -202,6 +202,37 @@ export async function getGlobalSounds(
     return runCatalogJson<GlobalSound[]>(args);
 }
 
+// Index all known stock events by compiled clip. Keep one game build in memory.
+let soundReferences: { key: string; index: Promise<Map<string, Set<string>>> } | undefined;
+
+export async function sharedStockSoundEvents(deadlockPath: string, fingerprint: string, paths: string[]) {
+    const key = `${deadlockPath}:${fingerprint}`;
+    if (soundReferences?.key !== key) {
+        const index = Promise.all([getHeroSounds(deadlockPath), getGlobalSounds(deadlockPath), getVoicelines(deadlockPath)])
+            .then((catalogs) => {
+                const byPath = new Map<string, Set<string>>();
+                for (const rows of catalogs) {
+                    for (const row of rows) {
+                        for (const source of row.vsnd) {
+                            const path = toVsndcEntry(source).toLowerCase();
+                            const events = byPath.get(path) ?? new Set<string>();
+                            events.add(row.event);
+                            byPath.set(path, events);
+                        }
+                    }
+                }
+                return byPath;
+            });
+        soundReferences = { key, index };
+        void index.catch(() => { if (soundReferences?.index === index) soundReferences = undefined; });
+    }
+    const index = await soundReferences.index;
+    return paths.flatMap((path) => {
+        const events = index.get(path);
+        return events && events.size > 1 ? [{ path, events: [...events].sort() }] : [];
+    });
+}
+
 // ----- Hero sound-swap build (drop your own audio onto a sound event) --------
 
 export type SoundSwapLoop = 'auto' | 'on' | 'off';
@@ -229,6 +260,7 @@ export interface BuildHeroSoundSwapOptions {
     /** Exact writes requested by the pool editor. This deliberately bypasses
      *  event `--pool all`: callers have already selected the entry paths. */
     assignments?: Array<{ clipPath: string; audioPath: string }>;
+    stockDonor?: import('../../../src/types/foundry').HeroSoundSwapRequest['stockDonor'];
     /** Loop handling for the minted clip. */
     loop: SoundSwapLoop;
     /** Optional trim window in milliseconds (frame-snapped, ~26 ms). Both ends
@@ -244,6 +276,7 @@ export interface HeroSoundSwapBuild {
     /** The built addon VPK on disk (temp staging path; the caller installs the
      *  copy into the managed mod list and then cleans this up). */
     vpkPath: string;
+    loops: Record<string, boolean>;
     /** The sound-path codename the event was resolved under (e.g. `gigawatt`),
      *  recorded in the installed mod's metadata. */
     soundCodename: string;
@@ -275,17 +308,26 @@ export async function buildHeroSoundSwapVpk(
     const soundCodename = opts.soundeventsEntry
         ? ''
         : await rosterToSoundCodename(deadlockPath, opts.heroCodename);
+    const stockAudio = opts.stockDonor ? await resolveStockSoundDonor(deadlockPath, opts.stockDonor) : undefined;
+    const sourcePath = (path: string) => path === opts.audioPath && stockAudio ? stockAudio : path;
     const dir = join(tmpdir(), `grimoire-soundswap-${randomUUID()}`);
     await fs.mkdir(dir, { recursive: true });
     const vpkPath = join(dir, 'soundswap_dir.vpk');
+    const loops: Record<string, boolean> = {};
 
-    const mintAudio = await prepareAudioForMint(opts.audioPath);
-    const assignmentAudio: Array<{ clipPath: string; audioPath: string; mint: typeof mintAudio }> = [];
+    let mintAudio: Awaited<ReturnType<typeof prepareAudioForMint>> | undefined;
+    const assignmentAudio: Array<{ clipPath: string; mint: Awaited<ReturnType<typeof prepareAudioForMint>> }> = [];
     try {
+        const conversions = new Map<string, Awaited<ReturnType<typeof prepareAudioForMint>>>();
+        mintAudio = await prepareAudioForMint(sourcePath(opts.audioPath));
+        conversions.set(sourcePath(opts.audioPath), mintAudio);
         // Prepare sequentially so a failed later conversion can still clean up
         // every earlier temporary output.
         for (const assignment of opts.assignments ?? []) {
-            assignmentAudio.push({ ...assignment, mint: await prepareAudioForMint(assignment.audioPath) });
+            const path = sourcePath(assignment.audioPath);
+            const mint = conversions.get(path) ?? await prepareAudioForMint(path);
+            conversions.set(path, mint);
+            assignmentAudio.push({ clipPath: assignment.clipPath, mint });
         }
 
         // Shared mint options for either mode: the source audio, loop handling, and
@@ -321,11 +363,14 @@ export async function buildHeroSoundSwapVpk(
                 if (seen.has(assignment.clipPath)) throw new Error(`Duplicate pool target: ${assignment.clipPath}`);
                 seen.add(assignment.clipPath);
                 const part = join(dir, `part-${i}_dir.vpk`);
+                let mintOutput = '';
                 await runVpkmerge([
                     'soundswap', '--from-vpk', pak01Path(deadlockPath),
                     '--clip', assignment.clipPath, '--audio', assignment.audioPath,
                     ...mintArgs.slice(2), '--encode-vpk', part,
-                ]);
+                ], undefined, { onSuccessStderr: (stderr) => { mintOutput = stderr; } });
+                const loop = /^wrote .* \((looping|one-shot)\) <- /m.exec(mintOutput)?.[1];
+                if (loop) loops[assignment.clipPath.toLowerCase()] = loop === 'looping';
                 parts.push(part);
             }
             if (parts.length === 1) await fs.rename(parts[0], vpkPath);
@@ -371,10 +416,10 @@ export async function buildHeroSoundSwapVpk(
         await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
         throw err;
     } finally {
-        await mintAudio.cleanup();
-        await Promise.all(assignmentAudio.map(({ mint }) => mint.cleanup()));
+        const conversions = new Set([mintAudio, ...assignmentAudio.map(({ mint }) => mint)]);
+        await Promise.all([...conversions].map((mint) => mint?.cleanup()));
     }
-    return { vpkPath, soundCodename };
+    return { vpkPath, soundCodename, loops };
 }
 
 /** Remove a sound-swap build's temp staging dir (call after installing the copy). */
@@ -746,6 +791,17 @@ export async function ensureVoiceclipFile(
             return null; // missing entry or unsupported codec; no audition
         }
     }
+}
+
+async function resolveStockSoundDonor(deadlockPath: string, donor: { clipPath: string; fingerprint: string }): Promise<string> {
+    if (donor.fingerprint !== await foundryBuildFingerprintKey(deadlockPath)) {
+        throw new Error('Deadlock changed since you selected the stock sound. Open the current stock clip and review the trim and gain again.');
+    }
+    const path = await ensureVoiceclipFile(deadlockPath, donor.clipPath);
+    if (!path || donor.fingerprint !== await foundryBuildFingerprintKey(deadlockPath)) {
+        throw new Error('The reviewed stock sound could not be loaded. Open it again in Sound Forge.');
+    }
+    return path;
 }
 
 /** Remove voiceclip caches for any fingerprint other than the current one. */
