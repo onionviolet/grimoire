@@ -3556,6 +3556,7 @@ function InstalledPage({ viewportRef, toolbarRef }: {
               showImprint={!!settings?.experimentalVpkImprinting && pendingImprintCount > 0} onImprint={() => void openImprintModal()}
               canFixOrder={viewIsReorderable} onFixOrder={fixOrder}
               canCopyEnabled={enabledModCount > 0} onCopyEnabled={handleCopyEnabledMods}
+              onFindBrokenMod={() => navigate('/recovery?focus=isolation')}
               onImported={() => void loadMods()} onExport={() => setExportOpen(true)} />
           </div>
         </div>

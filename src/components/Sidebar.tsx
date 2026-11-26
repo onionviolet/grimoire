@@ -678,7 +678,8 @@ export default function Sidebar() {
         loadMods();
       }
     } catch (err) {
-      setToast({ kind: 'error', text: String(err).replace(/^Error:\s*/, '') });
+      setToast({ kind: 'error', text: String(err).replace(/^Error:\s*/, ''),
+        action: { label: t('recovery.tools.isolationTitle'), onClick: () => navigate('/recovery?focus=isolation') } });
     } finally {
       setLaunchPending(null);
       refreshStashStatus();

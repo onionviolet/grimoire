@@ -7,7 +7,10 @@ import { getInterruptedProfileRecovery, recoverInterruptedProfileRecovery, revie
 import type { InterruptedRecovery } from '../../types/profileRecovery';
 import type { CompatibilityReview, ModIsolationSession } from '../../types/recovery';
 
-export default function RecoveryTools({ suspectName }: { suspectName?: string }) {
+export default function RecoveryTools({ suspectName, isolationRef }: {
+  suspectName?: string;
+  isolationRef?: (node: HTMLElement | null) => void;
+}) {
   const { t } = useTranslation();
   const [interrupted, setInterrupted] = useState<InterruptedRecovery | null>(null);
   const [compatibility, setCompatibility] = useState<CompatibilityReview | null>(null);
@@ -71,6 +74,7 @@ export default function RecoveryTools({ suspectName }: { suspectName?: string })
         </>}
       </div>
     </Card>
+    <section ref={isolationRef} tabIndex={-1} aria-label={t('recovery.tools.isolationTitle')}>
     <Card title={t('recovery.tools.isolationTitle')} description={t('recovery.tools.isolationDescription')} accentEdge="none">
       <div className="space-y-3">
         <p className="text-sm text-text-secondary">{t('recovery.tools.isolationScope')}</p>
@@ -85,6 +89,7 @@ export default function RecoveryTools({ suspectName }: { suspectName?: string })
               : session.phase === 'ready' ? session.trialKind === 'original' ? t('recovery.tools.originalReady') : t('recovery.tools.trialReady', { count: session.testIds.length, remaining: session.candidates.length })
               : session.phase === 'testing' ? t('recovery.tools.trialTesting')
               : session.phase === 'complete' ? session.interactingSet ? t('recovery.tools.interacting', { names: session.candidates.map(mod => mod.name).join(', ') }) : t('recovery.tools.candidate', { name: session.candidates[0]?.name }) : t('recovery.tools.inconclusive')}</p>
+            {session.phase === 'inconclusive' && session.steps === 1 && <p className="text-sm text-text-secondary">{t('recovery.tools.baselineFailedHelp')}</p>}
             {!!testNames.length && <ul className="list-disc pl-5 space-y-1 text-sm text-text-secondary">{testNames.map((name, index) => <li key={index}>{name}</li>)}</ul>}
             <div className="flex flex-wrap gap-2">
               {ready && <Button variant="secondary" disabled={busy || !!interrupted} onClick={() => setConfirm('trial')}>{t('recovery.tools.applyTrial')}</Button>}
@@ -98,6 +103,7 @@ export default function RecoveryTools({ suspectName }: { suspectName?: string })
           </>}
       </div>
     </Card>
+    </section>
     <ConfirmModal isOpen={!!confirm} title={t('recovery.tools.confirmTitle')}
       message={confirm === 'trial' ? t('recovery.tools.confirmTrial') : confirm === 'interrupted' ? t('recovery.tools.confirmInterrupted') : t('recovery.tools.confirmRestore')}
       confirmLabel={t('recovery.tools.confirm')} cancelLabel={t('profiles.recovery.cancel')} busy={busy}

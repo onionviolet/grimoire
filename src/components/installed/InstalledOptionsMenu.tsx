@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ChevronDown, ClipboardList, Fingerprint, Grid2x2, Grid3x3, SlidersHorizontal, SquareDashedX, Wand2, type LucideIcon } from 'lucide-react';
+import { ChevronDown, ClipboardList, Fingerprint, Grid2x2, Grid3x3, Search, SlidersHorizontal, SquareDashedX, Wand2, type LucideIcon } from 'lucide-react';
 import { AnchoredPopover } from '../common/AnchoredPopover';
 import { Button } from '../common/ui';
 import { InterchangeImportHost, InterchangeTransferActions } from '../interchange/ImportSourceMenu';
@@ -17,6 +17,7 @@ export interface InstalledOptionsMenuProps {
   onFixOrder: () => void;
   canCopyEnabled: boolean;
   onCopyEnabled: () => void;
+  onFindBrokenMod: () => void;
   onImported: () => void;
   onExport: () => void;
 }
@@ -39,7 +40,7 @@ function OptionsAction({ icon, label, hint, disabled, count, onClick }: {
 export function InstalledOptionsMenu({
   cardSizeMultiplier, cardSizeRange, onCardSizeChange,
   lockerOverrideCount, onLockerOverrides, showImprint, onImprint, canFixOrder,
-  onFixOrder, canCopyEnabled, onCopyEnabled, onImported, onExport,
+  onFixOrder, canCopyEnabled, onCopyEnabled, onFindBrokenMod, onImported, onExport,
 }: InstalledOptionsMenuProps) {
   const { t } = useTranslation();
   const anchorRef = useRef<HTMLDivElement>(null);
@@ -82,6 +83,8 @@ export function InstalledOptionsMenu({
               disabled={!canFixOrder} onClick={act(onFixOrder)} />
             <OptionsAction icon={ClipboardList} label={t('installed.actions.copyEnabled')} hint={t('installed.actions.copyEnabledHint')}
               disabled={!canCopyEnabled} onClick={act(onCopyEnabled)} />
+            <OptionsAction icon={Search} label={t('recovery.tools.isolationTitle')}
+              onClick={act(onFindBrokenMod)} />
           </div>
         </div>
         <div>

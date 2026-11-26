@@ -28,7 +28,7 @@ describe('Installed options menu', () => {
     props = {
       cardSizeMultiplier: 1, cardSizeRange: { min: 0.8, max: 2, step: 0.1 },
       onCardSizeChange: vi.fn(), lockerOverrideCount: 2, onLockerOverrides: vi.fn(), showImprint: true, onImprint: vi.fn(),
-      canFixOrder: true, onFixOrder: vi.fn(), canCopyEnabled: true, onCopyEnabled: vi.fn(), onImported: vi.fn(), onExport: vi.fn(),
+      canFixOrder: true, onFixOrder: vi.fn(), canCopyEnabled: true, onCopyEnabled: vi.fn(), onFindBrokenMod: vi.fn(), onImported: vi.fn(), onExport: vi.fn(),
     };
     host = document.createElement('div'); document.body.append(host); root = createRoot(host);
   });
@@ -68,6 +68,9 @@ describe('Installed options menu', () => {
     expect(props.onFixOrder).toHaveBeenCalledOnce();
     await open(); await act(async () => button('installed.actions.copyEnabled').click());
     expect(props.onCopyEnabled).toHaveBeenCalledOnce();
+    await open(); await act(async () => button('recovery.tools.isolationTitle').click());
+    expect(props.onFindBrokenMod).toHaveBeenCalledOnce();
+    expect(button('installed.options.title').getAttribute('aria-expanded')).toBe('false');
   });
 
   it('keeps transfer dialogs alive after dismissing options and supports folder overrides', async () => {

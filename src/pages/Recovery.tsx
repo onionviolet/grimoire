@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ShieldCheck, AlertTriangle, RefreshCw, Copy } from 'lucide-react';
@@ -18,7 +18,9 @@ import { useCrashAdvisoryStore } from '../stores/crashAdvisoryStore';
 export default function Recovery() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const advisoryId: unknown = useLocation().state?.crashAdvisoryId;
+  const location = useLocation();
+  const advisoryId: unknown = location.state?.crashAdvisoryId;
+  const focusIsolation = new URLSearchParams(location.search).get('focus') === 'isolation';
   const advisory = useCrashAdvisoryStore(state => state.findings.find(finding => finding.id === advisoryId));
   const [health, setHealth] = useState<InstallationHealthReport | null>(null);
   const [scanning, setScanning] = useState(false);
@@ -29,7 +31,7 @@ export default function Recovery() {
   const [reportError, setReportError] = useState(false);
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
 
-  const scan = async () => {
+  const scan = useCallback(async () => {
     setScanning(true);
     setScanError(false);
     setReport(null);
@@ -43,7 +45,16 @@ export default function Recovery() {
     } finally {
       setScanning(false);
     }
-  };
+  }, []);
+  useEffect(() => {
+    if (focusIsolation) void scan();
+  }, [focusIsolation, location.key, scan]);
+  const focusIsolationPanel = useCallback((panel: HTMLElement | null) => {
+    if (focusIsolation && panel) {
+      panel.focus({ preventScroll: true });
+      panel.scrollIntoView?.({ block: 'start' });
+    }
+  }, [focusIsolation]);
   const buildReport = async () => {
     setBuilding(true);
     setReportError(false);
@@ -96,7 +107,7 @@ export default function Recovery() {
             : <EmptyState icon={ShieldCheck} title={t('recovery.noIssues')} description={t('recovery.noIssuesDescription')} />}
           <p className="text-xs text-text-tertiary">{t('recovery.scope')}</p>
         </section>}
-      {health?.pathState === 'ready' && <RecoveryTools suspectName={advisory?.modName} />}
+      {!scanning && health?.pathState === 'ready' && <RecoveryTools suspectName={advisory?.modName} isolationRef={focusIsolationPanel} />}
       {health?.pathState === 'ready' && <SetupTestHistory />}
       <ChatWheelInspector />
       <DownloadHistory />
