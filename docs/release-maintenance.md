@@ -36,6 +36,10 @@ repeatable while preserving a usable rollback path.
 
 2. Update `package.json` and `CHANGELOG.md` for the target version. Commit the
    feature work and the upstream merge before building.
+   Preview the GitHub release body with `node scripts/release-notes.mjs <version>`.
+   The script writes `release-notes.md` from the matching changelog section.
+   Use [project state](../.planning/STATE.md) for the active candidate and its
+   internal release record.
 
 3. Validate the exact release commit:
 

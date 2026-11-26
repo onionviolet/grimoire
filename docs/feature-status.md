@@ -12,14 +12,15 @@ For the November 23 source and Windows verification, see the
 [feature audit](./feature-audit-2026-11-23.md), and
 [Discord implementation follow-through](./discord-feature-requests-audit-2026-11-23.md#implementation-follow-through).
 
-The [November 24 internal release note](./internal-release-note-2026-11-24.md)
-reconciles the candidate since v1.28.2, including the player improvements,
-3D playback findings, and remaining release checks.
+The [v1.35.2 internal release note](./internal-release-note-2026-11-24.md)
+reconciles the candidate since v1.28.2, including Sound Forge install review,
+Stock VFX, ZIP package review, assisted isolation and profile duplication.
+It records the source and verification status for each addition.
 
-This is an implementation inventory, not a substitute for in-game validation.
-It holds **no forward plan**: see [.planning/ROADMAP.md](../.planning/ROADMAP.md)
-for the current milestone and [.planning/BACKLOG.md](../.planning/BACKLOG.md)
-for everything else.
+This inventory records implementation and its evidence. See
+[project state](../.planning/STATE.md) for candidate verification,
+[the milestone record](../.planning/ROADMAP.md) for the last scheduled work,
+and [the backlog](../.planning/BACKLOG.md) for future work.
 
 Ability playback follow-through was source- and test-verified on 2026-10-09:
 [implementation record](./ability-playback-implementation-2026-10-09.md).
@@ -318,12 +319,10 @@ plays, or draws them.
 
 ## Release follow-up
 
-The packaged Windows smoke record does not block a release (decided
-2026-07-28, unchanged). The fork's support destination was decided and applied
-during v1.27; the updater modal no longer points at the upstream Discord.
+The current publication gate is the hosted Windows, Linux and macOS package
+and smoke matrix for the final release commit. The older July 28 decision
+deferred manual acceptance in Deadlock. During v1.27, the fork moved the
+updater's support destination to its own issue tracker.
 
-Forward-looking plans no longer live in this file. Current-milestone work is in
-[.planning/ROADMAP.md](../.planning/ROADMAP.md); everything else is in
-[.planning/BACKLOG.md](../.planning/BACKLOG.md). The v1.25-era plan that used
-to sit here is archived at
+The v1.25-era plan that used to sit here is archived at
 [archive/feature-status-next-version-plan.md](./archive/feature-status-next-version-plan.md).

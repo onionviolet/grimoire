@@ -1,13 +1,67 @@
 # Grimoire fork release notes
 
-Internal candidate v1.35.2 | November 24, 2026 | Since the published fork v1.28.2
+Internal candidate v1.35.2 | November 24–26, 2026 | Since the published fork v1.28.2
 
 The fork incorporates upstream stable v1.35.1 and upstream main at
 `6fec44a1`, both ancestors of fork main at `619a03ba`. Upstream also has
 an intervening v1.35.2 nightly based on that main commit. The fork's
 version rule uses the latest stable patch, so the local candidate is
 v1.35.2. The release pins fork vpkmerge 0.30.1 at `c34fadf`. The final
-release commit and hosted builds are still pending. [Upstream stable](https://github.com/Slush97/grimoire/releases/tag/v1.35.1)
+release commit and hosted verification are still pending. [Upstream stable](https://github.com/Slush97/grimoire/releases/tag/v1.35.1)
+
+## November 25 candidate reconciliation
+
+GitHub still lists v1.28.2 as the latest published fork release. Upstream
+stable remains v1.35.1. The versioned local `main` candidate is `5160f671`.
+The release notes also cover the feature branch at `2d873ce9` and its four
+working-tree additions, on the assumption they will land in the candidate.
+Review that scope against the final commit before generating publication notes.
+[Fork releases](https://github.com/onionviolet/grimoire/releases)
+
+| Source | Disposition and acceptance |
+|---|---|
+| Sound Forge F1–F4 and A1 | Commit `2d873ce9` adds transactional installs and rebuilds, provider and shared-event review, stock identity and imported-file relinking, and baked audio metrics and audition. The [Sound Forge assessment](foundry-sound-audit-2026-11-24.md#implementation-follow-through) records the isolated Windows package and IPC checks. The current-game sound matrix is open. |
+| Peer scout F1 | Foundry can review supported single-hero skin VPKs and export a separate stock particle overlay or add it disabled. Review lists paths left alone and missing stock or dependency entries. The mixed-pack service fixture covers overlay contents. A private match with a real skin still needs to confirm model and sound retention, stock effects, precedence and undo. |
+| Peer scout F2 | Installed and crash advisories link to Recovery's assisted isolation. Recovery starts the existing health scan and focuses isolation once the game path is ready. Native navigation from a named crash, a generic crash and Installed remains open. |
+| Peer scout F3 | Foundry reviews a bounded ZIP against the selected game build and reports invalid packages, missing model references and overlaps with enabled mods. The service fixtures check valid stock references, missing and sibling references, and overlaps. A packaged author workflow and an in-game check remain open. |
+| Peer scout F4 | Profiles can duplicate a saved profile with a fresh identity and the same installed mod references. The service test covers the saved copy. Applying and independently editing both profiles in the packaged app offline remains open. |
+
+The peer scout's other signals remain research. General catalog sources and
+local hosting stay parked. The cache and packaging reports remain triggers for
+targeted reproduction if the same symptoms arise in Grimoire. The prior audit
+and verification sections below retain their original evidence dates.
+[Peer scout](deadlock-manager-peer-scout-2026-11-24.md)
+
+The November 25 working tree passed typecheck, UI and locale checks, the
+fork engine pin and native ChatLane resource checks, and encoding checks.
+Vitest passed 7,172 tests with 29 skipped. The four focused suites for the
+peer follow-through passed all 25 tests on Node 24. Lint reported 115 warnings
+and zero errors, including a React effect warning on Recovery's automatic scan.
+The simulated v1.35.2 tag matched `package.json`, and the release
+script generated the v1.35.2 section of [CHANGELOG.md](../CHANGELOG.md).
+Earlier package and installation evidence applies to the revisions below.
+The current candidate still needs the Windows upgrade check and hosted
+Windows, Linux and macOS package and smoke runs on the release commit.
+
+## November 26 Windows verification
+
+- Built the current v1.35.2 feature working tree as a Windows x64 directory
+  package with Electron 44.10.1 and vpkmerge 0.30.1 (`c34fadf`). Staged the
+  existing Electron ABI build of better-sqlite3 in the temporary package.
+  The packaged smoke passed: native Chat Wheel draft save, preload, SQLite
+  and FTS5, the safety worker, and the three custom asset protocols. It
+  reported zero renderer console errors and uncaught exceptions.
+- Verified the published v1.28.2 Windows Setup download against the release
+  checksum and extracted its app without running the installer. It saved a
+  disposable profile with two enabled VPKs. The v1.35.2 package reopened
+  that profile with the same game path, language, Chat Wheel preference,
+  active profile and mod order. Both VPKs and `gameinfo.gi` matched byte for
+  byte. The first attempt had left onboarding active in the fixture, so the
+  old app detected the local Steam installation. The recorded pass used a
+  configured fixture with a path assertion before library or profile access.
+- The in-place Windows Setup installer upgrade, legacy merged or imprinted
+  VPK fixture, and hosted Windows, Linux and macOS matrix on the final
+  release commit remain pending. [Published baseline](https://github.com/onionviolet/grimoire/releases/tag/v1.28.2)
 
 ## November 24 player improvements
 
@@ -108,7 +162,7 @@ download acceptance, and signed-in service checks. The authoritative
 publication gate is the hosted Windows, Linux and macOS package-and-smoke
 matrix for the final release commit, with signing verified where configured.
 
-The locally versioned v1.35.2 working tree passed the simulated tag/version
+The November 24 versioned v1.35.2 working tree passed the simulated tag/version
 check and changelog generation. Node 24 passed 7,167 tests with 29 skipped.
 Typecheck, UI, encoding, locale, engine pin and ChatLane resource checks
 passed. Lint reported 114 warnings and zero errors. The production Windows x64 unpacked package passed the isolated
