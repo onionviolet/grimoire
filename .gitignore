@@ -40,6 +40,7 @@ suggestions.md
 docs/RELEASE.md
 AUDIT_REPORT.md
 .claude/*
+!.claude/rules/
 !.claude/settings.json
 test-1click.html
 README.txt
