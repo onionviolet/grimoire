@@ -13,16 +13,26 @@ on its main branch. It also brings the fork's work since v1.28.2 into one releas
   Restore a waiting download removed by mistake, resume interrupted downloads,
   and review which cached archives can be cleaned up.
 - **Profiles and Recovery.** Review missing or changed mods before applying a
-  profile, choose local replacements, and copy a compatibility report. Local
-  restore points preserve retained mod files, load order, configuration, and
-  the reserved Locker slots. Recovery can compare game builds for changes
-  to files your mods override. Try an installed mod for one launch with a
-  reviewed restore back to your usual setup.
-- **Locker and Foundry.** Compare stock and modded motion on the same body.
-  Inspect model, texture and particle assets, stage compiled model replacements,
-  and combine edits in the build tray. The sound editor adds stock A/B,
-  precise keyboard trim and waveform zoom. You can also review and stage
-  a folder of voice replacements by exact clip or event name.
+  profile, choose local replacements, and copy a compatibility report.
+  Duplicate a saved profile using the same installed mod files. Local restore
+  points preserve retained mod files, load order, managed configuration and
+  reserved Locker slots. Recovery compares game builds for changes to overridden
+  files. Use **Find a broken mod** from Installed or a crash advisory to open
+  assisted isolation. You can also try one mod for a single launch and return
+  to your usual setup when the game exits.
+- **Locker and previews.** Compare stock and modded motion on the same body,
+  repeat an ability audition three times in the experimental preview, and
+  animate crosshair spread over the preview backgrounds.
+- **Foundry Sound.** Edit with waveform zoom, keyboard trim and stock A/B.
+  Stage a folder of voice replacements by clip or event name. Before installing,
+  hear the baked VPK audio, see the expected winning provider and shared stock
+  events, and relink missing audio. Rebuilding an enabled sound mod keeps its
+  slot, parks the old VPK disabled, and restores it if installation fails.
+- **Foundry assets and packages.** Inspect model, texture and particle assets
+  and stage compiled model replacements in the build tray. Build a separate
+  stock VFX overlay for a supported skin, then export it or add it disabled.
+  Review a ZIP for invalid VPKs, missing model references and overlaps with
+  enabled mods, with a report you can copy before sharing the archive.
 - **Chat Wheel and Config.** The experimental wheel editor saves drafts,
   exports VPKs, and applies changes through a separate activation step.
   Recovery shows which wheel providers are mounted and how to clear stale
@@ -31,9 +41,38 @@ on its main branch. It also brings the fork's work since v1.28.2 into one releas
 - **Browser.** Star pages to save them locally. Search and group bookmarks
   by folder, or pin them to the optional bookmarks bar. Find and zoom
   controls and site-specific filtering are available in the embedded browser.
+- **Load order and storage.** Open a mod's overlaps directly from Installed
+  and see which provider wins. Review merge recipes and export merged
+  localization strings. On Windows, you can opt in to compress disabled VPKs
+  on NTFS or show when Deadlock is running on the taskbar.
 
-On macOS, install updates manually from the Apple Silicon download. Exact
-cast-effect timing and live Chat Wheel preset switching remain follow-up work.
+### Upgrading from v1.28.2
+
+- **Windows.** Close Grimoire and Deadlock, then run the Windows Setup installer
+  from this fork’s release and select your existing Grimoire install directory.
+  If you use the portable edition, choose the Portable download.
+- **Linux and macOS.** Update through the same package source or format you
+  already use. On Apple Silicon, download the new macOS build and replace the
+  app manually.
+- **First launch.** Check your game path in Settings, your mod order in
+  Installed, and your saved setups in Profiles. If something looks wrong,
+  open **Recovery** to run an installation check. If Deadlock opens with a
+  problem, use **Installed > Options > Find a broken mod** to start assisted
+  isolation.
+
+In a Windows test, v1.35.2 opened a v1.28.2 setup with its game path, saved
+profile, mod order and enabled VPK files intact.
+
+### Try these first
+
+- In **Settings > Experimental Features**, enable **Door Stuck** to try the
+  sound and asset tools, **Chat Wheel** to edit a draft, or **Ability previews**
+  to audition a cast from the hero stage.
+- Open **Profiles** and use **Duplicate profile** on a saved setup before
+  trying out a different selection of mods.
+
+Exact cast-effect timing and live Chat Wheel preset switching remain
+follow-up work.
 
 ## [1.28.2] - 2026-09-05
 
