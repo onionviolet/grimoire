@@ -1950,6 +1950,12 @@ export async function scanInstallationHealth(): Promise<import('../types/recover
 export async function foundryModels(): Promise<import('../types/foundryModels').FoundryModelEntry[]> {
   return window.electronAPI.foundry.models();
 }
+export const foundryReviewStockVfx = () => window.electronAPI.foundry.reviewStockVfx();
+export const foundryExportStockVfx = (sourcePath: string, reviewToken: string) =>
+  window.electronAPI.foundry.exportStockVfx(sourcePath, reviewToken);
+export const foundryAddStockVfx = (sourcePath: string, reviewToken: string, name: string) =>
+  window.electronAPI.foundry.addStockVfx(sourcePath, reviewToken, name);
+export const foundryReviewModPackage = () => window.electronAPI.foundry.reviewModPackage();
 export async function foundrySelectModelReplacement(entryPath: string): Promise<import('../types/modelReplacement').ModelReplacementSelection | null> {
     return window.electronAPI.foundry.selectModelReplacement(entryPath);
 }

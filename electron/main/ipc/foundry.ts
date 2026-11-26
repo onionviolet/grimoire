@@ -36,6 +36,8 @@ import { scanMods } from '../services/mods';
 import { buildHeroEffectVpkForExport } from '../services/heroColors';
 import { discoverRecolorEntries } from '../services/foundryRecolor';
 import { exportVpkViaDialog } from '../services/foundryExport';
+import { buildStockVfx, reviewStockVfx } from '../services/stockVfx';
+import { reviewModPackage } from '../services/modPackageReview';
 import { exportFoundryAsset } from '../services/foundryAssetExport';
 import { auditionFoundryBuildSound, buildFoundryForgeVpk, forgeAndExportFoundryVpk } from '../services/foundryForge';
 import {
@@ -133,6 +135,22 @@ async function saveFoundryAsset(
 }
 
 ipcMain.handle('foundry:models', () => listFoundryModels(requireDeadlockPath()));
+ipcMain.handle('foundry:reviewStockVfx', async () => {
+    const game = requireDeadlockPath();
+    const { canceled, filePaths } = await dialog.showOpenDialog({ properties: ['openFile'], filters: [{ name: 'Valve Pak', extensions: ['vpk'] }] });
+    return canceled || !filePaths[0] ? null : reviewStockVfx(game, filePaths[0]);
+});
+ipcMain.handle('foundry:exportStockVfx', async (_event, sourcePath: string, reviewToken: string) => {
+    const game = requireDeadlockPath();
+    const built = await buildStockVfx(game, sourcePath, reviewToken);
+    try { return await exportVpkViaDialog(built.vpkPath, `${built.codename}_stock_vfx_dir.vpk`, [sourcePath, join(getCitadelPath(game), 'pak01_dir.vpk')]); }
+    finally { await built.cleanup(); }
+});
+ipcMain.handle('foundry:reviewModPackage', async () => {
+    const game = requireDeadlockPath();
+    const { canceled, filePaths } = await dialog.showOpenDialog({ properties: ['openFile'], filters: [{ name: 'ZIP', extensions: ['zip'] }] });
+    return canceled || !filePaths[0] ? null : reviewModPackage(game, filePaths[0]);
+});
 ipcMain.handle('foundry:selectModelReplacement', async (_event, entryPath: string) => {
     const path = requireDeadlockPath();
     const selection = await dialog.showOpenDialog({ properties: ['openFile'], filters: [{ name: 'VPK', extensions: ['vpk'] }] });

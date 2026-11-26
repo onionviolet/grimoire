@@ -30,7 +30,8 @@ export function exportVpkFileName(name: string): string {
  */
 export async function exportVpkViaDialog(
     builtVpkPath: string,
-    suggestedName: string
+    suggestedName: string,
+    protectedFiles: string[] = [],
 ): Promise<VpkExportResult> {
     const { canceled, filePath } = await showSaveDialog({
         title: 'Export mod VPK',
@@ -45,6 +46,20 @@ export async function exportVpkViaDialog(
     let dest = filePath;
     if (!dest.toLowerCase().endsWith('_dir.vpk')) {
         dest = `${dest.replace(/\.vpk$/i, '')}_dir.vpk`;
+    }
+    if (protectedFiles.length) {
+        const target = await fs.stat(dest, { bigint: true }).catch(error => {
+            if (error.code !== 'ENOENT') throw error;
+            return null;
+        });
+        if (target) {
+            for (const path of protectedFiles) {
+                const source = await fs.stat(path, { bigint: true });
+                if (target.dev === source.dev && target.ino === source.ino) {
+                    throw new Error('Choose a different name for the overlay so the source VPK stays intact');
+                }
+            }
+        }
     }
 
     // Never expose a partially copied VPK at the selected name. The temporary

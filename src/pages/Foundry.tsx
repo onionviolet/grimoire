@@ -19,6 +19,8 @@ import {
   ListChecks,
   Flag,
   Box,
+  PackageCheck,
+  Sparkles,
 } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { EmptyState, PageHeader, PageLayout } from '../components/common/PageComponents';
@@ -41,6 +43,8 @@ import HeroWorkshop from '../components/foundry/HeroWorkshop';
 import FoundryBuildTray from '../components/foundry/FoundryBuildTray';
 import MyChanges from '../components/foundry/MyChanges';
 import NonStandardReportView from '../components/foundry/NonStandardReport';
+import StockVfxTool from '../components/foundry/StockVfxTool';
+import ModPackageTool from '../components/foundry/ModPackageTool';
 import type { FoundryChangeFilter } from '../components/foundry/changeList';
 import { isStagedSoundEdit, type FoundryStagedEdit } from '../components/foundry/buildTray';
 import { replaceSoundSourcePaths } from '../components/foundry/soundRebuildSources';
@@ -60,6 +64,8 @@ const SUBTOOLS = [
   { id: 'portraits', icon: Images, labelKey: 'foundry.subtools.portraits', enabled: true },
   { id: 'items', icon: ShoppingBag, labelKey: 'foundry.subtools.items', enabled: true },
   { id: 'recolor', icon: Palette, labelKey: 'foundry.subtools.recolor', enabled: true },
+  { id: 'stockVfx', icon: Sparkles, labelKey: 'foundry.subtools.stockVfx', enabled: true },
+  { id: 'packageReview', icon: PackageCheck, labelKey: 'foundry.subtools.packageReview', enabled: true },
 ] as const;
 
 type SubtoolId = (typeof SUBTOOLS)[number]['id'];
@@ -364,9 +370,10 @@ export default function Foundry() {
   }
 
   // Catalog (tool-first) mode: the original asset-browse rail.
+  const hideEmptyTray = activeTool === 'models' || activeTool === 'stockVfx' || activeTool === 'packageReview';
   return (
     <div className="flex h-full">
-      <aside className="flex w-44 shrink-0 flex-col gap-1 border-r border-border bg-bg-secondary/40 p-3">
+      <aside className="flex w-44 shrink-0 flex-col gap-1 overflow-y-auto border-r border-border bg-bg-secondary/40 p-3">
         <button
           type="button"
           onClick={() => {
@@ -454,6 +461,10 @@ export default function Foundry() {
             <PortraitBrowse heroNames={heroNames} hero={null} onStage={stageEdit} />
           ) : activeTool === 'recolor' ? (
             <RecolorTool heroes={heroes} onStage={stageEdit} stagedEdits={stagedEdits} />
+          ) : activeTool === 'stockVfx' ? (
+            <StockVfxTool />
+          ) : activeTool === 'packageReview' ? (
+            <ModPackageTool />
           ) : activeTool === 'items' ? (
             <LibraryBrowse heroNames={heroNames} initialCategory="item-icon" hero={null} onStage={stageEdit} />
           ) : (
@@ -461,7 +472,7 @@ export default function Foundry() {
           )}
         </PageLayout>
       </div>
-      {(activeTool !== 'assets' && (activeTool !== 'models' || stagedEdits.length > 0)) && <FoundryBuildTray edits={stagedEdits} outputName={outputName} onOutputNameChange={setOutputName} onForge={forge} onInstall={install} onRemove={removeEdit} onRelinkSoundPaths={relinkSoundPaths} />}
+      {activeTool !== 'assets' && (!hideEmptyTray || stagedEdits.length > 0) && <FoundryBuildTray edits={stagedEdits} outputName={outputName} onOutputNameChange={setOutputName} onForge={forge} onInstall={install} onRemove={removeEdit} onRelinkSoundPaths={relinkSoundPaths} />}
     </div>
   );
 }

@@ -27,12 +27,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { ipcMain } from 'electron';
+import { getActiveDeadlockPath, loadSettings } from '../services/settings';
+import { importDisabledVpk } from '../services/importDisabledVpk';
+import { buildStockVfx } from '../services/stockVfx';
+import { scanMods } from '../services/mods';
 
 // Distinctive sentinel: no other code path on this seam can produce this
 // exact message, so seeing it proves execution passed both the extension
 // check and the magic-byte identity gate and entered the slot-allocation
 // step, without this test ever writing into a real mod library.
-const ALLOCATE_SLOT_SENTINEL = 'SENTINEL: reached allocateEnabledVpkPath';
+const ALLOCATE_SLOT_SENTINEL = vi.hoisted(() => 'SENTINEL: reached allocateEnabledVpkPath');
 
 vi.mock('electron', () => ({
     ipcMain: {
@@ -148,6 +153,7 @@ vi.mock('../services/foundryForge', () => ({
     buildFoundryForgeVpk: vi.fn(),
     describeFoundryBuild: vi.fn(),
 }));
+vi.mock('../services/stockVfx', () => ({ buildStockVfx: vi.fn() }));
 vi.mock('../services/soulContainerImport', () => ({
     buildSoulContainerVpk: vi.fn(),
     cleanupSoulContainerBuild: vi.fn(),
@@ -172,6 +178,7 @@ vi.mock('../index', () => ({
 
 const { importCustomModSource } = await import('./mods');
 const { allocateToolDownloadTempPath } = await import('../services/browserDownloadCapture');
+const addStockVfx = vi.mocked(ipcMain.handle).mock.calls.find(([channel]) => channel === 'foundry:addStockVfx')?.[1];
 
 /** The header shape `extract.test.ts`'s `vpkBytes` helper uses: a real v1
  *  header (magic + version + tree size) that satisfies the real identity
@@ -204,6 +211,21 @@ describe('mods.toolDownloadImportSeam (CR-01: captured temp path vs the shared i
     afterEach(() => {
         rmSync(root, { recursive: true, force: true });
         vi.clearAllMocks();
+    });
+
+    it('stages a reviewed stock overlay without auto-enabling it', async () => {
+        const built = join(root, 'stock_dir.vpk');
+        writeFileSync(built, vpkBytes('STOCK'));
+        const cleanup = vi.fn(async () => {});
+        vi.mocked(buildStockVfx).mockResolvedValueOnce({ vpkPath: built, codename: 'bookworm', cleanup });
+        vi.mocked(importDisabledVpk).mockResolvedValueOnce(built);
+        vi.mocked(getActiveDeadlockPath).mockReturnValueOnce(root).mockReturnValueOnce(root);
+        vi.mocked(loadSettings).mockReturnValueOnce({ autoEnableDownloads: true } as ReturnType<typeof loadSettings>);
+        await addStockVfx?.({} as Electron.IpcMainInvokeEvent, 'skin.vpk', 'review-token', 'Stock effects');
+        expect(buildStockVfx).toHaveBeenCalledWith(root, 'skin.vpk', 'review-token');
+        expect(importDisabledVpk).toHaveBeenCalledWith(root, built);
+        expect(scanMods).not.toHaveBeenCalled();
+        expect(cleanup).toHaveBeenCalledOnce();
     });
 
     it('a real VPK at a real-allocator-produced path reaches the slot-allocation sentinel, not the file-type sentence', async () => {

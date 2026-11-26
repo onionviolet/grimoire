@@ -1821,6 +1821,10 @@ export interface ElectronAPI {
         assets: () => Promise<import('./assetInspection').AssetInspectionEntry[]>;
         inspectAsset: (path: string) => Promise<import('./assetInspection').AssetInspectionResult>;
         models: () => Promise<import('./foundryModels').FoundryModelEntry[]>;
+        reviewStockVfx: () => Promise<import('./peerTools').StockVfxReview | null>;
+        exportStockVfx: (sourcePath: string, reviewToken: string) => Promise<import('./foundry').VpkExportResult>;
+        addStockVfx: (sourcePath: string, reviewToken: string, name: string) => Promise<void>;
+        reviewModPackage: () => Promise<import('./peerTools').ModPackageReview | null>;
         modelPreview: (entryPath: string) => Promise<import('./foundryModels').FoundryModelPreview>;
         selectModelReplacement: (entryPath: string) => Promise<import('./modelReplacement').ModelReplacementSelection | null>;
         exportModel: (entryPath: string) => Promise<import('./foundry').FoundryAssetExportResult>;

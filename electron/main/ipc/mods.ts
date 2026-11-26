@@ -100,6 +100,7 @@ import { readEmbeddedModinfo, readLegacyGrimoireMergeMeta, hasLegacyGrimoireMerg
 import { buildHeroSoundSwapVpk, cleanupHeroSoundSwapBuild, foundryBuildFingerprintKey, sharedStockSoundEvents } from '../services/foundryCatalog';
 import { buildTextureReplacementVpk, cleanupTextureReplacementBuild } from '../services/foundryTextureReplace';
 import { buildFoundryForgeVpk, describeFoundryBuild, reviewFoundryForge } from '../services/foundryForge';
+import { buildStockVfx } from '../services/stockVfx';
 import { buildSoulContainerVpk, cleanupSoulContainerBuild, previewSoulContainerGlb } from '../services/soulContainerImport';
 import { buildSpiritUrnVpk, cleanupSpiritUrnBuild, previewSpiritUrnGlb } from '../services/spiritUrnImport';
 import { resolveModVpk, clearSoulModelCache } from '../services/soulContainerModels';
@@ -1497,7 +1498,7 @@ ipcMain.handle('set-local-mod-gallery', async (_, groupId: string, images: strin
 // import function.
 export async function importCustomModSource(
     deadlockPath: string,
-    args: ImportCustomModArgs,
+    args: ImportCustomModArgs & { keepDisabled?: boolean },
     thumbnailFetchTargets: AdoptedThumbnailTarget[],
     requireExistingGroup = false,
     preparedSources?: ExtractedVpk[],
@@ -1745,7 +1746,7 @@ export async function importCustomModSource(
     const settings = loadSettings();
     const goesLive = (destPath: string): boolean => !settings.experimentalModSafety
         || (settings.autoEnableDownloads === true && passedReview.has(destPath));
-    if (importWrites.some(({ destPath }) => goesLive(destPath))) {
+    if (!args.keepDisabled && importWrites.some(({ destPath }) => goesLive(destPath))) {
         const mods = await scanMods(deadlockPath);
         for (const { destPath, metaKey } of importWrites) {
             if (!goesLive(destPath)) continue;
@@ -1764,6 +1765,21 @@ export async function importCustomModSource(
 
     return { imported: sourceVpks.length, needsReview, metaKeys: finalMetaKeys };
 }
+
+ipcMain.handle('foundry:addStockVfx', async (_event, sourcePath: string, reviewToken: string, name: string) => {
+    const game = getActiveDeadlockPath();
+    if (!game) throw new Error('No Deadlock path configured');
+    if (typeof name !== 'string' || !name.trim()) throw new Error('A name is required for the overlay');
+    const built = await buildStockVfx(game, sourcePath, reviewToken);
+    try {
+        return await runExclusiveModMutation(async () => {
+            if (getActiveDeadlockPath() !== game) throw new Error('The active mod installation changed. Review the overlay again.');
+            await importCustomModSource(game, { name, vpkPath: built.vpkPath, keepDisabled: true }, []);
+        });
+    } finally {
+        await built.cleanup();
+    }
+});
 
 /**
  * Fire the adopted-thumbnail fetches a just-finished import queued up.

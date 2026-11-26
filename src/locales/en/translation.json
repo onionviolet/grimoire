@@ -319,6 +319,43 @@
     "resultCount": "Showing {{visible}} of {{total}} saved mods"
   },
   "foundry": {
+    "peerToolFailed": "Could not finish the review. {{error}}",
+    "stockVfx": {
+      "description": "Review a skin VPK and build a separate overlay with stock ability and weapon particles.",
+      "select": "Choose skin VPK",
+      "scope": "This covers a single hero’s compiled particles in the ability and weapon effect folders. Model, sound and material edits stay in your skin. Other enabled mods and references can still affect what you see in game.",
+      "entries_one": "{{count}} stock particle to export",
+      "entries_other": "{{count}} stock particles to export",
+      "missingStock": "Custom particles with no stock counterpart",
+      "outsideLayer": "Particle overrides outside this hero layer",
+      "partial": "Some custom effects can still appear. Review the paths that the overlay leaves in place.",
+      "missingDependencies": "Stock particle references absent from the indexed VPK",
+      "affectedDependencies": "References the skin still overrides",
+      "export": "Export overlay VPK",
+      "add": "Add overlay to Installed",
+      "overlayName": "Stock effects ({{hero}})",
+      "added": "Added as a disabled mod. Enable the overlay above the skin in load order. Disable it to return to the skin’s effects.",
+      "exported": "Saved {{path}}. Import the overlay and put it above the skin in load order. Disable the overlay to return to the skin’s effects."
+    },
+    "packageReview": {
+      "description": "Check a release ZIP against Grimoire’s VPK import rules, the installed game and enabled mods.",
+      "select": "Choose release ZIP",
+      "summary": "Usable VPKs: {{packages}}. Model entries checked: {{models}}.",
+      "members": "Usable VPKs",
+      "clear": "No issues found in the checks that ran.",
+      "scope": "Checks model references in the local stock pack and sees which enabled Grimoire mods already supply overlapping paths. Actual winners depend on placement. Test the ZIP in game before publishing. Nested archives require a separate import test.",
+      "findings": {
+        "archive": "ZIP could not be checked",
+        "invalidVpk": "VPK failed import checks",
+        "unsupportedWrapper": "Nested archive was skipped",
+        "noVpk": "No usable VPK was found",
+        "unreadable": "Could not verify asset or VPK",
+        "missingDependency": "Reference absent from this ZIP and the indexed stock pack",
+        "siblingDependency": "Reference found only in a separate VPK in this ZIP",
+        "overlap": "Different bytes at a path currently supplied by an enabled mod",
+        "incomplete": "Additional findings were omitted"
+      }
+    },
     "header": {
       "title": "Door Stuck",
       "description": "Browse the game's own asset catalog, built offline from your installed files."
@@ -378,6 +415,8 @@
       "stagedEditsEmpty": "Stage an edit, then review it in the Build tray."
     },
     "subtools": {
+      "stockVfx": "Restore stock effects",
+      "packageReview": "Check release ZIP",
       "heading": "Workshop",
       "library": "Library",
       "sound": "Sound",

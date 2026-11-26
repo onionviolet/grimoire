@@ -194,6 +194,8 @@ export interface ExtractArchiveOptions {
     rejected?: RejectedVpk[];
     /** Internal: bounds the archive-in-archive unwrap to one level. */
     depth?: number;
+    /** A bounded ZIP review rejects oversized payloads before decompressing them. */
+    maxZipVpkBytes?: number;
 }
 
 /**
@@ -265,9 +267,9 @@ export async function extractArchive(
     switch (format) {
         case 'zip':
             try {
-                raw = extractZip(archivePath, destDir, accept);
+                raw = extractZip(archivePath, destDir, accept, options.maxZipVpkBytes);
             } catch (err) {
-                if (!isDuplicateZipEntryError(err)) throw err;
+                if (options.maxZipVpkBytes !== undefined || !isDuplicateZipEntryError(err)) throw err;
                 raw = await extract7z(archivePath, destDir, accept);
             }
             break;
@@ -431,16 +433,17 @@ export async function resolveInstallableVpk(
 /**
  * Extract a ZIP archive
  */
-function extractZip(archivePath: string, destDir: string, accept: (fileName: string) => boolean): ExtractedVpk[] {
+function extractZip(archivePath: string, destDir: string, accept: (fileName: string) => boolean, maxBytes?: number): ExtractedVpk[] {
     const zip = openZip(archivePath);
+    const entries = zip.getEntries().filter(entry => !entry.isDirectory && accept(basename(entry.entryName)));
+    if (maxBytes !== undefined && (entries.length > 64 || entries.reduce((total, entry) => total + entry.header.size, 0) > maxBytes)) {
+        throw new Error('ZIP review supports up to 64 VPK files and 512 MiB of uncompressed VPK data');
+    }
     const extracted: ExtractedVpk[] = [];
     const taken = new Set<string>();
 
-    for (const entry of zip.getEntries()) {
-        if (entry.isDirectory) continue;
-
+    for (const entry of entries) {
         const fileName = basename(entry.entryName);
-        if (!accept(fileName)) continue;
 
         // Write straight to the chosen name rather than extractEntryTo, which can
         // only flatten to the entry's own basename and so clobbers same-named
