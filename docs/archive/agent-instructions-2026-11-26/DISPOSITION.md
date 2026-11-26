@@ -64,3 +64,8 @@ Note: `.gitignore` ignored `.claude/*` except `settings.json`; `!.claude/rules/`
 Headings (lines starting with `#`) are structural and are skipped by the check. No GSD routing line existed in either original, so none was carried over.
 
 One edit to moved text: CLAUDE.md line 180 had an em dash (banned by the repo rule); in `docs/agents/social.md` it reads "locked: additive-only". The check normalizes that one character.
+
+## Resolved 2026-11-26
+
+- `social.md`: "planned" removed; `src/pages/Discover.tsx`, `src/components/social/` and `../grimoire-social` all exist.
+- `i18n.md`: the on-demand download text now matches the code. Build-time catalogs are bundled (`src/i18n.ts`); only languages added after a release are downloaded and ETag-refreshed (`localeDownload.ts`).
