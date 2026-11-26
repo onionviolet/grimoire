@@ -1,5 +1,8 @@
 # Requirements: Grimoire
 
+These requirements record the Chat Wheel milestone that shipped as v1.28.2.
+See [STATE.md](STATE.md) for the current candidate.
+
 **Defined:** 2026-08-11
 **Core Value:** A Deadlock player can change their game and always know exactly what changed, who owns it, and how to undo it.
 

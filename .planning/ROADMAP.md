@@ -1,5 +1,8 @@
 # Roadmap: Grimoire
 
+This roadmap records the completed Chat Wheel milestone, planned as v1.27.5
+and shipped as v1.28.2. See [STATE.md](STATE.md) for the current candidate.
+
 ## Overview
 
 The Chat Wheel editor already ships behind the experimental gate with a
