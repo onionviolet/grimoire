@@ -10,6 +10,7 @@ import {
     previewProfile,
     deleteProfile,
     renameProfile,
+    duplicateProfile,
     updateProfileNotes,
     removeProfileCrosshair,
     type Profile,
@@ -119,6 +120,8 @@ ipcMain.handle('delete-profile', (_, profileId: string): void => {
 ipcMain.handle('rename-profile', (_, profileId: string, newName: string): Profile => {
     return renameProfile(profileId, newName);
 });
+ipcMain.handle('duplicate-profile', (_, profileId: string, copyName: string): Profile =>
+    duplicateProfile(profileId, copyName));
 
 ipcMain.handle('update-profile-notes', (_, profileId: string, notes: string): Profile => {
     return updateProfileNotes(profileId, notes);

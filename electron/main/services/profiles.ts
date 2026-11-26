@@ -67,6 +67,22 @@ export function addProfile(profile: Profile): Profile {
     return profile;
 }
 
+export function duplicateProfile(profileId: string, copyName: string): Profile {
+    if (typeof copyName !== 'string' || !copyName.trim()) throw new Error('A profile name is required');
+    const profiles = loadProfiles();
+    const source = profiles.find(profile => profile.id === profileId);
+    if (!source) throw new Error('The source profile no longer exists');
+    const stem = copyName.trim();
+    const names = new Set(profiles.map(profile => profile.name.toLowerCase()));
+    let name = stem;
+    for (let suffix = 2; names.has(name.toLowerCase()); suffix++) name = `${stem} (${suffix})`;
+    const now = new Date().toISOString();
+    const copy = { ...source, id: generateProfileId(), name, createdAt: now, updatedAt: now };
+    profiles.push(copy);
+    saveProfiles(profiles);
+    return copy;
+}
+
 /**
  * Replace a stored profile by id. Used by re-imports that refresh a profile
  * an earlier import created.

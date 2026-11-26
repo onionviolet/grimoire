@@ -43,7 +43,7 @@ vi.mock('./autoexec', () => ({
   writeAutoexec: () => {},
 }));
 
-import { retargetProfileModSha, updateProfile, createProfile, loadProfiles } from './profiles';
+import { retargetProfileModSha, updateProfile, createProfile, duplicateProfile, loadProfiles, renameProfile } from './profiles';
 import type { Profile } from '../../../src/types/electron';
 
 const SHA_A = 'a'.repeat(64);
@@ -61,6 +61,29 @@ function seed(profiles: Profile[]): void {
 function read(): Profile[] {
   return JSON.parse(readFileSync(profilesPath(), 'utf-8')) as Profile[];
 }
+
+it('duplicates a saved profile offline with stable mod selections and a new identity', () => {
+  const original = {
+    ...profile('inactive', [{ fileName: 'local_dir.vpk', sha256: SHA_A }]),
+    mods: [
+      { fileName: 'local_dir.vpk', sha256: SHA_A, enabled: true, priority: 1 },
+      { fileName: 'variant_dir.vpk', gameBananaId: 4, gameBananaFileId: 8, vpkIndex: 2, enabled: true, priority: 2 },
+    ],
+    autoexecCommands: ['fps_max 200'],
+    notes: 'Test setup',
+  };
+  seed([original]);
+  const copy = duplicateProfile(original.id, 'Copy');
+  expect(copy.id).not.toBe(original.id);
+  expect(copy.mods).toEqual(original.mods);
+  expect(copy.autoexecCommands).toEqual(original.autoexecCommands);
+  expect(copy.notes).toEqual(original.notes);
+  expect(duplicateProfile(original.id, 'copy').name).toBe('copy (2)');
+  renameProfile(copy.id, 'Renamed');
+  const [savedOriginal, savedCopy] = read();
+  expect(savedOriginal).toEqual(original);
+  expect(savedCopy).toMatchObject({ id: copy.id, name: 'Renamed', mods: original.mods });
+});
 
 function profile(id: string, mods: Array<{ fileName: string; sha256?: string; gameBananaId?: number }>): Profile {
   return {

@@ -1417,6 +1417,10 @@ export async function renameProfile(profileId: string, newName: string): Promise
   return window.electronAPI.renameProfile(profileId, newName);
 }
 
+export async function duplicateProfile(profileId: string, copyName: string): Promise<Profile> {
+    return window.electronAPI.duplicateProfile(profileId, copyName);
+}
+
 export async function updateProfileNotes(profileId: string, notes: string): Promise<Profile> {
   return window.electronAPI.updateProfileNotes(profileId, notes);
 }

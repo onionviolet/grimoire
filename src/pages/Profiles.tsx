@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Layers, Plus, Trash2, Play, Save, AlertTriangle, User, ChevronDown, ChevronUp, Terminal, Check, Pencil, X, Upload, Share2, Globe, History, RotateCcw, Camera } from 'lucide-react';
+import { Layers, Plus, Trash2, Play, Save, AlertTriangle, User, ChevronDown, ChevronUp, Terminal, Check, Pencil, X, Upload, Share2, Globe, History, RotateCcw, Camera, Copy } from 'lucide-react';
 import {
   getProfiles,
   createProfile,
   updateProfile,
   deleteProfile,
   renameProfile,
+  duplicateProfile,
   removeProfileCrosshair,
   getSettings,
   createSnapshot,
@@ -128,6 +129,7 @@ function getProfileModGroups(
 export default function Profiles() {
   const { t } = useTranslation();
   const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
   const [activeProfileId, setActiveProfileId] = useState<string | null>(null);
   const [crosshairEnabled, setCrosshairEnabled] = useState(false);
   const [settings, setSettings] = useState<AppSettings | null>(null);
@@ -460,6 +462,19 @@ export default function Profiles() {
       setError(String(err));
     } finally {
       setIsRenaming(false);
+    }
+  };
+
+  const handleDuplicateProfile = async (profile: Profile) => {
+    setDuplicatingId(profile.id);
+    setError(null);
+    try {
+      const copy = await duplicateProfile(profile.id, t('profiles.actions.copyName', { name: profile.name }));
+      setProfiles(current => current.some(item => item.id === copy.id) ? current : [...current, copy]);
+    } catch {
+      setError(t('profiles.errors.duplicateFailed'));
+    } finally {
+      setDuplicatingId(null);
     }
   };
 
@@ -926,6 +941,11 @@ export default function Profiles() {
                           </Button>
                         </div>
                         <div className="flex items-center gap-1 ml-auto">
+                          <Button size="sm" variant="ghost" icon={Copy}
+                            className="px-1.5" disabled={isApplying || isUpdating || duplicatingId !== null}
+                            isLoading={duplicatingId === profile.id}
+                            aria-label={t('profiles.actions.duplicateProfile')} title={t('profiles.actions.duplicateProfile')}
+                            onClick={() => void handleDuplicateProfile(profile)} />
                           <Button
                             size="sm"
                             variant="ghost"

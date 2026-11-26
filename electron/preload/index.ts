@@ -803,6 +803,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
     deleteProfile: (profileId: string) => ipcRenderer.invoke('delete-profile', profileId),
     renameProfile: (profileId: string, newName: string) => ipcRenderer.invoke('rename-profile', profileId, newName),
+    duplicateProfile: (profileId: string, copyName: string) => ipcRenderer.invoke('duplicate-profile', profileId, copyName),
     updateProfileNotes: (profileId: string, notes: string) => ipcRenderer.invoke('update-profile-notes', profileId, notes),
     removeProfileCrosshair: (profileId: string) => ipcRenderer.invoke('remove-profile-crosshair', profileId),
     exportPortableProfile: (profileId: string) => ipcRenderer.invoke('export-portable-profile', profileId),

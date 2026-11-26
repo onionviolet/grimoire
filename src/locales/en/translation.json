@@ -4211,6 +4211,7 @@
       "loadSnapshotFailed": "Failed to load snapshot: {{error}}",
       "captureSnapshotFailed": "Failed to capture snapshot: {{error}}",
       "deleteSnapshotFailed": "Failed to delete snapshot: {{error}}",
+      "duplicateFailed": "Could not duplicate the profile.",
       "bulkDeleteSnapshotsFailed": "Failed to delete {{failed}} of {{total}} snapshots: {{error}}",
       "applyPartial_one": "Profile applied, but 1 mod couldn't be toggled (it may be locked by the running game).",
       "applyPartial_other": "Profile applied, but {{count}} mods couldn't be toggled (they may be locked by the running game).",
@@ -4233,6 +4234,8 @@
     "actions": {
       "import": "Import",
       "renameProfile": "Rename profile",
+      "duplicateProfile": "Duplicate profile",
+      "copyName": "{{name}} (copy)",
       "cancelRename": "Cancel rename",
       "reapplyTitle": "Re-apply this profile",
       "updateTitle": "Overwrite this profile with your current mods",
