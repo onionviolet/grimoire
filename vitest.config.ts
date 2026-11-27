@@ -1,3 +1,4 @@
+import { availableParallelism } from 'node:os';
 import { defineConfig } from 'vitest/config';
 
 // Unit tests run in a plain node environment (no DOM). Most cover pure logic in
@@ -6,6 +7,8 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     environment: 'node',
+    // Keep parallel workers from starving filesystem-heavy fixtures on Windows.
+    maxWorkers: process.platform === 'win32' ? Math.min(4, availableParallelism()) : undefined,
     // Repairs the Node 26 native-`localStorage` shadow under jsdom; a no-op
     // otherwise. See the file for why.
     setupFiles: ['./vitest.setup.ts'],
