@@ -1,3 +1,7 @@
+# Scan the refs Git supplies on stdin. Amends, rebases and cherry-picks can
+# bypass commit-msg, and the pushed tips can differ from the checked-out HEAD.
+node scripts/check-upstream-refs.mjs --pre-push "$1"
+
 # Mirror CI's "i18n catalog + manifest" gate so a missing key or a stale
 # manifest.json never reaches a push (and a red CI run). Both checks are
 # sub-second and need no build. See AGENTS.md and docs/localization.md for the i18n workflow.
@@ -8,12 +12,6 @@ node scripts/gen-locale-manifest.mjs --check
 # corruption is invisible in review and the fix happened to sit uncommitted in
 # the working tree. This is the cheapest place to catch a recurrence.
 pnpm encoding:check
-
-# Second half of the upstream backlink guard (commit-msg is the first). Amends,
-# rebases and cherry-picks can all rewrite a message past that hook, and the
-# push is the moment GitHub gets to act on it. Upstream's own "(#326)" squash
-# subjects are exempt: they are already reachable from upstream/main.
-pnpm refs:check
 
 # This is where the repo keeps its cheap invariant gates. Protects a workflow
 # file (.github/workflows/release.yml) that only changes locally before it is

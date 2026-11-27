@@ -55,8 +55,8 @@ This workspace is the fork `onionviolet/grimoire`.
   URLs pass. Commits reachable from `upstream/main` are exempt, so merging
   upstream's own `(#326)` squash subjects does not trip it.
 - It runs in three places: `.husky/commit-msg` (the message being written),
-  `.husky/pre-push` via `pnpm refs:check` (catches amend, rebase and
-  cherry-pick, which route around commit-msg), and the "Upstream backlink
+  `.husky/pre-push` (checks the tips Git is pushing, including messages from
+  amend, rebase and cherry-pick), and the "Upstream backlink
   guard" step in `.github/workflows/ci.yml` (catches `--no-verify` and pushes
   from a machine without hooks installed).
 - The bare-number rule keys off `UPSTREAM_NUMBER_FLOOR` in that script: fork

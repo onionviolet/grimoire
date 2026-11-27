@@ -24,6 +24,7 @@
 // Run with: pnpm refs:check                    (unpushed commits)
 //           node scripts/check-upstream-refs.mjs --message-file <path>
 //           node scripts/check-upstream-refs.mjs --range <rev-range>
+//           node scripts/check-upstream-refs.mjs --pre-push <remote>  (Git hook stdin)
 
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -36,10 +37,13 @@ const UPSTREAM_SLUG = 'Slush97/grimoire';
 // the whole heuristic: raise it (and this comment) when fork issue numbers get
 // within striking distance of it, or the gate starts rejecting our own refs.
 const UPSTREAM_NUMBER_FLOOR = 100;
+const GIT_OID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
+const ZERO_OID = /^0+$/;
 
 const args = process.argv.slice(2);
 const messageFile = valueOf('--message-file');
 const range = valueOf('--range');
+const pushRemote = valueOf('--pre-push');
 
 function valueOf(flag) {
   const i = args.indexOf(flag);
@@ -47,7 +51,7 @@ function valueOf(flag) {
 }
 
 function git(...argv) {
-  return execFileSync('git', argv, { encoding: 'utf8' });
+  return execFileSync('git', argv, { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
 }
 
 function hasRef(ref) {
@@ -57,6 +61,40 @@ function hasRef(ref) {
   } catch {
     return false;
   }
+}
+
+function resolveCommit(ref) {
+  try {
+    return git('rev-parse', '--verify', '--quiet', `${ref}^{commit}`).trim();
+  } catch {
+    return null;
+  }
+}
+
+function pushRanges(remote) {
+  const ranges = [];
+  const updates = readFileSync(0, 'utf8').trim();
+  if (!updates) return ranges;
+  let remoteHead;
+
+  for (const line of updates.split('\n')) {
+    const [, localOid, , remoteOid] = line.trim().split(/\s+/);
+    if (!GIT_OID.test(localOid) || !GIT_OID.test(remoteOid)) {
+      throw new Error('Invalid ref update from Git pre-push');
+    }
+    if (ZERO_OID.test(localOid)) continue; // Deletion adds no commits.
+    if (git('cat-file', '-t', `${localOid}^{}`).trim() !== 'commit') continue;
+
+    // A new ref shares the fork's published default history. For an existing
+    // ref whose old object is missing locally, scan the full proposed history.
+    if (ZERO_OID.test(remoteOid) && remoteHead === undefined) {
+      remoteHead = resolveCommit(`refs/remotes/${remote}/HEAD`)
+        ?? (remote === 'origin' ? resolveCommit('refs/remotes/origin/main') : null);
+    }
+    const base = ZERO_OID.test(remoteOid) ? remoteHead : resolveCommit(remoteOid);
+    ranges.push(base ? `${base}..${localOid}` : localOid);
+  }
+  return ranges;
 }
 
 // Strip what GitHub will not autolink, so the scan sees only live references.
@@ -109,20 +147,22 @@ let subjects = [];
 if (messageFile) {
   subjects = [{ label: 'commit message', message: readFileSync(messageFile, 'utf8') }];
 } else {
-  let rev = range;
-  if (!rev) {
-    rev = hasRef('origin/main') ? 'origin/main..HEAD' : 'HEAD~1..HEAD';
-  }
+  const defaultRange = () => hasRef('origin/main') ? 'origin/main..HEAD' : 'HEAD~1..HEAD';
+  const ranges = pushRemote === null ? [range || defaultRange()] : pushRanges(pushRemote);
   // Upstream's own commits carry "(#326)" subjects from its squash merges.
   // Those numbers already point at upstream from upstream; merging them here
   // creates nothing new, so anything reachable from upstream/main is exempt.
-  const revListArgs = ['rev-list', ...rev.split(' ')];
-  if (hasRef('upstream/main')) revListArgs.push('--not', 'upstream/main');
-  const shas = git(...revListArgs).split('\n').map((s) => s.trim()).filter(Boolean);
-  subjects = shas.map((sha) => ({
-    label: `${sha.slice(0, 7)} ${git('log', '-1', '--format=%s', sha).trim()}`,
-    message: git('log', '-1', '--format=%B', sha),
-  }));
+  const exclude = hasRef('upstream/main') ? ['--not', 'upstream/main'] : [];
+  const commits = new Map();
+  for (const rev of ranges) {
+    const fields = git('log', '-z', '--no-show-signature', '--format=%H%x00%s%x00%B',
+      ...rev.split(' '), ...exclude).split('\0');
+    for (let i = 0; i < fields.length - 1; i += 3) {
+      const [sha, subject, message] = fields.slice(i, i + 3);
+      commits.set(sha, { label: `${sha.slice(0, 7)} ${subject}`, message });
+    }
+  }
+  subjects = [...commits.values()];
 }
 
 const findings = subjects.flatMap(({ label, message }) => scan(label, message));
