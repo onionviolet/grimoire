@@ -71,6 +71,12 @@ repeatable while preserving a usable rollback path.
    Expected outputs are `release/Grimoire-Setup-<version>.exe`,
    `release/Grimoire-Portable-<version>.exe`, and the installer blockmap.
 
+   The default packaged smoke checks the running app's version against this checkout.
+   When testing an explicit candidate directory, set `GRIMOIRE_EXPECTED_VERSION` to
+   the release version. An explicit directory without that setting can still be used
+   to inspect an older package. Keep the candidate path and the reported Grimoire
+   version with the feature result.
+
 6. The GitHub workflow builds Windows x64, Linux x64 and macOS arm64 when
    a `v<version>` tag is pushed. Use a branch ref for a manual build-only run.
    Each platform runs the packaged smoke before attestation and uploads the

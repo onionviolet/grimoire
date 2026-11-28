@@ -18,7 +18,10 @@ const layouts = {
 };
 const nix = process.argv[2] === '--nix';
 const [directory, binary, resources] = layouts[nix ? 'nix' : process.platform];
-const source = resolve(process.argv[nix ? 3 : 2] ?? join(repo, directory));
+const packagePath = process.argv[nix ? 3 : 2];
+const source = resolve(packagePath ?? join(repo, directory));
+const expectedVersion = process.env.GRIMOIRE_EXPECTED_VERSION ??
+    (packagePath ? undefined : JSON.parse(await readFile(join(repo, 'package.json'), 'utf8')).version);
 assert.ok((await stat(join(source, resources, 'app.asar'))).isFile(), 'Package the app first');
 
 const root = await realpath(await mkdtemp(join(tmpdir(), 'grimoire-packaged-')));
@@ -98,15 +101,19 @@ try {
         electron: process.versions.electron,
     }));
     assert.equal(runtime.packaged, true);
+    if (expectedVersion !== undefined) {
+        assert.equal(runtime.version, expectedVersion, `Expected Grimoire ${expectedVersion} in ${source}, found ${runtime.version}`);
+    }
     assert.equal(resolve(runtime.appPath), join(packaged, resources, 'app.asar'));
     assert.equal(resolve(runtime.userData), userData);
     // macOS puts logs under the account's real home (NSHomeDirectory), which HOME can't redirect.
     if (process.platform !== 'darwin') {
         assert.ok(!relative(root, runtime.logs).startsWith('..'), `Logs escaped the temporary profile: ${runtime.logs}`);
     }
-    console.log(`PASS isolation: app.asar outside checkout, fresh userData (Electron ${runtime.electron})`);
+    console.log(`PASS isolation: Grimoire ${runtime.version}, app.asar outside checkout, fresh userData (Electron ${runtime.electron})`);
 
     const page = await application.firstWindow({ timeout: 30000 });
+    page.setDefaultTimeout(30000);
     await page.waitForURL('file:///**/app.asar/dist/renderer/index.html');
     await page.locator('#root > *').first().waitFor({ state: 'visible' });
     const wheel = await page.evaluate(async () => {
@@ -289,7 +296,15 @@ try {
     process.exitCode = 1;
 } finally {
     // macOS keeps the app alive after its windows close, so close() can wait forever.
-    try { await withTimeout(application?.close() ?? Promise.resolve(), 15000); }
+    try {
+        const child = application?.process();
+        if (process.platform === 'win32' && child && child.exitCode === null && child.signalCode === null) {
+            // This disposable app and its tray/render processes can outlive window closure.
+            await promisify(execFile)('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true });
+        } else {
+            await withTimeout(application?.close() ?? Promise.resolve(), 15000);
+        }
+    }
     catch { application?.process().kill('SIGKILL'); }
     finally {
         clearTimeout(watchdog);

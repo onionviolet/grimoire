@@ -196,3 +196,10 @@ Pushing a version tag starts the publishing workflow. Check upstream stable
 again immediately before tagging, since a new stable release would change the
 fork's patch-plus-one target. The changelog section holds the outward notes for
 review.
+## November 27 Windows candidate replay
+
+The installed Windows app reported 1.35.1. The retained unpacked candidate reported 1.35.2 on Electron 44.10.1, with `app.asar` SHA-256 `6f4a45a46b8e0df833cdd142952958d904e15f48b211742a73620c6b33ee9f1c`.
+
+On a separate desktop with a disposable profile, the candidate's **Duplicate profile** button created a second profile with a distinct ID and name. Reading back both profiles through the packaged preload showed the same enabled VPK reference, priority and note. This checks profile duplication. Applying the copied profile to a live game was outside this trial.
+
+The packaged smoke previously compared two version readings from the running app. Both could agree on an older package. With 1.35.2 as the expected version, the installed baseline exited 1 and the matching candidate passed the full packaged smoke with exit 0. Both removed their temporary app and profile. Earlier Windows runs could leave the tray process holding that directory after the assertions completed. The smoke now terminates its own disposable Windows process tree before cleanup. This replay covers the retained Windows package. The hosted release matrix and publication are separate steps.
